@@ -6,6 +6,7 @@ import UserProfileView from "../UserProfileView/UserProfileView";
 import Settings from "../Settings/Settings";
 import ChatInterface from "../ChatInterface/ChatInterface";
 import DirectMessage from "../DirectMessage/DirectMessage";
+import Discovery from "../Discovery/Discovery";
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
       <Route path="/" element={<Onboarding />} />
       <Route path="/profile" element={<ProfileCreation />} />
       <Route path="/auth" element={<Auth />} />
+      <Route path="/discovery" element={<Discovery />} />
       <Route path="/my-profile" element={<UserProfileView />} />
       <Route path="/settings" element={<Settings />} />
       <Route path="/chat" element={<ChatInterface />} />
