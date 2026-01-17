@@ -1,12 +1,82 @@
 import React, { useState } from "react";
 import styles from "./Auth.module.css";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
+import { useAuth } from "../../contexts/AuthContext";
 
 const Connect: React.FC = () => {
   const navigate = useNavigate();
+  const { login, signup } = useAuth();
   const [authType, setAuthType] = useState<"signup" | "login">("signup");
   const [showPassword, setShowPassword] = useState(false);
   const [dateType, setDateType] = useState("text");
+  const [loading, setLoading] = useState(false);
+
+  // Form state
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [gender, setGender] = useState("");
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      if (authType === "signup") {
+        // Validate required fields
+        if (
+          !email ||
+          !password ||
+          !firstName ||
+          !lastName ||
+          !dateOfBirth ||
+          !gender
+        ) {
+          toast.error("Please fill in all fields");
+          return;
+        }
+
+        const success = await signup({
+          email,
+          password,
+          firstName,
+          lastName,
+          dateOfBirth,
+          gender,
+        });
+
+        if (success) {
+          toast.success("Account created successfully!");
+          navigate("/profile");
+        } else {
+          toast.error("Signup failed");
+        }
+      } else {
+        // Login
+        if (!email || !password) {
+          toast.error("Please enter email and password");
+          return;
+        }
+
+        const success = await login(email, password);
+
+        if (success) {
+          toast.success("Logged in successfully!");
+          navigate("/discovery");
+        } else {
+          toast.error("Login failed");
+        }
+      }
+    } catch (error) {
+      console.error("Auth error:", error);
+      toast.error("Network error. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className={styles.wrapper}>
@@ -62,13 +132,19 @@ const Connect: React.FC = () => {
         </div>
 
         {/* Form Fields */}
-        <div className={styles.formStack}>
+        <form
+          id="auth-form"
+          onSubmit={handleSubmit}
+          className={styles.formStack}
+        >
           {/* Email Field */}
           <div className={styles.inputWrapper}>
             <input
               type="email"
-              placeholder="Email or Phone Number"
+              placeholder="Email"
               className={styles.input}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
             />
             <div className={styles.iconSuffix}>
               <span className="material-symbols-outlined">mail</span>
@@ -81,6 +157,8 @@ const Connect: React.FC = () => {
               type={showPassword ? "text" : "password"}
               placeholder="Password"
               className={styles.input}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
             />
             <div
               className={`${styles.iconSuffix} ${styles.iconSuffixInteractive}`}
@@ -92,6 +170,58 @@ const Connect: React.FC = () => {
             </div>
           </div>
 
+          {/* First Name (Sign Up Only) */}
+          {authType === "signup" && (
+            <div className={styles.inputWrapper}>
+              <input
+                type="text"
+                placeholder="First Name"
+                className={styles.input}
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+              />
+              <div className={styles.iconSuffix}>
+                <span className="material-symbols-outlined">person</span>
+              </div>
+            </div>
+          )}
+
+          {/* Last Name (Sign Up Only) */}
+          {authType === "signup" && (
+            <div className={styles.inputWrapper}>
+              <input
+                type="text"
+                placeholder="Last Name"
+                className={styles.input}
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+              />
+              <div className={styles.iconSuffix}>
+                <span className="material-symbols-outlined">person</span>
+              </div>
+            </div>
+          )}
+
+          {/* Gender (Sign Up Only) */}
+          {authType === "signup" && (
+            <div className={styles.inputWrapper}>
+              <select
+                className={styles.input}
+                value={gender}
+                onChange={(e) => setGender(e.target.value)}
+              >
+                <option value="">Select Gender</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Non-binary">Non-binary</option>
+                <option value="Other">Other</option>
+              </select>
+              <div className={styles.iconSuffix}>
+                <span className="material-symbols-outlined">wc</span>
+              </div>
+            </div>
+          )}
+
           {/* Date of Birth (Sign Up Only) */}
           {authType === "signup" && (
             <div className={styles.inputWrapper}>
@@ -99,8 +229,9 @@ const Connect: React.FC = () => {
                 type={dateType}
                 placeholder="Date of Birth"
                 className={styles.input}
+                value={dateOfBirth}
+                onChange={(e) => setDateOfBirth(e.target.value)}
                 onFocus={() => setDateType("date")}
-                onBlur={() => setDateType("text")}
               />
               <div className={styles.iconSuffix}>
                 <span className="material-symbols-outlined">
@@ -109,20 +240,28 @@ const Connect: React.FC = () => {
               </div>
             </div>
           )}
-        </div>
+        </form>
 
         {/* Primary Action Button */}
         <button
+          type="submit"
+          form="auth-form"
           className={styles.primaryBtn}
-          onClick={() => navigate("/profile")}
+          disabled={loading}
         >
-          {authType === "signup" ? "Get Started" : "Log In"}
-          <span
-            className="material-symbols-outlined"
-            style={{ fontSize: "20px" }}
-          >
-            arrow_forward
-          </span>
+          {loading
+            ? "Loading..."
+            : authType === "signup"
+            ? "Get Started"
+            : "Log In"}
+          {!loading && (
+            <span
+              className="material-symbols-outlined"
+              style={{ fontSize: "20px" }}
+            >
+              arrow_forward
+            </span>
+          )}
         </button>
 
         {/* Divider */}

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import styles from "./ChatInterface.module.css";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 
 interface Match {
   id: number;
@@ -139,7 +140,10 @@ const ChatInterface: React.FC = () => {
           <h2 className={styles.title}>Messages</h2>
           <button
             className={styles.tuneButton}
-            onClick={() => setIsDarkMode(!isDarkMode)}
+            onClick={() => {
+              setIsDarkMode(!isDarkMode);
+              toast.info("Theme toggled successfully!");
+            }}
             aria-label="Toggle Theme"
           >
             <span className="material-symbols-outlined">tune</span>
@@ -203,7 +207,10 @@ const ChatInterface: React.FC = () => {
               <div
                 key={msg.id}
                 className={styles.messageItem}
-                onClick={() => navigate("/direct-message")}
+                onClick={() => {
+                  toast.success(`Opening chat with ${msg.name}`);
+                  navigate("/direct-message");
+                }}
               >
                 <div className={styles.messageAvatarWrapper}>
                   <div className={styles.messageAvatar}>
@@ -289,7 +296,15 @@ const ChatInterface: React.FC = () => {
 
           <div className={styles.ctaContainer}>
             <p className={styles.ctaText}>You're all caught up!</p>
-            <button className={styles.ctaButton}>Keep Swiping</button>
+            <button
+              className={styles.ctaButton}
+              onClick={() => {
+                toast("Keep swiping!");
+                navigate("/discovery");
+              }}
+            >
+              Keep Swiping
+            </button>
           </div>
         </main>
 
@@ -329,7 +344,10 @@ const ChatInterface: React.FC = () => {
             </button>
             <button
               className={styles.navBtn}
-              onClick={() => navigate("/my-profile")}
+              onClick={() => {
+                toast.success("Navigating to profile");
+                navigate("/my-profile");
+              }}
             >
               <span
                 className="material-symbols-outlined"

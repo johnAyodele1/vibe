@@ -1,6 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import styles from "./Settings.module.css";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
+import { API_BASE_URL } from "../../config";
 
 const Icon = ({
   name,
@@ -10,9 +12,172 @@ const Icon = ({
   className?: string;
 }) => <span className={`material-symbols-outlined ${className}`}>{name}</span>;
 
+interface User {
+  _id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  age: number;
+  isPremium: boolean;
+  photos: Array<{
+    url: string;
+    isMain: boolean;
+  }>;
+  preferences: {
+    genderPreference: string;
+    ageRange: {
+      min: number;
+      max: number;
+    };
+    maxDistance: number;
+  };
+  settings: {
+    notifications: {
+      matches: boolean;
+      messages: boolean;
+      likes: boolean;
+    };
+    privacy: {
+      showOnlineStatus: boolean;
+      showDistance: boolean;
+      showAge: boolean;
+    };
+  };
+}
+
 const Settings: React.FC = () => {
   const navigate = useNavigate();
   const [isDark, setIsDark] = useState(true); // Default to dark based on HTML
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchUserProfile = async () => {
+    try {
+      const token = localStorage.getItem("accessToken");
+      if (!token) {
+        navigate("/");
+        return;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/users/profile`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setUser(data.data.user);
+      } else {
+        toast.error("Failed to load profile");
+      }
+    } catch (error) {
+      console.error("Fetch profile error:", error);
+      toast.error("Network error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateUserSettings = async (updates: Partial<User>) => {
+    try {
+      const token = localStorage.getItem("accessToken");
+      if (!token) {
+        navigate("/");
+        return;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/users/profile`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(updates),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setUser(data.data.user);
+        toast.success("Settings updated");
+      } else {
+        toast.error(data.message || "Failed to update settings");
+      }
+    } catch (error) {
+      console.error("Update settings error:", error);
+      toast.error("Network error");
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      const token = localStorage.getItem("accessToken");
+      if (token) {
+        await fetch(`${API_BASE_URL}/auth/logout`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+      }
+
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("refreshToken");
+      toast.success("Logged out successfully");
+      navigate("/");
+    } catch (error) {
+      console.error("Logout error:", error);
+      // Still clear tokens and navigate even if logout request fails
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("refreshToken");
+      navigate("/");
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (
+      !window.confirm(
+        "Are you sure you want to delete your account? This action cannot be undone."
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("accessToken");
+      if (!token) {
+        navigate("/");
+        return;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/users/account`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        localStorage.removeItem("accessToken");
+        localStorage.removeItem("refreshToken");
+        toast.success("Account deleted successfully");
+        navigate("/");
+      } else {
+        toast.error(data.message || "Failed to delete account");
+      }
+    } catch (error) {
+      console.error("Delete account error:", error);
+      toast.error("Network error");
+    }
+  };
+
+  useEffect(() => {
+    fetchUserProfile();
+  }, []);
 
   return (
     // Outer Wrapper for Background context and centering
@@ -46,12 +211,23 @@ const Settings: React.FC = () => {
               className={styles.avatar}
               style={{
                 backgroundImage:
-                  'url("https://lh3.googleusercontent.com/aida-public/AB6AXuAvjzjVf_4mGJbjO-RfA2CpjAXhoG5k38swJ0m6FGCqe-L_RWI6uCcFdPyh1-CNs7FJoEWvfJRlvOjJBO7NzBhPXm5lAvBUOzUeVSx0IPaUY8l_URDQVNRFslBaoZZmhr7PvbM3hSijqUJZvNeSCo9HUx_cTA2PgZP55HUbe-zB-EiaJSYriTbBxYHAYAgnSz4-_-gER_f8dd9ZfyDDP2a3qyQClRxq06bVcN4doWG5A8tBT0vh9Tey2SsrBf94_WO1GYu5mYNiRCY")',
+                  user?.photos && user.photos.length > 0
+                    ? `url("${
+                        user.photos.find((photo) => photo.isMain)?.url ||
+                        user.photos[0].url
+                      }")`
+                    : 'url("https://lh3.googleusercontent.com/aida-public/AB6AXuAvjzjVf_4mGJbjO-RfA2CpjAXhoG5k38swJ0m6FGCqe-L_RWI6uCcFdPyh1-CNs7FJoEWvfJRlvOjJBO7NzBhPXm5lAvBUOzUeVSx0IPaUY8l_URDQVNRFslBaoZZmhr7PvbM3hSijqUJZvNeSCo9HUx_cTA2PgZP55HUbe-zB-EiaJSYriTbBxYHAYAgnSz4-_-gER_f8dd9ZfyDDP2a3qyQClRxq06bVcN4doWG5A8tBT0vh9Tey2SsrBf94_WO1GYu5mYNiRCY")',
               }}
             ></div>
             <div>
-              <p className={styles.userName}>Alex, 24</p>
-              <p className={styles.userStatus}>Basic Member</p>
+              <p className={styles.userName}>
+                {user
+                  ? `${user.firstName} ${user.lastName}, ${user.age}`
+                  : "Loading..."}
+              </p>
+              <p className={styles.userStatus}>
+                {user?.isPremium ? "Premium Member" : "Basic Member"}
+              </p>
             </div>
           </div>
 
@@ -89,7 +265,7 @@ const Settings: React.FC = () => {
                 Phone Number
               </div>
               <div className={styles.itemValue}>
-                <span>867-5309</span>
+                <span>Unknown</span>
                 <Icon name="arrow_forward_ios" className="text-lg opacity-50" />
               </div>
             </div>
@@ -103,7 +279,7 @@ const Settings: React.FC = () => {
                 Email
               </div>
               <div className={styles.itemValue}>
-                <span>alex@example.com</span>
+                <span>{user?.email || "Loading..."}</span>
                 <Icon name="arrow_forward_ios" className="text-lg opacity-50" />
               </div>
             </div>
@@ -119,20 +295,42 @@ const Settings: React.FC = () => {
               <div className={styles.sliderHeader}>
                 <p className={styles.itemLabel}>Maximum Distance</p>
                 <p className="font-bold text-sm text-gray-500 dark:text-[#ba9ca3]">
-                  25 mi
+                  {user?.preferences.maxDistance || 50} km
                 </p>
               </div>
               <div className={styles.sliderTrack}>
                 <div className={styles.trackBg}></div>
                 <div
                   className={styles.trackFill}
-                  style={{ width: "32%" }}
+                  style={{
+                    width: `${
+                      (((user?.preferences.maxDistance || 50) - 1) /
+                        (500 - 1)) *
+                      100
+                    }%`,
+                  }}
                 ></div>
-                {/* Visual Thumb representation */}
-                <div
-                  className={styles.thumb}
-                  style={{ transform: "translateX(100px)" }}
-                ></div>
+                <input
+                  type="range"
+                  min="1"
+                  max="500"
+                  value={user?.preferences.maxDistance || 50}
+                  onChange={(e) => {
+                    const value = parseInt(e.target.value);
+                    updateUserSettings({
+                      preferences: {
+                        genderPreference:
+                          user?.preferences.genderPreference || "Everyone",
+                        ageRange: user?.preferences.ageRange || {
+                          min: 18,
+                          max: 50,
+                        },
+                        maxDistance: value,
+                      },
+                    });
+                  }}
+                  className={styles.sliderInput}
+                />
               </div>
             </div>
 
@@ -141,7 +339,8 @@ const Settings: React.FC = () => {
               <div className={styles.sliderHeader}>
                 <p className={styles.itemLabel}>Age Range</p>
                 <p className="font-bold text-sm text-gray-500 dark:text-[#ba9ca3]">
-                  20 - 30
+                  {user?.preferences.ageRange.min || 18} -{" "}
+                  {user?.preferences.ageRange.max || 50}
                 </p>
               </div>
               <div className={styles.sliderTrack}>
@@ -164,10 +363,27 @@ const Settings: React.FC = () => {
             {/* Show Me */}
             <div className={styles.listItem}>
               <p className={styles.itemLabel}>Show Me</p>
-              <div className={styles.itemValue}>
-                <span>Everyone</span>
-                <Icon name="arrow_forward_ios" className="text-lg opacity-50" />
-              </div>
+              <select
+                className={styles.itemValueSelect}
+                value={user?.preferences.genderPreference || "Everyone"}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  updateUserSettings({
+                    preferences: {
+                      genderPreference: value,
+                      ageRange: user?.preferences.ageRange || {
+                        min: 18,
+                        max: 50,
+                      },
+                      maxDistance: user?.preferences.maxDistance || 50,
+                    },
+                  });
+                }}
+              >
+                <option value="Everyone">Everyone</option>
+                <option value="Male">Men</option>
+                <option value="Female">Women</option>
+              </select>
             </div>
           </div>
         </div>
@@ -202,7 +418,25 @@ const Settings: React.FC = () => {
                 <input
                   type="checkbox"
                   className={styles.toggleInput}
-                  defaultChecked
+                  checked={!(user?.settings.privacy.showOnlineStatus ?? true)}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    updateUserSettings({
+                      settings: {
+                        notifications: user?.settings.notifications || {
+                          matches: true,
+                          messages: true,
+                          likes: false,
+                        },
+                        privacy: {
+                          showOnlineStatus: !checked,
+                          showDistance:
+                            user?.settings.privacy.showDistance ?? true,
+                          showAge: user?.settings.privacy.showAge ?? true,
+                        },
+                      },
+                    });
+                  }}
                 />
                 <div className={styles.toggleTrack}></div>
               </label>
@@ -228,7 +462,25 @@ const Settings: React.FC = () => {
                 <input
                   type="checkbox"
                   className={styles.toggleInput}
-                  defaultChecked
+                  checked={user?.settings.notifications.matches ?? true}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    updateUserSettings({
+                      settings: {
+                        notifications: {
+                          matches: checked,
+                          messages:
+                            user?.settings.notifications.messages ?? true,
+                          likes: user?.settings.notifications.likes ?? false,
+                        },
+                        privacy: user?.settings.privacy || {
+                          showOnlineStatus: true,
+                          showDistance: true,
+                          showAge: true,
+                        },
+                      },
+                    });
+                  }}
                 />
                 <div className={styles.toggleTrack}></div>
               </label>
@@ -239,7 +491,24 @@ const Settings: React.FC = () => {
                 <input
                   type="checkbox"
                   className={styles.toggleInput}
-                  defaultChecked
+                  checked={user?.settings.notifications.messages ?? true}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    updateUserSettings({
+                      settings: {
+                        notifications: {
+                          matches: user?.settings.notifications.matches ?? true,
+                          messages: checked,
+                          likes: user?.settings.notifications.likes ?? false,
+                        },
+                        privacy: user?.settings.privacy || {
+                          showOnlineStatus: true,
+                          showDistance: true,
+                          showAge: true,
+                        },
+                      },
+                    });
+                  }}
                 />
                 <div className={styles.toggleTrack}></div>
               </label>
@@ -247,7 +516,29 @@ const Settings: React.FC = () => {
             <div className={styles.listItem}>
               <p className={styles.itemLabel}>Super Likes</p>
               <label className={styles.toggleWrapper}>
-                <input type="checkbox" className={styles.toggleInput} />
+                <input
+                  type="checkbox"
+                  className={styles.toggleInput}
+                  checked={user?.settings.notifications.likes ?? false}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    updateUserSettings({
+                      settings: {
+                        notifications: {
+                          matches: user?.settings.notifications.matches ?? true,
+                          messages:
+                            user?.settings.notifications.messages ?? true,
+                          likes: checked,
+                        },
+                        privacy: user?.settings.privacy || {
+                          showOnlineStatus: true,
+                          showDistance: true,
+                          showAge: true,
+                        },
+                      },
+                    });
+                  }}
+                />
                 <div className={styles.toggleTrack}></div>
               </label>
             </div>
@@ -256,10 +547,14 @@ const Settings: React.FC = () => {
 
         {/* Section: Actions */}
         <div className={styles.actions}>
-          <button className={styles.logoutBtn}>Log Out</button>
+          <button className={styles.logoutBtn} onClick={handleLogout}>
+            Log Out
+          </button>
 
           <div className={styles.versionInfo}>
-            <button className={styles.deleteBtn}>Delete Account</button>
+            <button className={styles.deleteBtn} onClick={handleDeleteAccount}>
+              Delete Account
+            </button>
             <div className="flex flex-col items-center mt-4">
               <img
                 src="https://lh3.googleusercontent.com/aida-public/AB6AXuBYK3ohVZgSiHY4PeOQ_IYaUDBHOp20bFxqfwhOcelOyIGVMWWGLoXGumpYJPoXzbYnnXIMvo_46GkUp7AQACMt0trpDVqJWFkbj4BCGzdM5BCPmjy3TzNHImejwWiOor5J73r_mKc5346yby1eaZNkvQFI2m9Jh6FfSS-CGdWAQwuCMLcLHsv4kT2LrpwtcoPQWnujzHOzHvW2fpA-0CVeGZWx0lpJt8FHggiYw9N1Raswy4Riq8oKTS_OChejHuSI2ClsSQIeTc4"

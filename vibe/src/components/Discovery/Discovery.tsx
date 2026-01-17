@@ -1,41 +1,66 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import styles from "./Discovery.module.css";
+import { API_BASE_URL } from "../../config";
 
-// Mock Data to demonstrate the "Next Profile" logic
-const PROFILES = [
-  {
-    id: 1,
-    name: "Sarah",
-    age: 24,
-    image:
-      "https://lh3.googleusercontent.com/aida-public/AB6AXuCAbJa-LAnat18Ngvy8K66iiLW9ctodyzkejLEtwGVfPjj9vzGvkvqTRa5RftLusA4Ju4Ev_F-XPkNjpVuL2eEXzHVYgwvodJetGcK4rR0bX4Rk3qWRzwt-CfOC7ei3GeToay8d17ol5jtQxnRfS-4aZh82RVmNPwHKUWpYnfmUyTMNjRpUxY5DsrAnJvwgOlEWFq6FUXg6XeB-KoKTtE9J6p-DtviSGPhMLa01rkriLst_luRhYL1ATtl8yqI_jw1BfblaPIc2AQs", // Using the url from your input
-    isOnline: true,
-    distance: "3 miles away",
-    bio: "Looking for something casual. Love techno and wine nights. 🍷🎧 Let's vibe!",
-    tags: ["Wine", "Techno", "Casual"],
-    isNew: true,
-  },
-  {
-    id: 2,
-    name: "Jessica",
-    age: 22,
-    image:
-      "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&q=80&w=800",
-    bio: "Next profile example...",
-    tags: [],
-    isNew: false,
-  },
-];
+interface User {
+  _id: string;
+  firstName: string;
+  lastName: string;
+  age: number;
+  photos: {
+    url: string;
+    isMain: boolean;
+    order: number;
+    uploadedAt: string;
+  }[];
+  bio: string;
+  location: {
+    city?: string;
+    state?: string;
+  };
+  interests: string[];
+  lastActive: string;
+}
 
 const Discovery: React.FC = () => {
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
   const [currentProfileIndex, setCurrentProfileIndex] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartX, setDragStartX] = useState(0);
   const [dragOffset, setDragOffset] = useState(0);
   const cardRef = useRef<HTMLDivElement>(null);
 
-  const currentProfile = PROFILES[currentProfileIndex];
-  const nextProfile = PROFILES[(currentProfileIndex + 1) % PROFILES.length];
+  // Fetch users from backend
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const token = localStorage.getItem("accessToken");
+        if (!token) return;
+
+        const response = await fetch(`${API_BASE_URL}/users/discover`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        const data = await response.json();
+        console.log("Discovered users:", data.data.users);
+        if (data.success) {
+          setUsers(data.data.users);
+        }
+      } catch (error) {
+        console.error("Error fetching users:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUsers();
+  }, []);
+
+  const currentProfile = users[currentProfileIndex];
+  const nextProfile = users[(currentProfileIndex + 1) % users.length];
 
   const handleSwipeStart = (clientX: number) => {
     setIsDragging(true);
@@ -54,12 +79,66 @@ const Discovery: React.FC = () => {
 
     const threshold = 100; // Minimum swipe distance
     if (Math.abs(dragOffset) > threshold) {
-      // Swipe detected, move to next profile
-      setCurrentProfileIndex((prevIndex) => (prevIndex + 1) % PROFILES.length);
+      // Swipe detected
+      if (dragOffset > 0) {
+        // Swipe right - like
+        handleLike();
+      } else {
+        // Swipe left - dislike
+        handleDislike();
+      }
     }
 
     setIsDragging(false);
     setDragOffset(0);
+  };
+
+  const handleLike = async () => {
+    if (!currentProfile) return;
+
+    try {
+      const token = localStorage.getItem("accessToken");
+      const response = await fetch(
+        `${API_BASE_URL}/users/${currentProfile._id}/like`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const data = await response.json();
+      if (data.success) {
+        // Move to next profile
+        setCurrentProfileIndex((prevIndex) => (prevIndex + 1) % users.length);
+        // Optionally show toast or notification for match
+        if (data.data.isMatch) {
+          alert("It's a match!");
+        }
+      }
+    } catch (error) {
+      console.error("Like error:", error);
+    }
+  };
+
+  const handleDislike = async () => {
+    if (!currentProfile) return;
+
+    try {
+      const token = localStorage.getItem("accessToken");
+      await fetch(`${API_BASE_URL}/users/${currentProfile._id}/dislike`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      // Move to next profile
+      setCurrentProfileIndex((prevIndex) => (prevIndex + 1) % users.length);
+    } catch (error) {
+      console.error("Dislike error:", error);
+    }
   };
 
   // Touch events
@@ -136,112 +215,185 @@ const Discovery: React.FC = () => {
 
         {/* Main Card Stack */}
         <main className={styles.main}>
-          <div className={styles.stackContainer}>
-            {/* 1. Deepest Background Card (Aesthetic only) */}
-            <div className={`${styles.card} ${styles.cardDeep}`}></div>
-
-            {/* 2. The Next Profile (The Peek) */}
-            {/* This uses .cardNext to shift right and rotate */}
+          {loading ? (
             <div
-              className={`${styles.card} ${styles.cardNext}`}
-              style={{ backgroundImage: `url('${nextProfile.image}')` }}
-            >
-              <div className={styles.cardNextOverlay} />
-            </div>
-
-            {/* 3. The Front Profile (Interactive) */}
-            <div
-              ref={cardRef}
-              className={`${styles.card} ${styles.cardFront}`}
               style={{
-                backgroundImage: `url('${currentProfile.image}')`,
-                transform: isDragging
-                  ? `translateX(${dragOffset}px) rotate(${dragOffset * 0.1}deg)`
-                  : undefined,
-                transition: isDragging ? "none" : undefined,
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                height: "400px",
               }}
-              onTouchStart={handleTouchStart}
-              onTouchMove={handleTouchMove}
-              onTouchEnd={handleTouchEnd}
-              onMouseDown={handleMouseDown}
             >
-              <div className={styles.gradientOverlay}></div>
-
-              {/* Status Badge */}
-              {currentProfile.isNew && (
-                <div className={styles.newBadge}>New</div>
-              )}
-
-              {/* Card Information */}
-              <div className={styles.cardContent}>
-                <div className={styles.nameRow}>
-                  <h2 className={styles.name}>
-                    {currentProfile.name}, {currentProfile.age}
-                  </h2>
-                  <span
-                    className="material-symbols-outlined"
-                    style={{
-                      fontSize: "20px",
-                      color: "#60a5fa",
-                      fontVariationSettings: "'FILL' 1",
-                      marginBottom: "4px",
-                    }}
-                  >
-                    verified
-                  </span>
-                </div>
-
-                <div className={styles.infoRow}>
-                  {currentProfile.isOnline && (
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "4px",
-                      }}
-                    >
-                      <span className={styles.statusDot}></span>
-                      <span style={{ fontWeight: 600 }}>Active Now</span>
-                    </div>
-                  )}
-                  <span>•</span>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "2px",
-                    }}
-                  >
-                    <span
-                      className="material-symbols-outlined"
-                      style={{ fontSize: "16px" }}
-                    >
-                      location_on
-                    </span>
-                    <span>{currentProfile.distance}</span>
-                  </div>
-                </div>
-
-                <p className={styles.bio}>{currentProfile.bio}</p>
-
-                <div className={styles.tagContainer}>
-                  {currentProfile.tags.map((tag) => (
-                    <div key={tag} className={styles.tag}>
-                      {tag}
-                    </div>
-                  ))}
-                </div>
-
-                <div className={styles.expandIcon}>
-                  <span
-                    className={`material-symbols-outlined ${styles.bounce}`}
-                  >
-                    keyboard_arrow_down
-                  </span>
-                </div>
+              <span>Loading...</span>
+            </div>
+          ) : users.length === 0 ? (
+            <div className={styles.noMatchesCard}>
+              <div className={styles.noMatchesContent}>
+                <span
+                  className="material-symbols-outlined"
+                  style={{
+                    fontSize: "64px",
+                    color: "#f42559",
+                    marginBottom: "20px",
+                  }}
+                >
+                  favorite_border
+                </span>
+                <h2 style={{ color: "#fff", marginBottom: "16px" }}>
+                  You don't have any matches yet
+                </h2>
+                <p
+                  style={{
+                    color: "#ccc",
+                    marginBottom: "24px",
+                    textAlign: "center",
+                  }}
+                >
+                  Update your preferences to search wider and get more matches!
+                </p>
+                <button
+                  className={styles.updateBtn}
+                  style={{
+                    backgroundColor: "#f42559",
+                    color: "#fff",
+                    border: "none",
+                    padding: "12px 24px",
+                    borderRadius: "8px",
+                    fontSize: "16px",
+                    fontWeight: "600",
+                    marginBottom: "12px",
+                    width: "100%",
+                    maxWidth: "300px",
+                  }}
+                >
+                  Update Preferences
+                </button>
+                <p
+                  style={{
+                    color: "#ccc",
+                    fontSize: "14px",
+                    textAlign: "center",
+                  }}
+                >
+                  Or upgrade to Plus to get notified when you get a match!
+                </p>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className={styles.stackContainer}>
+              {/* 1. Deepest Background Card (Aesthetic only) */}
+              <div className={`${styles.card} ${styles.cardDeep}`}></div>
+
+              {/* 2. The Next Profile (The Peek) */}
+              {/* This uses .cardNext to shift right and rotate */}
+              {nextProfile && nextProfile.photos && nextProfile.photos[0] && (
+                <div
+                  className={`${styles.card} ${styles.cardNext}`}
+                  style={{
+                    backgroundImage: `url('${nextProfile.photos[0].url}')`,
+                  }}
+                >
+                  <div className={styles.cardNextOverlay} />
+                </div>
+              )}
+
+              {/* 3. The Front Profile (Interactive) */}
+              {currentProfile &&
+                currentProfile.photos &&
+                currentProfile.photos[0] && (
+                  <div
+                    ref={cardRef}
+                    className={`${styles.card} ${styles.cardFront}`}
+                    style={{
+                      backgroundImage: `url('${currentProfile.photos[0].url}')`,
+                      transform: isDragging
+                        ? `translateX(${dragOffset}px) rotate(${
+                            dragOffset * 0.1
+                          }deg)`
+                        : undefined,
+                      transition: isDragging ? "none" : undefined,
+                    }}
+                    onTouchStart={handleTouchStart}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
+                    onMouseDown={handleMouseDown}
+                  >
+                    <div className={styles.gradientOverlay}></div>
+
+                    {/* Card Information */}
+                    <div className={styles.cardContent}>
+                      <div className={styles.nameRow}>
+                        <h2 className={styles.name}>
+                          {currentProfile.firstName} {currentProfile.lastName},{" "}
+                          {currentProfile.age}
+                        </h2>
+                        <span
+                          className="material-symbols-outlined"
+                          style={{
+                            fontSize: "20px",
+                            color: "#60a5fa",
+                            fontVariationSettings: "'FILL' 1",
+                            marginBottom: "4px",
+                          }}
+                        >
+                          verified
+                        </span>
+                      </div>
+
+                      <div className={styles.infoRow}>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px",
+                          }}
+                        >
+                          <span className={styles.statusDot}></span>
+                          <span style={{ fontWeight: 600 }}>Active Now</span>
+                        </div>
+                        <span>•</span>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "2px",
+                          }}
+                        >
+                          <span
+                            className="material-symbols-outlined"
+                            style={{ fontSize: "16px" }}
+                          >
+                            location_on
+                          </span>
+                          <span>
+                            {currentProfile.location.city},{" "}
+                            {currentProfile.location.state}
+                          </span>
+                        </div>
+                      </div>
+
+                      <p className={styles.bio}>{currentProfile.bio}</p>
+
+                      <div className={styles.tagContainer}>
+                        {currentProfile.interests.map((interest: string) => (
+                          <div key={interest} className={styles.tag}>
+                            {interest}
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className={styles.expandIcon}>
+                        <span
+                          className={`material-symbols-outlined ${styles.bounce}`}
+                        >
+                          keyboard_arrow_down
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+            </div>
+          )}
         </main>
 
         {/* Action Buttons */}
@@ -250,6 +402,8 @@ const Discovery: React.FC = () => {
             <button
               className={`${styles.actionBtn} ${styles.passBtn}`}
               aria-label="Pass"
+              onClick={handleDislike}
+              disabled={!currentProfile}
             >
               <span
                 className="material-symbols-outlined"
@@ -261,6 +415,7 @@ const Discovery: React.FC = () => {
             <button
               className={`${styles.actionBtn} ${styles.superBtn}`}
               aria-label="Super Like"
+              disabled={!currentProfile}
             >
               <span
                 className="material-symbols-outlined"
@@ -272,6 +427,8 @@ const Discovery: React.FC = () => {
             <button
               className={`${styles.actionBtn} ${styles.likeBtn}`}
               aria-label="Like"
+              onClick={handleLike}
+              disabled={!currentProfile}
             >
               <span
                 className="material-symbols-outlined"

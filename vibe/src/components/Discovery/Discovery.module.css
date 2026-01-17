@@ -78,6 +78,20 @@
   perspective: 1000px; /* Essential for 3D feel */
 }
 
+.noMatchesCard {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+}
+
+.noMatchesContent {
+  text-align: center;
+  max-width: 320px;
+  padding: 40px 20px;
+}
+
 .stackContainer {
   position: relative;
   width: 100%;
