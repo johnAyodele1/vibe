@@ -51,7 +51,7 @@ const conversationSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Ensure only two participants for direct conversations
@@ -76,40 +76,50 @@ conversationSchema.virtual("displayName").get(function () {
 // Static method to find direct conversation between two users
 conversationSchema.statics.findDirectConversation = function (
   userId1,
-  userId2
+  userId2,
 ) {
+  const mongoose = require("mongoose");
+  const id1 = new mongoose.Types.ObjectId(userId1);
+  const id2 = new mongoose.Types.ObjectId(userId2);
   return this.findOne({
-    participants: { $all: [userId1, userId2], $size: 2 },
+    participants: { $all: [id1, id2], $size: 2 },
     isActive: true,
   });
 };
 
 // Instance method to update participant info
 conversationSchema.methods.updateParticipantInfo = async function () {
-  const User = mongoose.model("User");
+  try {
+    const User = mongoose.model("User");
 
-  const participantInfo = [];
+    const participantInfo = [];
 
-  for (const participantId of this.participants) {
-    const user = await User.findById(participantId).select(
-      "firstName lastName photos isOnline lastActive"
-    );
+    for (const participantId of this.participants) {
+      const user = await User.findById(participantId).select(
+        "firstName lastName photos isOnline lastActive",
+      );
 
-    if (user) {
-      const mainPhoto = user.photos.find((photo) => photo.isMain);
-      participantInfo.push({
-        user: user._id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        photos: mainPhoto ? [{ url: mainPhoto.url, isMain: true }] : [],
-        isOnline: user.isOnline,
-        lastActive: user.lastActive,
-      });
+      if (user) {
+        const mainPhoto = user.photos.find((photo) => photo.isMain);
+        participantInfo.push({
+          user: user._id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          photos: mainPhoto ? [{ url: mainPhoto.url, isMain: true }] : [],
+          isOnline: user.isOnline,
+          lastActive: user.lastActive,
+        });
+      }
     }
-  }
 
-  this.participantInfo = participantInfo;
-  return this.save();
+    this.participantInfo = participantInfo;
+    const saved = await this.save();
+    console.log("Conversation saved with ID:", saved._id);
+    return saved;
+  } catch (error) {
+    console.error("Error updating participant info:", error);
+    throw error;
+  }
 };
 
 // Instance method to update last message

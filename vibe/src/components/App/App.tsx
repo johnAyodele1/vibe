@@ -15,7 +15,10 @@ function App() {
 
   const isProfileComplete = () => {
     if (!user) return false;
-    // Check if user has basic profile info
+
+    if (user.profileCompletion !== undefined) {
+      return user.profileCompletion >= 80;
+    }
     return (
       user.firstName &&
       user.dateOfBirth &&
@@ -109,7 +112,7 @@ function App() {
           }
         />
         <Route
-          path="/direct-message"
+          path="/direct-message/:conversationId"
           element={
             isAuthenticated ? (
               isProfileComplete() ? (

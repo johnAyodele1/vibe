@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import styles from "./UserProfileView.module.css";
 import { useNavigate } from "react-router-dom";
-import { toast } from "sonner";
 import { API_BASE_URL } from "../../config";
 
 const Icon = ({
@@ -316,7 +315,10 @@ const UserProfile: React.FC = () => {
         {/* Bottom Navigation */}
         <div className={styles.bottomNavFixed}>
           <div className={styles.navBar}>
-            <button className={styles.navBtn}>
+            <button
+              className={styles.navBtn}
+              onClick={() => navigate("/discovery")}
+            >
               <Icon
                 name="style"
                 className="text-[28px] text-gray-500 hover:text-white transition-colors"

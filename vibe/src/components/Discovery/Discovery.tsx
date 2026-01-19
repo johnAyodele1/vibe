@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import styles from "./Discovery.module.css";
 import { API_BASE_URL } from "../../config";
 
@@ -23,6 +25,7 @@ interface User {
 }
 
 const Discovery: React.FC = () => {
+  const navigate = useNavigate();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentProfileIndex, setCurrentProfileIndex] = useState(0);
@@ -94,6 +97,7 @@ const Discovery: React.FC = () => {
   };
 
   const handleLike = async () => {
+    console.log("handleLike called, currentProfile:", currentProfile);
     if (!currentProfile) return;
 
     try {
@@ -105,20 +109,35 @@ const Discovery: React.FC = () => {
           headers: {
             Authorization: `Bearer ${token}`,
           },
-        }
+        },
       );
 
       const data = await response.json();
+      console.log("Like response:", data);
       if (data.success) {
         // Move to next profile
         setCurrentProfileIndex((prevIndex) => (prevIndex + 1) % users.length);
-        // Optionally show toast or notification for match
-        if (data.data.isMatch) {
-          alert("It's a match!");
+
+        const conversationId = data.data.conversationId;
+        console.log("Navigating to conversation:", data.data);
+
+        // Navigate to chat - now every like creates a conversation
+        if (conversationId && conversationId !== "null") {
+          if (data.data.isMatch) {
+            toast.success("It's a match! 💕");
+            navigate(`/direct-message/${conversationId}`);
+          } else {
+            toast.success("Liked! Starting a chat 💬");
+            navigate(`/direct-message/${conversationId}`);
+          }
+        } else {
+          console.error("Invalid conversation ID:", conversationId);
+          toast.error("Failed to start chat - please try again");
         }
       }
     } catch (error) {
       console.error("Like error:", error);
+      toast.error("Failed to like user");
     }
   };
 
@@ -443,16 +462,16 @@ const Discovery: React.FC = () => {
         {/* Navigation Bar */}
         <nav className={styles.navbar}>
           <div className={styles.navContent}>
-            <a href="#" className={`${styles.navItem} ${styles.active}`}>
+            <button className={`${styles.navItem} ${styles.active}`}>
               <span
                 className="material-symbols-outlined"
                 style={{ fontSize: "28px", fontVariationSettings: "'FILL' 1" }}
               >
                 style
               </span>
-            </a>
+            </button>
 
-            <a href="#" className={styles.navItem}>
+            <button className={styles.navItem}>
               <div className={styles.badgeWrapper}>
                 <span
                   className="material-symbols-outlined"
@@ -462,25 +481,31 @@ const Discovery: React.FC = () => {
                 </span>
                 <span className={styles.badge}>3</span>
               </div>
-            </a>
+            </button>
 
-            <a href="#" className={styles.navItem}>
+            <button
+              className={styles.navItem}
+              onClick={() => navigate("/chat")}
+            >
               <span
                 className="material-symbols-outlined"
                 style={{ fontSize: "28px" }}
               >
                 chat_bubble
               </span>
-            </a>
+            </button>
 
-            <a href="#" className={styles.navItem}>
+            <button
+              className={styles.navItem}
+              onClick={() => navigate("/my-profile")}
+            >
               <span
                 className="material-symbols-outlined"
                 style={{ fontSize: "28px" }}
               >
                 person
               </span>
-            </a>
+            </button>
           </div>
         </nav>
       </div>

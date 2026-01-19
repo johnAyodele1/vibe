@@ -160,6 +160,11 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    views: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     profileCompletion: {
       type: Number,
       default: 0,

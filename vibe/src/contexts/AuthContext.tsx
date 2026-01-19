@@ -15,6 +15,7 @@ interface User {
     city?: string;
   };
   photos?: any[];
+  profileCompletion?: number;
 }
 
 interface AuthContextType {

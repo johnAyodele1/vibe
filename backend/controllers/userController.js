@@ -64,9 +64,20 @@ const discover = async (req, res) => {
         currentUser.preferences.genderPreference === "Everyone"
           ? { $exists: true }
           : currentUser.preferences.genderPreference,
-      age: {
-        $gte: currentUser.preferences.ageRange.min,
-        $lte: currentUser.preferences.ageRange.max,
+      dateOfBirth: {
+        $lte: new Date(
+          Date.now() -
+            currentUser.preferences.ageRange.min * 365.25 * 24 * 60 * 60 * 1000,
+        ),
+        $gte: new Date(
+          Date.now() -
+            (currentUser.preferences.ageRange.max + 1) *
+              365.25 *
+              24 *
+              60 *
+              60 *
+              1000,
+        ),
       },
       _id: {
         $nin: [...currentUser.likedUsers, ...currentUser.dislikedUsers],
@@ -86,11 +97,20 @@ const discover = async (req, res) => {
       };
     }
 
+    console.log("Discovery query:", JSON.stringify(query, null, 2));
+    console.log("Current user:", currentUser._id, currentUser.preferences);
+
     const users = await User.find(query)
       .select("firstName lastName age photos bio location interests")
       .skip(skip)
       .limit(limit)
       .sort({ lastActive: -1 });
+
+    // Increment view count for each discovered user
+    if (users.length > 0) {
+      const userIds = users.map((user) => user._id);
+      await User.updateMany({ _id: { $in: userIds } }, { $inc: { views: 1 } });
+    }
 
     res.json({ success: true, data: { users } });
   } catch (error) {
@@ -134,6 +154,44 @@ const like = async (req, res) => {
     currentUser.likedUsers.push(targetUserId);
     await currentUser.save();
 
+    // Always create conversation for liked users (for private messaging)
+    const Conversation = require("../models/Conversation");
+    const mongoose = require("mongoose");
+    let conversation = await Conversation.findDirectConversation(
+      req.user._id,
+      targetUserId,
+    );
+
+    if (!conversation) {
+      try {
+        const newConversation = new Conversation({
+          participants: [
+            req.user._id,
+            new mongoose.Types.ObjectId(targetUserId),
+          ],
+        });
+        await newConversation.save();
+        conversation = await newConversation.updateParticipantInfo();
+        console.log("Conversation saved:", conversation._id);
+      } catch (error) {
+        console.error("Error creating conversation:", error);
+        return res
+          .status(500)
+          .json({ success: false, message: "Failed to create conversation" });
+      }
+    }
+
+    // Ensure participant info is populated
+    if (
+      !conversation.participantInfo ||
+      conversation.participantInfo.length === 0
+    ) {
+      conversation = await conversation.updateParticipantInfo();
+    }
+
+    const conversationId = conversation._id.toString();
+    console.log("Final conversation ID:", conversationId);
+
     // Check if it's a match (mutual like)
     let isMatch = false;
     if (targetUser.likedUsers.includes(req.user._id.toString())) {
@@ -154,7 +212,7 @@ const like = async (req, res) => {
     res.json({
       success: true,
       message: isMatch ? "It's a match!" : "User liked",
-      data: { isMatch },
+      data: { isMatch, conversationId },
     });
   } catch (error) {
     console.error("Like user error:", error);
@@ -196,10 +254,30 @@ const dislike = async (req, res) => {
   }
 };
 
+// @desc    Delete user account
+// @access  Private
+const deleteAccount = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    // Delete user and all related data
+    await User.findByIdAndDelete(userId);
+
+    res.json({
+      success: true,
+      message: "Account deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete account error:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
 module.exports = {
   getProfile,
   updateProfile,
   discover,
   like,
   dislike,
+  deleteAccount,
 };

@@ -1,132 +1,113 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import styles from "./ChatInterface.module.css";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { API_BASE_URL } from "../../config";
+import { useAuth } from "../../contexts/AuthContext";
 
 interface Match {
-  id: number;
-  name: string;
-  age: number;
-  image: string;
-  isNew: boolean;
+  _id: string;
+  user: {
+    _id: string;
+    firstName: string;
+    lastName: string;
+    age: number;
+    photos: {
+      url: string;
+      isMain: boolean;
+    }[];
+    isOnline: boolean;
+    lastActive: string;
+  };
+  matchedAt: string;
+  isActive: boolean;
+  isNew?: boolean;
 }
 
-interface Message {
-  id: number;
-  name: string;
-  age: number;
-  image: string;
-  time: string;
-  content: string;
-  unreadCount?: number;
-  isOnline: boolean;
-  isTyping: boolean;
-  isRead: boolean;
-  type?: "text" | "photo";
+interface Conversation {
+  _id: string;
+  participants: string[];
+  lastMessage: {
+    _id: string;
+    content: string;
+    messageType: string;
+    createdAt: string;
+    sender: {
+      _id: string;
+      firstName: string;
+      lastName: string;
+    };
+  };
+  lastMessageAt: string;
+  participantInfo: {
+    user: {
+      _id: string;
+      firstName: string;
+      lastName: string;
+      photos: {
+        url: string;
+        isMain: boolean;
+      }[];
+      isOnline: boolean;
+      lastActive: string;
+    };
+  }[];
+  unreadCount: { [key: string]: number };
 }
-
-const MATCHES: Match[] = [
-  {
-    id: 1,
-    name: "Jessica",
-    age: 24,
-    image: "https://i.pravatar.cc/150?img=5",
-    isNew: true,
-  },
-  {
-    id: 2,
-    name: "Ashley",
-    age: 22,
-    image: "https://i.pravatar.cc/150?img=9",
-    isNew: true,
-  },
-  {
-    id: 3,
-    name: "Chloe",
-    age: 26,
-    image: "https://i.pravatar.cc/150?img=1",
-    isNew: false,
-  },
-  {
-    id: 4,
-    name: "Mia",
-    age: 23,
-    image: "https://i.pravatar.cc/150?img=3",
-    isNew: false,
-  },
-  {
-    id: 5,
-    name: "Zoe",
-    age: 25,
-    image: "https://i.pravatar.cc/150?img=6",
-    isNew: false,
-  },
-];
-
-const MESSAGES: Message[] = [
-  {
-    id: 1,
-    name: "Sarah",
-    age: 23,
-    image: "https://i.pravatar.cc/150?img=32",
-    time: "10:45 PM",
-    content: "Are you free tonight? 😈",
-    unreadCount: 1,
-    isOnline: true,
-    isTyping: false,
-    isRead: false,
-  },
-  {
-    id: 2,
-    name: "Mike",
-    age: 27,
-    image: "https://i.pravatar.cc/150?img=11",
-    time: "Yesterday",
-    content: "Sent a photo",
-    isOnline: false,
-    isTyping: false,
-    isRead: true,
-    type: "photo",
-  },
-  {
-    id: 3,
-    name: "Alex",
-    age: 21,
-    image: "https://i.pravatar.cc/150?img=24",
-    time: "Typing...",
-    content: "",
-    unreadCount: 0,
-    isOnline: true,
-    isTyping: true,
-    isRead: false,
-  },
-  {
-    id: 4,
-    name: "Clara",
-    age: 25,
-    image: "https://i.pravatar.cc/150?img=20",
-    time: "Mon",
-    content: "Can't wait to meet you! 😉",
-    isOnline: true,
-    isTyping: false,
-    isRead: true,
-  },
-  {
-    id: 5,
-    name: "David",
-    age: 29,
-    image: "https://i.pravatar.cc/150?img=13",
-    time: "Sun",
-    content: "Where did you get that drink?",
-    isOnline: false,
-    isTyping: false,
-    isRead: true,
-  },
-];
 
 const ChatInterface: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [isDarkMode, setIsDarkMode] = useState(true);
+  const [matches, setMatches] = useState<Match[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch matches and conversations
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const token = localStorage.getItem("accessToken");
+        if (!token) return;
+
+        // Fetch matches
+        const matchesResponse = await fetch(`${API_BASE_URL}/matches`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const matchesData = await matchesResponse.json();
+        if (matchesData.success) {
+          // Mark matches from last 24 hours as new
+          const now = new Date();
+          const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+          const processedMatches = matchesData.data.matches.map(
+            (match: Match) => ({
+              ...match,
+              isNew: new Date(match.matchedAt) > oneDayAgo,
+            }),
+          );
+          setMatches(processedMatches);
+        }
+
+        // Fetch conversations
+        const conversationsResponse = await fetch(
+          `${API_BASE_URL}/messages/conversations`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        );
+        const conversationsData = await conversationsResponse.json();
+        if (conversationsData.success) {
+          setConversations(conversationsData.data.conversations);
+        }
+      } catch (error) {
+        console.error("Error fetching chat data:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
 
   return (
     <>
@@ -167,34 +148,50 @@ const ChatInterface: React.FC = () => {
           <section>
             <div className={styles.sectionHeader}>
               <h3 className={styles.sectionTitle}>New Matches</h3>
-              <span className={styles.badge}>3 New</span>
+              <span className={styles.badge}>
+                {matches.filter((m) => m.isNew).length} New
+              </span>
             </div>
 
             <div className={styles.matchesScroll}>
-              {MATCHES.map((match) => (
-                <div key={match.id} className={styles.matchItem}>
-                  <div
-                    className={`${styles.avatarRing} ${
-                      match.isNew ? styles.ringActive : ""
-                    }`}
-                  >
-                    <div className={styles.avatarContainer}>
-                      <img
-                        src={match.image}
-                        alt={match.name}
-                        className={styles.avatarImg}
-                      />
-                    </div>
-                  </div>
-                  <span
-                    className={`${styles.matchName} ${
-                      !match.isNew ? styles.matchNameRead : ""
-                    }`}
-                  >
-                    {match.name}, {match.age}
-                  </span>
+              {loading ? (
+                <div style={{ padding: "20px", textAlign: "center" }}>
+                  Loading...
                 </div>
-              ))}
+              ) : matches.length === 0 ? (
+                <div style={{ padding: "20px", textAlign: "center" }}>
+                  No matches yet
+                </div>
+              ) : (
+                matches.map((match) => (
+                  <div key={match._id} className={styles.matchItem}>
+                    <div
+                      className={`${styles.avatarRing} ${
+                        match.isNew ? styles.ringActive : ""
+                      }`}
+                    >
+                      <div className={styles.avatarContainer}>
+                        <img
+                          src={
+                            match.user.photos.find((p) => p.isMain)?.url ||
+                            "https://via.placeholder.com/150"
+                          }
+                          alt={match.user.firstName}
+                          className={styles.avatarImg}
+                        />
+                      </div>
+                    </div>
+                    <span
+                      className={`${styles.matchName} ${
+                        !match.isNew ? styles.matchNameRead : ""
+                      }`}
+                    >
+                      {match.user.firstName} {match.user.lastName},{" "}
+                      {match.user.age}
+                    </span>
+                  </div>
+                ))
+              )}
             </div>
           </section>
 
@@ -203,95 +200,100 @@ const ChatInterface: React.FC = () => {
               <h3 className={styles.sectionTitle}>Recent Messages</h3>
             </div>
 
-            {MESSAGES.map((msg) => (
-              <div
-                key={msg.id}
-                className={styles.messageItem}
-                onClick={() => {
-                  toast.success(`Opening chat with ${msg.name}`);
-                  navigate("/direct-message");
-                }}
-              >
-                <div className={styles.messageAvatarWrapper}>
-                  <div className={styles.messageAvatar}>
-                    <img
-                      src={msg.image}
-                      alt={msg.name}
-                      className={styles.avatarImg}
-                    />
-                  </div>
-                  {msg.isOnline && <span className={styles.onlineIndicator} />}
-                </div>
-
-                <div className={styles.messageContent}>
-                  <div className={styles.messageHeader}>
-                    <h3 className={styles.userName}>
-                      {msg.name}, {msg.age}
-                    </h3>
-                    {msg.isTyping ? (
-                      <span className={styles.typing}>Typing...</span>
-                    ) : (
-                      <span
-                        className={`${styles.time} ${
-                          msg.isRead ? styles.timeRead : ""
-                        }`}
-                      >
-                        {msg.time}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className={styles.messageFooter}>
-                    {msg.isTyping ? (
-                      <div className={styles.typingDots}>
-                        <span className={styles.dot}></span>
-                        <span className={styles.dot}></span>
-                        <span className={styles.dot}></span>
-                      </div>
-                    ) : (
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "4px",
-                          overflow: "hidden",
-                        }}
-                      >
-                        {msg.type === "photo" && (
-                          <span
-                            className="material-symbols-outlined"
-                            style={{ fontSize: "16px", color: "#64748b" }}
-                          >
-                            photo_camera
-                          </span>
-                        )}
-                        {msg.isRead && !msg.type && (
-                          <span
-                            className="material-symbols-outlined"
-                            style={{ fontSize: "16px", color: "#f42559" }}
-                          >
-                            done_all
-                          </span>
-                        )}
-                        <p
-                          className={`${styles.lastMessage} ${
-                            msg.isRead ? styles.lastMessageRead : ""
-                          }`}
-                        >
-                          {msg.content}
-                        </p>
-                      </div>
-                    )}
-
-                    {msg.unreadCount && msg.unreadCount > 0 && (
-                      <span className={styles.unreadCount}>
-                        {msg.unreadCount}
-                      </span>
-                    )}
-                  </div>
-                </div>
+            {loading ? (
+              <div style={{ padding: "20px", textAlign: "center" }}>
+                Loading conversations...
               </div>
-            ))}
+            ) : conversations.length === 0 ? (
+              <div style={{ padding: "20px", textAlign: "center" }}>
+                No conversations yet
+              </div>
+            ) : (
+              conversations.map((conversation) => {
+                // Get current user ID
+                const currentUserId = (user as any)?._id || "";
+                const otherParticipantInfo = conversation.participantInfo.find(
+                  (p) => p.user._id !== currentUserId,
+                );
+                const otherParticipant = otherParticipantInfo?.user;
+                const unreadCount =
+                  conversation.unreadCount[currentUserId] || 0;
+                const lastMessage = conversation.lastMessage;
+                const timeAgo = new Date(
+                  conversation.lastMessageAt,
+                ).toLocaleDateString();
+
+                if (!otherParticipant) return null;
+
+                return (
+                  <div
+                    key={conversation._id}
+                    className={styles.messageItem}
+                    onClick={() => {
+                      toast.success(
+                        `Opening chat with ${otherParticipant.firstName}`,
+                      );
+                      navigate(`/direct-message/${conversation._id}`);
+                    }}
+                  >
+                    <div className={styles.messageAvatarWrapper}>
+                      <div className={styles.messageAvatar}>
+                        <img
+                          src={
+                            otherParticipant.photos.find((p: any) => p.isMain)
+                              ?.url || "https://via.placeholder.com/150"
+                          }
+                          alt={otherParticipant.firstName}
+                          className={styles.avatarImg}
+                        />
+                      </div>
+                      {otherParticipant.isOnline && (
+                        <span className={styles.onlineIndicator} />
+                      )}
+                    </div>
+
+                    <div className={styles.messageContent}>
+                      <div className={styles.messageHeader}>
+                        <h3 className={styles.userName}>
+                          {otherParticipant.firstName}{" "}
+                          {otherParticipant.lastName}
+                        </h3>
+                        <span className={styles.time}>{timeAgo}</span>
+                      </div>
+
+                      <div className={styles.messageFooter}>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            overflow: "hidden",
+                          }}
+                        >
+                          {lastMessage?.messageType === "photo" && (
+                            <span
+                              className="material-symbols-outlined"
+                              style={{ fontSize: "16px", color: "#64748b" }}
+                            >
+                              photo_camera
+                            </span>
+                          )}
+                          <p className={styles.lastMessage}>
+                            {lastMessage?.content || "Start a conversation!"}
+                          </p>
+                        </div>
+
+                        {unreadCount > 0 && (
+                          <span className={styles.unreadCount}>
+                            {unreadCount}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </section>
 
           <div className={styles.ctaContainer}>
@@ -310,7 +312,10 @@ const ChatInterface: React.FC = () => {
 
         <nav className={styles.bottomNav}>
           <div className={styles.navInner}>
-            <button className={styles.navBtn}>
+            <button
+              className={styles.navBtn}
+              onClick={() => navigate("/discovery")}
+            >
               <span
                 className="material-symbols-outlined"
                 style={{ fontSize: "28px" }}
@@ -318,7 +323,10 @@ const ChatInterface: React.FC = () => {
                 local_fire_department
               </span>
             </button>
-            <button className={styles.navBtn}>
+            <button
+              className={styles.navBtn}
+              onClick={() => navigate("/my-profile")}
+            >
               <span
                 className="material-symbols-outlined"
                 style={{ fontSize: "28px" }}

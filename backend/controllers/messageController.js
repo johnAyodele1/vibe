@@ -1,5 +1,6 @@
 const Message = require("../models/Message");
 const Conversation = require("../models/Conversation");
+const { ioInstance, userSocketMap } = require("../socket");
 
 // @desc    Get user's conversations
 // @access  Private
@@ -16,6 +17,36 @@ const getConversations = async (req, res) => {
     res.json({ success: true, data: { conversations } });
   } catch (error) {
     console.error("Get conversations error:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+const getConversation = async (req, res) => {
+  try {
+    let conversation = await Conversation.findById(req.params.conversationId)
+      .populate("lastMessage")
+      .populate("participantInfo.user", "firstName lastName photos isOnline");
+
+    if (!conversation || !conversation.participants.includes(req.user._id)) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Conversation not found" });
+    }
+
+    // Ensure participant info is populated
+    if (
+      !conversation.participantInfo ||
+      conversation.participantInfo.length === 0
+    ) {
+      await conversation.updateParticipantInfo();
+      conversation = await Conversation.findById(req.params.conversationId)
+        .populate("lastMessage")
+        .populate("participantInfo.user", "firstName lastName photos isOnline");
+    }
+
+    res.json({ success: true, data: { conversation } });
+  } catch (error) {
+    console.error("Get conversation error:", error);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
@@ -43,7 +74,7 @@ const getMessages = async (req, res) => {
         receiver: req.user._id,
         isRead: false,
       },
-      { isRead: true, readAt: new Date() }
+      { isRead: true, readAt: new Date() },
     );
 
     res.json({ success: true, data: { messages: messages.reverse() } });
@@ -62,7 +93,7 @@ const sendMessage = async (req, res) => {
     // Find or create conversation
     let conversation = await Conversation.findDirectConversation(
       req.user._id,
-      receiverId
+      receiverId,
     );
 
     if (!conversation) {
@@ -87,6 +118,12 @@ const sendMessage = async (req, res) => {
     // Populate sender info
     await message.populate("sender", "firstName lastName photos");
 
+    // Emit message to conversation room and receiver's user room
+    if (ioInstance) {
+      ioInstance.to(conversation._id.toString()).emit("message", message);
+      ioInstance.to(receiverId).emit("message", message);
+    }
+
     res.status(201).json({ success: true, data: { message } });
   } catch (error) {
     console.error("Send message error:", error);
@@ -96,6 +133,7 @@ const sendMessage = async (req, res) => {
 
 module.exports = {
   getConversations,
+  getConversation,
   getMessages,
   sendMessage,
 };
