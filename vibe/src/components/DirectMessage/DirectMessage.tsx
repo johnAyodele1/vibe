@@ -63,10 +63,12 @@ const DirectMessage: React.FC = () => {
 
   // Call state
   const [callStatus, setCallStatus] = useState<CallStatus>("idle");
-  const [peerConnection, setPeerConnection] =
-    useState<RTCPeerConnection | null>(null);
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [incomingOffer, setIncomingOffer] = useState<any>(null);
+  const [callStartTime, setCallStartTime] = useState<Date | null>(null);
+  const [callDuration, setCallDuration] = useState(0);
   const localAudioRef = useRef<HTMLAudioElement>(null);
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
 
@@ -147,28 +149,31 @@ const DirectMessage: React.FC = () => {
     // Call event listeners
     newSocket.on("call:offer", async (data: any) => {
       console.log("Received call offer:", data);
+      setIncomingOffer(data);
       setCallStatus("receiving");
-      // Store the offer data for when user accepts
-      (window as any).pendingCallOffer = data;
     });
 
     newSocket.on("call:answer", async (data: any) => {
       console.log("Received call answer:", data);
-      if (peerConnection) {
-        await peerConnection.setRemoteDescription(
-          new RTCSessionDescription(data.answer),
-        );
-        // Connection state will be handled by onconnectionstatechange
+      const pc = peerConnectionRef.current;
+      if (pc) {
+        try {
+          await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+          console.log("Set remote description for answer");
+          setCallStatus("connected");
+        } catch (e) {
+          console.error("Error setting remote description:", e);
+        }
       }
     });
 
     newSocket.on("call:ice-candidate", async (data: any) => {
       console.log("Received ICE candidate:", data);
-      if (peerConnection) {
+      const pc = peerConnectionRef.current;
+      if (pc) {
         try {
-          await peerConnection.addIceCandidate(
-            new RTCIceCandidate(data.candidate),
-          );
+          await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+          console.log("Added ICE candidate");
         } catch (e) {
           console.error("Error adding ICE candidate:", e);
         }
@@ -292,6 +297,8 @@ const DirectMessage: React.FC = () => {
       ],
     });
 
+    peerConnectionRef.current = pc;
+
     pc.onicecandidate = (event) => {
       if (event.candidate && socket) {
         socket.emit("call:ice-candidate", {
@@ -333,7 +340,6 @@ const DirectMessage: React.FC = () => {
       }
 
       const pc = createPeerConnection();
-      setPeerConnection(pc);
 
       stream.getTracks().forEach((track) => {
         pc.addTrack(track, stream);
@@ -356,7 +362,9 @@ const DirectMessage: React.FC = () => {
     }
   };
 
-  const handleCallAnswer = async (data: any) => {
+  const handleCallAnswer = async () => {
+    if (!incomingOffer) return;
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       setLocalStream(stream);
@@ -365,13 +373,14 @@ const DirectMessage: React.FC = () => {
       }
 
       const pc = createPeerConnection();
-      setPeerConnection(pc);
 
       stream.getTracks().forEach((track) => {
         pc.addTrack(track, stream);
       });
 
-      await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+      await pc.setRemoteDescription(
+        new RTCSessionDescription(incomingOffer.offer),
+      );
 
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
@@ -382,6 +391,8 @@ const DirectMessage: React.FC = () => {
           answer: answer,
         });
       }
+
+      setCallStatus("connected");
     } catch (error) {
       console.error("Error answering call:", error);
       toast.error("Failed to answer call");
@@ -397,18 +408,143 @@ const DirectMessage: React.FC = () => {
       remoteStream.getTracks().forEach((track) => track.stop());
       setRemoteStream(null);
     }
-    if (peerConnection) {
-      peerConnection.close();
-      setPeerConnection(null);
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
     }
     setCallStatus("ended");
+    setIncomingOffer(null);
     setTimeout(() => setCallStatus("idle"), 1000);
   };
+
+  // Call timer
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval> | null = null;
+    if (callStatus === "connected" && callStartTime) {
+      interval = setInterval(() => {
+        const now = new Date();
+        const diff = Math.floor(
+          (now.getTime() - callStartTime.getTime()) / 1000,
+        );
+        setCallDuration(diff);
+      }, 1000);
+    } else {
+      setCallDuration(0);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [callStatus, callStartTime]);
+
+  // Update call start time when connected
+  useEffect(() => {
+    if (callStatus === "connected" && !callStartTime) {
+      setCallStartTime(new Date());
+    } else if (callStatus !== "connected") {
+      setCallStartTime(null);
+    }
+  }, [callStatus, callStartTime]);
+
+  // Format call duration
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  // Ringtone functionality using Web Audio API
+  const ringtoneContextRef = useRef<AudioContext | null>(null);
+  const ringtoneIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
+
+  const playRingtone = () => {
+    if (ringtoneIntervalRef.current) return; // Already playing
+
+    const playBeep = () => {
+      try {
+        const audioContext =
+          ringtoneContextRef.current ||
+          new (window.AudioContext || (window as any).webkitAudioContext)();
+
+        if (!ringtoneContextRef.current) {
+          ringtoneContextRef.current = audioContext;
+        }
+
+        // Resume audio context if suspended (required by some browsers)
+        if (audioContext.state === "suspended") {
+          audioContext.resume();
+        }
+
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+
+        oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+        oscillator.type = "sine";
+
+        gainNode.gain.setValueAtTime(0.15, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(
+          0.01,
+          audioContext.currentTime + 0.5,
+        );
+
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.5);
+      } catch (error) {
+        console.error("Error playing ringtone:", error);
+      }
+    };
+
+    // Play double beep pattern every 3 seconds
+    const playRingPattern = () => {
+      playBeep();
+      setTimeout(() => {
+        playBeep();
+      }, 300);
+    };
+
+    playRingPattern();
+    ringtoneIntervalRef.current = setInterval(playRingPattern, 3000);
+  };
+
+  const stopRingtone = () => {
+    if (ringtoneIntervalRef.current) {
+      clearInterval(ringtoneIntervalRef.current);
+      ringtoneIntervalRef.current = null;
+    }
+
+    // Close audio context to free resources
+    if (
+      ringtoneContextRef.current &&
+      ringtoneContextRef.current.state !== "closed"
+    ) {
+      ringtoneContextRef.current.close();
+      ringtoneContextRef.current = null;
+    }
+  };
+
+  // Handle ringtone when call status changes
+  useEffect(() => {
+    if (callStatus === "receiving") {
+      playRingtone();
+    } else {
+      stopRingtone();
+    }
+
+    return () => {
+      stopRingtone();
+    };
+  }, [callStatus]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       endCall();
+      stopRingtone();
     };
   }, []);
 
@@ -672,7 +808,7 @@ const DirectMessage: React.FC = () => {
                   <p className={styles.callStatusText}>
                     {callStatus === "calling" && "Calling..."}
                     {callStatus === "receiving" && "Incoming call..."}
-                    {callStatus === "connected" && "Connected"}
+                    {callStatus === "connected" && formatDuration(callDuration)}
                     {callStatus === "ended" && "Call ended"}
                   </p>
                 </div>
@@ -691,9 +827,7 @@ const DirectMessage: React.FC = () => {
                     </button>
                     <button
                       className={`${styles.callBtn} ${styles.acceptBtn}`}
-                      onClick={() =>
-                        handleCallAnswer((window as any).pendingCallOffer)
-                      }
+                      onClick={handleCallAnswer}
                     >
                       <span className="material-symbols-outlined">call</span>
                     </button>
