@@ -63,6 +63,7 @@ const DirectMessage: React.FC = () => {
 
   // Call state
   const [callStatus, setCallStatus] = useState<CallStatus>("idle");
+  const [isVideoCall, setIsVideoCall] = useState(false);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
@@ -71,6 +72,8 @@ const DirectMessage: React.FC = () => {
   const [callDuration, setCallDuration] = useState(0);
   const localAudioRef = useRef<HTMLAudioElement>(null);
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
   const currentUserId = (user as any)?._id || "";
   const token = localStorage.getItem("accessToken");
@@ -150,6 +153,7 @@ const DirectMessage: React.FC = () => {
     newSocket.on("call:offer", async (data: any) => {
       console.log("Received call offer:", data);
       setIncomingOffer(data);
+      setIsVideoCall(data.isVideoCall || false);
       setCallStatus("receiving");
     });
 
@@ -314,6 +318,9 @@ const DirectMessage: React.FC = () => {
       if (remoteAudioRef.current) {
         remoteAudioRef.current.srcObject = event.streams[0];
       }
+      if (remoteVideoRef.current && isVideoCall) {
+        remoteVideoRef.current.srcObject = event.streams[0];
+      }
     };
 
     pc.onconnectionstatechange = () => {
@@ -331,12 +338,21 @@ const DirectMessage: React.FC = () => {
     return pc;
   };
 
-  const startCall = async () => {
+  const startCall = async (videoCall = false) => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setIsVideoCall(videoCall);
+      const constraints = videoCall
+        ? { audio: true, video: { width: 640, height: 480 } }
+        : { audio: true };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       setLocalStream(stream);
+
       if (localAudioRef.current) {
         localAudioRef.current.srcObject = stream;
+      }
+      if (localVideoRef.current && videoCall) {
+        localVideoRef.current.srcObject = stream;
       }
 
       const pc = createPeerConnection();
@@ -354,11 +370,12 @@ const DirectMessage: React.FC = () => {
         socket.emit("call:offer", {
           conversationId,
           offer: offer,
+          isVideoCall: videoCall,
         });
       }
     } catch (error) {
       console.error("Error starting call:", error);
-      toast.error("Failed to start call");
+      toast.error(`Failed to start ${videoCall ? "video" : "audio"} call`);
     }
   };
 
@@ -366,10 +383,18 @@ const DirectMessage: React.FC = () => {
     if (!incomingOffer) return;
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const constraints = isVideoCall
+        ? { audio: true, video: { width: 640, height: 480 } }
+        : { audio: true };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       setLocalStream(stream);
+
       if (localAudioRef.current) {
         localAudioRef.current.srcObject = stream;
+      }
+      if (localVideoRef.current && isVideoCall) {
+        localVideoRef.current.srcObject = stream;
       }
 
       const pc = createPeerConnection();
@@ -414,6 +439,7 @@ const DirectMessage: React.FC = () => {
     }
     setCallStatus("ended");
     setIncomingOffer(null);
+    setIsVideoCall(false);
     setTimeout(() => setCallStatus("idle"), 1000);
   };
 
@@ -613,7 +639,7 @@ const DirectMessage: React.FC = () => {
             <div className={styles.actions}>
               <button
                 className={`${styles.iconBtn} ${styles.btnSecondary}`}
-                onClick={startCall}
+                onClick={() => startCall(false)}
                 disabled={callStatus !== "idle"}
               >
                 <span
@@ -625,7 +651,8 @@ const DirectMessage: React.FC = () => {
               </button>
               <button
                 className={`${styles.iconBtn} ${styles.btnPrimary}`}
-                onClick={() => toast("Video call feature coming soon!")}
+                onClick={() => startCall(true)}
+                disabled={callStatus !== "idle"}
               >
                 <span
                   className="material-symbols-outlined"
@@ -787,32 +814,61 @@ const DirectMessage: React.FC = () => {
         {callStatus !== "idle" && (
           <div className={styles.callOverlay}>
             <div className={styles.callContainer}>
-              <div className={styles.callHeader}>
-                <div className={styles.callAvatar}>
-                  <div
-                    className={styles.callAvatarImg}
-                    style={{
-                      backgroundImage: `url("${
-                        otherParticipant?.photos.find((p) => p.isMain)?.url ||
-                        "https://via.placeholder.com/150"
-                      }")`,
-                    }}
-                  />
+              {isVideoCall && callStatus === "connected" ? (
+                <div className={styles.videoContainer}>
+                  <div className={styles.remoteVideoWrapper}>
+                    <video
+                      ref={remoteVideoRef}
+                      autoPlay
+                      playsInline
+                      className={styles.remoteVideo}
+                    />
+                    <div className={styles.callInfoOverlay}>
+                      <p className={styles.callStatusText}>
+                        {formatDuration(callDuration)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className={styles.localVideoWrapper}>
+                    <video
+                      ref={localVideoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className={styles.localVideo}
+                    />
+                  </div>
                 </div>
-                <div className={styles.callInfo}>
-                  <h3 className={styles.callName}>
-                    {otherParticipant
-                      ? `${otherParticipant.firstName} ${otherParticipant.lastName}`
-                      : "Unknown"}
-                  </h3>
-                  <p className={styles.callStatusText}>
-                    {callStatus === "calling" && "Calling..."}
-                    {callStatus === "receiving" && "Incoming call..."}
-                    {callStatus === "connected" && formatDuration(callDuration)}
-                    {callStatus === "ended" && "Call ended"}
-                  </p>
+              ) : (
+                <div className={styles.callHeader}>
+                  <div className={styles.callAvatar}>
+                    <div
+                      className={styles.callAvatarImg}
+                      style={{
+                        backgroundImage: `url("${
+                          otherParticipant?.photos.find((p) => p.isMain)?.url ||
+                          "https://via.placeholder.com/150"
+                        }")`,
+                      }}
+                    />
+                  </div>
+                  <div className={styles.callInfo}>
+                    <h3 className={styles.callName}>
+                      {otherParticipant
+                        ? `${otherParticipant.firstName} ${otherParticipant.lastName}`
+                        : "Unknown"}
+                    </h3>
+                    <p className={styles.callStatusText}>
+                      {callStatus === "calling" && "Calling..."}
+                      {callStatus === "receiving" &&
+                        `Incoming ${isVideoCall ? "video" : "audio"} call...`}
+                      {callStatus === "connected" &&
+                        formatDuration(callDuration)}
+                      {callStatus === "ended" && "Call ended"}
+                    </p>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className={styles.callControls}>
                 {callStatus === "receiving" ? (
@@ -829,7 +885,9 @@ const DirectMessage: React.FC = () => {
                       className={`${styles.callBtn} ${styles.acceptBtn}`}
                       onClick={handleCallAnswer}
                     >
-                      <span className="material-symbols-outlined">call</span>
+                      <span className="material-symbols-outlined">
+                        {isVideoCall ? "videocam" : "call"}
+                      </span>
                     </button>
                   </>
                 ) : (
