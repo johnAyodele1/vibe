@@ -823,6 +823,7 @@ const DirectMessage: React.FC = () => {
                       playsInline
                       className={styles.remoteVideo}
                     />
+
                     <div className={styles.callInfoOverlay}>
                       <p className={styles.callStatusText}>
                         {formatDuration(callDuration)}

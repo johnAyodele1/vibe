@@ -115,6 +115,9 @@ const sendMessage = async (req, res) => {
 
     await message.save();
 
+    // Update conversation's last message
+    await conversation.updateLastMessage(message);
+
     // Populate sender info
     await message.populate("sender", "firstName lastName photos");
 

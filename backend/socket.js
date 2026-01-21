@@ -84,14 +84,94 @@ function setupSocket(server) {
     });
 
     // Video/Audio call signaling
-    socket.on("call:offer", (data) => {
-      socket.to(data.conversationId).emit("call:offer", data);
+    socket.on("call:offer", async (data) => {
+      try {
+        // Get conversation to find the other participant
+        const conversation = await Conversation.findById(data.conversationId);
+        if (!conversation) {
+          console.log("Conversation not found for call offer");
+          return;
+        }
+
+        // Find the other participant (not the caller)
+        const otherParticipant = conversation.participants.find(
+          (participant) => participant.toString() !== socket.userId,
+        );
+
+        if (!otherParticipant) {
+          console.log("Other participant not found in conversation");
+          return;
+        }
+
+        // Send to conversation room (for when recipient is in DM)
+        socket.to(data.conversationId).emit("call:offer", data);
+
+        // Also send to recipient's user room (for when they're not in DM)
+        socket.to(otherParticipant.toString()).emit("call:offer", data);
+
+        console.log(
+          `Call offer sent to conversation ${data.conversationId} and user ${otherParticipant}`,
+        );
+      } catch (error) {
+        console.error("Error handling call offer:", error);
+      }
     });
-    socket.on("call:answer", (data) => {
-      socket.to(data.conversationId).emit("call:answer", data);
+    socket.on("call:answer", async (data) => {
+      try {
+        // Get conversation to find the other participant
+        const conversation = await Conversation.findById(data.conversationId);
+        if (!conversation) {
+          console.log("Conversation not found for call answer");
+          return;
+        }
+
+        // Find the other participant (not the answerer)
+        const otherParticipant = conversation.participants.find(
+          (participant) => participant.toString() !== socket.userId,
+        );
+
+        if (!otherParticipant) {
+          console.log("Other participant not found in conversation");
+          return;
+        }
+
+        // Send to conversation room
+        socket.to(data.conversationId).emit("call:answer", data);
+
+        // Also send to recipient's user room
+        socket.to(otherParticipant.toString()).emit("call:answer", data);
+      } catch (error) {
+        console.error("Error handling call answer:", error);
+      }
     });
-    socket.on("call:ice-candidate", (data) => {
-      socket.to(data.conversationId).emit("call:ice-candidate", data);
+
+    socket.on("call:ice-candidate", async (data) => {
+      try {
+        // Get conversation to find the other participant
+        const conversation = await Conversation.findById(data.conversationId);
+        if (!conversation) {
+          console.log("Conversation not found for ICE candidate");
+          return;
+        }
+
+        // Find the other participant (not the sender)
+        const otherParticipant = conversation.participants.find(
+          (participant) => participant.toString() !== socket.userId,
+        );
+
+        if (!otherParticipant) {
+          console.log("Other participant not found in conversation");
+          return;
+        }
+
+        // Send to conversation room
+        socket.to(data.conversationId).emit("call:ice-candidate", data);
+
+        // Also send to recipient's user room
+        socket.to(otherParticipant.toString()).emit("call:ice-candidate", data);
+      } catch (error) {
+        console.error("Error handling ICE candidate:", error);
+      }
     });
 
     socket.on("disconnect", async () => {

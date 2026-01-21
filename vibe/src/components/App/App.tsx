@@ -8,6 +8,7 @@ import Settings from "../Settings/Settings";
 import ChatInterface from "../ChatInterface/ChatInterface";
 import DirectMessage from "../DirectMessage/DirectMessage";
 import Discovery from "../Discovery/Discovery";
+import CallManager from "../CallManager/CallManager";
 import { useAuth } from "../../contexts/AuthContext";
 
 function App() {
@@ -40,6 +41,7 @@ function App() {
 
   return (
     <>
+      {isAuthenticated && <CallManager />}
       <Routes>
         <Route path="/" element={<Onboarding />} />
         <Route path="/auth" element={<Auth />} />
