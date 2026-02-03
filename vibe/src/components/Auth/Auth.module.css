@@ -171,8 +171,8 @@
 
 .input {
   flex: 1;
-  background-color: rgba(46, 26, 31, 0.8);
-  color: white;
+  background-color: rgba(46, 26, 31, 0.8) !important;
+  color: white !important;
   height: 3.5rem;
   padding: 0 1.5rem;
   font-size: 1rem;
