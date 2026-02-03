@@ -327,6 +327,17 @@ const DirectMessage: React.FC = () => {
     }
   };
 
+  // Helper function to detect when media is actually flowing
+  const maybeMarkConnected = (pc: RTCPeerConnection) => {
+    const hasLiveTrack = pc
+      .getReceivers()
+      .some((r) => r.track && r.track.readyState === "live");
+
+    if (hasLiveTrack && callStatus !== "connected") {
+      setCallStatus("connected");
+    }
+  };
+
   // WebRTC functions - Fixed implementation with proper roles and transceivers
   const createPeerConnection = () => {
     // Prevent multiple PeerConnections
@@ -341,18 +352,20 @@ const DirectMessage: React.FC = () => {
         { urls: "stun:stun1.l.google.com:19302" },
         // TURN server for production (required for mobile networks and NAT traversal)
         {
-          urls: "turn:turn.anyfirewall.com:443?transport=tcp",
-          username: "webrtc",
-          credential: "webrtc",
+          urls: "free.expressturn.com:3478",
+          username: "000000002085505077",
+          credential: "rdWeUE3lAtTerYhl+nWzD+H81oM=",
         },
       ],
     });
 
     peerConnectionRef.current = pc;
 
-    // Add transceivers for proper media negotiation
+    // Add transceivers for proper media negotiation - only add video if it's a video call
     pc.addTransceiver("audio", { direction: "sendrecv" });
-    pc.addTransceiver("video", { direction: "sendrecv" });
+    if (isVideoCallRef.current) {
+      pc.addTransceiver("video", { direction: "sendrecv" });
+    }
 
     pc.onicecandidate = (event) => {
       if (event.candidate && socket) {
@@ -387,18 +400,15 @@ const DirectMessage: React.FC = () => {
 
       // Update React state with the unified stream
       setRemoteStream(remoteStreamRef.current);
+
+      // Check if media is actually flowing
+      maybeMarkConnected(pc);
     };
 
     pc.onconnectionstatechange = () => {
       console.log("Connection state:", pc.connectionState);
       if (pc.connectionState === "connected") {
-        // Check if media is actually flowing
-        const hasLiveTracks = pc
-          .getReceivers()
-          .some((r) => r.track && r.track.readyState === "live");
-        if (hasLiveTracks) {
-          setCallStatus("connected");
-        }
+        maybeMarkConnected(pc);
       } else if (
         pc.connectionState === "disconnected" ||
         pc.connectionState === "failed"
@@ -440,27 +450,10 @@ const DirectMessage: React.FC = () => {
 
       const pc = createPeerConnection();
 
-      // Add tracks to existing transceivers
-      const audioTransceiver = pc
-        .getTransceivers()
-        .find((t) => t.receiver.track?.kind === "audio");
-      const videoTransceiver = pc
-        .getTransceivers()
-        .find((t) => t.receiver.track?.kind === "video");
-
-      stream.getAudioTracks().forEach((track) => {
-        if (audioTransceiver && audioTransceiver.sender) {
-          audioTransceiver.sender.replaceTrack(track);
-        }
+      // Add tracks directly to peer connection - transceivers are already created
+      stream.getTracks().forEach((track) => {
+        pc.addTrack(track, stream);
       });
-
-      if (isVideoCallRef.current) {
-        stream.getVideoTracks().forEach((track) => {
-          if (videoTransceiver && videoTransceiver.sender) {
-            videoTransceiver.sender.replaceTrack(track);
-          }
-        });
-      }
 
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
@@ -515,27 +508,10 @@ const DirectMessage: React.FC = () => {
         new RTCSessionDescription(incomingOffer.offer),
       );
 
-      // Add tracks to existing transceivers after remote description
-      const audioTransceiver = pc
-        .getTransceivers()
-        .find((t) => t.receiver.track?.kind === "audio");
-      const videoTransceiver = pc
-        .getTransceivers()
-        .find((t) => t.receiver.track?.kind === "video");
-
-      stream.getAudioTracks().forEach((track) => {
-        if (audioTransceiver && audioTransceiver.sender) {
-          audioTransceiver.sender.replaceTrack(track);
-        }
+      // Add tracks directly to peer connection - transceivers are already created
+      stream.getTracks().forEach((track) => {
+        pc.addTrack(track, stream);
       });
-
-      if (isVideoCallRef.current) {
-        stream.getVideoTracks().forEach((track) => {
-          if (videoTransceiver && videoTransceiver.sender) {
-            videoTransceiver.sender.replaceTrack(track);
-          }
-        });
-      }
 
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
