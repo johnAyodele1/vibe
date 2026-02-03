@@ -322,7 +322,7 @@ const DirectMessage: React.FC = () => {
       if (remoteAudioRef.current) {
         remoteAudioRef.current.srcObject = event.streams[0];
       }
-      if (remoteVideoRef.current && isVideoCall) {
+      if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = event.streams[0];
       }
     };
@@ -355,7 +355,7 @@ const DirectMessage: React.FC = () => {
       if (localAudioRef.current) {
         localAudioRef.current.srcObject = stream;
       }
-      if (localVideoRef.current && videoCall) {
+      if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
       }
 
@@ -397,7 +397,7 @@ const DirectMessage: React.FC = () => {
       if (localAudioRef.current) {
         localAudioRef.current.srcObject = stream;
       }
-      if (localVideoRef.current && isVideoCall) {
+      if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
       }
 
