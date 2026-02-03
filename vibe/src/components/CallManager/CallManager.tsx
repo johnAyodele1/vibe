@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { toast } from "sonner";
-import { API_BASE_URL } from "../../config";
+import { API_BASE_URL, SOCKET_URL } from "../../config";
 import { useAuth } from "../../contexts/AuthContext";
 import io from "socket.io-client";
 import CallModal from "../CallModal/CallModal";
@@ -28,13 +28,8 @@ const CallManager: React.FC = () => {
   useEffect(() => {
     if (!isAuthenticated || !token) return;
 
-    // Determine socket URL - use direct backend connection for mobile/external access
-    const isLocalhost =
-      window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1";
-    const socketUrl = isLocalhost
-      ? undefined
-      : `${window.location.protocol}//${window.location.hostname}:5000`;
+    // Use configured socket URL for proper backend connection
+    const socketUrl = SOCKET_URL;
 
     const newSocket = io(socketUrl, {
       auth: { token },

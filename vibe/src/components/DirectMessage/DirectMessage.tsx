@@ -6,6 +6,7 @@ import { API_BASE_URL } from "../../config";
 
 // TODO: Use configurable backend URL for socket connection
 import { useAuth } from "../../contexts/AuthContext";
+import { SOCKET_URL } from "../../config";
 import io, { Socket } from "socket.io-client";
 
 type CallStatus = "idle" | "calling" | "receiving" | "connected" | "ended";
@@ -107,13 +108,8 @@ const DirectMessage: React.FC = () => {
   useEffect(() => {
     if (!conversationId || !token) return;
 
-    // Determine socket URL - use direct backend connection for mobile/external access
-    const isLocalhost =
-      window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1";
-    const socketUrl = isLocalhost
-      ? undefined
-      : `${window.location.protocol}//${window.location.hostname}:5000`;
+    // Use configured socket URL for proper backend connection
+    const socketUrl = SOCKET_URL;
 
     const newSocket = io(socketUrl, {
       auth: { token },
