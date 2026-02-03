@@ -70,7 +70,7 @@ const DirectMessage: React.FC = () => {
   const isCallerRef = useRef(false);
   const pendingCandidatesRef = useRef<RTCIceCandidate[]>([]);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  const [_, setRemoteStream] = useState<MediaStream | null>(null);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [incomingOffer, setIncomingOffer] = useState<any>(null);
   const [callStartTime, setCallStartTime] = useState<Date | null>(null);
   const [callDuration, setCallDuration] = useState(0);
@@ -106,6 +106,34 @@ const DirectMessage: React.FC = () => {
       }
     };
   }, [conversationId]);
+
+  // FIXED: Bind local stream to video/audio elements whenever it changes
+  useEffect(() => {
+    if (localStream) {
+      if (localAudioRef.current) {
+        localAudioRef.current.srcObject = localStream;
+        console.log("Bound local stream to audio element");
+      }
+      if (localVideoRef.current && isVideoCall) {
+        localVideoRef.current.srcObject = localStream;
+        console.log("Bound local stream to video element");
+      }
+    }
+  }, [localStream, isVideoCall]);
+
+  // FIXED: Bind remote stream to video/audio elements whenever it changes
+  useEffect(() => {
+    if (remoteStream) {
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = remoteStream;
+        console.log("Bound remote stream to audio element");
+      }
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = remoteStream;
+        console.log("Bound remote stream to video element");
+      }
+    }
+  }, [remoteStream]);
 
   // Initialize socket connection
   useEffect(() => {
@@ -216,7 +244,6 @@ const DirectMessage: React.FC = () => {
       }
     });
 
-    // FIXED: Add call end event listener
     newSocket.on("call:end", () => {
       console.log("Remote peer ended the call");
       endCall();
@@ -330,8 +357,8 @@ const DirectMessage: React.FC = () => {
     }
   };
 
-  // FIXED: Improved WebRTC peer connection creation with proper track handling
-  const createPeerConnection = (isVideoEnabled: boolean) => {
+  // FIXED: Simplified peer connection creation
+  const createPeerConnection = () => {
     // Always create a fresh PC per call
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close();
@@ -362,27 +389,14 @@ const DirectMessage: React.FC = () => {
       }
     };
 
-    // FIXED: Improved ontrack handler with proper stream management
+    // FIXED: Simplified ontrack - just update state, let useEffect handle binding
     pc.ontrack = (event) => {
       console.log("Received remote track:", event.track.kind, event.streams[0]);
-
-      // Use the first stream from the event
       const incomingStream = event.streams[0];
 
-      // Update remote stream state
+      // Update state - useEffect will handle the binding
       setRemoteStream(incomingStream);
-
-      // Bind to audio element for audio calls
-      if (remoteAudioRef.current) {
-        remoteAudioRef.current.srcObject = incomingStream;
-        console.log("Bound remote stream to audio element");
-      }
-
-      // Bind to video element for video calls
-      if (remoteVideoRef.current && isVideoEnabled) {
-        remoteVideoRef.current.srcObject = incomingStream;
-        console.log("Bound remote stream to video element");
-      }
+      console.log("Remote stream state updated");
     };
 
     pc.onconnectionstatechange = () => {
@@ -431,27 +445,21 @@ const DirectMessage: React.FC = () => {
 
       console.log("Requesting user media with constraints:", constraints);
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      setLocalStream(stream);
-
-      // Bind local stream to media elements
-      if (localAudioRef.current) {
-        localAudioRef.current.srcObject = stream;
-      }
-      if (localVideoRef.current && videoCall) {
-        localVideoRef.current.srcObject = stream;
-      }
 
       console.log(
         "Local stream obtained:",
-        stream.getTracks().map((t) => t.kind),
+        stream.getTracks().map((t) => `${t.kind} (${t.id})`),
       );
 
-      // FIXED: Create peer connection and add tracks BEFORE creating offer
-      const pc = createPeerConnection(videoCall);
+      // Update state - useEffect will handle binding
+      setLocalStream(stream);
+
+      // Create peer connection and add tracks
+      const pc = createPeerConnection();
 
       // Add all tracks to the peer connection
       stream.getTracks().forEach((track) => {
-        console.log("Adding track to peer connection:", track.kind);
+        console.log("Adding track to peer connection:", track.kind, track.id);
         pc.addTrack(track, stream);
       });
 
@@ -497,27 +505,21 @@ const DirectMessage: React.FC = () => {
 
       console.log("Answerer requesting user media:", constraints);
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      setLocalStream(stream);
-
-      // Bind local stream to media elements
-      if (localAudioRef.current) {
-        localAudioRef.current.srcObject = stream;
-      }
-      if (localVideoRef.current && videoCall) {
-        localVideoRef.current.srcObject = stream;
-      }
 
       console.log(
         "Answerer local stream obtained:",
-        stream.getTracks().map((t) => t.kind),
+        stream.getTracks().map((t) => `${t.kind} (${t.id})`),
       );
 
-      // FIXED: Create peer connection with proper video flag
-      const pc = createPeerConnection(videoCall);
+      // Update state - useEffect will handle binding
+      setLocalStream(stream);
+
+      // Create peer connection
+      const pc = createPeerConnection();
 
       // Add tracks BEFORE setting remote description
       stream.getTracks().forEach((track) => {
-        console.log("Answerer adding track:", track.kind);
+        console.log("Answerer adding track:", track.kind, track.id);
         pc.addTrack(track, stream);
       });
 
@@ -549,7 +551,7 @@ const DirectMessage: React.FC = () => {
   };
 
   const endCall = () => {
-    // FIXED: Notify remote peer that call is ending
+    // Notify remote peer that call is ending
     if (socket && callStatus !== "idle" && callStatus !== "ended") {
       socket.emit("call:end", { conversationId });
     }
