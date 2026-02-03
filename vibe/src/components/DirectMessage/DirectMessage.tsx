@@ -107,7 +107,15 @@ const DirectMessage: React.FC = () => {
   useEffect(() => {
     if (!conversationId || !token) return;
 
-    const newSocket = io({
+    // Determine socket URL - use direct backend connection for mobile/external access
+    const isLocalhost =
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1";
+    const socketUrl = isLocalhost
+      ? undefined
+      : `${window.location.protocol}//${window.location.hostname}:5000`;
+
+    const newSocket = io(socketUrl, {
       auth: { token },
     });
 

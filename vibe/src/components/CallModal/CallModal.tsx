@@ -111,7 +111,7 @@ const CallModal: React.FC<CallModalProps> = ({
         <div className={styles.callerInfo}>
           <div className={styles.callerAvatar}>
             <img
-              src="https://via.placeholder.com/100"
+              src={callerImage}
               alt={callerName}
               className={styles.avatarImg}
             />

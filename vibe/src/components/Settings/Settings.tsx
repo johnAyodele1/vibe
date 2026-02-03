@@ -49,7 +49,6 @@ const Settings: React.FC = () => {
   const navigate = useNavigate();
   const [isDark, setIsDark] = useState(true); // Default to dark based on HTML
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
 
   const fetchUserProfile = async () => {
     try {
@@ -75,8 +74,6 @@ const Settings: React.FC = () => {
     } catch (error) {
       console.error("Fetch profile error:", error);
       toast.error("Network error");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -139,7 +136,7 @@ const Settings: React.FC = () => {
   const handleDeleteAccount = async () => {
     if (
       !window.confirm(
-        "Are you sure you want to delete your account? This action cannot be undone."
+        "Are you sure you want to delete your account? This action cannot be undone.",
       )
     ) {
       return;

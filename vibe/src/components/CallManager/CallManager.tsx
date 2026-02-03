@@ -28,7 +28,15 @@ const CallManager: React.FC = () => {
   useEffect(() => {
     if (!isAuthenticated || !token) return;
 
-    const newSocket = io({
+    // Determine socket URL - use direct backend connection for mobile/external access
+    const isLocalhost =
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1";
+    const socketUrl = isLocalhost
+      ? undefined
+      : `${window.location.protocol}//${window.location.hostname}:5000`;
+
+    const newSocket = io(socketUrl, {
       auth: { token },
     });
 
@@ -110,6 +118,9 @@ const CallManager: React.FC = () => {
       <CallModal
         isOpen={showModal}
         callerName={incomingCall?.callerName || ""}
+        callerImage={
+          incomingCall?.callerImage || "https://via.placeholder.com/100"
+        }
         isVideoCall={incomingCall?.isVideoCall || false}
         onAccept={handleAcceptCall}
         onDecline={handleDeclineCall}

@@ -30,7 +30,7 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(",")
   : [
       "http://localhost:5173",
-      "http://192.168.0.3:5173",
+      "http://192.168.0.2:5173",
       "http://localhost:3001",
     ];
 
@@ -142,9 +142,10 @@ app.use((error, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
+const HOST = process.env.HOST || "0.0.0.0";
 const io = setupSocket(server);
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+server.listen(PORT, HOST, () => {
+  console.log(`Server running on ${HOST}:${PORT}`);
 });
 
 module.exports = app;
