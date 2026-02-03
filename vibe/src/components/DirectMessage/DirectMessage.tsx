@@ -67,7 +67,9 @@ const DirectMessage: React.FC = () => {
   const [isVideoCall, setIsVideoCall] = useState(false);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const isVideoCallRef = useRef(false);
+  const isCallerRef = useRef(false);
   const pendingCandidatesRef = useRef<RTCIceCandidate[]>([]);
+  const remoteStreamRef = useRef(new MediaStream());
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [incomingOffer, setIncomingOffer] = useState<any>(null);
@@ -185,7 +187,7 @@ const DirectMessage: React.FC = () => {
           }
           pendingCandidatesRef.current = [];
 
-          setCallStatus("connected");
+          // Don't set connected here - wait for media to flow in onconnectionstatechange
         } catch (e) {
           console.error("Error setting remote description:", e);
         }
@@ -325,7 +327,7 @@ const DirectMessage: React.FC = () => {
     }
   };
 
-  // WebRTC functions - Fixed implementation
+  // WebRTC functions - Fixed implementation with proper roles and transceivers
   const createPeerConnection = () => {
     // Prevent multiple PeerConnections
     if (peerConnectionRef.current) {
@@ -337,16 +339,20 @@ const DirectMessage: React.FC = () => {
       iceServers: [
         { urls: "stun:stun.l.google.com:19302" },
         { urls: "stun:stun1.l.google.com:19302" },
-        // TODO: Add TURN server for better NAT traversal
-        // {
-        //   urls: "turn:YOUR_TURN_SERVER",
-        //   username: "...",
-        //   credential: "..."
-        // }
+        // TURN server for production (required for mobile networks and NAT traversal)
+        {
+          urls: "turn:turn.anyfirewall.com:443?transport=tcp",
+          username: "webrtc",
+          credential: "webrtc",
+        },
       ],
     });
 
     peerConnectionRef.current = pc;
+
+    // Add transceivers for proper media negotiation
+    pc.addTransceiver("audio", { direction: "sendrecv" });
+    pc.addTransceiver("video", { direction: "sendrecv" });
 
     pc.onicecandidate = (event) => {
       if (event.candidate && socket) {
@@ -360,25 +366,27 @@ const DirectMessage: React.FC = () => {
 
     pc.ontrack = (event) => {
       console.log("Received remote track:", event.streams[0]);
-      const stream = event.streams[0];
 
-      // Set both audio and video streams to their respective elements
-      if (remoteAudioRef.current && !remoteAudioRef.current.srcObject) {
-        remoteAudioRef.current.srcObject = stream;
+      // Add all tracks from the remote stream to our single remote MediaStream
+      event.streams[0].getTracks().forEach((track) => {
+        if (
+          !remoteStreamRef.current.getTracks().find((t) => t.id === track.id)
+        ) {
+          remoteStreamRef.current.addTrack(track);
+        }
+      });
+
+      // Set the unified remote stream to both audio and video elements
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = remoteStreamRef.current;
       }
 
-      if (
-        remoteVideoRef.current &&
-        !remoteVideoRef.current.srcObject &&
-        isVideoCallRef.current
-      ) {
-        remoteVideoRef.current.srcObject = stream;
+      if (remoteVideoRef.current && isVideoCallRef.current) {
+        remoteVideoRef.current.srcObject = remoteStreamRef.current;
       }
 
-      // Only update React state once
-      if (!remoteStream) {
-        setRemoteStream(stream);
-      }
+      // Update React state with the unified stream
+      setRemoteStream(remoteStreamRef.current);
     };
 
     pc.onconnectionstatechange = () => {
@@ -387,7 +395,7 @@ const DirectMessage: React.FC = () => {
         // Check if media is actually flowing
         const hasLiveTracks = pc
           .getReceivers()
-          .some((r) => r.track?.readyState === "live");
+          .some((r) => r.track && r.track.readyState === "live");
         if (hasLiveTracks) {
           setCallStatus("connected");
         }
@@ -403,12 +411,20 @@ const DirectMessage: React.FC = () => {
   };
 
   const startCall = async (videoCall = false) => {
+    // Guard against duplicate offers
+    if (callStatus !== "idle") {
+      console.log("Call already in progress, ignoring start call");
+      return;
+    }
+
     try {
-      // Update both state and ref immediately
+      // Set caller role
+      isCallerRef.current = true;
       setIsVideoCall(videoCall);
       isVideoCallRef.current = videoCall;
 
-      const constraints = videoCall
+      // Use ref for constraints to avoid React state timing issues
+      const constraints = isVideoCallRef.current
         ? { audio: true, video: { width: 640, height: 480 } }
         : { audio: true };
 
@@ -418,15 +434,33 @@ const DirectMessage: React.FC = () => {
       if (localAudioRef.current) {
         localAudioRef.current.srcObject = stream;
       }
-      if (localVideoRef.current && videoCall) {
+      if (localVideoRef.current && isVideoCallRef.current) {
         localVideoRef.current.srcObject = stream;
       }
 
       const pc = createPeerConnection();
 
-      stream.getTracks().forEach((track) => {
-        pc.addTrack(track, stream);
+      // Add tracks to existing transceivers
+      const audioTransceiver = pc
+        .getTransceivers()
+        .find((t) => t.receiver.track?.kind === "audio");
+      const videoTransceiver = pc
+        .getTransceivers()
+        .find((t) => t.receiver.track?.kind === "video");
+
+      stream.getAudioTracks().forEach((track) => {
+        if (audioTransceiver && audioTransceiver.sender) {
+          audioTransceiver.sender.replaceTrack(track);
+        }
       });
+
+      if (isVideoCallRef.current) {
+        stream.getVideoTracks().forEach((track) => {
+          if (videoTransceiver && videoTransceiver.sender) {
+            videoTransceiver.sender.replaceTrack(track);
+          }
+        });
+      }
 
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
@@ -437,7 +471,7 @@ const DirectMessage: React.FC = () => {
         socket.emit("call:offer", {
           conversationId,
           offer: offer,
-          isVideoCall: videoCall,
+          isVideoCall: isVideoCallRef.current,
         });
       }
     } catch (error) {
@@ -447,10 +481,20 @@ const DirectMessage: React.FC = () => {
   };
 
   const handleCallAnswer = async () => {
-    if (!incomingOffer) return;
+    // Guard against duplicate answers
+    if (callStatus !== "receiving" || !incomingOffer) {
+      console.log(
+        "Not in receiving state or no incoming offer, ignoring answer",
+      );
+      return;
+    }
 
     try {
-      const constraints = isVideoCall
+      // Set callee role
+      isCallerRef.current = false;
+
+      // Use ref for constraints to avoid React state timing issues
+      const constraints = isVideoCallRef.current
         ? { audio: true, video: { width: 640, height: 480 } }
         : { audio: true };
 
@@ -460,19 +504,38 @@ const DirectMessage: React.FC = () => {
       if (localAudioRef.current) {
         localAudioRef.current.srcObject = stream;
       }
-      if (localVideoRef.current && isVideoCall) {
+      if (localVideoRef.current && isVideoCallRef.current) {
         localVideoRef.current.srcObject = stream;
       }
 
       const pc = createPeerConnection();
 
-      stream.getTracks().forEach((track) => {
-        pc.addTrack(track, stream);
-      });
-
+      // Set remote description first (callee role)
       await pc.setRemoteDescription(
         new RTCSessionDescription(incomingOffer.offer),
       );
+
+      // Add tracks to existing transceivers after remote description
+      const audioTransceiver = pc
+        .getTransceivers()
+        .find((t) => t.receiver.track?.kind === "audio");
+      const videoTransceiver = pc
+        .getTransceivers()
+        .find((t) => t.receiver.track?.kind === "video");
+
+      stream.getAudioTracks().forEach((track) => {
+        if (audioTransceiver && audioTransceiver.sender) {
+          audioTransceiver.sender.replaceTrack(track);
+        }
+      });
+
+      if (isVideoCallRef.current) {
+        stream.getVideoTracks().forEach((track) => {
+          if (videoTransceiver && videoTransceiver.sender) {
+            videoTransceiver.sender.replaceTrack(track);
+          }
+        });
+      }
 
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
@@ -484,7 +547,7 @@ const DirectMessage: React.FC = () => {
         });
       }
 
-      setCallStatus("connected");
+      // Don't set connected here - wait for media to flow
     } catch (error) {
       console.error("Error answering call:", error);
       toast.error("Failed to answer call");
@@ -496,16 +559,33 @@ const DirectMessage: React.FC = () => {
       localStream.getTracks().forEach((track) => track.stop());
       setLocalStream(null);
     }
-    if (remoteStream) {
-      remoteStream.getTracks().forEach((track) => track.stop());
+    if (remoteStreamRef.current) {
+      remoteStreamRef.current.getTracks().forEach((track) => track.stop());
+      remoteStreamRef.current = new MediaStream(); // Reset to new empty stream
       setRemoteStream(null);
     }
+
+    // Clear all media element srcObjects to prevent resource leaks
+    if (localAudioRef.current) {
+      localAudioRef.current.srcObject = null;
+    }
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.srcObject = null;
+    }
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = null;
+    }
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = null;
+    }
+
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
     }
     // Reset all refs
     isVideoCallRef.current = false;
+    isCallerRef.current = false;
     pendingCandidatesRef.current = [];
     setCallStatus("ended");
     setIncomingOffer(null);
