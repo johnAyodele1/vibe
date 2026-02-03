@@ -35,6 +35,12 @@ const Discovery: React.FC = () => {
   const [dragOffset, setDragOffset] = useState(0);
   const cardRef = useRef<HTMLDivElement>(null);
 
+  const [loadingAction, setLoadingAction] = useState<
+    null | "like" | "dislike" | "super"
+  >(null);
+  const [actionSuccess, setActionSuccess] = useState<
+    null | "like" | "dislike" | "super"
+  >(null);
   // Fetch users from backend
   useEffect(() => {
     const fetchUsers = async () => {
@@ -98,9 +104,9 @@ const Discovery: React.FC = () => {
   };
 
   const handleLike = async () => {
-    console.log("handleLike called, currentProfile:", currentProfile);
     if (!currentProfile) return;
-
+    setLoadingAction("like");
+    setActionSuccess(null);
     try {
       const token = localStorage.getItem("accessToken");
       const response = await fetch(
@@ -112,17 +118,16 @@ const Discovery: React.FC = () => {
           },
         },
       );
-
       const data = await response.json();
-      console.log("Like response:", data);
       if (data.success) {
-        // Move to next profile
-        setCurrentProfileIndex((prevIndex) => (prevIndex + 1) % users.length);
-
+        setActionSuccess("like");
+        setTimeout(() => {
+          setActionSuccess(null);
+        }, 1000);
+        setTimeout(() => {
+          setCurrentProfileIndex((prevIndex) => (prevIndex + 1) % users.length);
+        }, 500);
         const conversationId = data.data.conversationId;
-        console.log("Navigating to conversation:", data.data);
-
-        // Navigate to chat - now every like creates a conversation
         if (conversationId && conversationId !== "null") {
           if (data.data.isMatch) {
             toast.success("It's a match! 💕");
@@ -132,19 +137,20 @@ const Discovery: React.FC = () => {
             navigate(`/direct-message/${conversationId}`);
           }
         } else {
-          console.error("Invalid conversation ID:", conversationId);
           toast.error("Failed to start chat - please try again");
         }
       }
     } catch (error) {
-      console.error("Like error:", error);
       toast.error("Failed to like user");
+    } finally {
+      setTimeout(() => setLoadingAction(null), 1000);
     }
   };
 
   const handleDislike = async () => {
     if (!currentProfile) return;
-
+    setLoadingAction("dislike");
+    setActionSuccess(null);
     try {
       const token = localStorage.getItem("accessToken");
       await fetch(`${API_BASE_URL}/users/${currentProfile._id}/dislike`, {
@@ -153,11 +159,17 @@ const Discovery: React.FC = () => {
           Authorization: `Bearer ${token}`,
         },
       });
-
-      // Move to next profile
-      setCurrentProfileIndex((prevIndex) => (prevIndex + 1) % users.length);
+      setActionSuccess("dislike");
+      setTimeout(() => {
+        setActionSuccess(null);
+      }, 1000);
+      setTimeout(() => {
+        setCurrentProfileIndex((prevIndex) => (prevIndex + 1) % users.length);
+      }, 500);
     } catch (error) {
-      console.error("Dislike error:", error);
+      // Optionally show error toast
+    } finally {
+      setTimeout(() => setLoadingAction(null), 1000);
     }
   };
 
@@ -419,23 +431,36 @@ const Discovery: React.FC = () => {
         {/* Action Buttons */}
         <div className={styles.actionArea}>
           <div className={styles.actionGrid}>
+            {/* Dislike Button */}
             <button
               className={`${styles.actionBtn} ${styles.passBtn}`}
               aria-label="Pass"
               onClick={handleDislike}
-              disabled={!currentProfile}
+              disabled={!currentProfile || loadingAction !== null}
+              style={
+                loadingAction === "dislike"
+                  ? { border: "3px solid #f42559", position: "relative" }
+                  : {}
+              }
             >
               <span
                 className="material-symbols-outlined"
-                style={{ fontSize: "36px" }}
+                style={{ fontSize: "36px", transition: "color 0.2s" }}
               >
-                close
+                {loadingAction === "dislike" ? (
+                  <span className={styles.loadingCircle}></span>
+                ) : actionSuccess === "dislike" ? (
+                  <span style={{ color: "#4ade80" }}>done</span>
+                ) : (
+                  "close"
+                )}
               </span>
             </button>
+            {/* Super Like Button (no loading for now) */}
             <button
               className={`${styles.actionBtn} ${styles.superBtn}`}
               aria-label="Super Like"
-              disabled={!currentProfile}
+              disabled={!currentProfile || loadingAction !== null}
             >
               <span
                 className="material-symbols-outlined"
@@ -444,17 +469,33 @@ const Discovery: React.FC = () => {
                 star
               </span>
             </button>
+            {/* Like Button */}
             <button
               className={`${styles.actionBtn} ${styles.likeBtn}`}
               aria-label="Like"
               onClick={handleLike}
-              disabled={!currentProfile}
+              disabled={!currentProfile || loadingAction !== null}
+              style={
+                loadingAction === "like"
+                  ? { border: "3px solid #f42559", position: "relative" }
+                  : {}
+              }
             >
               <span
                 className="material-symbols-outlined"
-                style={{ fontSize: "32px", fontVariationSettings: "'FILL' 1" }}
+                style={{
+                  fontSize: "32px",
+                  fontVariationSettings: "'FILL' 1",
+                  transition: "color 0.2s",
+                }}
               >
-                favorite
+                {loadingAction === "like" ? (
+                  <span className={styles.loadingCircle}></span>
+                ) : actionSuccess === "like" ? (
+                  <span style={{ color: "#4ade80" }}>done</span>
+                ) : (
+                  "favorite"
+                )}
               </span>
             </button>
           </div>
