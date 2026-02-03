@@ -352,7 +352,7 @@ const DirectMessage: React.FC = () => {
         { urls: "stun:stun1.l.google.com:19302" },
         // TURN server for production (required for mobile networks and NAT traversal)
         {
-          urls: "free.expressturn.com:3478",
+          urls: "turn:free.expressturn.com:3478",
           username: "000000002085505077",
           credential: "rdWeUE3lAtTerYhl+nWzD+H81oM=",
         },
