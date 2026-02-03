@@ -340,17 +340,16 @@ const DirectMessage: React.FC = () => {
 
   // WebRTC functions - Fixed implementation with proper roles and transceivers
   const createPeerConnection = () => {
-    // Prevent multiple PeerConnections
+    // Always create a fresh PC per call
     if (peerConnectionRef.current) {
-      console.log("PeerConnection already exists, reusing...");
-      return peerConnectionRef.current;
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
     }
 
     const pc = new RTCPeerConnection({
       iceServers: [
         { urls: "stun:stun.l.google.com:19302" },
         { urls: "stun:stun1.l.google.com:19302" },
-        // TURN server for production (required for mobile networks and NAT traversal)
         {
           urls: "turn:free.expressturn.com:3478",
           username: "000000002085505077",
@@ -394,7 +393,7 @@ const DirectMessage: React.FC = () => {
         remoteAudioRef.current.srcObject = remoteStreamRef.current;
       }
 
-      if (remoteVideoRef.current && isVideoCallRef.current) {
+      if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = remoteStreamRef.current;
       }
 
@@ -503,15 +502,15 @@ const DirectMessage: React.FC = () => {
 
       const pc = createPeerConnection();
 
-      // Set remote description first (callee role)
-      await pc.setRemoteDescription(
-        new RTCSessionDescription(incomingOffer.offer),
-      );
-
-      // Add tracks directly to peer connection - transceivers are already created
+      // ADD TRACKS FIRST (before setRemoteDescription)
       stream.getTracks().forEach((track) => {
         pc.addTrack(track, stream);
       });
+
+      // THEN set remote description
+      await pc.setRemoteDescription(
+        new RTCSessionDescription(incomingOffer.offer),
+      );
 
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
@@ -692,12 +691,12 @@ const DirectMessage: React.FC = () => {
     };
   }, [callStatus]);
 
-  // Ensure remote video stream is set when video element becomes available
+  // Always bind remote video element when remoteStream changes
   useEffect(() => {
-    if (remoteVideoRef.current && remoteStream && isVideoCall) {
+    if (remoteVideoRef.current && remoteStream) {
       remoteVideoRef.current.srcObject = remoteStream;
     }
-  }, [remoteStream, isVideoCall]);
+  }, [remoteStream]);
 
   // Cleanup on unmount
   useEffect(() => {
