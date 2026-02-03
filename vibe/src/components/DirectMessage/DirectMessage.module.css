@@ -55,6 +55,7 @@
   color: var(--text-white);
   min-height: 100vh;
   height: 100dvh;
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   position: relative;
