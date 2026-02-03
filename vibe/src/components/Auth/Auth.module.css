@@ -171,7 +171,7 @@
 
 .input {
   flex: 1;
-  background-color: transparent;
+  background-color: rgba(46, 26, 31, 0.8);
   color: white;
   height: 3.5rem;
   padding: 0 1.5rem;
@@ -184,6 +184,11 @@
 
 .input::placeholder {
   color: rgba(255, 255, 255, 0.3);
+}
+
+.input option {
+  color: white;
+  background-color: var(--surface-dark);
 }
 
 .iconSuffix {
