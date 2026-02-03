@@ -57,7 +57,10 @@ const BottomNavigation: React.FC<BottomNavigationProps> = ({
             } hover:text-white transition-colors`}
           />
         </button>
-        <button className={styles.navBtn}>
+        <button
+          className={styles.navBtn}
+          onClick={() => navigate("/my-profile")}
+        >
           {activeTab === "profile" && (
             <div className="absolute inset-0 bg-white/5 rounded-full scale-75"></div>
           )}
