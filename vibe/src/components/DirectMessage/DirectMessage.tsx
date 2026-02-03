@@ -319,11 +319,16 @@ const DirectMessage: React.FC = () => {
     pc.ontrack = (event) => {
       console.log("Received remote track:", event.streams[0]);
       setRemoteStream(event.streams[0]);
+      const remoteStream = event.streams[0];
+
+      // Set audio stream to audio element
       if (remoteAudioRef.current) {
-        remoteAudioRef.current.srcObject = event.streams[0];
+        remoteAudioRef.current.srcObject = remoteStream;
       }
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = event.streams[0];
+
+      // Set video stream to video element only if it's a video call
+      if (remoteVideoRef.current && isVideoCall) {
+        remoteVideoRef.current.srcObject = remoteStream;
       }
     };
 
@@ -569,6 +574,13 @@ const DirectMessage: React.FC = () => {
       stopRingtone();
     };
   }, [callStatus]);
+
+  // Ensure remote video stream is set when video element becomes available
+  useEffect(() => {
+    if (remoteVideoRef.current && remoteStream && isVideoCall) {
+      remoteVideoRef.current.srcObject = remoteStream;
+    }
+  }, [remoteStream, isVideoCall]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -833,15 +845,16 @@ const DirectMessage: React.FC = () => {
                         {formatDuration(callDuration)}
                       </p>
                     </div>
-                  </div>
-                  <div className={styles.localVideoWrapper}>
-                    <video
-                      ref={localVideoRef}
-                      autoPlay
-                      playsInline
-                      muted
-                      className={styles.localVideo}
-                    />
+
+                    <div className={styles.localVideoWrapper}>
+                      <video
+                        ref={localVideoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        className={styles.localVideo}
+                      />
+                    </div>
                   </div>
                 </div>
               ) : (
