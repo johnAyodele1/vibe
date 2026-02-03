@@ -202,6 +202,7 @@
   overflow-y: auto;
   width: 100%;
   padding: 0 16px 100px 16px;
+  background-color: var(--color-bg-dark);
 }
 
 .dateDivider {
@@ -374,16 +375,18 @@
 
 .inputField {
   width: 100%;
-  background: transparent;
+  background: rgba(30, 30, 34, 0.9);
   border: none;
   color: white;
   font-size: 16px;
   line-height: 1.5;
   height: 36px;
   padding: 0;
+  border-radius: 8px;
 }
 .inputField:focus {
   outline: none;
+  background: rgba(30, 30, 34, 0.95);
 }
 .inputField::placeholder {
   color: var(--text-gray-dark);
