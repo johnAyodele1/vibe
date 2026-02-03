@@ -69,9 +69,8 @@ const DirectMessage: React.FC = () => {
   const isVideoCallRef = useRef(false);
   const isCallerRef = useRef(false);
   const pendingCandidatesRef = useRef<RTCIceCandidate[]>([]);
-  const remoteStreamRef = useRef(new MediaStream());
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [_, setRemoteStream] = useState<MediaStream | null>(null);
   const [incomingOffer, setIncomingOffer] = useState<any>(null);
   const [callStartTime, setCallStartTime] = useState<Date | null>(null);
   const [callDuration, setCallDuration] = useState(0);
@@ -186,8 +185,6 @@ const DirectMessage: React.FC = () => {
             }
           }
           pendingCandidatesRef.current = [];
-
-          // Don't set connected here - wait for media to flow in onconnectionstatechange
         } catch (e) {
           console.error("Error setting remote description:", e);
         }
@@ -217,6 +214,12 @@ const DirectMessage: React.FC = () => {
           );
         }
       }
+    });
+
+    // FIXED: Add call end event listener
+    newSocket.on("call:end", () => {
+      console.log("Remote peer ended the call");
+      endCall();
     });
 
     setSocket(newSocket);
@@ -327,19 +330,8 @@ const DirectMessage: React.FC = () => {
     }
   };
 
-  // Helper function to detect when media is actually flowing
-  const maybeMarkConnected = (pc: RTCPeerConnection) => {
-    const hasLiveTrack = pc
-      .getReceivers()
-      .some((r) => r.track && r.track.readyState === "live");
-
-    if (hasLiveTrack && callStatus !== "connected") {
-      setCallStatus("connected");
-    }
-  };
-
-  // WebRTC functions - Fixed implementation with proper roles and transceivers
-  const createPeerConnection = () => {
+  // FIXED: Improved WebRTC peer connection creation with proper track handling
+  const createPeerConnection = (isVideoEnabled: boolean) => {
     // Always create a fresh PC per call
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close();
@@ -360,12 +352,6 @@ const DirectMessage: React.FC = () => {
 
     peerConnectionRef.current = pc;
 
-    // Add transceivers for proper media negotiation - only add video if it's a video call
-    pc.addTransceiver("audio", { direction: "sendrecv" });
-    if (isVideoCallRef.current) {
-      pc.addTransceiver("video", { direction: "sendrecv" });
-    }
-
     pc.onicecandidate = (event) => {
       if (event.candidate && socket) {
         console.log("Sending ICE candidate:", event.candidate);
@@ -376,44 +362,50 @@ const DirectMessage: React.FC = () => {
       }
     };
 
+    // FIXED: Improved ontrack handler with proper stream management
     pc.ontrack = (event) => {
-      console.log("Received remote track:", event.streams[0]);
+      console.log("Received remote track:", event.track.kind, event.streams[0]);
 
-      // Add all tracks from the remote stream to our single remote MediaStream
-      event.streams[0].getTracks().forEach((track) => {
-        if (
-          !remoteStreamRef.current.getTracks().find((t) => t.id === track.id)
-        ) {
-          remoteStreamRef.current.addTrack(track);
-        }
-      });
+      // Use the first stream from the event
+      const incomingStream = event.streams[0];
 
-      // Set the unified remote stream to both audio and video elements
+      // Update remote stream state
+      setRemoteStream(incomingStream);
+
+      // Bind to audio element for audio calls
       if (remoteAudioRef.current) {
-        remoteAudioRef.current.srcObject = remoteStreamRef.current;
+        remoteAudioRef.current.srcObject = incomingStream;
+        console.log("Bound remote stream to audio element");
       }
 
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = remoteStreamRef.current;
+      // Bind to video element for video calls
+      if (remoteVideoRef.current && isVideoEnabled) {
+        remoteVideoRef.current.srcObject = incomingStream;
+        console.log("Bound remote stream to video element");
       }
-
-      // Update React state with the unified stream
-      setRemoteStream(remoteStreamRef.current);
-
-      // Check if media is actually flowing
-      maybeMarkConnected(pc);
     };
 
     pc.onconnectionstatechange = () => {
       console.log("Connection state:", pc.connectionState);
       if (pc.connectionState === "connected") {
-        maybeMarkConnected(pc);
+        console.log("Peer connection established");
+        setCallStatus("connected");
       } else if (
         pc.connectionState === "disconnected" ||
         pc.connectionState === "failed"
       ) {
+        console.log("Peer connection failed/disconnected");
         setCallStatus("ended");
       }
+    };
+
+    // Additional debugging
+    pc.oniceconnectionstatechange = () => {
+      console.log("ICE connection state:", pc.iceConnectionState);
+    };
+
+    pc.onicegatheringstatechange = () => {
+      console.log("ICE gathering state:", pc.iceGatheringState);
     };
 
     return pc;
@@ -427,48 +419,60 @@ const DirectMessage: React.FC = () => {
     }
 
     try {
-      // Set caller role
+      // Set caller role and video mode
       isCallerRef.current = true;
       setIsVideoCall(videoCall);
       isVideoCallRef.current = videoCall;
 
-      // Use ref for constraints to avoid React state timing issues
-      const constraints = isVideoCallRef.current
+      // Get user media first
+      const constraints = videoCall
         ? { audio: true, video: { width: 640, height: 480 } }
         : { audio: true };
 
+      console.log("Requesting user media with constraints:", constraints);
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       setLocalStream(stream);
 
+      // Bind local stream to media elements
       if (localAudioRef.current) {
         localAudioRef.current.srcObject = stream;
       }
-      if (localVideoRef.current && isVideoCallRef.current) {
+      if (localVideoRef.current && videoCall) {
         localVideoRef.current.srcObject = stream;
       }
 
-      const pc = createPeerConnection();
+      console.log(
+        "Local stream obtained:",
+        stream.getTracks().map((t) => t.kind),
+      );
 
-      // Add tracks directly to peer connection - transceivers are already created
+      // FIXED: Create peer connection and add tracks BEFORE creating offer
+      const pc = createPeerConnection(videoCall);
+
+      // Add all tracks to the peer connection
       stream.getTracks().forEach((track) => {
+        console.log("Adding track to peer connection:", track.kind);
         pc.addTrack(track, stream);
       });
 
+      // Now create the offer
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
       setCallStatus("calling");
 
+      console.log("Sending offer to remote peer");
       if (socket) {
         socket.emit("call:offer", {
           conversationId,
           offer: offer,
-          isVideoCall: isVideoCallRef.current,
+          isVideoCall: videoCall,
         });
       }
     } catch (error) {
       console.error("Error starting call:", error);
       toast.error(`Failed to start ${videoCall ? "video" : "audio"} call`);
+      setCallStatus("idle");
     }
   };
 
@@ -484,37 +488,50 @@ const DirectMessage: React.FC = () => {
     try {
       // Set callee role
       isCallerRef.current = false;
+      const videoCall = isVideoCallRef.current;
 
-      // Use ref for constraints to avoid React state timing issues
-      const constraints = isVideoCallRef.current
+      // Get user media first
+      const constraints = videoCall
         ? { audio: true, video: { width: 640, height: 480 } }
         : { audio: true };
 
+      console.log("Answerer requesting user media:", constraints);
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       setLocalStream(stream);
 
+      // Bind local stream to media elements
       if (localAudioRef.current) {
         localAudioRef.current.srcObject = stream;
       }
-      if (localVideoRef.current && isVideoCallRef.current) {
+      if (localVideoRef.current && videoCall) {
         localVideoRef.current.srcObject = stream;
       }
 
-      const pc = createPeerConnection();
+      console.log(
+        "Answerer local stream obtained:",
+        stream.getTracks().map((t) => t.kind),
+      );
 
-      // ADD TRACKS FIRST (before setRemoteDescription)
+      // FIXED: Create peer connection with proper video flag
+      const pc = createPeerConnection(videoCall);
+
+      // Add tracks BEFORE setting remote description
       stream.getTracks().forEach((track) => {
+        console.log("Answerer adding track:", track.kind);
         pc.addTrack(track, stream);
       });
 
-      // THEN set remote description
+      // Set remote description from the offer
+      console.log("Setting remote description from offer");
       await pc.setRemoteDescription(
         new RTCSessionDescription(incomingOffer.offer),
       );
 
+      // Create and set local answer
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
 
+      console.log("Sending answer to remote peer");
       if (socket) {
         socket.emit("call:answer", {
           conversationId,
@@ -522,23 +539,32 @@ const DirectMessage: React.FC = () => {
         });
       }
 
-      // Don't set connected here - wait for media to flow
+      // Clear incoming offer
+      setIncomingOffer(null);
     } catch (error) {
       console.error("Error answering call:", error);
       toast.error("Failed to answer call");
+      setCallStatus("idle");
     }
   };
 
   const endCall = () => {
+    // FIXED: Notify remote peer that call is ending
+    if (socket && callStatus !== "idle" && callStatus !== "ended") {
+      socket.emit("call:end", { conversationId });
+    }
+
+    // Stop all local tracks
     if (localStream) {
-      localStream.getTracks().forEach((track) => track.stop());
+      localStream.getTracks().forEach((track) => {
+        track.stop();
+        console.log("Stopped local track:", track.kind);
+      });
       setLocalStream(null);
     }
-    if (remoteStreamRef.current) {
-      remoteStreamRef.current.getTracks().forEach((track) => track.stop());
-      remoteStreamRef.current = new MediaStream(); // Reset to new empty stream
-      setRemoteStream(null);
-    }
+
+    // Clear remote stream
+    setRemoteStream(null);
 
     // Clear all media element srcObjects to prevent resource leaks
     if (localAudioRef.current) {
@@ -554,14 +580,17 @@ const DirectMessage: React.FC = () => {
       remoteVideoRef.current.srcObject = null;
     }
 
+    // Close peer connection
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
     }
+
     // Reset all refs
     isVideoCallRef.current = false;
     isCallerRef.current = false;
     pendingCandidatesRef.current = [];
+
     setCallStatus("ended");
     setIncomingOffer(null);
     setIsVideoCall(false);
@@ -690,13 +719,6 @@ const DirectMessage: React.FC = () => {
       stopRingtone();
     };
   }, [callStatus]);
-
-  // Always bind remote video element when remoteStream changes
-  useEffect(() => {
-    if (remoteVideoRef.current && remoteStream) {
-      remoteVideoRef.current.srcObject = remoteStream;
-    }
-  }, [remoteStream]);
 
   // Cleanup on unmount
   useEffect(() => {
