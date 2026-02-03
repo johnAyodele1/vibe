@@ -14,6 +14,7 @@ interface User {
   location?: {
     city?: string;
   };
+  bio?: string;
   photos?: any[];
   profileCompletion?: number;
 }

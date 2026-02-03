@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import styles from "./UserProfileView.module.css";
 import { useNavigate } from "react-router-dom";
 import { API_BASE_URL } from "../../config";
+import BottomNavigation from "../BottomNavigation/BottomNavigation";
 
 const Icon = ({
   name,
@@ -313,39 +314,7 @@ const UserProfile: React.FC = () => {
         )}
 
         {/* Bottom Navigation */}
-        <div className={styles.bottomNavFixed}>
-          <div className={styles.navBar}>
-            <button
-              className={styles.navBtn}
-              onClick={() => navigate("/discovery")}
-            >
-              <Icon
-                name="style"
-                className="text-[28px] text-gray-500 hover:text-white transition-colors"
-              />
-            </button>
-            <button
-              className={styles.navBtn}
-              onClick={() => navigate("/discovery")}
-            >
-              <div className="absolute top-3 right-3 size-2.5 bg-primary rounded-full border-2 border-[#181113]"></div>
-              <Icon
-                name="favorite"
-                className="text-[28px] text-gray-500 hover:text-white transition-colors"
-              />
-            </button>
-            <button className={styles.navBtn} onClick={() => navigate("/chat")}>
-              <Icon
-                name="chat_bubble"
-                className="text-[28px] text-gray-500 hover:text-white transition-colors"
-              />
-            </button>
-            <button className={styles.navBtn}>
-              <div className="absolute inset-0 bg-white/5 rounded-full scale-75"></div>
-              <Icon name="person" className="text-[28px] text-primary" />
-            </button>
-          </div>
-        </div>
+        <BottomNavigation activeTab="profile" />
       </div>
     </div>
   );

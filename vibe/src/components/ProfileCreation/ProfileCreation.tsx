@@ -380,6 +380,10 @@ const ProfileCreation: React.FC = () => {
       toast.error("Please wait for your location to be determined");
       return;
     }
+    if (!bio.trim()) {
+      toast.error("Please add a bio");
+      return;
+    }
 
     setLoading(true);
     try {

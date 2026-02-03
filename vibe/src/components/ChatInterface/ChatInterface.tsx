@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { API_BASE_URL } from "../../config";
 import { useAuth } from "../../contexts/AuthContext";
+import BottomNavigation from "../BottomNavigation/BottomNavigation";
 
 interface Match {
   _id: string;
@@ -310,62 +311,8 @@ const ChatInterface: React.FC = () => {
           </div>
         </main>
 
-        <nav className={styles.bottomNav}>
-          <div className={styles.navInner}>
-            <button
-              className={styles.navBtn}
-              onClick={() => navigate("/discovery")}
-            >
-              <span
-                className="material-symbols-outlined"
-                style={{ fontSize: "28px" }}
-              >
-                local_fire_department
-              </span>
-            </button>
-            <button
-              className={styles.navBtn}
-              onClick={() => navigate("/my-profile")}
-            >
-              <span
-                className="material-symbols-outlined"
-                style={{ fontSize: "28px" }}
-              >
-                favorite
-              </span>
-            </button>
-            <button className={`${styles.navBtn} ${styles.navBtnActive}`}>
-              <div style={{ position: "relative" }}>
-                <span
-                  className="material-symbols-outlined"
-                  style={{
-                    fontSize: "28px",
-                    fontVariationSettings: "'FILL' 1",
-                  }}
-                >
-                  chat_bubble
-                </span>
-                <span className={styles.navBadge}>
-                  <span className={styles.navDot}></span>
-                </span>
-              </div>
-            </button>
-            <button
-              className={styles.navBtn}
-              onClick={() => {
-                toast.success("Navigating to profile");
-                navigate("/my-profile");
-              }}
-            >
-              <span
-                className="material-symbols-outlined"
-                style={{ fontSize: "28px" }}
-              >
-                person
-              </span>
-            </button>
-          </div>
-        </nav>
+        {/* Bottom Navigation */}
+        <BottomNavigation activeTab="chat" />
       </div>
     </>
   );

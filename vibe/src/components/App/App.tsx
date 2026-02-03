@@ -17,15 +17,14 @@ function App() {
   const isProfileComplete = () => {
     if (!user) return false;
 
-    if (user.profileCompletion !== undefined) {
-      return user.profileCompletion >= 80;
-    }
     return (
       user.firstName &&
       user.dateOfBirth &&
       user.gender &&
       user.location &&
       user.location.city &&
+      user.bio &&
+      user.bio.trim().length > 0 &&
       user.photos &&
       user.photos.length >= 2
     );

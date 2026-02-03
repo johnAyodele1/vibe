@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import styles from "./Discovery.module.css";
 import { API_BASE_URL } from "../../config";
+import BottomNavigation from "../BottomNavigation/BottomNavigation";
 
 interface User {
   _id: string;
@@ -459,55 +460,8 @@ const Discovery: React.FC = () => {
           </div>
         </div>
 
-        {/* Navigation Bar */}
-        <nav className={styles.navbar}>
-          <div className={styles.navContent}>
-            <button className={`${styles.navItem} ${styles.active}`}>
-              <span
-                className="material-symbols-outlined"
-                style={{ fontSize: "28px", fontVariationSettings: "'FILL' 1" }}
-              >
-                style
-              </span>
-            </button>
-
-            <button className={styles.navItem}>
-              <div className={styles.badgeWrapper}>
-                <span
-                  className="material-symbols-outlined"
-                  style={{ fontSize: "28px" }}
-                >
-                  favorite
-                </span>
-                <span className={styles.badge}>3</span>
-              </div>
-            </button>
-
-            <button
-              className={styles.navItem}
-              onClick={() => navigate("/chat")}
-            >
-              <span
-                className="material-symbols-outlined"
-                style={{ fontSize: "28px" }}
-              >
-                chat_bubble
-              </span>
-            </button>
-
-            <button
-              className={styles.navItem}
-              onClick={() => navigate("/my-profile")}
-            >
-              <span
-                className="material-symbols-outlined"
-                style={{ fontSize: "28px" }}
-              >
-                person
-              </span>
-            </button>
-          </div>
-        </nav>
+        {/* Bottom Navigation */}
+        <BottomNavigation activeTab="discovery" notificationCount={3} />
       </div>
     </>
   );
