@@ -28,11 +28,7 @@ app.use(express.urlencoded({ extended: true }));
 // CORS configuration
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(",")
-  : [
-      "http://localhost:5173",
-      "http://192.168.0.2:5173",
-      "http://localhost:3001",
-    ];
+  : ["https://zippo.com.ng/"];
 
 if (process.env.NODE_ENV === "development") {
   app.use(
