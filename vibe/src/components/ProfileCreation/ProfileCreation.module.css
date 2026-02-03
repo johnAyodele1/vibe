@@ -149,6 +149,12 @@
   gap: 0.75rem;
 }
 
+@media (max-width: 640px) {
+  .photoGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 .photoCard {
   position: relative;
   aspect-ratio: 3/4;

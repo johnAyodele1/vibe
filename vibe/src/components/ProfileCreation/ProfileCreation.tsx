@@ -3,6 +3,7 @@ import styles from "./ProfileCreation.module.css";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { API_BASE_URL } from "../../config";
+import { useAuth } from "../../contexts/AuthContext";
 
 // Helper component for Material Symbols to keep code clean
 const Icon = ({
@@ -15,6 +16,7 @@ const Icon = ({
 
 const ProfileCreation: React.FC = () => {
   const navigate = useNavigate();
+  const { checkAuthStatus } = useAuth();
   const [isDark, setIsDark] = useState(true); // Default to Dark mode as per prompt
   const [loading, setLoading] = useState(false);
   const [photos, setPhotos] = useState<string[]>(["", "", "", "", "", ""]); // Array for 6 photos
@@ -102,7 +104,7 @@ const ProfileCreation: React.FC = () => {
               Everyone: "Everyone",
             };
             setActiveGender(
-              genderMap[user.preferences.genderPreference] || "Women"
+              genderMap[user.preferences.genderPreference] || "Women",
             );
           }
 
@@ -144,13 +146,13 @@ const ProfileCreation: React.FC = () => {
       const fillWidth = maxPos - minPos;
 
       const fill = ageSliderRef.current.querySelector(
-        `.${styles.sliderFill}`
+        `.${styles.sliderFill}`,
       ) as HTMLElement;
       const handleMin = ageSliderRef.current.querySelector(
-        '[data-handle="ageMin"]'
+        '[data-handle="ageMin"]',
       ) as HTMLElement;
       const handleMax = ageSliderRef.current.querySelector(
-        '[data-handle="ageMax"]'
+        '[data-handle="ageMax"]',
       ) as HTMLElement;
 
       if (fill) {
@@ -167,10 +169,10 @@ const ProfileCreation: React.FC = () => {
       const pos = ((distance - 1) / (500 - 1)) * 100;
 
       const fill = distanceSliderRef.current.querySelector(
-        `.${styles.sliderFill}`
+        `.${styles.sliderFill}`,
       ) as HTMLElement;
       const handle = distanceSliderRef.current.querySelector(
-        `.${styles.sliderHandle}`
+        `.${styles.sliderHandle}`,
       ) as HTMLElement;
 
       if (fill) {
@@ -217,7 +219,7 @@ const ProfileCreation: React.FC = () => {
           // Get city/country from coordinates using reverse geocoding
           try {
             const response = await fetch(
-              `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`
+              `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`,
             );
             const data = await response.json();
             setLocation((prev) => ({
@@ -251,7 +253,7 @@ const ProfileCreation: React.FC = () => {
 
           toast.error(errorMessage);
           setGettingLocation(false);
-        }
+        },
       );
     } else {
       toast.error("Geolocation is not supported by this browser");
@@ -270,7 +272,7 @@ const ProfileCreation: React.FC = () => {
 
   // Handle photo upload
   const handlePhotoUpload = async (
-    event: React.ChangeEvent<HTMLInputElement>
+    event: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -313,14 +315,14 @@ const ProfileCreation: React.FC = () => {
     setSelectedInterests((prev) =>
       prev.includes(interest)
         ? prev.filter((i) => i !== interest)
-        : [...prev, interest]
+        : [...prev, interest],
     );
   };
 
   // Slider interaction handlers
   const startDrag = (
     type: "ageMin" | "ageMax" | "distance",
-    sliderRef: HTMLElement
+    sliderRef: HTMLElement,
   ) => {
     setDragging({ type, sliderRef });
   };
@@ -395,8 +397,8 @@ const ProfileCreation: React.FC = () => {
             activeGender === "Everyone"
               ? "Everyone"
               : activeGender === "Men"
-              ? "Male"
-              : "Female",
+                ? "Male"
+                : "Female",
           ageRange,
           maxDistance: distance,
         },
@@ -411,6 +413,8 @@ const ProfileCreation: React.FC = () => {
       const data = await response.json();
       if (data.success) {
         toast.success("Profile updated successfully!");
+        // Refresh auth status to update user data in context
+        await checkAuthStatus();
         // Navigate to profile page after a brief delay to let user see success message
         setTimeout(() => {
           navigate("/my-profile");
@@ -499,7 +503,7 @@ const ProfileCreation: React.FC = () => {
                           className={styles.removeButton}
                           onClick={() => {
                             setPhotos((prev) =>
-                              prev.map((p, i) => (i === index ? "" : p))
+                              prev.map((p, i) => (i === index ? "" : p)),
                             );
                           }}
                         >
