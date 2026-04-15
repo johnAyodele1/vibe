@@ -8,9 +8,11 @@ const {
   me,
   googleLogin,
   getGoogleClientId,
+  googleCallback,
   signupValidation,
   loginValidation,
 } = require("../controllers/authController");
+const passport = require("passport");
 
 const router = express.Router();
 
@@ -39,8 +41,25 @@ router.post("/logout", authenticateToken, logout);
 // @access  Private
 router.get("/me", authenticateToken, me);
 
-// @route   POST /api/auth/google
+// @route   GET /api/auth/google
 // @desc    Google OAuth login/signup
+// @access  Public
+router.get(
+  "/google",
+  passport.authenticate("google", { scope: ["profile", "email"] })
+);
+
+// @route   GET /api/auth/google/callback
+// @desc    Google OAuth callback
+// @access  Public
+router.get(
+  "/google/callback",
+  passport.authenticate("google", { failureRedirect: "/auth", session: false }),
+  googleCallback
+);
+
+// @route   POST /api/auth/google
+// @desc    Google OAuth login/signup (Legacy - for mobile/external apps if needed)
 // @access  Public
 router.post("/google", googleLogin);
 
