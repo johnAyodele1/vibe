@@ -6,7 +6,10 @@ import "./index.css";
 import App from "./components/App/App";
 import { AuthProvider } from "./contexts/AuthContext";
 
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
+const GOOGLE_CLIENT_ID =
+  import.meta.env.VITE_GOOGLE_CLIENT_ID ||
+  import.meta.env.GOOGLE_CLIENT_ID ||
+  "";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
