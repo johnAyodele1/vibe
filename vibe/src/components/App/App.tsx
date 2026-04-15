@@ -3,6 +3,7 @@ import { Toaster } from "sonner";
 import Onboarding from "../Onboarding/Onboarding";
 import ProfileCreation from "../ProfileCreation/ProfileCreation";
 import Auth from "../Auth/Auth";
+import GoogleCallback from "../Auth/GoogleCallback";
 import UserProfileView from "../UserProfileView/UserProfileView";
 import Settings from "../Settings/Settings";
 import ChatInterface from "../ChatInterface/ChatInterface";
@@ -44,6 +45,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Onboarding />} />
         <Route path="/auth" element={<Auth />} />
+        <Route path="/auth/callback" element={<GoogleCallback />} />
 
         {/* Protected routes that require authentication */}
         <Route

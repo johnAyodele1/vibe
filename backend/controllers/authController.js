@@ -386,6 +386,31 @@ const googleLogin = async (req, res) => {
   }
 };
 
+const googleCallback = async (req, res) => {
+  try {
+    const user = req.user;
+
+    // Generate tokens
+    const accessToken = generateAccessToken(user._id);
+    const refreshToken = generateRefreshToken(user._id);
+
+    // Update last active
+    user.lastActive = new Date();
+    user.isOnline = true;
+    await user.save();
+
+    // Redirect to frontend with tokens
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+    res.redirect(
+      `${frontendUrl}/auth/callback?accessToken=${accessToken}&refreshToken=${refreshToken}`
+    );
+  } catch (error) {
+    console.error("Google callback error:", error);
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+    res.redirect(`${frontendUrl}/auth?error=google_auth_failed`);
+  }
+};
+
 module.exports = {
   signup,
   login,
@@ -394,6 +419,7 @@ module.exports = {
   me,
   googleLogin,
   getGoogleClientId,
+  googleCallback,
   signupValidation,
   loginValidation,
 };

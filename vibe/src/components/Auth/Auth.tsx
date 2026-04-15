@@ -3,11 +3,11 @@ import styles from "./Auth.module.css";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
-import { GoogleLogin } from "@react-oauth/google";
+import { API_BASE_URL } from "../../config";
 
 const Connect: React.FC = () => {
   const navigate = useNavigate();
-  const { login, signup, googleLogin } = useAuth();
+  const { login, signup } = useAuth();
   const [authType, setAuthType] = useState<"signup" | "login">("signup");
   const [showPassword, setShowPassword] = useState(false);
   const [dateType, setDateType] = useState("text");
@@ -21,26 +21,8 @@ const Connect: React.FC = () => {
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [gender, setGender] = useState("");
 
-  const handleGoogleSuccess = async (credentialResponse: any) => {
-    setLoading(true);
-    try {
-      if (credentialResponse.credential) {
-        const success = await googleLogin(credentialResponse.credential);
-        if (success) {
-          toast.success("Logged in with Google!");
-          // Check if profile is complete, if not redirect to profile creation
-          // But for now follow standard flow
-          navigate("/discovery");
-        } else {
-          toast.error("Google login failed");
-        }
-      }
-    } catch (error) {
-      console.error("Google login error:", error);
-      toast.error("Google login failed");
-    } finally {
-      setLoading(false);
-    }
+  const handleGoogleLogin = () => {
+    window.location.href = `${API_BASE_URL}/auth/google`;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -296,15 +278,17 @@ const Connect: React.FC = () => {
 
         {/* Social Login */}
         <div className={styles.socialRow}>
-          <GoogleLogin
-            onSuccess={handleGoogleSuccess}
-            onError={() => {
-              toast.error("Google Login Failed");
-            }}
-            theme="filled_black"
-            shape="pill"
-            text="continue_with"
-          />
+          <button
+            onClick={handleGoogleLogin}
+            className="flex items-center justify-center gap-2 w-full bg-white text-black py-2 rounded-full font-medium hover:bg-gray-100 transition-colors"
+          >
+            <img
+              src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+              alt="Google"
+              className="w-5 h-5"
+            />
+            Continue with Google
+          </button>
         </div>
 
         {/* Footer */}
