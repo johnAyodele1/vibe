@@ -7,6 +7,7 @@ const {
   logout,
   me,
   googleLogin,
+  getGoogleClientId,
   signupValidation,
   loginValidation,
 } = require("../controllers/authController");
@@ -42,5 +43,10 @@ router.get("/me", authenticateToken, me);
 // @desc    Google OAuth login/signup
 // @access  Public
 router.post("/google", googleLogin);
+
+// @route   GET /api/auth/google-client-id
+// @desc    Get Google Client ID
+// @access  Public
+router.get("/google-client-id", getGoogleClientId);
 
 module.exports = router;
