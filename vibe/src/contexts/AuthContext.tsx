@@ -25,6 +25,7 @@ interface AuthContextType {
   loading: boolean;
   login: (email: string, password: string) => Promise<boolean>;
   signup: (userData: any) => Promise<boolean>;
+  googleLogin: (idToken: string) => Promise<boolean>;
   logout: () => void;
   checkAuthStatus: () => Promise<void>;
 }
@@ -105,6 +106,32 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  const googleLogin = async (idToken: string): Promise<boolean> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/google`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ idToken }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        localStorage.setItem("accessToken", data.data.tokens.accessToken);
+        localStorage.setItem("refreshToken", data.data.tokens.refreshToken);
+        setUser(data.data.user || null);
+        setIsAuthenticated(true);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error("Google login error:", error);
+      return false;
+    }
+  };
+
   const signup = async (userData: any): Promise<boolean> => {
     try {
       const response = await fetch(`${API_BASE_URL}/auth/signup`, {
@@ -148,6 +175,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     loading,
     login,
     signup,
+    googleLogin,
     logout,
     checkAuthStatus,
   };

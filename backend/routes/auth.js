@@ -6,6 +6,7 @@ const {
   refresh,
   logout,
   me,
+  googleLogin,
   signupValidation,
   loginValidation,
 } = require("../controllers/authController");
@@ -36,5 +37,10 @@ router.post("/logout", authenticateToken, logout);
 // @desc    Get current user
 // @access  Private
 router.get("/me", authenticateToken, me);
+
+// @route   POST /api/auth/google
+// @desc    Google OAuth login/signup
+// @access  Public
+router.post("/google", googleLogin);
 
 module.exports = router;
