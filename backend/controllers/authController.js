@@ -272,8 +272,30 @@ const me = async (req, res) => {
   }
 };
 
-// @desc    Google OAuth Login/Signup
+// @desc    Get Google Client ID
 // @access  Public
+const getGoogleClientId = async (req, res) => {
+  try {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    if (!clientId) {
+      return res.status(404).json({
+        success: false,
+        message: "Google Client ID not configured",
+      });
+    }
+    res.json({
+      success: true,
+      data: { clientId },
+    });
+  } catch (error) {
+    console.error("Error getting Google Client ID:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
+
 const googleLogin = async (req, res) => {
   try {
     const { idToken } = req.body;
@@ -371,6 +393,7 @@ module.exports = {
   logout,
   me,
   googleLogin,
+  getGoogleClientId,
   signupValidation,
   loginValidation,
 };
