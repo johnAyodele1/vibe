@@ -41,6 +41,13 @@ const ProfileCreation: React.FC = () => {
   const [gettingLocation, setGettingLocation] = useState(false);
   const [locationPermissionDenied, setLocationPermissionDenied] =
     useState(false);
+  const [isManualLocation, setIsManualLocation] = useState(false);
+  const [manualLocation, setManualLocation] = useState({
+    city: "",
+    country: "",
+    lat: "",
+    lng: "",
+  });
 
   // Slider refs
   const ageSliderRef = React.useRef<HTMLDivElement>(null);
@@ -86,11 +93,17 @@ const ProfileCreation: React.FC = () => {
 
         // Prefill location
         if (user.location && user.location.coordinates) {
-          setLocation({
-            lat: user.location.coordinates[1], // latitude
-            lng: user.location.coordinates[0], // longitude
-            city: user.location.city || "",
-            country: user.location.country || "",
+          const lat = user.location.coordinates[1];
+          const lng = user.location.coordinates[0];
+          const city = user.location.city || "";
+          const country = user.location.country || "";
+
+          setLocation({ lat, lng, city, country });
+          setManualLocation({
+            city,
+            country,
+            lat: lat.toString(),
+            lng: lng.toString(),
           });
         }
 
@@ -222,11 +235,21 @@ const ProfileCreation: React.FC = () => {
               `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`,
             );
             const data = await response.json();
+            const city = data.city || data.locality || "";
+            const country = data.countryName || "";
+
             setLocation((prev) => ({
               ...prev,
-              city: data.city || data.locality || "",
-              country: data.countryName || "",
+              city,
+              country,
             }));
+
+            setManualLocation({
+              city,
+              country,
+              lat: latitude.toString(),
+              lng: longitude.toString(),
+            });
           } catch (error) {
             console.error("Reverse geocoding error:", error);
             toast.error("Could not get location details");
@@ -372,10 +395,41 @@ const ProfileCreation: React.FC = () => {
       toast.error("Please upload at least 2 photos");
       return;
     }
-    if (!location.city || location.lat === 0 || location.lng === 0) {
-      toast.error("Please allow location access and wait for it to load");
+
+    let finalLocation = { ...location };
+
+    if (isManualLocation) {
+      if (
+        !manualLocation.city ||
+        !manualLocation.country ||
+        !manualLocation.lat ||
+        !manualLocation.lng
+      ) {
+        toast.error("Please fill in all manual location fields");
+        return;
+      }
+      finalLocation = {
+        city: manualLocation.city,
+        country: manualLocation.country,
+        lat: parseFloat(manualLocation.lat),
+        lng: parseFloat(manualLocation.lng),
+      };
+
+      if (isNaN(finalLocation.lat) || isNaN(finalLocation.lng)) {
+        toast.error("Please enter valid numerical values for Latitude and Longitude");
+        return;
+      }
+    }
+
+    if (
+      !finalLocation.city ||
+      finalLocation.lat === 0 ||
+      finalLocation.lng === 0
+    ) {
+      toast.error("Please allow location access or enter it manually");
       return;
     }
+
     if (gettingLocation) {
       toast.error("Please wait for your location to be determined");
       return;
@@ -392,9 +446,9 @@ const ProfileCreation: React.FC = () => {
         interests: selectedInterests.map((interest) => interest.split(" ")[0]), // Remove emojis
         location: {
           type: "Point",
-          coordinates: [location.lng, location.lat], // [longitude, latitude]
-          city: location.city,
-          country: location.country,
+          coordinates: [finalLocation.lng, finalLocation.lat], // [longitude, latitude]
+          city: finalLocation.city,
+          country: finalLocation.country,
         },
         preferences: {
           genderPreference:
@@ -677,41 +731,114 @@ const ProfileCreation: React.FC = () => {
               <h2>Where are you?</h2>
               <p>Your location helps us find matches nearby.</p>
             </div>
-            <div className="flex items-center gap-3 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg">
-              <Icon name="location_on" className="text-slate-500" />
-              <div className="flex-1">
-                {gettingLocation ? (
-                  <span className="text-slate-600 dark:text-slate-300">
-                    Getting your location...
-                  </span>
-                ) : location.city ? (
-                  <span className="text-slate-900 dark:text-slate-100">
-                    {location.city}, {location.country}
-                  </span>
-                ) : (
-                  <span className="text-slate-500 dark:text-slate-400">
-                    Tap to enable location access
-                  </span>
-                )}
+
+            {!isManualLocation ? (
+              <>
+                <div className="flex items-center gap-3 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                  <Icon name="location_on" className="text-slate-500" />
+                  <div className="flex-1">
+                    {gettingLocation ? (
+                      <span className="text-slate-600 dark:text-slate-300">
+                        Getting your location...
+                      </span>
+                    ) : location.city ? (
+                      <span className="text-slate-900 dark:text-slate-100">
+                        {location.city}, {location.country}
+                      </span>
+                    ) : (
+                      <span className="text-slate-500 dark:text-slate-400">
+                        Tap to enable location access
+                      </span>
+                    )}
+                  </div>
+                  {location.city ? (
+                    <button
+                      onClick={getCurrentLocation}
+                      disabled={gettingLocation}
+                      className="text-blue-500 hover:text-blue-600 disabled:opacity-50"
+                    >
+                      <Icon name="refresh" />
+                    </button>
+                  ) : !locationPermissionDenied ? (
+                    <button
+                      onClick={getCurrentLocation}
+                      disabled={gettingLocation}
+                      className="text-blue-500 hover:text-blue-600 disabled:opacity-50 font-medium"
+                    >
+                      Enable
+                    </button>
+                  ) : null}
+                </div>
+                <button
+                  onClick={() => setIsManualLocation(true)}
+                  className="text-xs text-blue-500 hover:underline text-left mt-1 self-start"
+                >
+                  Enter location manually
+                </button>
+              </>
+            ) : (
+              <div className="flex flex-col gap-4 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="font-semibold">Manual Location</h3>
+                  <button
+                    onClick={() => setIsManualLocation(false)}
+                    className="text-xs text-blue-500 hover:underline"
+                  >
+                    Use Automatic
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <input
+                    type="text"
+                    placeholder="City"
+                    className="p-2 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 outline-none focus:border-blue-500 transition-colors"
+                    value={manualLocation.city}
+                    onChange={(e) =>
+                      setManualLocation((prev) => ({
+                        ...prev,
+                        city: e.target.value,
+                      }))
+                    }
+                  />
+                  <input
+                    type="text"
+                    placeholder="Country"
+                    className="p-2 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 outline-none focus:border-blue-500 transition-colors"
+                    value={manualLocation.country}
+                    onChange={(e) =>
+                      setManualLocation((prev) => ({
+                        ...prev,
+                        country: e.target.value,
+                      }))
+                    }
+                  />
+                  <input
+                    type="text"
+                    placeholder="Latitude"
+                    className="p-2 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 outline-none focus:border-blue-500 transition-colors"
+                    value={manualLocation.lat}
+                    onChange={(e) =>
+                      setManualLocation((prev) => ({
+                        ...prev,
+                        lat: e.target.value,
+                      }))
+                    }
+                  />
+                  <input
+                    type="text"
+                    placeholder="Longitude"
+                    className="p-2 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 outline-none focus:border-blue-500 transition-colors"
+                    value={manualLocation.lng}
+                    onChange={(e) =>
+                      setManualLocation((prev) => ({
+                        ...prev,
+                        lng: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
               </div>
-              {location.city ? (
-                <button
-                  onClick={getCurrentLocation}
-                  disabled={gettingLocation}
-                  className="text-blue-500 hover:text-blue-600 disabled:opacity-50"
-                >
-                  <Icon name="refresh" />
-                </button>
-              ) : !locationPermissionDenied ? (
-                <button
-                  onClick={getCurrentLocation}
-                  disabled={gettingLocation}
-                  className="text-blue-500 hover:text-blue-600 disabled:opacity-50 font-medium"
-                >
-                  Enable
-                </button>
-              ) : null}
-            </div>
+            )}
           </section>
 
           <div className={styles.divider}></div>
