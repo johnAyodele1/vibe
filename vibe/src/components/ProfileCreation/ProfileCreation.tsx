@@ -49,14 +49,117 @@ const ProfileCreation: React.FC = () => {
     lng: "",
   });
 
+  // Hierarchical location states
+  const [countries, setCountries] = useState<any[]>([]);
+  const [states, setStates] = useState<any[]>([]);
+  const [cities, setCities] = useState<any[]>([]);
+  const [selectedCountry, setSelectedCountry] = useState("");
+  const [selectedState, setSelectedState] = useState("");
+  const [selectedCity, setSelectedCity] = useState("");
+  const [isGeocoding, setIsGeocoding] = useState(false);
+  const [isLoadingLocationData, setIsLoadingLocationData] = useState(false);
+
   // Slider refs
   const ageSliderRef = React.useRef<HTMLDivElement>(null);
   const distanceSliderRef = React.useRef<HTMLDivElement>(null);
 
-  // Load existing profile data on component mount
+  // Load existing profile data and initial countries on component mount
   useEffect(() => {
     loadExistingProfile();
+    fetchCountries();
   }, []);
+
+  const fetchCountries = async () => {
+    try {
+      const response = await fetch("https://countriesnow.space/api/v0.1/countries");
+      const data = await response.json();
+      if (!data.error) {
+        setCountries(data.data);
+      }
+    } catch (error) {
+      console.error("Error fetching countries:", error);
+    }
+  };
+
+  const fetchStates = async (countryName: string) => {
+    setIsLoadingLocationData(true);
+    try {
+      const response = await fetch("https://countriesnow.space/api/v0.1/countries/states", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ country: countryName }),
+      });
+      const data = await response.json();
+      if (!data.error) {
+        setStates(data.data.states);
+      } else {
+        setStates([]);
+      }
+    } catch (error) {
+      console.error("Error fetching states:", error);
+      setStates([]);
+    } finally {
+      setIsLoadingLocationData(false);
+    }
+  };
+
+  const fetchCities = async (countryName: string, stateName: string) => {
+    setIsLoadingLocationData(true);
+    try {
+      const response = await fetch("https://countriesnow.space/api/v0.1/countries/state/cities", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ country: countryName, state: stateName }),
+      });
+      const data = await response.json();
+      if (!data.error) {
+        setCities(data.data.map((city: string) => ({ name: city })));
+      } else {
+        setCities([]);
+      }
+    } catch (error) {
+      console.error("Error fetching cities:", error);
+      setCities([]);
+    } finally {
+      setIsLoadingLocationData(false);
+    }
+  };
+
+  const geocodeLocation = async (city: string, state: string, country: string) => {
+    setIsGeocoding(true);
+    try {
+      const query = `${city}, ${state}, ${country}`;
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`,
+      );
+      const data = await response.json();
+      if (data && data.length > 0) {
+        const { lat, lon } = data[0];
+        setManualLocation((prev) => ({
+          ...prev,
+          city,
+          country,
+          lat,
+          lng: lon,
+        }));
+        // Also update the main location state
+        setLocation((prev) => ({
+          ...prev,
+          city,
+          country,
+          lat: parseFloat(lat),
+          lng: parseFloat(lon),
+        }));
+      } else {
+        toast.error("Could not find coordinates for this location.");
+      }
+    } catch (error) {
+      console.error("Geocoding error:", error);
+      toast.error("Error determining location coordinates.");
+    } finally {
+      setIsGeocoding(false);
+    }
+  };
 
   // Load existing profile data if user has partial profile
   const loadExistingProfile = async () => {
@@ -277,6 +380,7 @@ const ProfileCreation: React.FC = () => {
           toast.error(errorMessage);
           setGettingLocation(false);
         },
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 300000 },
       );
     } else {
       toast.error("Geolocation is not supported by this browser");
@@ -779,7 +883,12 @@ const ProfileCreation: React.FC = () => {
             ) : (
               <div className="flex flex-col gap-4 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg">
                 <div className="flex justify-between items-center mb-2">
-                  <h3 className="font-semibold">Manual Location</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold">Manual Location</h3>
+                    {(isLoadingLocationData || isGeocoding) && (
+                      <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                    )}
+                  </div>
                   <button
                     onClick={() => setIsManualLocation(false)}
                     className="text-xs text-blue-500 hover:underline"
@@ -787,55 +896,73 @@ const ProfileCreation: React.FC = () => {
                     Use Automatic
                   </button>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <input
-                    type="text"
-                    placeholder="City"
-                    className="p-2 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 outline-none focus:border-blue-500 transition-colors"
-                    value={manualLocation.city}
-                    onChange={(e) =>
-                      setManualLocation((prev) => ({
-                        ...prev,
-                        city: e.target.value,
-                      }))
-                    }
-                  />
-                  <input
-                    type="text"
-                    placeholder="Country"
-                    className="p-2 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 outline-none focus:border-blue-500 transition-colors"
-                    value={manualLocation.country}
-                    onChange={(e) =>
-                      setManualLocation((prev) => ({
-                        ...prev,
-                        country: e.target.value,
-                      }))
-                    }
-                  />
-                  <input
-                    type="text"
-                    placeholder="Latitude"
-                    className="p-2 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 outline-none focus:border-blue-500 transition-colors"
-                    value={manualLocation.lat}
-                    onChange={(e) =>
-                      setManualLocation((prev) => ({
-                        ...prev,
-                        lat: e.target.value,
-                      }))
-                    }
-                  />
-                  <input
-                    type="text"
-                    placeholder="Longitude"
-                    className="p-2 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 outline-none focus:border-blue-500 transition-colors"
-                    value={manualLocation.lng}
-                    onChange={(e) =>
-                      setManualLocation((prev) => ({
-                        ...prev,
-                        lng: e.target.value,
-                      }))
-                    }
-                  />
+                <div className="flex flex-col gap-3">
+                  <select
+                    className="p-2 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 outline-none focus:border-blue-500 transition-colors w-full"
+                    value={selectedCountry}
+                    onChange={(e) => {
+                      const country = e.target.value;
+                      setSelectedCountry(country);
+                      setSelectedState("");
+                      setSelectedCity("");
+                      setStates([]);
+                      setCities([]);
+                      if (country) fetchStates(country);
+                    }}
+                  >
+                    <option value="">Select Country</option>
+                    {countries.map((c: any) => (
+                      <option key={c.iso2} value={c.country}>
+                        {c.country}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    className="p-2 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 outline-none focus:border-blue-500 transition-colors w-full disabled:opacity-50"
+                    value={selectedState}
+                    disabled={!selectedCountry || states.length === 0}
+                    onChange={(e) => {
+                      const state = e.target.value;
+                      setSelectedState(state);
+                      setSelectedCity("");
+                      setCities([]);
+                      if (state) fetchCities(selectedCountry, state);
+                    }}
+                  >
+                    <option value="">Select State</option>
+                    {states.map((s: any) => (
+                      <option key={s.state_code || s.name} value={s.name}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    className="p-2 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 outline-none focus:border-blue-500 transition-colors w-full disabled:opacity-50"
+                    value={selectedCity}
+                    disabled={!selectedState || cities.length === 0}
+                    onChange={(e) => {
+                      const city = e.target.value;
+                      setSelectedCity(city);
+                      if (city)
+                        geocodeLocation(city, selectedState, selectedCountry);
+                    }}
+                  >
+                    <option value="">Select City/LGA</option>
+                    {cities.map((c: any) => (
+                      <option key={c.name} value={c.name}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  {manualLocation.lat && manualLocation.lng && (
+                    <div className="text-[10px] text-slate-400 mt-1 flex justify-between px-1">
+                      <span>Lat: {parseFloat(manualLocation.lat).toFixed(4)}</span>
+                      <span>Lng: {parseFloat(manualLocation.lng).toFixed(4)}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
