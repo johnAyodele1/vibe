@@ -16,8 +16,15 @@ const userSchema = new mongoose.Schema(
     },
     password: {
       type: String,
-      required: [true, "Password is required"],
+      required: function () {
+        return !this.googleId;
+      },
       minlength: [6, "Password must be at least 6 characters long"],
+    },
+    googleId: {
+      type: String,
+      unique: true,
+      sparse: true,
     },
     firstName: {
       type: String,
@@ -32,11 +39,15 @@ const userSchema = new mongoose.Schema(
     },
     dateOfBirth: {
       type: Date,
-      required: [true, "Date of birth is required"],
+      required: function () {
+        return !this.googleId;
+      },
     },
     gender: {
       type: String,
-      required: [true, "Gender is required"],
+      required: function () {
+        return !this.googleId;
+      },
       enum: ["Male", "Female", "Non-binary", "Other"],
     },
     bio: {

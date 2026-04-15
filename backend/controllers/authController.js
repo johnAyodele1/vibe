@@ -1,6 +1,9 @@
 const bcrypt = require("bcryptjs");
 const { body, validationResult } = require("express-validator");
+const { OAuth2Client } = require("google-auth-library");
 const User = require("../models/User");
+
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const {
   generateAccessToken,
   generateRefreshToken,
@@ -266,12 +269,105 @@ const me = async (req, res) => {
   }
 };
 
+// @desc    Google OAuth Login/Signup
+// @access  Public
+const googleLogin = async (req, res) => {
+  try {
+    const { idToken } = req.body;
+
+    if (!idToken) {
+      return res.status(400).json({
+        success: false,
+        message: "Google ID Token is required",
+      });
+    }
+
+    // Verify Google ID Token
+    const ticket = await client.verifyIdToken({
+      idToken,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    const { sub: googleId, email, given_name, family_name, picture } = payload;
+
+    // Check if user already exists by googleId
+    let user = await User.findOne({ googleId });
+
+    if (!user) {
+      // Check if user exists by email (link account if not already linked)
+      user = await User.findOne({ email });
+
+      if (user) {
+        user.googleId = googleId;
+        if (!user.photos || user.photos.length === 0) {
+          user.photos = [{ url: picture, isMain: true }];
+        }
+        await user.save();
+      } else {
+        // Create new user
+        user = new User({
+          email,
+          googleId,
+          firstName: given_name || "User",
+          lastName: family_name || "",
+          photos: [{ url: picture, isMain: true }],
+          // dateOfBirth and gender are optional for now as per schema change
+        });
+        await user.save();
+      }
+    }
+
+    // Generate tokens
+    const accessToken = generateAccessToken(user._id);
+    const refreshToken = generateRefreshToken(user._id);
+
+    // Update last active
+    user.lastActive = new Date();
+    user.isOnline = true;
+    await user.save();
+
+    res.json({
+      success: true,
+      message: "Google login successful",
+      data: {
+        user: {
+          id: user._id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          dateOfBirth: user.dateOfBirth,
+          age: user.age,
+          gender: user.gender,
+          bio: user.bio,
+          photos: user.photos,
+          location: user.location,
+          isVerified: user.isVerified,
+          isPremium: user.isPremium,
+          profileCompletion: user.profileCompletion,
+        },
+        tokens: {
+          accessToken,
+          refreshToken,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Google login error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error during Google login",
+    });
+  }
+};
+
 module.exports = {
   signup,
   login,
   refresh,
   logout,
   me,
+  googleLogin,
   signupValidation,
   loginValidation,
 };
