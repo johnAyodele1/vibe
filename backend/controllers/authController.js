@@ -3,7 +3,10 @@ const { body, validationResult } = require("express-validator");
 const { OAuth2Client } = require("google-auth-library");
 const User = require("../models/User");
 
-const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const client = new OAuth2Client(
+  process.env.GOOGLE_CLIENT_ID,
+  process.env.GOOGLE_CLIENT_SECRET
+);
 const {
   generateAccessToken,
   generateRefreshToken,
