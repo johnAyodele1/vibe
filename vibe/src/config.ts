@@ -1,9 +1,5 @@
-// Use full backend URL for production, relative path for development
-export const API_BASE_URL = import.meta.env.PROD
-  ? "https://zippo-r8hk.onrender.com/api"
-  : "/api";
+// Use environment variables for API and Socket URLs, with sensible fallbacks
+export const API_BASE_URL = import.meta.env.VITE_API_URL || "/api";
 
 // Socket URL for real-time connections
-export const SOCKET_URL = import.meta.env.PROD
-  ? "https://zippo-r8hk.onrender.com"
-  : undefined;
+export const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || (import.meta.env.PROD ? window.location.origin : undefined);
