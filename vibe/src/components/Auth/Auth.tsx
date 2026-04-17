@@ -278,16 +278,13 @@ const Connect: React.FC = () => {
 
         {/* Social Login */}
         <div className={styles.socialRow}>
-          <button
-            onClick={handleGoogleLogin}
-            className="flex items-center justify-center gap-2 w-full bg-white text-black py-2 rounded-full font-medium hover:bg-gray-100 transition-colors"
-          >
+          <button onClick={handleGoogleLogin} className={styles.googleBtn}>
             <img
               src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
               alt="Google"
-              className="w-5 h-5"
+              className={styles.googleIcon}
             />
-            Continue with Google
+            <span>Continue with Google</span>
           </button>
         </div>
 

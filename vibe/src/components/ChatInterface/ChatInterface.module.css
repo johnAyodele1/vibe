@@ -19,6 +19,7 @@
   background-color: var(--bg-app);
   color: var(--text-body);
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -102,6 +103,9 @@
   transform: translateY(-50%);
   color: #94a3b8;
   pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .searchInput {
@@ -177,8 +181,8 @@
 }
 
 .avatarContainer {
-  width: 64px;
-  height: 64px;
+  width: 60px;
+  height: 60px;
   border-radius: 50%;
   border: 2px solid var(--bg-app);
   overflow: hidden;

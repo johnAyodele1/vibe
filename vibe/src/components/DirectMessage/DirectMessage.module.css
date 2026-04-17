@@ -55,7 +55,7 @@
   color: var(--text-white);
   min-height: 100vh;
   height: 100dvh;
-  overscroll-behavior: contain;
+  overscroll-behavior: none;
   display: flex;
   flex-direction: column;
   position: relative;
@@ -203,8 +203,9 @@
   flex: 1;
   overflow-y: auto;
   width: 100%;
-  padding: 0 16px 100px 16px;
+  padding: 0 16px 20px 16px;
   background-color: var(--color-bg-dark);
+  -webkit-overflow-scrolling: touch;
 }
 
 .dateDivider {
@@ -324,18 +325,11 @@
 }
 
 .footer {
-  position: fixed;
-  bottom: 0;
-  left: 0;
+  flex-shrink: 0;
   width: 100%;
-  padding: 8px 16px 24px 16px;
+  padding: 8px 16px calc(12px + env(safe-area-inset-bottom, 12px)) 16px;
   z-index: 30;
-  background: linear-gradient(
-    to top,
-    var(--color-bg-dark) 40%,
-    rgba(19, 19, 21, 0.8) 80%,
-    transparent 100%
-  );
+  background-color: var(--color-bg-dark);
 }
 
 .inputBar {
