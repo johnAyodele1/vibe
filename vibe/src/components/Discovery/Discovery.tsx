@@ -30,6 +30,7 @@ const Discovery: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentProfileIndex, setCurrentProfileIndex] = useState(0);
+  const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartX, setDragStartX] = useState(0);
   const [dragOffset, setDragOffset] = useState(0);
@@ -71,6 +72,22 @@ const Discovery: React.FC = () => {
 
   const currentProfile = users[currentProfileIndex];
   const nextProfile = users[(currentProfileIndex + 1) % users.length];
+
+  // Photo navigation
+  const nextPhoto = (e: React.MouseEvent | React.TouchEvent) => {
+    e.stopPropagation();
+    if (!currentProfile?.photos) return;
+    if (currentPhotoIndex < currentProfile.photos.length - 1) {
+      setCurrentPhotoIndex((prev) => prev + 1);
+    }
+  };
+
+  const prevPhoto = (e: React.MouseEvent | React.TouchEvent) => {
+    e.stopPropagation();
+    if (currentPhotoIndex > 0) {
+      setCurrentPhotoIndex((prev) => prev - 1);
+    }
+  };
 
   const handleSwipeStart = (clientX: number) => {
     setIsDragging(true);
@@ -126,6 +143,7 @@ const Discovery: React.FC = () => {
         }, 1000);
         setTimeout(() => {
           setCurrentProfileIndex((prevIndex) => (prevIndex + 1) % users.length);
+          setCurrentPhotoIndex(0);
         }, 500);
         const conversationId = data.data.conversationId;
         if (conversationId && conversationId !== "null") {
@@ -165,6 +183,7 @@ const Discovery: React.FC = () => {
       }, 1000);
       setTimeout(() => {
         setCurrentProfileIndex((prevIndex) => (prevIndex + 1) % users.length);
+        setCurrentPhotoIndex(0);
       }, 500);
     } catch (error) {
       // Optionally show error toast
@@ -332,12 +351,12 @@ const Discovery: React.FC = () => {
               {/* 3. The Front Profile (Interactive) */}
               {currentProfile &&
                 currentProfile.photos &&
-                currentProfile.photos[0] && (
+                currentProfile.photos[currentPhotoIndex] && (
                   <div
                     ref={cardRef}
                     className={`${styles.card} ${styles.cardFront}`}
                     style={{
-                      backgroundImage: `url('${currentProfile.photos[0].url}')`,
+                      backgroundImage: `url('${currentProfile.photos[currentPhotoIndex].url}')`,
                       transform: isDragging
                         ? `translateX(${dragOffset}px) rotate(${
                             dragOffset * 0.1
@@ -350,22 +369,61 @@ const Discovery: React.FC = () => {
                     onTouchEnd={handleTouchEnd}
                     onMouseDown={handleMouseDown}
                   >
+                    {/* Swipe Feedback */}
+                    {isDragging && dragOffset > 50 && (
+                      <div className={`${styles.stamp} ${styles.likeStamp}`}>
+                        LIKE
+                      </div>
+                    )}
+                    {isDragging && dragOffset < -50 && (
+                      <div className={`${styles.stamp} ${styles.nopeStamp}`}>
+                        NOPE
+                      </div>
+                    )}
+
                     <div className={styles.gradientOverlay}></div>
+
+                    {/* Photo Navigation Indicators */}
+                    {currentProfile.photos.length > 1 && (
+                      <div className={styles.photoIndicators}>
+                        {currentProfile.photos.map((_, idx) => (
+                          <div
+                            key={idx}
+                            className={`${styles.indicator} ${
+                              idx === currentPhotoIndex ? styles.active : ""
+                            }`}
+                          />
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Tap Areas for Photo Navigation */}
+                    <div className={styles.tapAreas}>
+                      <div
+                        className={styles.tapLeft}
+                        onClick={prevPhoto}
+                        onTouchStart={(e) => e.stopPropagation()}
+                      />
+                      <div
+                        className={styles.tapRight}
+                        onClick={nextPhoto}
+                        onTouchStart={(e) => e.stopPropagation()}
+                      />
+                    </div>
 
                     {/* Card Information */}
                     <div className={styles.cardContent}>
                       <div className={styles.nameRow}>
                         <h2 className={styles.name}>
-                          {currentProfile.firstName} {currentProfile.lastName},{" "}
+                          {currentProfile.firstName},{" "}
                           {currentProfile.age}
                         </h2>
                         <span
                           className="material-symbols-outlined"
                           style={{
-                            fontSize: "20px",
+                            fontSize: "24px",
                             color: "#60a5fa",
                             fontVariationSettings: "'FILL' 1",
-                            marginBottom: "4px",
                           }}
                         >
                           verified
@@ -373,53 +431,36 @@ const Discovery: React.FC = () => {
                       </div>
 
                       <div className={styles.infoRow}>
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "4px",
-                          }}
-                        >
-                          <span className={styles.statusDot}></span>
-                          <span style={{ fontWeight: 600 }}>Active Now</span>
-                        </div>
-                        <span>•</span>
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "2px",
-                          }}
-                        >
+                        <div className={styles.locationInfo}>
                           <span
                             className="material-symbols-outlined"
-                            style={{ fontSize: "16px" }}
+                            style={{ fontSize: "18px" }}
                           >
                             location_on
                           </span>
                           <span>
-                            {currentProfile.location.city},{" "}
-                            {currentProfile.location.state}
+                            {currentProfile.location.city}
                           </span>
+                        </div>
+                        <div className={styles.activeStatus}>
+                          <span className={styles.statusDot}></span>
+                          <span>Active Now</span>
                         </div>
                       </div>
 
                       <p className={styles.bio}>{currentProfile.bio}</p>
 
                       <div className={styles.tagContainer}>
-                        {currentProfile.interests.map((interest: string) => (
+                        {currentProfile.interests.slice(0, 3).map((interest: string) => (
                           <div key={interest} className={styles.tag}>
                             {interest}
                           </div>
                         ))}
-                      </div>
-
-                      <div className={styles.expandIcon}>
-                        <span
-                          className={`material-symbols-outlined ${styles.bounce}`}
-                        >
-                          keyboard_arrow_down
-                        </span>
+                        {currentProfile.interests.length > 3 && (
+                          <div className={styles.tag}>
+                            +{currentProfile.interests.length - 3}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
