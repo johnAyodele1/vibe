@@ -83,14 +83,14 @@
   position: sticky;
   top: 0;
   padding: 16px;
-  background-color: var(--bg-app);
   z-index: 10;
   backdrop-filter: blur(12px);
-  background-color: rgba(248, 245, 246, 0.95);
+  background-color: rgba(248, 245, 246, 0.85);
+  transition: background-color 0.2s;
 }
 
 .dark .searchContainer {
-  background-color: rgba(34, 16, 20, 0.95);
+  background-color: rgba(18, 8, 10, 0.85); /* Matches --background-discovery with transparency */
 }
 
 .searchWrapper {
@@ -99,19 +99,20 @@
 
 .searchIcon {
   position: absolute;
-  left: 16px;
+  left: 18px;
   top: 50%;
   transform: translateY(-50%);
-  color: #94a3b8;
+  color: var(--text-muted);
   pointer-events: none;
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 1;
 }
 
 .searchInput {
   width: 100%;
-  padding: 14px 16px 14px 44px;
+  padding: 14px 16px 14px 52px;
   background-color: var(--bg-surface);
   border: none;
   border-radius: 9999px;
@@ -120,7 +121,12 @@
   color: var(--text-body);
   outline: none;
   box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  transition: box-shadow 0.2s;
+  transition: all 0.2s;
+}
+
+.searchInput::placeholder {
+  color: var(--text-muted);
+  opacity: 0.7;
 }
 
 .searchInput:focus {
