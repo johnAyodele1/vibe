@@ -23,10 +23,11 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  overscroll-behavior: none;
 }
 
 .dark {
-  --bg-app: var(--color-bg-dark);
+  --bg-app: var(--background-discovery); /* Use the premium dark background to match Discovery */
   --bg-surface: rgba(255, 255, 255, 0.05);
   --text-body: var(--text-inverse);
   --text-muted: #94a3b8;

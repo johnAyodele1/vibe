@@ -64,6 +64,20 @@ const ChatInterface: React.FC = () => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Synchronize body background color
+  useEffect(() => {
+    if (isDarkMode) {
+      const originalColor = document.body.style.backgroundColor;
+      const discoveryColor = getComputedStyle(document.documentElement).getPropertyValue('--background-discovery').trim();
+      if (discoveryColor) {
+        document.body.style.backgroundColor = discoveryColor;
+      }
+      return () => {
+        document.body.style.backgroundColor = originalColor;
+      };
+    }
+  }, [isDarkMode]);
+
   // Fetch matches and conversations
   useEffect(() => {
     const fetchData = async () => {

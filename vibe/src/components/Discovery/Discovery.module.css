@@ -18,7 +18,7 @@
 /* --- Variables & Theme --- */
 .container {
   --primary: #f42559;
-  --bg-dark: #12080a; /* Darker, more premium background */
+  --bg-dark: var(--background-discovery); /* Darker, more premium background */
   --surface-dark: #1f1114;
   --surface-deep: #2d1b1f;
   --text-main: #ffffff;
