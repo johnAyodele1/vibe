@@ -5,6 +5,8 @@
 :root {
   --primary: #f42559;
   --background-dark: #221014;
+  --background-discovery: #12080a;
+  --background-messenger: #131315;
 }
 
 /* Custom scrollbar hiding for cleaner mobile look */

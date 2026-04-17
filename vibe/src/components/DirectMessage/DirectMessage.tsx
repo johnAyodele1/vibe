@@ -84,6 +84,18 @@ const DirectMessage: React.FC = () => {
 
   console.log("DirectMessage rendered with conversationId:", conversationId);
 
+  // Synchronize body background color
+  useEffect(() => {
+    const originalColor = document.body.style.backgroundColor;
+    const messengerColor = getComputedStyle(document.documentElement).getPropertyValue('--background-messenger').trim();
+    if (messengerColor) {
+      document.body.style.backgroundColor = messengerColor;
+    }
+    return () => {
+      document.body.style.backgroundColor = originalColor;
+    };
+  }, []);
+
   // Get the other participant
   const otherParticipant = conversation?.participantInfo.find(
     (p) => p.user._id !== currentUserId,

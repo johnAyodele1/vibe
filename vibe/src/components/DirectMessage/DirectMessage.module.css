@@ -38,7 +38,7 @@
 .container {
   --color-primary: #f42559;
   --color-primary-dark: #d11145;
-  --color-bg-dark: #131315;
+  --color-bg-dark: var(--background-messenger);
   --color-surface-dark: #1e1e22;
   --color-bubble-received: #3d545d;
   --color-online: #38bdf8;
