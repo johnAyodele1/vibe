@@ -28,17 +28,6 @@ const BottomNavigation: React.FC<BottomNavigationProps> = ({
           className={styles.navBtn}
           onClick={() => navigate("/discovery")}
         >
-          <Icon
-            name="style"
-            className={`text-[28px] ${
-              activeTab === "discovery" ? "text-primary" : "text-gray-500"
-            } hover:text-white transition-colors`}
-          />
-        </button>
-        <button
-          className={styles.navBtn}
-          onClick={() => navigate("/discovery")}
-        >
           {notificationCount > 0 && (
             <div className="absolute top-3 right-3 size-2.5 bg-primary rounded-full border-2 border-[#181113]"></div>
           )}
