@@ -5,8 +5,8 @@ const helmet = require("helmet");
 const compression = require("compression");
 const rateLimit = require("express-rate-limit");
 const session = require("express-session");
-const passport = require("./config/passport");
 require("dotenv").config();
+const passport = require("./config/passport");
 
 const app = express();
 const http = require("http");
