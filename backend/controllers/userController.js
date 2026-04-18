@@ -59,7 +59,6 @@ const discover = async (req, res) => {
     const currentUser = await User.findById(req.user._id);
 
     const query = {
-      _id: { $ne: req.user._id },
       gender:
         currentUser.preferences.genderPreference === "Everyone"
           ? { $exists: true }
@@ -80,6 +79,7 @@ const discover = async (req, res) => {
         ),
       },
       _id: {
+        $ne: req.user._id,
         $nin: [
           ...currentUser.likedUsers,
           ...currentUser.dislikedUsers,
