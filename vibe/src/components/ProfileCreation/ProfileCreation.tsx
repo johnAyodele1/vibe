@@ -27,10 +27,6 @@ const ProfileCreation: React.FC = () => {
   const [activeGender, setActiveGender] = useState("Women");
   const [ageRange, setAgeRange] = useState({ min: 18, max: 28 });
   const [distance, setDistance] = useState(25);
-  const [dragging, setDragging] = useState<{
-    type: "ageMin" | "ageMax" | "distance" | null;
-    sliderRef: HTMLElement | null;
-  }>({ type: null, sliderRef: null });
   const [bio, setBio] = useState("");
   const [location, setLocation] = useState({
     lat: 0,
@@ -58,10 +54,6 @@ const ProfileCreation: React.FC = () => {
   const [selectedCity, setSelectedCity] = useState("");
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [isLoadingLocationData, setIsLoadingLocationData] = useState(false);
-
-  // Slider refs
-  const ageSliderRef = React.useRef<HTMLDivElement>(null);
-  const distanceSliderRef = React.useRef<HTMLDivElement>(null);
 
   // Load existing profile data and initial countries on component mount
   useEffect(() => {
@@ -254,50 +246,6 @@ const ProfileCreation: React.FC = () => {
     }
   };
 
-  // Update slider positions when values change
-  useEffect(() => {
-    if (ageSliderRef.current) {
-      const minPos = ((ageRange.min - 18) / (100 - 18)) * 100;
-      const maxPos = ((ageRange.max - 18) / (100 - 18)) * 100;
-      const fillWidth = maxPos - minPos;
-
-      const fill = ageSliderRef.current.querySelector(
-        `.${styles.sliderFill}`,
-      ) as HTMLElement;
-      const handleMin = ageSliderRef.current.querySelector(
-        '[data-handle="ageMin"]',
-      ) as HTMLElement;
-      const handleMax = ageSliderRef.current.querySelector(
-        '[data-handle="ageMax"]',
-      ) as HTMLElement;
-
-      if (fill) {
-        fill.style.left = `${minPos}%`;
-        fill.style.width = `${fillWidth}%`;
-      }
-      if (handleMin) handleMin.style.left = `${minPos}%`;
-      if (handleMax) handleMax.style.left = `${maxPos}%`;
-    }
-  }, [ageRange]);
-
-  useEffect(() => {
-    if (distanceSliderRef.current) {
-      const pos = ((distance - 1) / (500 - 1)) * 100;
-
-      const fill = distanceSliderRef.current.querySelector(
-        `.${styles.sliderFill}`,
-      ) as HTMLElement;
-      const handle = distanceSliderRef.current.querySelector(
-        `.${styles.sliderHandle}`,
-      ) as HTMLElement;
-
-      if (fill) {
-        fill.style.width = `${pos}%`;
-      }
-      if (handle) handle.style.left = `${pos}%`;
-    }
-  }, [distance]);
-
   // Helper function to get platform-specific location settings instructions
   const getLocationSettingsInstructions = () => {
     const userAgent = navigator.userAgent.toLowerCase();
@@ -445,52 +393,6 @@ const ProfileCreation: React.FC = () => {
         : [...prev, interest],
     );
   };
-
-  // Slider interaction handlers
-  const startDrag = (
-    type: "ageMin" | "ageMax" | "distance",
-    sliderRef: HTMLElement,
-  ) => {
-    setDragging({ type, sliderRef });
-  };
-
-  const handleMouseMove = (e: MouseEvent) => {
-    if (!dragging.sliderRef || !dragging.type) return;
-
-    const rect = dragging.sliderRef.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const percentage = Math.max(0, Math.min(1, x / rect.width));
-
-    if (dragging.type === "ageMin") {
-      const newMin = Math.round(18 + percentage * (ageRange.max - 18));
-      setAgeRange((prev) => ({ ...prev, min: Math.min(newMin, prev.max - 1) }));
-    } else if (dragging.type === "ageMax") {
-      const newMax = Math.round(18 + percentage * (100 - 18));
-      setAgeRange((prev) => ({ ...prev, max: Math.max(newMax, prev.min + 1) }));
-    } else if (dragging.type === "distance") {
-      const newDistance = Math.round(1 + percentage * 499);
-      setDistance(newDistance);
-    }
-  };
-
-  const handleMouseUp = () => {
-    setDragging({ type: null, sliderRef: null });
-  };
-
-  useEffect(() => {
-    const handleMouseMoveWrapper = (e: MouseEvent) => handleMouseMove(e);
-    const handleMouseUpWrapper = () => handleMouseUp();
-
-    if (dragging.sliderRef) {
-      document.addEventListener("mousemove", handleMouseMoveWrapper);
-      document.addEventListener("mouseup", handleMouseUpWrapper);
-    }
-
-    return () => {
-      document.removeEventListener("mousemove", handleMouseMoveWrapper);
-      document.removeEventListener("mouseup", handleMouseUpWrapper);
-    };
-  }, [dragging]);
 
   // Handle form submission
   const handleSubmit = async () => {
@@ -767,29 +669,44 @@ const ProfileCreation: React.FC = () => {
                   {ageRange.min} - {ageRange.max}
                 </span>
               </div>
-              <div className={styles.sliderTrack} ref={ageSliderRef}>
+              <div className={styles.sliderTrack}>
                 <div className={styles.sliderRail}></div>
-                <div className={styles.sliderFill}></div>
-                {/* Handle Min */}
                 <div
-                  data-handle="ageMin"
-                  className={styles.sliderHandle}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    const track = e.currentTarget.parentElement as HTMLElement;
-                    startDrag("ageMin", track);
+                  className={styles.sliderFill}
+                  style={{
+                    left: `${((ageRange.min - 18) / (100 - 18)) * 100}%`,
+                    right: `${100 - ((ageRange.max - 18) / (100 - 18)) * 100}%`,
+                    width: "auto",
                   }}
                 ></div>
-                {/* Handle Max */}
-                <div
-                  data-handle="ageMax"
-                  className={styles.sliderHandle}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    const track = e.currentTarget.parentElement as HTMLElement;
-                    startDrag("ageMax", track);
+                <input
+                  type="range"
+                  min="18"
+                  max="100"
+                  value={ageRange.min}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value);
+                    setAgeRange((prev) => ({
+                      ...prev,
+                      min: Math.min(val, prev.max - 1),
+                    }));
                   }}
-                ></div>
+                  className={styles.sliderInput}
+                />
+                <input
+                  type="range"
+                  min="18"
+                  max="100"
+                  value={ageRange.max}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value);
+                    setAgeRange((prev) => ({
+                      ...prev,
+                      max: Math.max(val, prev.min + 1),
+                    }));
+                  }}
+                  className={styles.sliderInput}
+                />
               </div>
             </div>
 
@@ -801,28 +718,24 @@ const ProfileCreation: React.FC = () => {
                 </span>
                 <span className={styles.sliderBadge}>Up to {distance}km</span>
               </div>
-              <div
-                className={styles.sliderTrack}
-                ref={distanceSliderRef}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const x = e.clientX - rect.left;
-                  const percentage = Math.max(0, Math.min(1, x / rect.width));
-                  const newDistance = Math.round(1 + percentage * 499);
-                  setDistance(newDistance);
-                }}
-              >
+              <div className={styles.sliderTrack}>
                 <div className={styles.sliderRail}></div>
-                <div className={styles.sliderFill}></div>
                 <div
-                  className={styles.sliderHandle}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    const track = e.currentTarget.parentElement as HTMLElement;
-                    startDrag("distance", track);
+                  className={styles.sliderFill}
+                  style={{
+                    width: `${((distance - 1) / (500 - 1)) * 100}%`,
                   }}
                 ></div>
+                <input
+                  type="range"
+                  min="1"
+                  max="500"
+                  value={distance}
+                  onChange={(e) => {
+                    setDistance(parseInt(e.target.value));
+                  }}
+                  className={styles.sliderInput}
+                />
               </div>
             </div>
           </section>
