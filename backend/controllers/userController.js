@@ -1,4 +1,5 @@
 const User = require("../models/User");
+const mongoose = require("mongoose");
 
 // @desc    Get current user profile
 // @access  Private
@@ -129,6 +130,13 @@ const like = async (req, res) => {
   try {
     const targetUserId = req.params.id;
 
+    if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user ID",
+      });
+    }
+
     if (targetUserId === req.user._id.toString()) {
       return res.status(400).json({
         success: false,
@@ -147,7 +155,7 @@ const like = async (req, res) => {
     }
 
     // Check if already liked
-    if (currentUser.likedUsers.includes(targetUserId)) {
+    if (currentUser.likedUsers.some((id) => id.toString() === targetUserId)) {
       return res.status(400).json({
         success: false,
         message: "User already liked",
@@ -241,6 +249,13 @@ const dislike = async (req, res) => {
   try {
     const targetUserId = req.params.id;
 
+    if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user ID",
+      });
+    }
+
     if (targetUserId === req.user._id.toString()) {
       return res.status(400).json({
         success: false,
@@ -251,7 +266,7 @@ const dislike = async (req, res) => {
     const currentUser = await User.findById(req.user._id);
 
     // Check if already disliked
-    if (currentUser.dislikedUsers.includes(targetUserId)) {
+    if (currentUser.dislikedUsers.some((id) => id.toString() === targetUserId)) {
       return res.status(400).json({
         success: false,
         message: "User already disliked",
@@ -272,8 +287,16 @@ const dislike = async (req, res) => {
 // @desc    Super like (Favourite) a user
 // @access  Private
 const superLike = async (req, res) => {
+  console.log(`Super like request received for target user: ${req.params.id}`);
   try {
     const targetUserId = req.params.id;
+
+    if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user ID",
+      });
+    }
 
     if (targetUserId === req.user._id.toString()) {
       return res.status(400).json({
@@ -285,16 +308,19 @@ const superLike = async (req, res) => {
     // Check if target user exists
     const targetUser = await User.findById(targetUserId);
     if (!targetUser) {
+      console.log(`Target user not found: ${targetUserId}`);
       return res.status(404).json({
         success: false,
-        message: "User not found",
+        message: `User not found with ID: ${targetUserId}`,
       });
     }
 
     const currentUser = await User.findById(req.user._id);
 
     // Check if already favourited
-    if (currentUser.favouritedUsers.includes(targetUserId)) {
+    if (
+      currentUser.favouritedUsers.some((id) => id.toString() === targetUserId)
+    ) {
       return res.status(400).json({
         success: false,
         message: "User already in favourites",
