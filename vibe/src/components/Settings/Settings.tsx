@@ -50,6 +50,10 @@ const Settings: React.FC = () => {
   const [isDark, setIsDark] = useState(true); // Default to dark based on HTML
   const [user, setUser] = useState<User | null>(null);
 
+  // Local state for sliders to ensure smooth dragging
+  const [localMaxDistance, setLocalMaxDistance] = useState<number>(50);
+  const [localAgeRange, setLocalAgeRange] = useState({ min: 18, max: 50 });
+
   const fetchUserProfile = async () => {
     try {
       const token = localStorage.getItem("accessToken");
@@ -67,7 +71,14 @@ const Settings: React.FC = () => {
       const data = await response.json();
 
       if (data.success) {
-        setUser(data.data.user);
+        const userData = data.data.user;
+        setUser(userData);
+        if (userData.preferences) {
+          setLocalMaxDistance(userData.preferences.maxDistance || 50);
+          setLocalAgeRange(
+            userData.preferences.ageRange || { min: 18, max: 50 },
+          );
+        }
       } else {
         toast.error("Failed to load profile");
       }
@@ -175,6 +186,31 @@ const Settings: React.FC = () => {
   useEffect(() => {
     fetchUserProfile();
   }, []);
+
+  // Debounced update for settings
+  useEffect(() => {
+    if (!user) return;
+
+    const hasDistanceChanged =
+      localMaxDistance !== user.preferences.maxDistance;
+    const hasAgeRangeChanged =
+      localAgeRange.min !== user.preferences.ageRange.min ||
+      localAgeRange.max !== user.preferences.ageRange.max;
+
+    if (!hasDistanceChanged && !hasAgeRangeChanged) return;
+
+    const timer = setTimeout(() => {
+      updateUserSettings({
+        preferences: {
+          ...user.preferences,
+          maxDistance: localMaxDistance,
+          ageRange: localAgeRange,
+        },
+      });
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [localMaxDistance, localAgeRange, user]);
 
   return (
     // Outer Wrapper for Background context and centering
@@ -292,7 +328,7 @@ const Settings: React.FC = () => {
               <div className={styles.sliderHeader}>
                 <p className={styles.itemLabel}>Maximum Distance</p>
                 <p className="font-bold text-sm text-gray-500 dark:text-[#ba9ca3]">
-                  {user?.preferences.maxDistance || 50} km
+                  {localMaxDistance} km
                 </p>
               </div>
               <div className={styles.sliderTrack}>
@@ -300,31 +336,16 @@ const Settings: React.FC = () => {
                 <div
                   className={styles.trackFill}
                   style={{
-                    width: `${
-                      (((user?.preferences.maxDistance || 50) - 1) /
-                        (500 - 1)) *
-                      100
-                    }%`,
+                    width: `${((localMaxDistance - 1) / (500 - 1)) * 100}%`,
                   }}
                 ></div>
                 <input
                   type="range"
                   min="1"
                   max="500"
-                  value={user?.preferences.maxDistance || 50}
+                  value={localMaxDistance}
                   onChange={(e) => {
-                    const value = parseInt(e.target.value);
-                    updateUserSettings({
-                      preferences: {
-                        genderPreference:
-                          user?.preferences.genderPreference || "Everyone",
-                        ageRange: user?.preferences.ageRange || {
-                          min: 18,
-                          max: 50,
-                        },
-                        maxDistance: value,
-                      },
-                    });
+                    setLocalMaxDistance(parseInt(e.target.value));
                   }}
                   className={styles.sliderInput}
                 />
@@ -336,24 +357,49 @@ const Settings: React.FC = () => {
               <div className={styles.sliderHeader}>
                 <p className={styles.itemLabel}>Age Range</p>
                 <p className="font-bold text-sm text-gray-500 dark:text-[#ba9ca3]">
-                  {user?.preferences.ageRange.min || 18} -{" "}
-                  {user?.preferences.ageRange.max || 50}
+                  {localAgeRange.min} - {localAgeRange.max}
                 </p>
               </div>
               <div className={styles.sliderTrack}>
                 <div className={styles.trackBg}></div>
                 <div
                   className={styles.trackFill}
-                  style={{ left: "10%", right: "60%", width: "auto" }}
+                  style={{
+                    left: `${((localAgeRange.min - 18) / (100 - 18)) * 100}%`,
+                    right: `${
+                      100 - ((localAgeRange.max - 18) / (100 - 18)) * 100
+                    }%`,
+                    width: "auto",
+                  }}
                 ></div>
-                <div
-                  className={styles.thumb}
-                  style={{ left: "10%", marginLeft: "-0.75rem" }}
-                ></div>
-                <div
-                  className={styles.thumb}
-                  style={{ right: "60%", marginRight: "-0.75rem" }}
-                ></div>
+                <input
+                  type="range"
+                  min="18"
+                  max="100"
+                  value={localAgeRange.min}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value);
+                    setLocalAgeRange((prev) => ({
+                      ...prev,
+                      min: Math.min(val, prev.max - 1),
+                    }));
+                  }}
+                  className={styles.sliderInput}
+                />
+                <input
+                  type="range"
+                  min="18"
+                  max="100"
+                  value={localAgeRange.max}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value);
+                    setLocalAgeRange((prev) => ({
+                      ...prev,
+                      max: Math.max(val, prev.min + 1),
+                    }));
+                  }}
+                  className={styles.sliderInput}
+                />
               </div>
             </div>
 
