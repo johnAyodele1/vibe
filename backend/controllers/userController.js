@@ -282,6 +282,15 @@ const superLike = async (req, res) => {
       });
     }
 
+    // Check if target user exists
+    const targetUser = await User.findById(targetUserId);
+    if (!targetUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
     const currentUser = await User.findById(req.user._id);
 
     // Check if already favourited

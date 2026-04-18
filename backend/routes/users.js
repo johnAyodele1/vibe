@@ -29,6 +29,17 @@ router.put("/profile", authenticateToken, updateOnlineStatus, updateProfile);
 // @access  Private
 router.get("/discover", authenticateToken, updateOnlineStatus, discover);
 
+// @route   GET /api/users/favourites
+// @desc    Get favourited users
+// @access  Private
+router.get("/favourites", authenticateToken, updateOnlineStatus, getFavourites);
+
+// @route   DELETE /api/users/account
+// @desc    Delete user account
+// @access  Private
+router.delete("/account", authenticateToken, updateOnlineStatus, deleteAccount);
+
+// Parameterized routes should come after static routes
 // @route   POST /api/users/:id/super-like
 // @desc    Super like (Favourite) a user
 // @access  Private
@@ -43,15 +54,5 @@ router.post("/:id/like", authenticateToken, updateOnlineStatus, like);
 // @desc    Dislike a user
 // @access  Private
 router.post("/:id/dislike", authenticateToken, updateOnlineStatus, dislike);
-
-// @route   GET /api/users/favourites
-// @desc    Get favourited users
-// @access  Private
-router.get("/favourites", authenticateToken, updateOnlineStatus, getFavourites);
-
-// @route   DELETE /api/users/account
-// @desc    Delete user account
-// @access  Private
-router.delete("/account", authenticateToken, updateOnlineStatus, deleteAccount);
 
 module.exports = router;
