@@ -97,38 +97,12 @@
   position: relative;
 }
 
-.searchIcon {
-  position: absolute;
-  left: 18px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--text-muted);
-  pointer-events: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  width: 24px;
-  height: 24px;
-}
-
-.searchIcon span {
-  font-size: 20px;
-  font-variation-settings: 'wght' 500, 'opsz' 20;
-}
-
-.searchWrapper:focus-within .searchIcon {
-  color: var(--color-primary);
-  transform: translateY(-50%) scale(1.1);
-}
-
 .searchInput {
   width: 100%;
-  padding: 14px 16px 14px 52px;
+  padding: 14px 16px;
   background-color: var(--bg-surface);
   border: 1px solid transparent;
-  border-radius: 9999px;
+  border-radius: 12px;
   font-size: 15px;
   font-weight: 500;
   color: var(--text-body);

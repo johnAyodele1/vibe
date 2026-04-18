@@ -149,9 +149,6 @@ const ChatInterface: React.FC = () => {
         <main className={styles.main}>
           <div className={styles.searchContainer}>
             <div className={styles.searchWrapper}>
-              <div className={styles.searchIcon}>
-                <span className="material-symbols-outlined">search</span>
-              </div>
               <input
                 type="text"
                 className={styles.searchInput}
