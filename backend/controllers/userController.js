@@ -80,7 +80,11 @@ const discover = async (req, res) => {
         ),
       },
       _id: {
-        $nin: [...currentUser.likedUsers, ...currentUser.dislikedUsers],
+        $nin: [
+          ...currentUser.likedUsers,
+          ...currentUser.dislikedUsers,
+          ...currentUser.favouritedUsers,
+        ],
       },
     };
 
@@ -192,22 +196,33 @@ const like = async (req, res) => {
     const conversationId = conversation._id.toString();
     console.log("Final conversation ID:", conversationId);
 
-    // Check if it's a match (mutual like)
-    let isMatch = false;
-    if (targetUser.likedUsers.includes(req.user._id.toString())) {
-      // Create match for both users
+    // Add match for current user (every like that starts a chat counts as a match)
+    const isAlreadyMatched = currentUser.matches.some(
+      (m) => m.user.toString() === targetUserId,
+    );
+    if (!isAlreadyMatched) {
       currentUser.matches.push({
         user: targetUserId,
         matchedAt: new Date(),
       });
-      targetUser.matches.push({
-        user: req.user._id,
-        matchedAt: new Date(),
-      });
+    }
 
-      await Promise.all([currentUser.save(), targetUser.save()]);
+    // Check if it's a mutual match
+    let isMatch = false;
+    if (targetUser.likedUsers.includes(req.user._id.toString())) {
+      const isTargetAlreadyMatched = targetUser.matches.some(
+        (m) => m.user.toString() === req.user._id.toString(),
+      );
+      if (!isTargetAlreadyMatched) {
+        targetUser.matches.push({
+          user: req.user._id,
+          matchedAt: new Date(),
+        });
+      }
       isMatch = true;
     }
+
+    await Promise.all([currentUser.save(), targetUser.save()]);
 
     res.json({
       success: true,
@@ -254,6 +269,59 @@ const dislike = async (req, res) => {
   }
 };
 
+// @desc    Super like (Favourite) a user
+// @access  Private
+const superLike = async (req, res) => {
+  try {
+    const targetUserId = req.params.id;
+
+    if (targetUserId === req.user._id.toString()) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot super like yourself",
+      });
+    }
+
+    const currentUser = await User.findById(req.user._id);
+
+    // Check if already favourited
+    if (currentUser.favouritedUsers.includes(targetUserId)) {
+      return res.status(400).json({
+        success: false,
+        message: "User already in favourites",
+      });
+    }
+
+    // Add to favourited users
+    currentUser.favouritedUsers.push(targetUserId);
+    await currentUser.save();
+
+    res.json({ success: true, message: "User added to favourites" });
+  } catch (error) {
+    console.error("Super like error:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+// @desc    Get favourited users
+// @access  Private
+const getFavourites = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).populate(
+      "favouritedUsers",
+      "firstName lastName age photos bio location interests lastActive isOnline",
+    );
+
+    res.json({
+      success: true,
+      data: { favourites: user.favouritedUsers },
+    });
+  } catch (error) {
+    console.error("Get favourites error:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
 // @desc    Delete user account
 // @access  Private
 const deleteAccount = async (req, res) => {
@@ -279,5 +347,7 @@ module.exports = {
   discover,
   like,
   dislike,
+  superLike,
+  getFavourites,
   deleteAccount,
 };

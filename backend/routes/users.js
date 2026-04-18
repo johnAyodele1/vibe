@@ -7,6 +7,8 @@ const {
   discover,
   like,
   dislike,
+  superLike,
+  getFavourites,
   deleteAccount,
 } = require("../controllers/userController");
 
@@ -36,6 +38,16 @@ router.post("/:id/like", authenticateToken, updateOnlineStatus, like);
 // @desc    Dislike a user
 // @access  Private
 router.post("/:id/dislike", authenticateToken, updateOnlineStatus, dislike);
+
+// @route   POST /api/users/:id/super-like
+// @desc    Super like (Favourite) a user
+// @access  Private
+router.post("/:id/super-like", authenticateToken, updateOnlineStatus, superLike);
+
+// @route   GET /api/users/favourites
+// @desc    Get favourited users
+// @access  Private
+router.get("/favourites", authenticateToken, updateOnlineStatus, getFavourites);
 
 // @route   DELETE /api/users/account
 // @desc    Delete user account

@@ -144,6 +144,7 @@ const Discovery: React.FC = () => {
         {
           method: "POST",
           headers: {
+            "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
         },
@@ -187,6 +188,7 @@ const Discovery: React.FC = () => {
       await fetch(`${API_BASE_URL}/users/${currentProfile._id}/dislike`, {
         method: "POST",
         headers: {
+          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
       });
@@ -200,6 +202,43 @@ const Discovery: React.FC = () => {
       }, 500);
     } catch (error) {
       // Optionally show error toast
+    } finally {
+      setTimeout(() => setLoadingAction(null), 1000);
+    }
+  };
+
+  const handleSuperLike = async () => {
+    if (!currentProfile) return;
+    setLoadingAction("super");
+    setActionSuccess(null);
+    try {
+      const token = localStorage.getItem("accessToken");
+      const response = await fetch(
+        `${API_BASE_URL}/users/${currentProfile._id}/super-like`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+      const data = await response.json();
+      if (data.success) {
+        setActionSuccess("super");
+        toast.success("Added to favourites! ⭐");
+        setTimeout(() => {
+          setActionSuccess(null);
+        }, 1000);
+        setTimeout(() => {
+          setCurrentProfileIndex((prevIndex) => (prevIndex + 1) % users.length);
+          setCurrentPhotoIndex(0);
+        }, 500);
+      } else {
+        toast.error(data.message || "Failed to add to favourites");
+      }
+    } catch (error) {
+      toast.error("Failed to super like user");
     } finally {
       setTimeout(() => setLoadingAction(null), 1000);
     }
@@ -510,17 +549,33 @@ const Discovery: React.FC = () => {
                 )}
               </span>
             </button>
-            {/* Super Like Button (no loading for now) */}
+            {/* Super Like Button */}
             <button
               className={`${styles.actionBtn} ${styles.superBtn}`}
               aria-label="Super Like"
+              onClick={handleSuperLike}
               disabled={!currentProfile || loadingAction !== null}
+              style={
+                loadingAction === "super"
+                  ? { border: "3px solid #facc15", position: "relative" }
+                  : {}
+              }
             >
               <span
                 className="material-symbols-outlined"
-                style={{ fontSize: "24px", fontVariationSettings: "'FILL' 1" }}
+                style={{
+                  fontSize: "24px",
+                  fontVariationSettings: "'FILL' 1",
+                  transition: "color 0.2s",
+                }}
               >
-                star
+                {loadingAction === "super" ? (
+                  <span className={styles.loadingCircle}></span>
+                ) : actionSuccess === "super" ? (
+                  <span style={{ color: "#facc15" }}>done</span>
+                ) : (
+                  "star"
+                )}
               </span>
             </button>
             {/* Like Button */}

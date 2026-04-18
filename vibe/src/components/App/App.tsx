@@ -9,6 +9,7 @@ import Settings from "../Settings/Settings";
 import ChatInterface from "../ChatInterface/ChatInterface";
 import DirectMessage from "../DirectMessage/DirectMessage";
 import Discovery from "../Discovery/Discovery";
+import Favourites from "../Favourites/Favourites";
 import CallManager from "../CallManager/CallManager";
 import { useAuth } from "../../contexts/AuthContext";
 
@@ -53,6 +54,20 @@ function App() {
           element={
             isAuthenticated ? (
               <ProfileCreation />
+            ) : (
+              <Navigate to="/auth" replace />
+            )
+          }
+        />
+        <Route
+          path="/favourites"
+          element={
+            isAuthenticated ? (
+              isProfileComplete() ? (
+                <Favourites />
+              ) : (
+                <Navigate to="/profile" replace />
+              )
             ) : (
               <Navigate to="/auth" replace />
             )

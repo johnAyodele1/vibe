@@ -28,11 +28,22 @@ const BottomNavigation: React.FC<BottomNavigationProps> = ({
           className={styles.navBtn}
           onClick={() => navigate("/discovery")}
         >
+          <Icon
+            name="favorite"
+            className={`text-[28px] ${
+              activeTab === "discovery" ? "text-primary" : "text-gray-500"
+            } hover:text-white transition-colors`}
+          />
+        </button>
+        <button
+          className={styles.navBtn}
+          onClick={() => navigate("/favourites")}
+        >
           {notificationCount > 0 && (
             <div className="absolute top-3 right-3 size-2.5 bg-primary rounded-full border-2 border-[#181113]"></div>
           )}
           <Icon
-            name="favorite"
+            name="star"
             className={`text-[28px] ${
               activeTab === "likes" ? "text-primary" : "text-gray-500"
             } hover:text-white transition-colors`}
