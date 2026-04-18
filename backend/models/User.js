@@ -140,6 +140,12 @@ const userSchema = new mongoose.Schema(
         ref: "User",
       },
     ],
+    favouritedUsers: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
     dislikedUsers: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -303,7 +309,11 @@ userSchema.statics.findDiscoverableUsers = function (
       $lte: currentUser.preferences.ageRange.max,
     },
     _id: {
-      $nin: [...currentUser.likedUsers, ...currentUser.dislikedUsers],
+      $nin: [
+        ...currentUser.likedUsers,
+        ...currentUser.dislikedUsers,
+        ...currentUser.favouritedUsers,
+      ],
     },
   })
     .select("firstName lastName age photos bio location interests")
