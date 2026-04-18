@@ -325,7 +325,7 @@
   border-radius: 9999px;
   background: transparent;
   outline: none;
-  cursor: pointer;
+  pointer-events: none;
   position: absolute;
   top: 0;
   left: 0;
@@ -343,6 +343,7 @@
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
   position: relative;
   z-index: 2;
+  pointer-events: auto;
 }
 
 .sliderInput::-moz-range-thumb {
@@ -356,6 +357,7 @@
   border: none;
   position: relative;
   z-index: 2;
+  pointer-events: auto;
 }
 
 .sliderInput::-webkit-slider-track {
