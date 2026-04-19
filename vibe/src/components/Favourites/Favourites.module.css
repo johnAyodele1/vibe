@@ -7,7 +7,7 @@
   flex-direction: column;
   position: relative;
   overflow-x: hidden;
-  background-color: var(--background-discovery);
+  background-color: var(--primary);
   font-family: 'Plus Jakarta Sans', sans-serif;
 }
 
@@ -19,7 +19,7 @@
   position: sticky;
   top: 0;
   z-index: 10;
-  background-color: rgba(18, 8, 10, 0.8);
+  background-color: var(--primary);
   backdrop-filter: blur(10px);
 }
 

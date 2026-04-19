@@ -25,6 +25,20 @@ const Favourites: React.FC = () => {
   const [favourites, setFavourites] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Synchronize body background color
+  useEffect(() => {
+    const originalColor = document.body.style.backgroundColor;
+    const primaryColor = getComputedStyle(document.documentElement)
+      .getPropertyValue("--primary")
+      .trim();
+    if (primaryColor) {
+      document.body.style.backgroundColor = primaryColor;
+    }
+    return () => {
+      document.body.style.backgroundColor = originalColor;
+    };
+  }, []);
+
   useEffect(() => {
     const fetchFavourites = async () => {
       try {
@@ -65,12 +79,6 @@ const Favourites: React.FC = () => {
           </button>
 
           <div className={styles.brand}>
-            <span
-              className="material-symbols-outlined"
-              style={{ color: "#facc15", fontVariationSettings: "'FILL' 1" }}
-            >
-              star
-            </span>
             <h1 className={styles.brandTitle}>FAVOURITES</h1>
           </div>
 
