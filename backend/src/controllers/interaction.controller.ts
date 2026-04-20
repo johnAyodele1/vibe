@@ -1,0 +1,250 @@
+import { Request, Response } from 'express';
+import mongoose, { Types } from 'mongoose';
+import User from '../models/User';
+import Conversation from '../models/Conversation';
+import { IUser } from '../types/models';
+
+// @desc    Like a user
+// @access  Private
+export const like = async (req: Request, res: Response): Promise<Response> => {
+  try {
+    if (!req.user) return res.status(401).json({ success: false, message: 'Not authenticated' });
+    const targetUserId = req.params.id as string;
+
+    if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID',
+      });
+    }
+
+    const currentUserId = (req.user._id as Types.ObjectId).toString();
+
+    if (targetUserId === currentUserId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot like yourself',
+      });
+    }
+
+    const currentUser = await User.findById(req.user._id) as IUser | null;
+    const targetUser = await User.findById(targetUserId) as IUser | null;
+
+    if (!currentUser || !targetUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    // Check if already liked
+    if (currentUser.likedUsers.some((id) => id.toString() === targetUserId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'User already liked',
+      });
+    }
+
+    // Add to liked users
+    currentUser.likedUsers.push(new mongoose.Types.ObjectId(targetUserId));
+    await currentUser.save();
+
+    // Always create conversation for liked users (for private messaging)
+    let conversation = await Conversation.findDirectConversation(
+      currentUserId,
+      targetUserId,
+    );
+
+    if (!conversation) {
+      try {
+        const newConversation = new Conversation({
+          participants: [
+            req.user._id,
+            new mongoose.Types.ObjectId(targetUserId),
+          ],
+        });
+        await newConversation.save();
+        conversation = await newConversation.updateParticipantInfo();
+        console.log('Conversation saved:', conversation._id);
+      } catch (error) {
+        console.error('Error creating conversation:', error);
+        return res
+          .status(500)
+          .json({ success: false, message: 'Failed to create conversation' });
+      }
+    }
+
+    // Ensure participant info is populated
+    if (
+      !conversation.participantInfo ||
+      conversation.participantInfo.length === 0
+    ) {
+      conversation = await conversation.updateParticipantInfo();
+    }
+
+    const conversationId = (conversation._id as Types.ObjectId).toString();
+
+    // Add match for current user (every like that starts a chat counts as a match)
+    const isAlreadyMatched = currentUser.matches.some(
+      (m) => m.user.toString() === targetUserId,
+    );
+    if (!isAlreadyMatched) {
+      currentUser.matches.push({
+        user: new mongoose.Types.ObjectId(targetUserId),
+        matchedAt: new Date(),
+        isActive: true
+      });
+    }
+
+    // Check if it's a mutual match
+    let isMatch = false;
+    if (
+      targetUser.likedUsers.some((id) => id.toString() === currentUserId)
+    ) {
+      const isTargetAlreadyMatched = targetUser.matches.some(
+        (m) => m.user.toString() === currentUserId,
+      );
+      if (!isTargetAlreadyMatched) {
+        targetUser.matches.push({
+          user: req.user._id as Types.ObjectId,
+          matchedAt: new Date(),
+          isActive: true
+        });
+      }
+      isMatch = true;
+    }
+
+    await Promise.all([currentUser.save(), targetUser.save()]);
+
+    return res.json({
+      success: true,
+      message: isMatch ? "It's a match!" : 'User liked',
+      data: { isMatch, conversationId },
+    });
+  } catch (error) {
+    console.error('Like user error:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// @desc    Dislike a user
+// @access  Private
+export const dislike = async (req: Request, res: Response): Promise<Response> => {
+  try {
+    if (!req.user) return res.status(401).json({ success: false, message: 'Not authenticated' });
+    const targetUserId = req.params.id as string;
+
+    if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID',
+      });
+    }
+
+    const currentUserId = (req.user._id as Types.ObjectId).toString();
+
+    if (targetUserId === currentUserId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot dislike yourself',
+      });
+    }
+
+    const currentUser = await User.findById(req.user._id) as IUser | null;
+    if (!currentUser) return res.status(404).json({ success: false, message: 'User not found' });
+
+    // Check if already disliked
+    if (currentUser.dislikedUsers.some((id) => id.toString() === targetUserId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'User already disliked',
+      });
+    }
+
+    // Add to disliked users
+    currentUser.dislikedUsers.push(new mongoose.Types.ObjectId(targetUserId));
+    await currentUser.save();
+
+    return res.json({ success: true, message: 'User disliked' });
+  } catch (error) {
+    console.error('Dislike user error:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// @desc    Super like (Favourite) a user
+// @access  Private
+export const superLike = async (req: Request, res: Response): Promise<Response> => {
+  try {
+    if (!req.user) return res.status(401).json({ success: false, message: 'Not authenticated' });
+    const targetUserId = req.params.id as string;
+
+    if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID',
+      });
+    }
+
+    const currentUserId = (req.user._id as Types.ObjectId).toString();
+
+    if (targetUserId === currentUserId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot super like yourself',
+      });
+    }
+
+    // Check if target user exists
+    const targetUser = await User.findById(targetUserId);
+    if (!targetUser) {
+      return res.status(404).json({
+        success: false,
+        message: `User not found with ID: ${targetUserId}`,
+      });
+    }
+
+    const currentUser = await User.findById(req.user._id) as IUser | null;
+    if (!currentUser) return res.status(404).json({ success: false, message: 'User not found' });
+
+    // Check if already favourited
+    if (
+      currentUser.favouritedUsers.some((id) => id.toString() === targetUserId)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'User already in favourites',
+      });
+    }
+
+    // Add to favourited users
+    currentUser.favouritedUsers.push(new mongoose.Types.ObjectId(targetUserId));
+    await currentUser.save();
+
+    return res.json({ success: true, message: 'User added to favourites' });
+  } catch (error) {
+    console.error('Super like error:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// @desc    Get favourited users
+// @access  Private
+export const getFavourites = async (req: Request, res: Response): Promise<Response> => {
+  try {
+    if (!req.user) return res.status(401).json({ success: false, message: 'Not authenticated' });
+    const user = await User.findById(req.user._id).populate(
+      'favouritedUsers',
+      'firstName lastName age photos bio location interests lastActive isOnline',
+    ) as IUser | null;
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    return res.json({
+      success: true,
+      data: { favourites: user.favouritedUsers },
+    });
+  } catch (error) {
+    console.error('Get favourites error:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};

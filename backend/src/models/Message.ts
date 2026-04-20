@@ -1,32 +1,33 @@
-const mongoose = require("mongoose");
+import mongoose, { Schema, UpdateWriteOpResult } from 'mongoose';
+import { IMessage, IMessageModel } from '../types/models';
 
-const messageSchema = new mongoose.Schema(
+const messageSchema = new Schema<IMessage, IMessageModel>(
   {
     conversation: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Conversation",
-      required: [true, "Conversation is required"],
+      type: Schema.Types.ObjectId,
+      ref: 'Conversation',
+      required: [true, 'Conversation is required'],
     },
     sender: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: [true, "Sender is required"],
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      required: [true, 'Sender is required'],
     },
     receiver: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: [true, "Receiver is required"],
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      required: [true, 'Receiver is required'],
     },
     content: {
       type: String,
-      required: [true, "Message content is required"],
+      required: [true, 'Message content is required'],
       trim: true,
-      maxlength: [1000, "Message cannot exceed 1000 characters"],
+      maxlength: [1000, 'Message cannot exceed 1000 characters'],
     },
     messageType: {
       type: String,
-      enum: ["text", "image", "video", "audio"],
-      default: "text",
+      enum: ['text', 'image', 'video', 'audio'],
+      default: 'text',
     },
     isRead: {
       type: Boolean,
@@ -50,12 +51,14 @@ const messageSchema = new mongoose.Schema(
       type: Date,
     },
     replyTo: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Message",
+      type: Schema.Types.ObjectId,
+      ref: 'Message',
     },
   },
   {
     timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
   }
 );
 
@@ -65,13 +68,13 @@ messageSchema.index({ sender: 1, createdAt: -1 });
 messageSchema.index({ receiver: 1, createdAt: -1 });
 
 // Virtual for message age
-messageSchema.virtual("isRecent").get(function () {
+messageSchema.virtual('isRecent').get(function (this: IMessage) {
   const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
   return this.createdAt > fiveMinutesAgo;
 });
 
 // Static method to mark messages as read
-messageSchema.statics.markAsRead = function (conversationId, userId) {
+messageSchema.statics.markAsRead = function (conversationId: string | mongoose.Types.ObjectId, userId: string | mongoose.Types.ObjectId): Promise<UpdateWriteOpResult> {
   return this.updateMany(
     {
       conversation: conversationId,
@@ -86,7 +89,7 @@ messageSchema.statics.markAsRead = function (conversationId, userId) {
 };
 
 // Static method to get unread count for user
-messageSchema.statics.getUnreadCount = function (userId) {
+messageSchema.statics.getUnreadCount = function (userId: string | mongoose.Types.ObjectId): Promise<number> {
   return this.countDocuments({
     receiver: userId,
     isRead: false,
@@ -95,10 +98,11 @@ messageSchema.statics.getUnreadCount = function (userId) {
 };
 
 // Instance method to soft delete message
-messageSchema.methods.softDelete = function () {
+messageSchema.methods.softDelete = function (this: IMessage): Promise<IMessage> {
   this.isDeleted = true;
   this.deletedAt = new Date();
   return this.save();
 };
 
-module.exports = mongoose.model("Message", messageSchema);
+export const Message = mongoose.model<IMessage, IMessageModel>('Message', messageSchema);
+export default Message;

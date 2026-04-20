@@ -1,17 +1,18 @@
-const mongoose = require("mongoose");
+import mongoose, { Schema } from 'mongoose';
+import { IConversation, IConversationModel, IMessage, IParticipantInfo } from '../types/models';
 
-const conversationSchema = new mongoose.Schema(
+const conversationSchema = new Schema<IConversation, IConversationModel>(
   {
     participants: [
       {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
+        type: Schema.Types.ObjectId,
+        ref: 'User',
         required: true,
       },
     ],
     lastMessage: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Message",
+      type: Schema.Types.ObjectId,
+      ref: 'Message',
     },
     lastMessageAt: {
       type: Date,
@@ -20,8 +21,8 @@ const conversationSchema = new mongoose.Schema(
     participantInfo: [
       {
         user: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "User",
+          type: Schema.Types.ObjectId,
+          ref: 'User',
           required: true,
         },
         firstName: String,
@@ -51,13 +52,13 @@ const conversationSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  },
+  }
 );
 
 // Ensure only two participants for direct conversations
-conversationSchema.pre("save", function (next) {
+conversationSchema.pre('save', function (next) {
   if (this.participants.length !== 2) {
-    return next(new Error("Conversations must have exactly 2 participants"));
+    return next(new Error('Conversations must have exactly 2 participants'));
   }
   next();
 });
@@ -65,20 +66,13 @@ conversationSchema.pre("save", function (next) {
 // Index for efficient queries
 conversationSchema.index({ participants: 1 });
 conversationSchema.index({ lastMessageAt: -1 });
-conversationSchema.index({ "participantInfo.user": 1 });
-
-// Virtual for conversation display name (other participant's name)
-conversationSchema.virtual("displayName").get(function () {
-  // This would be calculated based on the current user
-  return "Conversation";
-});
+conversationSchema.index({ 'participantInfo.user': 1 });
 
 // Static method to find direct conversation between two users
 conversationSchema.statics.findDirectConversation = function (
-  userId1,
-  userId2,
+  userId1: string | mongoose.Types.ObjectId,
+  userId2: string | mongoose.Types.ObjectId
 ) {
-  const mongoose = require("mongoose");
   const id1 = new mongoose.Types.ObjectId(userId1);
   const id2 = new mongoose.Types.ObjectId(userId2);
   return this.findOne({
@@ -88,19 +82,18 @@ conversationSchema.statics.findDirectConversation = function (
 };
 
 // Instance method to update participant info
-conversationSchema.methods.updateParticipantInfo = async function () {
+conversationSchema.methods.updateParticipantInfo = async function (this: IConversation) {
   try {
-    const User = mongoose.model("User");
-
-    const participantInfo = [];
+    const User = mongoose.model('User');
+    const participantInfo: IParticipantInfo[] = [];
 
     for (const participantId of this.participants) {
       const user = await User.findById(participantId).select(
-        "firstName lastName photos isOnline lastActive",
+        'firstName lastName photos isOnline lastActive'
       );
 
       if (user) {
-        const mainPhoto = user.photos.find((photo) => photo.isMain);
+        const mainPhoto = user.photos.find((photo: { isMain: boolean; url: string }) => photo.isMain);
         participantInfo.push({
           user: user._id,
           firstName: user.firstName,
@@ -114,37 +107,38 @@ conversationSchema.methods.updateParticipantInfo = async function () {
 
     this.participantInfo = participantInfo;
     const saved = await this.save();
-    console.log("Conversation saved with ID:", saved._id);
+    console.log('Conversation saved with ID:', saved._id);
     return saved;
   } catch (error) {
-    console.error("Error updating participant info:", error);
+    console.error('Error updating participant info:', error);
     throw error;
   }
 };
 
 // Instance method to update last message
-conversationSchema.methods.updateLastMessage = async function (message) {
-  this.lastMessage = message._id;
+conversationSchema.methods.updateLastMessage = async function (this: IConversation, message: IMessage) {
+  this.lastMessage = message._id as mongoose.Types.ObjectId;
   this.lastMessageAt = message.createdAt;
   return this.save();
 };
 
 // Instance method to get unread count for a user
-conversationSchema.methods.getUnreadCount = function (userId) {
+conversationSchema.methods.getUnreadCount = function (this: IConversation, userId: string | mongoose.Types.ObjectId) {
   return this.unreadCount.get(userId.toString()) || 0;
 };
 
 // Instance method to increment unread count for a user
-conversationSchema.methods.incrementUnreadCount = function (userId) {
+conversationSchema.methods.incrementUnreadCount = function (this: IConversation, userId: string | mongoose.Types.ObjectId) {
   const currentCount = this.getUnreadCount(userId);
   this.unreadCount.set(userId.toString(), currentCount + 1);
   return this.save();
 };
 
 // Instance method to reset unread count for a user
-conversationSchema.methods.resetUnreadCount = function (userId) {
+conversationSchema.methods.resetUnreadCount = function (this: IConversation, userId: string | mongoose.Types.ObjectId) {
   this.unreadCount.set(userId.toString(), 0);
   return this.save();
 };
 
-module.exports = mongoose.model("Conversation", conversationSchema);
+export const Conversation = mongoose.model<IConversation, IConversationModel>('Conversation', conversationSchema);
+export default Conversation;
