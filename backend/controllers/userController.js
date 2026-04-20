@@ -217,7 +217,9 @@ const like = async (req, res) => {
 
     // Check if it's a mutual match
     let isMatch = false;
-    if (targetUser.likedUsers.includes(req.user._id.toString())) {
+    if (
+      targetUser.likedUsers.some((id) => id.toString() === req.user._id.toString())
+    ) {
       const isTargetAlreadyMatched = targetUser.matches.some(
         (m) => m.user.toString() === req.user._id.toString(),
       );

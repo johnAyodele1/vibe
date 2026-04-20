@@ -298,22 +298,31 @@ userSchema.statics.findDiscoverableUsers = function (
 ) {
   const { limit = 20, skip = 0 } = options;
 
+  const minDate = new Date(
+    Date.now() -
+      (currentUser.preferences.ageRange.max + 1) * 365.25 * 24 * 60 * 60 * 1000,
+  );
+  const maxDate = new Date(
+    Date.now() -
+      currentUser.preferences.ageRange.min * 365.25 * 24 * 60 * 60 * 1000,
+  );
+
   return this.find({
-    _id: { $ne: currentUser._id },
-    gender:
-      currentUser.preferences.genderPreference === "Everyone"
-        ? { $exists: true }
-        : currentUser.preferences.genderPreference,
-    age: {
-      $gte: currentUser.preferences.ageRange.min,
-      $lte: currentUser.preferences.ageRange.max,
-    },
     _id: {
+      $ne: currentUser._id,
       $nin: [
         ...currentUser.likedUsers,
         ...currentUser.dislikedUsers,
         ...currentUser.favouritedUsers,
       ],
+    },
+    gender:
+      currentUser.preferences.genderPreference === "Everyone"
+        ? { $exists: true }
+        : currentUser.preferences.genderPreference,
+    dateOfBirth: {
+      $gte: minDate,
+      $lte: maxDate,
     },
   })
     .select("firstName lastName age photos bio location interests")
