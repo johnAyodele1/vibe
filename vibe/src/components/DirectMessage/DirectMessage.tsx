@@ -96,8 +96,10 @@ const DirectMessage: React.FC = () => {
   }, []);
 
   // Get the other participant
-  const otherParticipant = conversation?.participantInfo.find(
-    (p) => p.user._id !== currentUserId,
+  const otherParticipant = conversation?.participantInfo.find((p) =>
+    p.user._id?.toString()
+      ? p.user._id.toString() !== currentUserId
+      : String(p.user._id) !== currentUserId,
   )?.user;
 
   // Scroll to bottom when new messages arrive

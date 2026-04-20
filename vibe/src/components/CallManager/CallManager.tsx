@@ -55,8 +55,10 @@ const CallManager: React.FC = () => {
 
         if (convData.success) {
           const otherParticipant =
-            convData.data.conversation.participantInfo.find(
-              (p: any) => p.user._id !== currentUserId,
+            convData.data.conversation.participantInfo.find((p: any) =>
+              p.user._id?.toString()
+                ? p.user._id.toString() !== currentUserId
+                : String(p.user._id) !== currentUserId,
             )?.user;
 
           if (otherParticipant) {

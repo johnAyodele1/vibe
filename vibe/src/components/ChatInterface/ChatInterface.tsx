@@ -261,7 +261,10 @@ const ChatInterface: React.FC = () => {
                 // Get current user ID
                 const currentUserId = (user as any)?._id || "";
                 const otherParticipantInfo = conversation.participantInfo.find(
-                  (p) => p.user._id !== currentUserId,
+                  (p) =>
+                    p.user._id?.toString()
+                      ? p.user._id.toString() !== currentUserId
+                      : String(p.user._id) !== currentUserId,
                 );
                 const otherParticipant = otherParticipantInfo?.user;
                 const unreadCount =
