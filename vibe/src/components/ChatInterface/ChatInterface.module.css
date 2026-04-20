@@ -167,6 +167,13 @@
   cursor: pointer;
 }
 
+.matchAvatarWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .avatarRing {
   padding: 3px;
   border-radius: 50%;
@@ -243,6 +250,19 @@
   border: 2px solid var(--bg-app);
   border-radius: 50%;
   transition: background-color 0.3s ease;
+  z-index: 5;
+}
+
+.statusIndicatorSmall {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--bg-app);
+  border-radius: 50%;
+  transition: background-color 0.3s ease;
+  z-index: 5;
 }
 
 .online {

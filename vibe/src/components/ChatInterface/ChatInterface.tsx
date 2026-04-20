@@ -131,10 +131,12 @@ const ChatInterface: React.FC = () => {
     if (!socket) return;
 
     const handleStatusUpdate = ({ userId, isOnline }: { userId: string, isOnline: boolean }) => {
+      const targetId = String(userId);
+
       // Update matches
       setMatches(prevMatches =>
         prevMatches.map(match =>
-          match.user._id === userId
+          String(match.user._id) === targetId
             ? { ...match, user: { ...match.user, isOnline } }
             : match
         )
@@ -144,7 +146,7 @@ const ChatInterface: React.FC = () => {
       setConversations(prevConversations =>
         prevConversations.map(conv => {
           const updatedParticipantInfo = conv.participantInfo.map(p =>
-            p.user._id === userId
+            String(p.user._id) === targetId
               ? { ...p, user: { ...p.user, isOnline } }
               : p
           );
@@ -218,14 +220,24 @@ const ChatInterface: React.FC = () => {
                         match.isNew ? styles.ringActive : ""
                       }`}
                     >
-                      <div className={styles.avatarContainer}>
-                        <img
-                          src={
-                            match.user.photos.find((p) => p.isMain)?.url ||
-                            "https://via.placeholder.com/150"
+                      <div className={styles.matchAvatarWrapper}>
+                        <div className={styles.avatarContainer}>
+                          <img
+                            src={
+                              match.user.photos.find((p) => p.isMain)?.url ||
+                              "https://via.placeholder.com/150"
+                            }
+                            alt={match.user.firstName}
+                            className={styles.avatarImg}
+                          />
+                        </div>
+                        <span
+                          className={`${styles.statusIndicatorSmall} ${
+                            match.user.isOnline ? styles.online : styles.offline
+                          }`}
+                          aria-label={
+                            match.user.isOnline ? "Online" : "Offline"
                           }
-                          alt={match.user.firstName}
-                          className={styles.avatarImg}
                         />
                       </div>
                     </div>
