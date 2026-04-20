@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { toast } from "sonner";
-import { API_BASE_URL, SOCKET_URL } from "../../config";
+import { API_BASE_URL } from "../../config";
 import { useAuth } from "../../contexts/AuthContext";
-import io from "socket.io-client";
+import { useSocket } from "../../contexts/SocketContext";
 import CallModal from "../CallModal/CallModal";
 
 interface IncomingCall {
@@ -18,6 +18,7 @@ const CallManager: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, isAuthenticated } = useAuth();
+  const { socket } = useSocket();
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
   const [showModal, setShowModal] = useState(false);
 
@@ -26,21 +27,9 @@ const CallManager: React.FC = () => {
 
   // Initialize socket connection for global call listening
   useEffect(() => {
-    if (!isAuthenticated || !token) return;
+    if (!socket || !isAuthenticated || !token) return;
 
-    // Use configured socket URL for proper backend connection
-    const socketUrl = SOCKET_URL;
-
-    const newSocket = io(socketUrl, {
-      auth: { token },
-    });
-
-    newSocket.on("connect", () => {
-      console.log("Global call socket connected");
-    });
-
-    // Listen for incoming calls
-    newSocket.on("call:offer", async (data: any) => {
+    const handleCallOffer = async (data: any) => {
       console.log("Global call offer received:", data);
 
       // If we're already on the direct message page for this conversation, let DirectMessage handle it
@@ -86,12 +75,14 @@ const CallManager: React.FC = () => {
       } catch (error) {
         console.error("Error fetching caller info:", error);
       }
-    });
+    };
+
+    socket.on("call:offer", handleCallOffer);
 
     return () => {
-      newSocket.disconnect();
+      socket.off("call:offer", handleCallOffer);
     };
-  }, [isAuthenticated, token, location.pathname, currentUserId]);
+  }, [socket, isAuthenticated, token, location.pathname, currentUserId]);
 
   const handleAcceptCall = () => {
     if (!incomingCall) return;

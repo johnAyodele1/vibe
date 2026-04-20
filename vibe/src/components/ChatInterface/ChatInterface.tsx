@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { API_BASE_URL } from "../../config";
 import { useAuth } from "../../contexts/AuthContext";
+import { useSocket } from "../../contexts/SocketContext";
 import BottomNavigation from "../BottomNavigation/BottomNavigation";
 
 interface Match {
@@ -59,6 +60,7 @@ interface Conversation {
 const ChatInterface: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { socket } = useSocket();
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [matches, setMatches] = useState<Match[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -123,6 +125,40 @@ const ChatInterface: React.FC = () => {
 
     fetchData();
   }, []);
+
+  // Listen for real-time status updates
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleStatusUpdate = ({ userId, isOnline }: { userId: string, isOnline: boolean }) => {
+      // Update matches
+      setMatches(prevMatches =>
+        prevMatches.map(match =>
+          match.user._id === userId
+            ? { ...match, user: { ...match.user, isOnline } }
+            : match
+        )
+      );
+
+      // Update conversations
+      setConversations(prevConversations =>
+        prevConversations.map(conv => {
+          const updatedParticipantInfo = conv.participantInfo.map(p =>
+            p.user._id === userId
+              ? { ...p, user: { ...p.user, isOnline } }
+              : p
+          );
+          return { ...conv, participantInfo: updatedParticipantInfo };
+        })
+      );
+    };
+
+    socket.on("user:status", handleStatusUpdate);
+
+    return () => {
+      socket.off("user:status", handleStatusUpdate);
+    };
+  }, [socket]);
 
   return (
     <>
@@ -259,9 +295,7 @@ const ChatInterface: React.FC = () => {
                           className={styles.avatarImg}
                         />
                       </div>
-                      {otherParticipant.isOnline && (
-                        <span className={styles.onlineIndicator} />
-                      )}
+                      <span className={`${styles.statusIndicator} ${otherParticipant.isOnline ? styles.online : styles.offline}`} />
                     </div>
 
                     <div className={styles.messageContent}>

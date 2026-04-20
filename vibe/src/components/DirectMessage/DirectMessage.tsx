@@ -6,8 +6,7 @@ import { API_BASE_URL } from "../../config";
 
 // TODO: Use configurable backend URL for socket connection
 import { useAuth } from "../../contexts/AuthContext";
-import { SOCKET_URL } from "../../config";
-import io, { Socket } from "socket.io-client";
+import { useSocket } from "../../contexts/SocketContext";
 
 type CallStatus = "idle" | "calling" | "receiving" | "connected" | "ended";
 
@@ -59,7 +58,7 @@ const DirectMessage: React.FC = () => {
   const [typingUser, setTypingUser] = useState<string | null>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [loading, setLoading] = useState(true);
-  const [socket, setSocket] = useState<Socket | null>(null);
+  const { socket } = useSocket();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Call state
@@ -149,77 +148,77 @@ const DirectMessage: React.FC = () => {
 
   // Initialize socket connection
   useEffect(() => {
-    if (!conversationId || !token) return;
+    if (!socket || !conversationId || !token) return;
 
-    // Use configured socket URL for proper backend connection
-    const socketUrl = SOCKET_URL;
+    socket.emit("join:conversation", { conversationId });
 
-    const newSocket = io(socketUrl, {
-      auth: { token },
-    });
-
-    newSocket.on("connect", () => {
-      console.log("Connected to socket");
-      newSocket.emit("join:conversation", { conversationId });
-    });
-
-    newSocket.on("message", (message: Message) => {
+    const handleMessage = (message: Message) => {
       setMessages((prev) => {
-        // Avoid duplicates by checking if message already exists
         if (prev.some((m) => m._id === message._id)) {
           return prev;
         }
         return [...prev, message];
       });
-    });
+    };
 
-    newSocket.on("typing", ({ userId }: { userId: string }) => {
+    const handleTyping = ({ userId }: { userId: string }) => {
       if (userId !== currentUserId) {
         setTypingUser(userId);
         setIsTyping(true);
-        // Clear previous timeout
         if (typingTimeoutRef.current) {
           clearTimeout(typingTimeoutRef.current);
         }
-        // Set timeout to clear typing indicator after 2 seconds
         typingTimeoutRef.current = setTimeout(() => {
           setTypingUser(null);
           setIsTyping(false);
         }, 2000);
       }
-    });
+    };
 
-    newSocket.on("stopTyping", ({ userId }: { userId: string }) => {
+    const handleStopTyping = ({ userId }: { userId: string }) => {
       if (userId !== currentUserId) {
         setTypingUser(null);
         setIsTyping(false);
       }
-    });
+    };
 
-    // Call event listeners
-    newSocket.on("call:offer", async (data: any) => {
+    const handleUserStatus = ({ userId, isOnline }: { userId: string, isOnline: boolean }) => {
+      setConversation(prev => {
+        if (!prev) return prev;
+        const updatedParticipantInfo = prev.participantInfo.map(p => {
+          if (p.user._id === userId) {
+            return {
+              ...p,
+              user: { ...p.user, isOnline }
+            };
+          }
+          return p;
+        });
+        return {
+          ...prev,
+          participantInfo: updatedParticipantInfo
+        };
+      });
+    };
+
+    const handleCallOffer = async (data: any) => {
       console.log("Received call offer:", data);
-      // Update ref immediately for signaling
       isVideoCallRef.current = data.isVideoCall || false;
       setIncomingOffer(data);
       setIsVideoCall(data.isVideoCall || false);
       setCallStatus("receiving");
-    });
+    };
 
-    newSocket.on("call:answer", async (data: any) => {
+    const handleCallAnswer = async (data: any) => {
       console.log("Received call answer:", data);
       const pc = peerConnectionRef.current;
       if (pc) {
         try {
           await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-          console.log("Set remote description for answer");
-
-          // Process any queued ICE candidates
           const pendingCandidates = pendingCandidatesRef.current;
           for (const candidate of pendingCandidates) {
             try {
               await pc.addIceCandidate(candidate);
-              console.log("Added queued ICE candidate");
             } catch (e) {
               console.error("Error adding queued ICE candidate:", e);
             }
@@ -229,44 +228,50 @@ const DirectMessage: React.FC = () => {
           console.error("Error setting remote description:", e);
         }
       }
-    });
+    };
 
-    newSocket.on("call:ice-candidate", async (data: any) => {
+    const handleIceCandidate = async (data: any) => {
       console.log("Received ICE candidate:", data);
       const pc = peerConnectionRef.current;
       if (pc) {
         const candidate = new RTCIceCandidate(data.candidate);
-
         if (pc.remoteDescription) {
-          // Remote description is set, add candidate immediately
           try {
             await pc.addIceCandidate(candidate);
-            console.log("Added ICE candidate immediately");
           } catch (e) {
             console.error("Error adding ICE candidate:", e);
           }
         } else {
-          // Queue candidate until remote description is set
           pendingCandidatesRef.current.push(candidate);
-          console.log(
-            "Queued ICE candidate, pending candidates:",
-            pendingCandidatesRef.current.length,
-          );
         }
       }
-    });
+    };
 
-    newSocket.on("call:end", () => {
+    const handleCallEnd = () => {
       console.log("Remote peer ended the call");
       endCall();
-    });
+    };
 
-    setSocket(newSocket);
+    socket.on("message", handleMessage);
+    socket.on("typing", handleTyping);
+    socket.on("stopTyping", handleStopTyping);
+    socket.on("user:status", handleUserStatus);
+    socket.on("call:offer", handleCallOffer);
+    socket.on("call:answer", handleCallAnswer);
+    socket.on("call:ice-candidate", handleIceCandidate);
+    socket.on("call:end", handleCallEnd);
 
     return () => {
-      newSocket.disconnect();
+      socket.off("message", handleMessage);
+      socket.off("typing", handleTyping);
+      socket.off("stopTyping", handleStopTyping);
+      socket.off("user:status", handleUserStatus);
+      socket.off("call:offer", handleCallOffer);
+      socket.off("call:answer", handleCallAnswer);
+      socket.off("call:ice-candidate", handleIceCandidate);
+      socket.off("call:end", handleCallEnd);
     };
-  }, [conversationId, token]);
+  }, [socket, conversationId, token]);
 
   // Fetch conversation and messages
   useEffect(() => {
