@@ -125,13 +125,21 @@
   justify-content: center;
 }
 
-.onlineDot {
+.statusDot {
   width: 10px;
   height: 10px;
-  background-color: var(--color-online);
   border-radius: 50%;
+}
+
+.onlineDot {
+  background-color: var(--color-online);
   box-shadow: var(--shadow-glow-blue);
   animation: pulse 2s infinite;
+}
+
+.offlineDot {
+  background-color: #ef4444;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.35);
 }
 
 .userInfo {
@@ -155,13 +163,20 @@
 }
 
 .userStatus {
-  color: var(--color-online);
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   margin-top: 4px;
   opacity: 0.9;
+}
+
+.onlineStatus {
+  color: var(--color-online);
+}
+
+.offlineStatus {
+  color: #ef4444;
 }
 
 .actions {

@@ -295,7 +295,10 @@ const ChatInterface: React.FC = () => {
                           className={styles.avatarImg}
                         />
                       </div>
-                      <span className={`${styles.statusIndicator} ${otherParticipant.isOnline ? styles.online : styles.offline}`} />
+                      <span
+                        className={`${styles.statusIndicator} ${otherParticipant.isOnline ? styles.online : styles.offline}`}
+                        aria-label={otherParticipant.isOnline ? "Online" : "Offline"}
+                      />
                     </div>
 
                     <div className={styles.messageContent}>

@@ -780,9 +780,18 @@ const DirectMessage: React.FC = () => {
                     }")`,
                   }}
                 />
-                {otherParticipant?.isOnline && (
+                {otherParticipant && (
                   <div className={styles.onlineBadgeWrapper}>
-                    <div className={styles.onlineDot}></div>
+                    <div
+                      className={`${styles.statusDot} ${
+                        otherParticipant.isOnline
+                          ? styles.onlineDot
+                          : styles.offlineDot
+                      }`}
+                      aria-label={
+                        otherParticipant.isOnline ? "Online" : "Offline"
+                      }
+                    ></div>
                   </div>
                 )}
               </div>
@@ -803,7 +812,13 @@ const DirectMessage: React.FC = () => {
                     verified
                   </span>
                 </h1>
-                <span className={styles.userStatus}>
+                <span
+                  className={`${styles.userStatus} ${
+                    otherParticipant?.isOnline
+                      ? styles.onlineStatus
+                      : styles.offlineStatus
+                  }`}
+                >
                   {otherParticipant?.isOnline ? "Online Now" : "Offline"}
                 </span>
               </div>
