@@ -110,12 +110,14 @@ function setupSocket(server) {
     });
 
     // Join conversation room
-    socket.on("join:conversation", ({ conversationId }) => {
-      socket.join(conversationId);
+    socket.on("join:conversation", (data) => {
+      if (!data || !data.conversationId) return;
+      socket.join(data.conversationId);
     });
 
     // Real-time message relay
     socket.on("message", (message) => {
+      if (!message) return;
       // Broadcast to all in the conversation room except sender
       if (message.conversation) {
         socket.to(message.conversation).emit("message", message);
@@ -127,15 +129,20 @@ function setupSocket(server) {
     });
 
     // Typing indicator
-    socket.on("typing", ({ conversationId, userId }) => {
+    socket.on("typing", (data) => {
+      if (!data || !data.conversationId || !data.userId) return;
+      const { conversationId, userId } = data;
       socket.to(conversationId).emit("typing", { userId });
     });
-    socket.on("stopTyping", ({ conversationId, userId }) => {
+    socket.on("stopTyping", (data) => {
+      if (!data || !data.conversationId || !data.userId) return;
+      const { conversationId, userId } = data;
       socket.to(conversationId).emit("stopTyping", { userId });
     });
 
     // Video/Audio call signaling
     socket.on("call:offer", async (data) => {
+      if (!data || !data.conversationId) return;
       try {
         // Get conversation to find the other participant
         const conversation = await Conversation.findById(data.conversationId);
@@ -168,6 +175,7 @@ function setupSocket(server) {
       }
     });
     socket.on("call:answer", async (data) => {
+      if (!data || !data.conversationId) return;
       try {
         // Get conversation to find the other participant
         const conversation = await Conversation.findById(data.conversationId);
@@ -197,6 +205,7 @@ function setupSocket(server) {
     });
 
     socket.on("call:ice-candidate", async (data) => {
+      if (!data || !data.conversationId) return;
       try {
         // Get conversation to find the other participant
         const conversation = await Conversation.findById(data.conversationId);
