@@ -48,10 +48,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
         setConnected(true);
 
         // Signal that the user is online
-        const userId = (user as any)?._id || (user as any)?.id;
-        if (userId) {
-          newSocket?.emit("user:online", { userId });
-        }
+        newSocket?.emit("user:online");
       });
 
       newSocket.on("disconnect", () => {

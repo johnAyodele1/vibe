@@ -7,6 +7,7 @@ const rateLimit = require("express-rate-limit");
 const session = require("express-session");
 require("dotenv").config();
 const passport = require("./config/passport");
+const User = require("./models/User");
 
 const app = express();
 const http = require("http");
@@ -69,8 +70,15 @@ mongoose
     useNewUrlParser: true,
     useUnifiedTopology: true,
   })
-  .then(() => {
+  .then(async () => {
     console.log("Connected to MongoDB");
+    try {
+      // Reset all users to offline on startup
+      await User.updateMany({}, { isOnline: false });
+      console.log("Reset all users' online status to false");
+    } catch (err) {
+      console.error("Error resetting users' online status:", err);
+    }
   })
   .catch((error) => {
     console.error("MongoDB connection error:", error);

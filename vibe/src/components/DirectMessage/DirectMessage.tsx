@@ -185,10 +185,11 @@ const DirectMessage: React.FC = () => {
     };
 
     const handleUserStatus = ({ userId, isOnline }: { userId: string, isOnline: boolean }) => {
+      const targetId = String(userId);
       setConversation(prev => {
         if (!prev) return prev;
         const updatedParticipantInfo = prev.participantInfo.map(p => {
-          if (p.user._id === userId) {
+          if (String(p.user._id) === targetId) {
             return {
               ...p,
               user: { ...p.user, isOnline }

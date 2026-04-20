@@ -1,5 +1,6 @@
 // Socket.io server for real-time chat, typing, online status, and call signaling
 const { Server } = require("socket.io");
+const jwt = require("jsonwebtoken");
 const Conversation = require("./models/Conversation");
 const User = require("./models/User");
 
@@ -24,8 +25,10 @@ function setupSocket(server) {
       return next(new Error("Authentication error"));
     }
     try {
-      const jwt = require("jsonwebtoken");
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const decoded = jwt.verify(
+        token,
+        process.env.JWT_SECRET || "fallback_secret",
+      );
       socket.userId = decoded.userId;
       console.log("Socket authenticated for user:", socket.userId);
       next();
@@ -64,32 +67,44 @@ function setupSocket(server) {
     }
 
     // Explicit online/offline events for compatibility
-    socket.on("user:online", async ({ userId: providedUserId }) => {
-      const targetUserId = providedUserId || userId;
+    socket.on("user:online", async () => {
+      const targetUserId = userId;
       if (!userSocketMap.has(targetUserId)) {
         userSocketMap.set(targetUserId, new Set());
       }
-      userSocketMap.get(targetUserId).add(socket.id);
+      const userSockets = userSocketMap.get(targetUserId);
+      const isNewlyOnline = userSockets.size === 0;
+      userSockets.add(socket.id);
 
-      await User.findByIdAndUpdate(targetUserId, {
-        isOnline: true,
-        lastActive: new Date(),
-      });
-      io.emit("user:status", { userId: targetUserId, isOnline: true });
-    });
-
-    socket.on("user:offline", async ({ userId: providedUserId }) => {
-      const targetUserId = providedUserId || userId;
-      const sockets = userSocketMap.get(targetUserId);
-      if (sockets) {
-        sockets.delete(socket.id);
-        if (sockets.size === 0) {
-          userSocketMap.delete(targetUserId);
+      if (isNewlyOnline) {
+        try {
           await User.findByIdAndUpdate(targetUserId, {
-            isOnline: false,
+            isOnline: true,
             lastActive: new Date(),
           });
-          io.emit("user:status", { userId: targetUserId, isOnline: false });
+          io.emit("user:status", { userId: targetUserId, isOnline: true });
+        } catch (err) {
+          console.error("Error updating user status to online:", err);
+        }
+      }
+    });
+
+    socket.on("user:offline", async () => {
+      const targetUserId = userId;
+      const userSockets = userSocketMap.get(targetUserId);
+      if (userSockets) {
+        userSockets.delete(socket.id);
+        if (userSockets.size === 0) {
+          userSocketMap.delete(targetUserId);
+          try {
+            await User.findByIdAndUpdate(targetUserId, {
+              isOnline: false,
+              lastActive: new Date(),
+            });
+            io.emit("user:status", { userId: targetUserId, isOnline: false });
+          } catch (err) {
+            console.error("Error updating user status to offline:", err);
+          }
         }
       }
     });
