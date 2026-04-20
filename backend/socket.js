@@ -29,6 +29,10 @@ function setupSocket(server) {
         token,
         process.env.JWT_SECRET || "fallback_secret",
       );
+      if (!decoded || !decoded.userId) {
+        console.log("Token decoded but userId missing");
+        return next(new Error("Authentication error"));
+      }
       socket.userId = decoded.userId;
       console.log("Socket authenticated for user:", socket.userId);
       next();
@@ -39,6 +43,12 @@ function setupSocket(server) {
   });
 
   io.on("connection", async (socket) => {
+    if (!socket.userId) {
+      console.error("Socket connected without userId");
+      socket.disconnect();
+      return;
+    }
+
     console.log("Socket connected for user:", socket.userId);
     const userId = socket.userId;
 
@@ -68,6 +78,7 @@ function setupSocket(server) {
 
     // Explicit online/offline events for compatibility
     socket.on("user:online", async () => {
+      if (!userId) return;
       const targetUserId = userId;
       if (!userSocketMap.has(targetUserId)) {
         userSocketMap.set(targetUserId, new Set());
@@ -90,6 +101,7 @@ function setupSocket(server) {
     });
 
     socket.on("user:offline", async () => {
+      if (!userId) return;
       const targetUserId = userId;
       const userSockets = userSocketMap.get(targetUserId);
       if (userSockets) {
@@ -131,13 +143,15 @@ function setupSocket(server) {
     // Typing indicator
     socket.on("typing", (data) => {
       if (!data || !data.conversationId || !data.userId) return;
-      const { conversationId, userId } = data;
-      socket.to(conversationId).emit("typing", { userId });
+      const conversationId = data.conversationId;
+      const typingUserId = data.userId;
+      socket.to(conversationId).emit("typing", { userId: typingUserId });
     });
     socket.on("stopTyping", (data) => {
       if (!data || !data.conversationId || !data.userId) return;
-      const { conversationId, userId } = data;
-      socket.to(conversationId).emit("stopTyping", { userId });
+      const conversationId = data.conversationId;
+      const typingUserId = data.userId;
+      socket.to(conversationId).emit("stopTyping", { userId: typingUserId });
     });
 
     // Video/Audio call signaling
@@ -153,7 +167,7 @@ function setupSocket(server) {
 
         // Find the other participant (not the caller)
         const otherParticipant = conversation.participants.find(
-          (participant) => participant.toString() !== socket.userId,
+          (participant) => participant.toString() !== String(socket.userId),
         );
 
         if (!otherParticipant) {
@@ -186,7 +200,7 @@ function setupSocket(server) {
 
         // Find the other participant (not the answerer)
         const otherParticipant = conversation.participants.find(
-          (participant) => participant.toString() !== socket.userId,
+          (participant) => participant.toString() !== String(socket.userId),
         );
 
         if (!otherParticipant) {
@@ -216,7 +230,7 @@ function setupSocket(server) {
 
         // Find the other participant (not the sender)
         const otherParticipant = conversation.participants.find(
-          (participant) => participant.toString() !== socket.userId,
+          (participant) => participant.toString() !== String(socket.userId),
         );
 
         if (!otherParticipant) {
@@ -235,6 +249,7 @@ function setupSocket(server) {
     });
 
     socket.on("disconnect", async () => {
+      if (!userId) return;
       console.log("Socket disconnected for user:", userId);
 
       const userSockets = userSocketMap.get(userId);
