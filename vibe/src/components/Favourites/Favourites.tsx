@@ -28,11 +28,11 @@ const Favourites: React.FC = () => {
   // Synchronize body background color
   useEffect(() => {
     const originalColor = document.body.style.backgroundColor;
-    const primaryColor = getComputedStyle(document.documentElement)
-      .getPropertyValue("--primary")
+    const discoveryColor = getComputedStyle(document.documentElement)
+      .getPropertyValue("--background-discovery")
       .trim();
-    if (primaryColor) {
-      document.body.style.backgroundColor = primaryColor;
+    if (discoveryColor) {
+      document.body.style.backgroundColor = discoveryColor;
     }
     return () => {
       document.body.style.backgroundColor = originalColor;
