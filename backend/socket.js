@@ -4,7 +4,7 @@ const Conversation = require("./models/Conversation");
 const User = require("./models/User");
 
 let ioInstance;
-const userSocketMap = new Map();
+const userSocketMap = new Map(); // Stores a Set of socket IDs per userId
 
 function setupSocket(server) {
   const io = new Server(server, {
@@ -35,27 +35,63 @@ function setupSocket(server) {
     }
   });
 
-  io.on("connection", (socket) => {
+  io.on("connection", async (socket) => {
     console.log("Socket connected for user:", socket.userId);
+    const userId = socket.userId;
+
     // Join user room
-    socket.join(socket.userId);
-    // Authenticate and join user room
-    socket.on("user:online", async ({ userId }) => {
-      userSocketMap.set(userId, socket.id);
-      await User.findByIdAndUpdate(userId, {
+    socket.join(userId);
+
+    // Update user status to online
+    if (!userSocketMap.has(userId)) {
+      userSocketMap.set(userId, new Set());
+    }
+    const userSockets = userSocketMap.get(userId);
+    const isFirstConnection = userSockets.size === 0;
+    userSockets.add(socket.id);
+
+    if (isFirstConnection) {
+      try {
+        await User.findByIdAndUpdate(userId, {
+          isOnline: true,
+          lastActive: new Date(),
+        });
+        io.emit("user:status", { userId, isOnline: true });
+        console.log(`User ${userId} is now online`);
+      } catch (err) {
+        console.error("Error updating user status to online:", err);
+      }
+    }
+
+    // Explicit online/offline events for compatibility
+    socket.on("user:online", async ({ userId: providedUserId }) => {
+      const targetUserId = providedUserId || userId;
+      if (!userSocketMap.has(targetUserId)) {
+        userSocketMap.set(targetUserId, new Set());
+      }
+      userSocketMap.get(targetUserId).add(socket.id);
+
+      await User.findByIdAndUpdate(targetUserId, {
         isOnline: true,
         lastActive: new Date(),
       });
-      io.emit("user:status", { userId, isOnline: true });
+      io.emit("user:status", { userId: targetUserId, isOnline: true });
     });
 
-    socket.on("user:offline", async ({ userId }) => {
-      userSocketMap.delete(userId);
-      await User.findByIdAndUpdate(userId, {
-        isOnline: false,
-        lastActive: new Date(),
-      });
-      io.emit("user:status", { userId, isOnline: false });
+    socket.on("user:offline", async ({ userId: providedUserId }) => {
+      const targetUserId = providedUserId || userId;
+      const sockets = userSocketMap.get(targetUserId);
+      if (sockets) {
+        sockets.delete(socket.id);
+        if (sockets.size === 0) {
+          userSocketMap.delete(targetUserId);
+          await User.findByIdAndUpdate(targetUserId, {
+            isOnline: false,
+            lastActive: new Date(),
+          });
+          io.emit("user:status", { userId: targetUserId, isOnline: false });
+        }
+      }
     });
 
     // Join conversation room
@@ -175,14 +211,23 @@ function setupSocket(server) {
     });
 
     socket.on("disconnect", async () => {
-      for (const [userId, id] of userSocketMap.entries()) {
-        if (id === socket.id) {
+      console.log("Socket disconnected for user:", userId);
+
+      const userSockets = userSocketMap.get(userId);
+      if (userSockets) {
+        userSockets.delete(socket.id);
+        if (userSockets.size === 0) {
           userSocketMap.delete(userId);
-          await User.findByIdAndUpdate(userId, {
-            isOnline: false,
-            lastActive: new Date(),
-          });
-          io.emit("user:status", { userId, isOnline: false });
+          try {
+            await User.findByIdAndUpdate(userId, {
+              isOnline: false,
+              lastActive: new Date(),
+            });
+            io.emit("user:status", { userId, isOnline: false });
+            console.log(`User ${userId} is now offline`);
+          } catch (err) {
+            console.error("Error updating user status to offline:", err);
+          }
         }
       }
     });

@@ -234,15 +234,23 @@
   background-color: #e2e8f0;
 }
 
-.onlineIndicator {
+.statusIndicator {
   position: absolute;
   bottom: 0;
   right: 0;
   width: 14px;
   height: 14px;
-  background-color: #22c55e;
   border: 2px solid var(--bg-app);
   border-radius: 50%;
+  transition: background-color 0.3s ease;
+}
+
+.online {
+  background-color: #22c55e;
+}
+
+.offline {
+  background-color: #ef4444; /* Red dot for not online */
 }
 
 .messageContent {
