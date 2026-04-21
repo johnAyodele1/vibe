@@ -233,15 +233,24 @@ export const superLike = async (req: Request, res: Response): Promise<Response> 
 export const getFavourites = async (req: Request, res: Response): Promise<Response> => {
   try {
     if (!req.user) return res.status(401).json({ success: false, message: 'Not authenticated' });
-    const user = await User.findById(req.user._id).populate(
-      'favouritedUsers',
-      'firstName lastName age photos bio location interests lastActive isOnline',
-    ) as IUser | null;
+    const user = await User.findById(req.user._id).populate({
+      path: 'favouritedUsers',
+      select: 'firstName lastName age photos bio location interests lastActive isOnline blockedUsers isBlocked',
+    }) as IUser | null;
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    // Filter out users who are blocked, or who have blocked the current user
+    const currentUserId = req.user._id.toString();
+    const filteredFavourites = (user.favouritedUsers as unknown as IUser[]).filter((favUser: IUser) => {
+      if (favUser.isBlocked) return false;
+      if (user.blockedUsers.some(id => id.toString() === favUser._id.toString())) return false;
+      if (favUser.blockedUsers.some(id => id.toString() === currentUserId)) return false;
+      return true;
+    });
 
     return res.json({
       success: true,
-      data: { favourites: user.favouritedUsers },
+      data: { favourites: filteredFavourites },
     });
   } catch (error) {
     console.error('Get favourites error:', error);

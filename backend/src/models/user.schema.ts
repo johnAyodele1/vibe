@@ -152,6 +152,16 @@ export const userSchema = new Schema<IUser, IUserModel>(
         ref: 'User',
       },
     ],
+    blockedUsers: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: 'User',
+      },
+    ],
+    isBlocked: {
+      type: Boolean,
+      default: false,
+    },
     matches: [
       {
         user: {

@@ -773,7 +773,13 @@ const DirectMessage: React.FC = () => {
                 </span>
               </button>
 
-              <div className={styles.profileContainer}>
+              <div
+                className={styles.profileContainer}
+                onClick={() =>
+                  otherParticipant && navigate(`/user/${otherParticipant._id}`)
+                }
+                style={{ cursor: "pointer" }}
+              >
                 <div
                   className={styles.avatar}
                   style={{
@@ -799,7 +805,13 @@ const DirectMessage: React.FC = () => {
                 )}
               </div>
 
-              <div className={styles.userInfo}>
+              <div
+                className={styles.userInfo}
+                onClick={() =>
+                  otherParticipant && navigate(`/user/${otherParticipant._id}`)
+                }
+                style={{ cursor: "pointer" }}
+              >
                 <h1 className={styles.userName}>
                   {otherParticipant
                     ? `${otherParticipant.firstName} ${otherParticipant.lastName}`

@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import Message from '../models/Message';
 import Conversation from '../models/Conversation';
+import User from '../models/User';
 import { getIO } from '../socket';
 import { IConversation, IMessage } from '../types/models';
 import { Types } from 'mongoose';
@@ -99,6 +100,28 @@ export const sendMessage = async (req: IExpressRequest, res: Response): Promise<
     if (!req.user) return res.status(401).json({ success: false, message: 'Not authenticated' });
     const { receiverId, content, messageType = 'text' } = req.body;
     const currentUserId = (req.user._id as Types.ObjectId).toString();
+
+    // Check if either user has blocked the other
+    const [currentUser, receiverUser] = await Promise.all([
+      User.findById(currentUserId),
+      User.findById(receiverId),
+    ]);
+
+    if (!receiverUser) {
+      return res.status(404).json({ success: false, message: 'Receiver not found' });
+    }
+
+    if (currentUser?.blockedUsers.some(id => id.toString() === receiverId)) {
+      return res.status(403).json({ success: false, message: 'You have blocked this user' });
+    }
+
+    if (receiverUser.blockedUsers.some(id => id.toString() === currentUserId)) {
+      return res.status(403).json({ success: false, message: 'This user has blocked you' });
+    }
+
+    if (receiverUser.isBlocked) {
+      return res.status(403).json({ success: false, message: 'This user account is suspended' });
+    }
 
     // Find or create conversation
     let conversation = await Conversation.findDirectConversation(

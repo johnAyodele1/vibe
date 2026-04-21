@@ -65,8 +65,10 @@ export interface IUser extends Document {
   likedUsers: Types.ObjectId[];
   favouritedUsers: Types.ObjectId[];
   dislikedUsers: Types.ObjectId[];
+  blockedUsers: Types.ObjectId[];
   matches: IMatch[];
   isVerified: boolean;
+  isBlocked: boolean;
   isPremium: boolean;
   views: number;
   profileCompletion: number;
@@ -137,4 +139,14 @@ export interface IConversation extends Document {
 
 export interface IConversationModel extends Model<IConversation> {
   findDirectConversation(user1Id: string | Types.ObjectId, user2Id: string | Types.ObjectId): Promise<IConversation | null>;
+}
+
+export interface IReport extends Document {
+  reporter: Types.ObjectId | IUser;
+  reported: Types.ObjectId | IUser;
+  reason: string;
+  description?: string;
+  status: 'pending' | 'resolved' | 'dismissed';
+  createdAt: Date;
+  updatedAt: Date;
 }

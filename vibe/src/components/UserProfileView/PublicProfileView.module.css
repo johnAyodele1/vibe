@@ -1,0 +1,307 @@
+/* --- Variables based on your Tailwind Config --- */
+.container {
+  --primary: #f42559;
+  --bg-light: #f8f5f6;
+  --bg-dark: #221014;
+  --text-dark: #0f172a; /* slate-900 */
+  --text-light: #ffffff;
+
+  /* Text Sizes */
+  --text-3xl: 1.875rem; /* Matches Tailwind text-3xl */
+  --text-lg: 1.125rem;
+  --text-sm: 0.875rem;
+
+  font-family: "Plus Jakarta Sans", sans-serif;
+  color: var(--text-dark);
+  background-color: var(--bg-light);
+
+  width: 100%;
+  max-width: 480px; /* Constrain to mobile width */
+  min-height: 100vh;
+  margin: 0 auto; /* Center on desktop */
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  padding-bottom: 2rem;
+  box-shadow: 0 0 50px rgba(0, 0, 0, 0.1); /* Subtle shadow for desktop view */
+}
+
+/* Dark Mode Overrides */
+:global(.dark) .container {
+  color: var(--text-light);
+  background-color: var(--bg-dark);
+}
+
+/* --- Utilities --- */
+.noScrollbar::-webkit-scrollbar {
+  display: none;
+}
+.noScrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* --- Header --- */
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem; /* py-3 px-4 */
+  background-color: rgba(248, 245, 246, 0.95);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+:global(.dark) .header {
+  background-color: rgba(34, 16, 20, 0.95);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.iconBtn {
+  width: 2.5rem;
+  height: 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  transition: background-color 0.2s;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+}
+.iconBtn:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+:global(.dark) .iconBtn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.headerTitle {
+  font-weight: 700;
+  font-size: var(--text-lg);
+  letter-spacing: -0.01em;
+}
+
+/* --- Hero Section --- */
+.heroWrapper {
+  padding: 0 1rem; /* px-4 */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.heroImageContainer {
+  position: relative;
+  width: 100%;
+  /* Removed max-w-sm to fill the mobile container naturally */
+  aspect-ratio: 4/5;
+  border-radius: 2.5rem;
+  overflow: hidden;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.heroBg {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+}
+
+.heroGradient {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.8),
+    transparent,
+    transparent
+  );
+}
+
+.heroContent {
+  position: absolute;
+  bottom: 1.25rem;
+  left: 1.25rem;
+  text-align: left;
+}
+
+.heroNameRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.heroName {
+  color: white;
+  font-size: var(--text-3xl); /* Matches text-3xl */
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  line-height: 1.1;
+  word-break: break-word;
+}
+
+.heroLocation {
+  color: #e5e7eb;
+  font-size: 0.875rem; /* text-sm */
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.25rem;
+}
+
+/* --- Bio & Interests --- */
+.section {
+  padding: 0 1.5rem; /* px-6 */
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+}
+
+.sectionTitle {
+  font-size: var(--text-lg);
+  font-weight: 700;
+}
+
+.bioText {
+  color: #4b5563;
+  font-size: 1rem;
+  line-height: 1.6;
+}
+:global(.dark) .bioText {
+  color: #d1d5db;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.tag {
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
+  background-color: #f3f4f6;
+  color: #1e293b;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+:global(.dark) .tag {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #e5e7eb;
+}
+
+/* --- Action Section --- */
+.actionSection {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 1rem;
+}
+
+.reportBtn, .blockBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.reportBtn {
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.blockBtn {
+  background: rgba(244, 37, 89, 0.1);
+  color: #f42559;
+  border: 1px solid rgba(244, 37, 89, 0.2);
+}
+
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.modalContent {
+  background: #1a1a1c;
+  padding: 24px;
+  border-radius: 20px;
+  width: 100%;
+  max-width: 400px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.modalContent h3 {
+  margin-top: 0;
+  margin-bottom: 16px;
+  color: #fff;
+}
+
+.reportInput {
+  width: 100%;
+  height: 120px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 12px;
+  color: #fff;
+  margin-bottom: 20px;
+  resize: none;
+  font-family: inherit;
+}
+
+.modalActions {
+  display: flex;
+  gap: 12px;
+}
+
+.modalActions button {
+  flex: 1;
+  padding: 12px;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+}
+
+.submitReportBtn {
+  background: #f42559;
+  color: #fff;
+}
+
+.loadingContainer, .errorContainer {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #12080a;
+  color: #fff;
+}

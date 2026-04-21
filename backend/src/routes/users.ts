@@ -6,6 +6,9 @@ import {
   updateProfile,
   discover,
   deleteAccount,
+  getUserById,
+  blockUser,
+  reportUser,
 } from '../controllers/user.controller';
 import {
   like,
@@ -21,6 +24,10 @@ router.put('/profile', authenticateToken, updateOnlineStatus, updateProfile);
 router.get('/discover', authenticateToken, updateOnlineStatus, discover);
 router.get('/favourites', authenticateToken, updateOnlineStatus, getFavourites);
 router.delete('/account', authenticateToken, updateOnlineStatus, deleteAccount);
+
+router.get('/:id', authenticateToken, updateOnlineStatus, getUserById);
+router.post('/:id/block', authenticateToken, updateOnlineStatus, blockUser);
+router.post('/:id/report', authenticateToken, updateOnlineStatus, reportUser);
 
 router.post('/:id/super-like', authenticateToken, updateOnlineStatus, superLike);
 router.post('/:id/like', authenticateToken, updateOnlineStatus, like);

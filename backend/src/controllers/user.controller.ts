@@ -1,7 +1,8 @@
 import { Response } from 'express';
 import User from '../models/User';
+import Report from '../models/Report';
 import { IExpressRequest } from '../types/express';
-import { Types } from 'mongoose';
+import mongoose, { Types } from 'mongoose';
 import { IUser } from '../types/models';
 
 // @desc    Get current user profile
@@ -13,6 +14,93 @@ export const getProfile = async (req: IExpressRequest, res: Response): Promise<R
     return res.json({ success: true, data: { user } });
   } catch (error) {
     console.error('Get profile error:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// @desc    Get user by ID
+// @access  Private
+export const getUserById = async (req: IExpressRequest, res: Response): Promise<Response> => {
+  try {
+    const id = req.params.id as string;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid user ID' });
+    }
+
+    const user = await User.findById(id).select('firstName lastName age photos bio location interests isVerified lastActive isOnline');
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    return res.json({ success: true, data: { user } });
+  } catch (error) {
+    console.error('Get user by ID error:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// @desc    Block a user
+// @access  Private
+export const blockUser = async (req: IExpressRequest, res: Response): Promise<Response> => {
+  try {
+    if (!req.user) return res.status(401).json({ success: false, message: 'Not authenticated' });
+    const id = req.params.id as string;
+    const currentUserId = req.user._id as Types.ObjectId;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid user ID' });
+    }
+
+    if (id === currentUserId.toString()) {
+      return res.status(400).json({ success: false, message: 'Cannot block yourself' });
+    }
+
+    const user = await User.findById(currentUserId);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    const targetId = new mongoose.Types.ObjectId(id);
+    if (!user.blockedUsers.includes(targetId)) {
+      user.blockedUsers.push(targetId);
+      await user.save();
+    }
+
+    return res.json({ success: true, message: 'User blocked successfully' });
+  } catch (error) {
+    console.error('Block user error:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// @desc    Report a user
+// @access  Private
+export const reportUser = async (req: IExpressRequest, res: Response): Promise<Response> => {
+  try {
+    if (!req.user) return res.status(401).json({ success: false, message: 'Not authenticated' });
+    const id = req.params.id as string;
+    const { reason, description } = req.body;
+    const currentUserId = req.user._id as Types.ObjectId;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid user ID' });
+    }
+
+    if (!reason) {
+      return res.status(400).json({ success: false, message: 'Reason is required' });
+    }
+
+    const report = new Report({
+      reporter: currentUserId,
+      reported: new mongoose.Types.ObjectId(id),
+      reason,
+      description,
+    });
+
+    await report.save();
+
+    return res.json({ success: true, message: 'User reported successfully' });
+  } catch (error) {
+    console.error('Report user error:', error);
     return res.status(500).json({ success: false, message: 'Server error' });
   }
 };
@@ -67,7 +155,12 @@ export const discover = async (req: IExpressRequest, res: Response): Promise<Res
     const currentUser = await User.findById(req.user._id) as IUser | null;
     if (!currentUser) return res.status(404).json({ success: false, message: 'User not found' });
 
+    // Find users who have blocked current user
+    const usersWhoBlockedMe = await User.find({ blockedUsers: req.user._id as Types.ObjectId }).select('_id');
+    const blockedMeIds = usersWhoBlockedMe.map(u => u._id);
+
     const query: Record<string, unknown> = {
+      isBlocked: { $ne: true },
       gender:
         currentUser.preferences.genderPreference === 'Everyone'
           ? { $exists: true }
@@ -93,6 +186,8 @@ export const discover = async (req: IExpressRequest, res: Response): Promise<Res
           ...currentUser.likedUsers,
           ...currentUser.dislikedUsers,
           ...currentUser.favouritedUsers,
+          ...currentUser.blockedUsers,
+          ...blockedMeIds,
         ],
       },
     };

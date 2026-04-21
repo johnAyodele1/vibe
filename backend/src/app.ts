@@ -15,6 +15,7 @@ import userRoutes from './routes/users';
 import matchRoutes from './routes/matches';
 import messageRoutes from './routes/messages';
 import uploadRoutes from './routes/upload';
+import adminRoutes from './routes/admin';
 
 dotenv.config();
 
@@ -87,6 +88,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/matches', matchRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req: Request, res: Response) => {
