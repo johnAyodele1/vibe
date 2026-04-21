@@ -3,12 +3,14 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import styles from "./Admin.module.css";
 import { API_BASE_URL } from "../../config";
+import { useAuth } from "../../contexts/AuthContext";
 
 const AdminLogin: React.FC = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const { setIsAdminAuthenticated } = useAuth();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,6 +27,7 @@ const AdminLogin: React.FC = () => {
       if (data.success) {
         localStorage.setItem("adminToken", data.data.token);
         localStorage.setItem("isAdminAuthenticated", "true");
+        setIsAdminAuthenticated(true);
         toast.success("Admin login successful");
         navigate("/admin");
       } else {

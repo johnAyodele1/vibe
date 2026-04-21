@@ -22,6 +22,8 @@ interface User {
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
+  isAdminAuthenticated: boolean;
+  setIsAdminAuthenticated: (value: boolean) => void;
   loading: boolean;
   login: (email: string, password: string) => Promise<boolean>;
   signup: (userData: any) => Promise<boolean>;
@@ -47,6 +49,9 @@ interface AuthProviderProps {
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(
+    localStorage.getItem("isAdminAuthenticated") === "true"
+  );
   const [loading, setLoading] = useState(true);
 
   const checkAuthStatus = async () => {
@@ -161,8 +166,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const logout = () => {
     localStorage.removeItem("accessToken");
     localStorage.removeItem("refreshToken");
+    localStorage.removeItem("isAdminAuthenticated");
+    localStorage.removeItem("adminToken");
     setUser(null);
     setIsAuthenticated(false);
+    setIsAdminAuthenticated(false);
   };
 
   useEffect(() => {
@@ -172,6 +180,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const value: AuthContextType = {
     user,
     isAuthenticated,
+    isAdminAuthenticated,
+    setIsAdminAuthenticated,
     loading,
     login,
     signup,

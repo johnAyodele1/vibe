@@ -17,7 +17,7 @@ import AdminLogin from "../Admin/AdminLogin";
 import { useAuth } from "../../contexts/AuthContext";
 
 function App() {
-  const { user, isAuthenticated, loading } = useAuth();
+  const { user, isAuthenticated, isAdminAuthenticated, loading } = useAuth();
 
   const isProfileComplete = () => {
     if (!user) return false;
@@ -150,7 +150,7 @@ function App() {
         <Route
           path="/admin"
           element={
-            isAuthenticated ? (
+            isAdminAuthenticated ? (
               <AdminDashboard />
             ) : (
               <Navigate to="/admin/login" replace />
