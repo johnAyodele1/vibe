@@ -5,12 +5,15 @@ import ProfileCreation from "../ProfileCreation/ProfileCreation";
 import Auth from "../Auth/Auth";
 import GoogleCallback from "../Auth/GoogleCallback";
 import UserProfileView from "../UserProfileView/UserProfileView";
+import PublicProfileView from "../UserProfileView/PublicProfileView";
 import Settings from "../Settings/Settings";
 import ChatInterface from "../ChatInterface/ChatInterface";
 import DirectMessage from "../DirectMessage/DirectMessage";
 import Discovery from "../Discovery/Discovery";
 import Favourites from "../Favourites/Favourites";
 import CallManager from "../CallManager/CallManager";
+import AdminDashboard from "../Admin/AdminDashboard";
+import AdminLogin from "../Admin/AdminLogin";
 import { useAuth } from "../../contexts/AuthContext";
 
 function App() {
@@ -88,6 +91,20 @@ function App() {
           }
         />
         <Route
+          path="/user/:userId"
+          element={
+            isAuthenticated ? (
+              isProfileComplete() ? (
+                <PublicProfileView />
+              ) : (
+                <Navigate to="/profile" replace />
+              )
+            ) : (
+              <Navigate to="/auth" replace />
+            )
+          }
+        />
+        <Route
           path="/my-profile"
           element={
             isAuthenticated ? (
@@ -126,6 +143,17 @@ function App() {
               )
             ) : (
               <Navigate to="/auth" replace />
+            )
+          }
+        />
+        <Route path="/admin/login" element={<AdminLogin />} />
+        <Route
+          path="/admin"
+          element={
+            isAuthenticated ? (
+              <AdminDashboard />
+            ) : (
+              <Navigate to="/admin/login" replace />
             )
           }
         />

@@ -4,11 +4,11 @@ import User from '../models/User';
 import { Types } from 'mongoose';
 
 // Generate access token
-export const generateAccessToken = (userId: string | Types.ObjectId): string => {
+export const generateAccessToken = (userId: string | Types.ObjectId, isAdmin: boolean = false): string => {
   const options: SignOptions = {
     expiresIn: (process.env.JWT_EXPIRE as SignOptions['expiresIn']) || '7d',
   };
-  return jwt.sign({ userId }, process.env.JWT_SECRET || 'fallback_secret', options);
+  return jwt.sign({ userId, isAdmin }, process.env.JWT_SECRET || 'fallback_secret', options);
 };
 
 // Generate refresh token
