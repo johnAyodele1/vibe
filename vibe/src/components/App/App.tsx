@@ -14,6 +14,7 @@ import Favourites from "../Favourites/Favourites";
 import CallManager from "../CallManager/CallManager";
 import AdminDashboard from "../Admin/AdminDashboard";
 import AdminLogin from "../Admin/AdminLogin";
+import LoadingScreen from "../LoadingScreen/LoadingScreen";
 import { useAuth } from "../../contexts/AuthContext";
 
 function App() {
@@ -36,11 +37,7 @@ function App() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900">
-        <div className="text-white text-xl">Loading...</div>
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   return (
@@ -80,11 +77,7 @@ function App() {
           path="/discovery"
           element={
             isAuthenticated ? (
-              isProfileComplete() ? (
-                <Discovery />
-              ) : (
-                <Navigate to="/profile" replace />
-              )
+              <Discovery />
             ) : (
               <Navigate to="/auth" replace />
             )

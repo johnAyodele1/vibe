@@ -20,6 +20,9 @@ const ProfileCreation: React.FC = () => {
   const [isDark, setIsDark] = useState(true); // Default to Dark mode as per prompt
   const [loading, setLoading] = useState(false);
   const [photos, setPhotos] = useState<string[]>(["", "", "", "", "", ""]); // Array for 6 photos
+  const [uploadProgress, setUploadProgress] = useState<{ [key: number]: number }>({});
+  const [localPreviews, setLocalPreviews] = useState<{ [key: number]: string }>({});
+  const fileInputRefs = React.useRef<(HTMLInputElement | null)[]>([]);
   const [selectedInterests, setSelectedInterests] = useState<string[]>([
     "Late Night 🌙",
     "Drinks 🍸",
@@ -348,41 +351,86 @@ const ProfileCreation: React.FC = () => {
   // Handle photo upload
   const handlePhotoUpload = async (
     event: React.ChangeEvent<HTMLInputElement>,
+    index?: number,
   ) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    const targetIndex =
+      typeof index === "number"
+        ? index
+        : photos.findIndex((photo) => photo === "");
+
+    if (targetIndex === -1) return;
+
+    // Create local preview
+    const previewUrl = URL.createObjectURL(file);
+    setLocalPreviews((prev) => ({ ...prev, [targetIndex]: previewUrl }));
+    setUploadProgress((prev) => ({ ...prev, [targetIndex]: 0 }));
+
     const formData = new FormData();
     formData.append("photo", file);
 
-    try {
-      const response = await fetch(`${API_BASE_URL}/upload/photo`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
-        },
-        body: formData,
-      });
+    const xhr = new XMLHttpRequest();
 
-      const data = await response.json();
-      if (data.success) {
-        // Add the new photo URL to the photos array
-        setPhotos((prev) => {
-          const newPhotos = [...prev];
-          const emptyIndex = newPhotos.findIndex((photo) => photo === "");
-          if (emptyIndex !== -1) {
-            newPhotos[emptyIndex] = data.data.photo.url;
-          }
-          return newPhotos;
-        });
-        toast.success("Photo uploaded successfully");
-      } else {
-        toast.error(data.message || "Upload failed");
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        const percentComplete = Math.round((event.loaded / event.total) * 100);
+        setUploadProgress((prev) => ({
+          ...prev,
+          [targetIndex]: percentComplete,
+        }));
       }
-    } catch (error) {
-      console.error("Upload error:", error);
+    };
+
+    xhr.onload = async () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        const data = JSON.parse(xhr.responseText);
+        if (data.success) {
+          setPhotos((prev) => {
+            const newPhotos = [...prev];
+            newPhotos[targetIndex] = data.data.photo.url;
+            return newPhotos;
+          });
+          toast.success("Photo uploaded successfully");
+        } else {
+          toast.error(data.message || "Upload failed");
+        }
+      } else {
+        toast.error("Upload failed");
+      }
+      setUploadProgress((prev) => {
+        const next = { ...prev };
+        delete next[targetIndex];
+        return next;
+      });
+      setLocalPreviews((prev) => {
+        const next = { ...prev };
+        delete next[targetIndex];
+        return next;
+      });
+    };
+
+    xhr.onerror = () => {
       toast.error("Network error during upload");
-    }
+      setUploadProgress((prev) => {
+        const next = { ...prev };
+        delete next[targetIndex];
+        return next;
+      });
+      setLocalPreviews((prev) => {
+        const next = { ...prev };
+        delete next[targetIndex];
+        return next;
+      });
+    };
+
+    xhr.open("POST", `${API_BASE_URL}/upload/photo`);
+    xhr.setRequestHeader(
+      "Authorization",
+      `Bearer ${localStorage.getItem("accessToken")}`,
+    );
+    xhr.send(formData);
   };
 
   // Handle interest selection
@@ -479,9 +527,9 @@ const ProfileCreation: React.FC = () => {
         toast.success("Profile updated successfully!");
         // Refresh auth status to update user data in context
         await checkAuthStatus();
-        // Navigate to profile page after a brief delay to let user see success message
+        // Navigate to discovery page after a brief delay to let user see success message
         setTimeout(() => {
-          navigate("/my-profile");
+          navigate("/discovery");
         }, 1500);
       } else {
         toast.error(data.message || "Failed to update profile");
@@ -501,7 +549,10 @@ const ProfileCreation: React.FC = () => {
         {/* Sticky Header */}
         <div className={styles.header}>
           <div className={styles.navBar}>
-            <button className={`${styles.iconButton} group`}>
+            <button
+              className={`${styles.iconButton} group`}
+              onClick={() => navigate(-1)}
+            >
               <Icon
                 name="arrow_back_ios_new"
                 className="text-2xl group-hover:-translate-x-0.5 transition-transform"
@@ -539,7 +590,11 @@ const ProfileCreation: React.FC = () => {
 
             <div className={styles.photoGrid}>
               {photos.map((photo, index) => {
-                if (photo) {
+                const isUploading = uploadProgress[index] !== undefined;
+                const progress = uploadProgress[index] || 0;
+                const previewUrl = localPreviews[index];
+
+                if (photo || isUploading) {
                   return (
                     <div
                       key={index}
@@ -550,18 +605,48 @@ const ProfileCreation: React.FC = () => {
                       <div
                         className={styles.photoImage}
                         style={{
-                          backgroundImage: `url('${photo}')`,
+                          backgroundImage: `url('${photo || previewUrl}')`,
                         }}
                       ></div>
+                      {isUploading && (
+                        <div className={styles.progressOverlay}>
+                          <div className={styles.progressCircle}>
+                            <svg viewBox="0 0 36 36" className={styles.circularChart}>
+                              <path
+                                className={styles.circleBg}
+                                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                              />
+                              <path
+                                className={styles.circle}
+                                strokeDasharray={`${progress}, 100`}
+                                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                              />
+                              <text x="18" y="20.35" className={styles.percentage}>
+                                {progress}%
+                              </text>
+                            </svg>
+                          </div>
+                        </div>
+                      )}
                       {index === 0 && (
                         <>
                           <div className={styles.photoOverlay}></div>
                           <div className={styles.mainBadge}>MAIN</div>
                         </>
                       )}
-                      <button className={styles.editButton}>
+                      <button
+                        className={styles.editButton}
+                        onClick={() => fileInputRefs.current[index]?.click()}
+                      >
                         <Icon name="edit" className="text-sm" />
                       </button>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        ref={(el) => (fileInputRefs.current[index] = el)}
+                        onChange={(e) => handlePhotoUpload(e, index)}
+                        className="hidden"
+                      />
                       {index > 0 && (
                         <button
                           className={styles.removeButton}

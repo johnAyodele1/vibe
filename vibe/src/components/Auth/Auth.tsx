@@ -55,7 +55,7 @@ const Connect: React.FC = () => {
 
         if (success) {
           toast.success("Account created successfully!");
-          navigate("/profile");
+          navigate("/discovery");
         } else {
           toast.error("Signup failed");
         }

@@ -570,3 +570,47 @@
 .continueBtn:active {
   transform: scale(0.98);
 }
+
+.progressOverlay {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.progressCircle {
+  width: 60px;
+  height: 60px;
+}
+
+.circularChart {
+  display: block;
+  margin: 10px auto;
+  max-width: 100%;
+  max-height: 250px;
+}
+
+.circleBg {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.2);
+  stroke-width: 2.8;
+}
+
+.circle {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 2.8;
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.3s ease;
+}
+
+.percentage {
+  fill: white;
+  font-family: inherit;
+  font-size: 0.5rem;
+  font-weight: 700;
+  text-anchor: middle;
+}
