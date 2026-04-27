@@ -1,6 +1,7 @@
 import React from "react";
 import styles from "./Onboarding.module.css";
 import { useNavigate } from "react-router-dom";
+import { API_BASE_URL } from "../../config";
 
 const Welcome: React.FC = () => {
   const navigate = useNavigate();
@@ -94,7 +95,10 @@ const Welcome: React.FC = () => {
                 arrow_forward
               </span>
             </button>
-            <button className={`${styles.btnBase} ${styles.btnSecondary}`}>
+            <button
+              className={`${styles.btnBase} ${styles.btnSecondary}`}
+              onClick={() => navigate("/auth")}
+            >
               <span className={styles.btnSecondaryText}>
                 I already have an account
               </span>
@@ -110,29 +114,16 @@ const Welcome: React.FC = () => {
 
           {/* Social Login Row */}
           <div className={styles.socialRow}>
-            <button className={styles.socialBtn}>
-              <span
-                className="material-symbols-outlined"
-                style={{ fontSize: "24px" }}
-              >
-                key
-              </span>
-            </button>
-            <button className={styles.socialBtn}>
-              <span
-                className="material-symbols-outlined"
-                style={{ fontSize: "24px" }}
-              >
-                language
-              </span>
-            </button>
-            <button className={styles.socialBtn}>
-              <span
-                className="material-symbols-outlined"
-                style={{ fontSize: "24px" }}
-              >
-                smartphone
-              </span>
+            <button
+              className={styles.googleBtn}
+              onClick={() => (window.location.href = `${API_BASE_URL}/auth/google`)}
+            >
+              <img
+                src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+                alt="Google"
+                className={styles.googleIcon}
+              />
+              <span>Continue with Google</span>
             </button>
           </div>
 
