@@ -28,6 +28,10 @@ const ProfileCreation: React.FC = () => {
     "Drinks 🍸",
   ]);
   const [activeGender, setActiveGender] = useState("Women");
+  const [myGender, setMyGender] = useState("");
+  const [myDOB, setMyDOB] = useState("");
+  const [myFirstName, setMyFirstName] = useState("");
+  const [myLastName, setMyLastName] = useState("");
   const [ageRange, setAgeRange] = useState({ min: 18, max: 28 });
   const [distance, setDistance] = useState(25);
   const [bio, setBio] = useState("");
@@ -166,6 +170,15 @@ const ProfileCreation: React.FC = () => {
       const data = await response.json();
       if (data.success && data.data.user) {
         const user = data.data.user;
+
+        // Prefill basics
+        if (user.firstName) setMyFirstName(user.firstName);
+        if (user.lastName) setMyLastName(user.lastName);
+        if (user.gender) setMyGender(user.gender);
+        if (user.dateOfBirth) {
+          const date = new Date(user.dateOfBirth);
+          setMyDOB(date.toISOString().split("T")[0]);
+        }
 
         // Prefill bio
         if (user.bio) setBio(user.bio);
@@ -496,7 +509,19 @@ const ProfileCreation: React.FC = () => {
     setLoading(true);
     try {
       const profileData = {
+        firstName: myFirstName,
+        lastName: myLastName,
+        gender: myGender,
+        dateOfBirth: myDOB,
         bio,
+        photos: photos
+          .filter((url) => url !== "")
+          .map((url, index) => ({
+            url,
+            isMain: index === 0,
+            order: index,
+            uploadedAt: new Date(),
+          })),
         interests: selectedInterests.map((interest) => interest.split(" ")[0]), // Remove emojis
         location: {
           type: "Point",
@@ -581,6 +606,57 @@ const ProfileCreation: React.FC = () => {
 
         {/* Main Scrollable Form */}
         <div className={styles.contentWrapper}>
+          {/* SECTION 0: BASICS */}
+          <section className="flex flex-col gap-5">
+            <div className={styles.sectionHeader}>
+              <h2>The Basics</h2>
+              <p>Tell us a bit about yourself.</p>
+            </div>
+            <div className="flex flex-col gap-4">
+              <div className={styles.bioContainer}>
+                <input
+                  type="text"
+                  className={`${styles.bioInput} !py-3`}
+                  placeholder="First Name"
+                  value={myFirstName}
+                  onChange={(e) => setMyFirstName(e.target.value)}
+                />
+              </div>
+              <div className={styles.bioContainer}>
+                <input
+                  type="text"
+                  className={`${styles.bioInput} !py-3`}
+                  placeholder="Last Name"
+                  value={myLastName}
+                  onChange={(e) => setMyLastName(e.target.value)}
+                />
+              </div>
+              <div className={styles.bioContainer}>
+                <select
+                  className={`${styles.bioInput} !py-3`}
+                  value={myGender}
+                  onChange={(e) => setMyGender(e.target.value)}
+                >
+                  <option value="">Select Your Gender</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Non-binary">Non-binary</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div className={styles.bioContainer}>
+                <input
+                  type="date"
+                  className={`${styles.bioInput} !py-3`}
+                  value={myDOB}
+                  onChange={(e) => setMyDOB(e.target.value)}
+                />
+              </div>
+            </div>
+          </section>
+
+          <div className={styles.divider}></div>
+
           {/* SECTION 1: VISUALS (PHOTOS) */}
           <section className="flex flex-col gap-5">
             <div className={styles.sectionHeader}>
