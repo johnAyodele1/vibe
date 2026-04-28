@@ -101,7 +101,11 @@ function App() {
           path="/my-profile"
           element={
             isAuthenticated ? (
-              <UserProfileView />
+              isProfileComplete() ? (
+                <UserProfileView />
+              ) : (
+                <Navigate to="/profile" replace />
+              )
             ) : (
               <Navigate to="/auth" replace />
             )
