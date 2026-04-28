@@ -297,7 +297,11 @@ const Discovery: React.FC = () => {
       <div className={styles.container}>
         {/* Header */}
         <header className={styles.header}>
-          <button className={styles.iconBtn} aria-label="Profile">
+          <button
+            className={styles.iconBtn}
+            aria-label="Profile"
+            onClick={() => navigate("/my-profile")}
+          >
             <span className="material-symbols-outlined">person</span>
           </button>
 
