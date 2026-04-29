@@ -47,6 +47,7 @@ export const uploadPhoto = async (req: Request, res: Response): Promise<Response
 
     const photoData = {
       url: result.secure_url,
+      publicId: result.public_id,
       isMain: user.photos.length === 0, // First photo is main by default
       order: user.photos.length,
       uploadedAt: new Date()
@@ -60,7 +61,6 @@ export const uploadPhoto = async (req: Request, res: Response): Promise<Response
       message: 'Photo uploaded successfully',
       data: {
         photo: photoData,
-        public_id: result.public_id,
       },
     });
   } catch (error) {
@@ -83,9 +83,7 @@ export const deletePhoto = async (req: Request, res: Response): Promise<Response
     const user = await User.findById(req.user._id) as IUser | null;
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
-    const photoIndex = user.photos.findIndex((photo) =>
-      photo.url.includes(publicId)
-    );
+    const photoIndex = user.photos.findIndex((photo: any) => photo.publicId === publicId);
 
     if (photoIndex === -1) {
       return res.status(404).json({
@@ -94,8 +92,15 @@ export const deletePhoto = async (req: Request, res: Response): Promise<Response
       });
     }
 
-    // Delete from Cloudinary
-    await cloudinary.uploader.destroy(publicId);
+    // Delete from Cloudinary only if publicId exists
+    if (publicId) {
+      try {
+        await cloudinary.uploader.destroy(publicId);
+      } catch (cloudinaryError) {
+        console.error('Cloudinary deletion error (non-critical):', cloudinaryError);
+        // Continue with database deletion even if Cloudinary fails
+      }
+    }
 
     // Remove from user's photos array
     user.photos.splice(photoIndex, 1);

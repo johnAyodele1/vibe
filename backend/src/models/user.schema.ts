@@ -61,6 +61,10 @@ export const userSchema = new Schema<IUser, IUserModel>(
           type: String,
           required: true,
         },
+        publicId: {
+          type: String,
+          default: null,
+        },
         isMain: {
           type: Boolean,
           default: false,

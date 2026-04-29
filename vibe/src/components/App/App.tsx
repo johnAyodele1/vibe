@@ -77,7 +77,11 @@ function App() {
           path="/discovery"
           element={
             isAuthenticated ? (
-              <Discovery />
+              isProfileComplete() ? (
+                <Discovery />
+              ) : (
+                <Navigate to="/profile" replace />
+              )
             ) : (
               <Navigate to="/auth" replace />
             )

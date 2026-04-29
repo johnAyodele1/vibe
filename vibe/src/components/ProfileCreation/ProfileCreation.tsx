@@ -20,6 +20,7 @@ const ProfileCreation: React.FC = () => {
   const [isDark, setIsDark] = useState(true); // Default to Dark mode as per prompt
   const [loading, setLoading] = useState(false);
   const [photos, setPhotos] = useState<string[]>(["", "", "", "", "", ""]); // Array for 6 photos
+  const [photoMetadata, setPhotoMetadata] = useState<{ [key: number]: { url: string; publicId: string } }>({});
   const [uploadProgress, setUploadProgress] = useState<{ [key: number]: number }>({});
   const [localPreviews, setLocalPreviews] = useState<{ [key: number]: string }>({});
   const fileInputRefs = React.useRef<(HTMLInputElement | null)[]>([]);
@@ -236,11 +237,21 @@ const ProfileCreation: React.FC = () => {
         // Prefill photos
         if (user.photos && user.photos.length > 0) {
           const photoUrls = user.photos.map((photo: any) => photo.url);
+          const metadata: { [key: number]: { url: string; publicId: string } } = {};
+          
+          user.photos.forEach((photo: any, index: number) => {
+            metadata[index] = {
+              url: photo.url,
+              publicId: photo.publicId,
+            };
+          });
+          
           // Pad with empty strings to maintain 6 slots
           while (photoUrls.length < 6) {
             photoUrls.push("");
           }
           setPhotos(photoUrls);
+          setPhotoMetadata(metadata);
         }
       }
     } catch (error) {
@@ -348,6 +359,50 @@ const ProfileCreation: React.FC = () => {
     };
   };
 
+  // Handle photo deletion
+  const handlePhotoDelete = async (index: number) => {
+    const metadata = photoMetadata[index];
+    if (!metadata?.publicId) {
+      // If no publicId, just remove locally (for new photos not yet saved)
+      setPhotos((prev) => prev.map((p, i) => (i === index ? "" : p)));
+      setPhotoMetadata((prev) => {
+        const next = { ...prev };
+        delete next[index];
+        return next;
+      });
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("accessToken");
+      const response = await fetch(
+        `${API_BASE_URL}/upload/photo/${metadata.publicId}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+
+      const data = await response.json();
+      if (data.success) {
+        setPhotos((prev) => prev.map((p, i) => (i === index ? "" : p)));
+        setPhotoMetadata((prev) => {
+          const next = { ...prev };
+          delete next[index];
+          return next;
+        });
+        toast.success("Photo deleted successfully");
+      } else {
+        toast.error(data.message || "Failed to delete photo");
+      }
+    } catch (error) {
+      console.error("Photo delete error:", error);
+      toast.error("Error deleting photo. Please try again.");
+    }
+  };
+
   // Handle photo upload
   const handlePhotoUpload = async (
     event: React.ChangeEvent<HTMLInputElement>,
@@ -392,6 +447,14 @@ const ProfileCreation: React.FC = () => {
             newPhotos[targetIndex] = data.data.photo.url;
             return newPhotos;
           });
+          // Store photo metadata with publicId
+          setPhotoMetadata((prev) => ({
+            ...prev,
+            [targetIndex]: {
+              url: data.data.photo.url,
+              publicId: data.data.photo.publicId,
+            },
+          }));
           toast.success("Photo uploaded successfully");
         } else {
           toast.error(data.message || "Upload failed");
@@ -650,11 +713,7 @@ const ProfileCreation: React.FC = () => {
                       {index > 0 && (
                         <button
                           className={styles.removeButton}
-                          onClick={() => {
-                            setPhotos((prev) =>
-                              prev.map((p, i) => (i === index ? "" : p)),
-                            );
-                          }}
+                          onClick={() => handlePhotoDelete(index)}
                         >
                           <Icon name="close" className="text-[14px]" />
                         </button>
