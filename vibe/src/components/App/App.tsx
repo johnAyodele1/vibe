@@ -66,7 +66,7 @@ function App() {
               isProfileComplete() ? (
                 <Favourites />
               ) : (
-                <Navigate to="/profile" replace />
+                <Navigate to="/discovery" replace />
               )
             ) : (
               <Navigate to="/auth" replace />
@@ -80,7 +80,7 @@ function App() {
               isProfileComplete() ? (
                 <Discovery />
               ) : (
-                <Navigate to="/profile" replace />
+                <Navigate to="/discovery" replace />
               )
             ) : (
               <Navigate to="/auth" replace />
@@ -94,7 +94,7 @@ function App() {
               isProfileComplete() ? (
                 <PublicProfileView />
               ) : (
-                <Navigate to="/profile" replace />
+                <Navigate to="/discovery" replace />
               )
             ) : (
               <Navigate to="/auth" replace />
@@ -108,7 +108,7 @@ function App() {
               isProfileComplete() ? (
                 <UserProfileView />
               ) : (
-                <Navigate to="/profile" replace />
+                <Navigate to="/discovery" replace />
               )
             ) : (
               <Navigate to="/auth" replace />
@@ -122,7 +122,7 @@ function App() {
               isProfileComplete() ? (
                 <Settings />
               ) : (
-                <Navigate to="/profile" replace />
+                <Navigate to="/discovery" replace />
               )
             ) : (
               <Navigate to="/auth" replace />
@@ -136,7 +136,7 @@ function App() {
               isProfileComplete() ? (
                 <ChatInterface />
               ) : (
-                <Navigate to="/profile" replace />
+                <Navigate to="/discovery" replace />
               )
             ) : (
               <Navigate to="/auth" replace />
@@ -161,7 +161,7 @@ function App() {
               isProfileComplete() ? (
                 <DirectMessage />
               ) : (
-                <Navigate to="/profile" replace />
+                <Navigate to="/discovery" replace />
               )
             ) : (
               <Navigate to="/auth" replace />
