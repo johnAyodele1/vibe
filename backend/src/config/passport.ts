@@ -19,6 +19,9 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
           const firstName = name?.givenName || displayName.split(' ')[0] || 'User';
           const lastName = name?.familyName || displayName.split(' ').slice(1).join(' ') || '';
           const picture = photos && photos[0] ? photos[0].value : '';
+          const profileJson = profile._json as any;
+          const googleGender = profileJson?.gender;
+          const googleBirthdate = profileJson?.birthdate || profileJson?.birth_date;
 
           // Check if user already exists by googleId
           let user = await User.findOne({ googleId: id }) as IUser | null;
@@ -29,16 +32,35 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
 
             if (user) {
               user.googleId = id;
+              if (!user.gender && googleGender) {
+                user.gender = googleGender;
+              }
+              if (!user.dateOfBirth && googleBirthdate) {
+                const parsedBirthdate = new Date(googleBirthdate);
+                if (!Number.isNaN(parsedBirthdate.getTime())) {
+                  user.dateOfBirth = parsedBirthdate;
+                }
+              }
               await user.save();
             } else {
               // Create new user without auto-importing Google profile photos
-              user = new User({
+              const newUser: Partial<IUser> = {
                 email,
                 googleId: id,
                 firstName,
                 lastName,
                 photos: [],
-              });
+              };
+              if (googleGender) {
+                (newUser as any).gender = googleGender;
+              }
+              if (googleBirthdate) {
+                const parsedBirthdate = new Date(googleBirthdate);
+                if (!Number.isNaN(parsedBirthdate.getTime())) {
+                  (newUser as any).dateOfBirth = parsedBirthdate;
+                }
+              }
+              user = new User(newUser);
               await user.save();
             }
           }

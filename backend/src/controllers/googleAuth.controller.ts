@@ -56,6 +56,8 @@ export const googleLogin = async (req: Request, res: Response): Promise<Response
       return res.status(400).json({ success: false, message: 'Invalid Google token' });
     }
     const { sub: googleId, email, given_name, family_name, picture } = payload;
+    const googleGender = (payload as any).gender;
+    const googleBirthdate = (payload as any).birthdate || (payload as any).birthDate;
 
     // Check if user already exists by googleId
     let user = await User.findOne({ googleId }) as IUser | null;
@@ -66,16 +68,38 @@ export const googleLogin = async (req: Request, res: Response): Promise<Response
 
       if (user) {
         user.googleId = googleId;
+        if (!user.gender && googleGender) {
+          user.gender = googleGender;
+        }
+        if (!user.dateOfBirth && googleBirthdate) {
+          const parsedBirthdate = new Date(googleBirthdate);
+          if (!Number.isNaN(parsedBirthdate.getTime())) {
+            user.dateOfBirth = parsedBirthdate;
+          }
+        }
         await user.save();
       } else {
         // Create new user without auto-importing Google profile photos
-        user = new User({
+        const newUser: Partial<IUser> = {
           email,
           googleId,
           firstName: given_name || 'User',
           lastName: family_name || '',
           photos: [],
-        });
+        };
+
+        if (googleGender) {
+          (newUser as any).gender = googleGender;
+        }
+
+        if (googleBirthdate) {
+          const parsedBirthdate = new Date(googleBirthdate);
+          if (!Number.isNaN(parsedBirthdate.getTime())) {
+            (newUser as any).dateOfBirth = parsedBirthdate;
+          }
+        }
+
+        user = new User(newUser);
         await user.save();
       }
     }

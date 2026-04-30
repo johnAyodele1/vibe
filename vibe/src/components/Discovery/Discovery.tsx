@@ -34,6 +34,7 @@ const Discovery: React.FC = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartX, setDragStartX] = useState(0);
   const [dragOffset, setDragOffset] = useState(0);
+  const [photoLoadingSide, setPhotoLoadingSide] = useState<null | "left" | "right">(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
   const [loadingAction, setLoadingAction] = useState<
@@ -87,19 +88,36 @@ const Discovery: React.FC = () => {
   const nextProfile = users[(currentProfileIndex + 1) % users.length];
 
   // Photo navigation
-  const nextPhoto = (e: React.MouseEvent | React.TouchEvent) => {
+  const loadPhoto = (
+    nextIndex: number,
+    side: "left" | "right",
+    e: React.MouseEvent | React.TouchEvent,
+  ) => {
     e.stopPropagation();
     if (!currentProfile?.photos) return;
-    if (currentPhotoIndex < currentProfile.photos.length - 1) {
-      setCurrentPhotoIndex((prev) => prev + 1);
-    }
+    if (nextIndex < 0 || nextIndex >= currentProfile.photos.length) return;
+
+    const nextUrl = currentProfile.photos[nextIndex].url;
+    setPhotoLoadingSide(side);
+
+    const img = new Image();
+    img.onload = () => {
+      setCurrentPhotoIndex(nextIndex);
+      setPhotoLoadingSide(null);
+    };
+    img.onerror = () => {
+      toast.error("Unable to load the next photo. Please try again.");
+      setPhotoLoadingSide(null);
+    };
+    img.src = nextUrl;
+  };
+
+  const nextPhoto = (e: React.MouseEvent | React.TouchEvent) => {
+    loadPhoto(currentPhotoIndex + 1, "right", e);
   };
 
   const prevPhoto = (e: React.MouseEvent | React.TouchEvent) => {
-    e.stopPropagation();
-    if (currentPhotoIndex > 0) {
-      setCurrentPhotoIndex((prev) => prev - 1);
-    }
+    loadPhoto(currentPhotoIndex - 1, "left", e);
   };
 
   const handleSwipeStart = (clientX: number) => {
@@ -455,12 +473,26 @@ const Discovery: React.FC = () => {
                         className={styles.tapLeft}
                         onClick={prevPhoto}
                         onTouchStart={(e) => e.stopPropagation()}
-                      />
+                        aria-label="Previous photo"
+                      >
+                        {photoLoadingSide === "left" && (
+                          <div className={styles.photoLoadOverlay}>
+                            <div className={styles.photoLoadSpinner} />
+                          </div>
+                        )}
+                      </div>
                       <div
                         className={styles.tapRight}
                         onClick={nextPhoto}
                         onTouchStart={(e) => e.stopPropagation()}
-                      />
+                        aria-label="Next photo"
+                      >
+                        {photoLoadingSide === "right" && (
+                          <div className={styles.photoLoadOverlay}>
+                            <div className={styles.photoLoadSpinner} />
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {/* Card Information */}
