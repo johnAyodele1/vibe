@@ -116,7 +116,7 @@ interface MongooseError extends Error {
 }
 
 // Global error handler
-app.use((error: MongooseError, req: Request, res: Response, next: NextFunction) => {
+app.use((error: any, req: Request, res: Response, next: NextFunction) => {
   if (process.env.NODE_ENV !== 'test') {
     console.error('Global error:', error);
   }
@@ -152,6 +152,21 @@ app.use((error: MongooseError, req: Request, res: Response, next: NextFunction) 
     return res.status(401).json({
       success: false,
       message: 'Token expired',
+    });
+  }
+
+  // Multer errors
+  if (error.code === 'LIMIT_FILE_SIZE') {
+    return res.status(400).json({
+      success: false,
+      message: 'File too large. Maximum size is 10MB.',
+    });
+  }
+
+  if (error.message === 'Only image files are allowed!') {
+    return res.status(400).json({
+      success: false,
+      message: error.message,
     });
   }
 
