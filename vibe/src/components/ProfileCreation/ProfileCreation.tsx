@@ -588,12 +588,29 @@ const ProfileCreation: React.FC = () => {
       const data = await response.json();
       if (data.success) {
         toast.success("Profile updated successfully!");
-        // Refresh auth status to update user data in context
+        const updatedUser = data.data?.user;
         await checkAuthStatus();
-        // Navigate to discovery page after a brief delay to let user see success message
-        setTimeout(() => {
-          navigate("/discovery");
-        }, 1500);
+
+        const isComplete = updatedUser
+          ?
+              typeof updatedUser.profileCompletion === 'number'
+                ? updatedUser.profileCompletion >= 80
+                : updatedUser.firstName &&
+                  updatedUser.dateOfBirth &&
+                  updatedUser.gender &&
+                  updatedUser.location?.city &&
+                  updatedUser.bio &&
+                  updatedUser.bio.trim().length > 0 &&
+                  updatedUser.photos &&
+                  updatedUser.photos.length >= 2
+          : false;
+
+        if (isComplete) {
+          // Navigate to discovery page after a brief delay to let user see success message
+          setTimeout(() => {
+            navigate("/discovery");
+          }, 1500);
+        }
       } else {
         toast.error(data.message || "Failed to update profile");
       }

@@ -11,6 +11,10 @@ const GoogleCallback: React.FC = () => {
   const isProfileComplete = (currentUser: any) => {
     if (!currentUser) return false;
 
+    if (typeof currentUser.profileCompletion === 'number') {
+      return currentUser.profileCompletion >= 80;
+    }
+
     return (
       currentUser.firstName &&
       currentUser.dateOfBirth &&
