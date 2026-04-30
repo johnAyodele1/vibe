@@ -29,18 +29,15 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
 
             if (user) {
               user.googleId = id;
-              if (!user.photos || user.photos.length === 0) {
-                user.photos = [{ url: picture, isMain: true, order: 0, uploadedAt: new Date() }];
-              }
               await user.save();
             } else {
-              // Create new user
+              // Create new user without auto-importing Google profile photos
               user = new User({
                 email,
                 googleId: id,
                 firstName,
                 lastName,
-                photos: picture ? [{ url: picture, isMain: true, order: 0, uploadedAt: new Date() }] : [],
+                photos: [],
               });
               await user.save();
             }

@@ -29,6 +29,8 @@ const ProfileCreation: React.FC = () => {
     "Drinks 🍸",
   ]);
   const [activeGender, setActiveGender] = useState("Women");
+  const [userGender, setUserGender] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState("");
   const [ageRange, setAgeRange] = useState({ min: 18, max: 28 });
   const [distance, setDistance] = useState(25);
   const [bio, setBio] = useState("");
@@ -204,6 +206,18 @@ const ProfileCreation: React.FC = () => {
             lat: lat.toString(),
             lng: lng.toString(),
           });
+        }
+
+        // Prefill gender and date of birth
+        if (user.gender) {
+          setUserGender(user.gender);
+        }
+
+        if (user.dateOfBirth) {
+          const dob = new Date(user.dateOfBirth);
+          if (!Number.isNaN(dob.getTime())) {
+            setDateOfBirth(dob.toISOString().split("T")[0]);
+          }
         }
 
         // Prefill preferences
@@ -566,6 +580,19 @@ const ProfileCreation: React.FC = () => {
       return;
     }
 
+    if (!userGender || !dateOfBirth) {
+      toast.error(
+        "Please provide both your gender and date of birth before continuing.",
+      );
+      return;
+    }
+
+    const birthDate = new Date(dateOfBirth);
+    if (Number.isNaN(birthDate.getTime()) || birthDate > new Date()) {
+      toast.error("Please enter a valid date of birth.");
+      return;
+    }
+
     if (gettingLocation) {
       toast.error("Please wait for your location to be determined");
       return;
@@ -579,6 +606,8 @@ const ProfileCreation: React.FC = () => {
     try {
       const profileData = {
         bio,
+        gender: userGender,
+        dateOfBirth: birthDate,
         interests: selectedInterests.map((interest) => interest.split(" ")[0]), // Remove emojis
         location: {
           type: "Point",
@@ -818,6 +847,43 @@ const ProfileCreation: React.FC = () => {
                   )}
                 </button>
               ))}
+            </div>
+          </section>
+
+          <div className={styles.divider}></div>
+
+          {/* SECTION X: BASIC INFO */}
+          <section className="flex flex-col gap-5">
+            <div className={styles.sectionHeader}>
+              <h2>Basic info</h2>
+              <p>Please provide your gender and date of birth so we can match you properly.</p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm text-slate-600 dark:text-slate-300">
+                <span className="font-medium">Your Gender</span>
+                <select
+                  value={userGender}
+                  onChange={(e) => setUserGender(e.target.value)}
+                  className="p-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 outline-none focus:border-blue-500 transition-colors"
+                >
+                  <option value="">Select your gender</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Non-binary">Non-binary</option>
+                  <option value="Other">Other</option>
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-slate-600 dark:text-slate-300">
+                <span className="font-medium">Date of Birth</span>
+                <input
+                  type="date"
+                  value={dateOfBirth}
+                  onChange={(e) => setDateOfBirth(e.target.value)}
+                  className="p-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 outline-none focus:border-blue-500 transition-colors"
+                  max={new Date().toISOString().split("T")[0]}
+                />
+              </label>
             </div>
           </section>
 
@@ -1091,9 +1157,9 @@ const ProfileCreation: React.FC = () => {
         {/* Sticky Footer */}
         <div className={styles.footer}>
           <button
-            className={styles.continueBtn}
+            className={`${styles.continueBtn} ${(!userGender || !dateOfBirth) ? 'opacity-50 cursor-not-allowed' : ''}`}
             onClick={handleSubmit}
-            disabled={loading}
+            disabled={loading || !userGender || !dateOfBirth}
           >
             {loading ? "Saving..." : "Continue"}
             <Icon name="arrow_forward" className="text-lg" />

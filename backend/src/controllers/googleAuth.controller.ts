@@ -66,18 +66,15 @@ export const googleLogin = async (req: Request, res: Response): Promise<Response
 
       if (user) {
         user.googleId = googleId;
-        if (!user.photos || user.photos.length === 0) {
-          user.photos = [{ url: picture || '', isMain: true, order: 0, uploadedAt: new Date() }];
-        }
         await user.save();
       } else {
-        // Create new user
+        // Create new user without auto-importing Google profile photos
         user = new User({
           email,
           googleId,
           firstName: given_name || 'User',
           lastName: family_name || '',
-          photos: picture ? [{ url: picture, isMain: true, order: 0, uploadedAt: new Date() }] : [],
+          photos: [],
         });
         await user.save();
       }

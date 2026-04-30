@@ -118,6 +118,8 @@ export const updateProfile = async (req: IExpressRequest, res: Response): Promis
       'location',
       'preferences',
       'settings',
+      'gender',
+      'dateOfBirth',
     ];
 
     const body = req.body as Record<string, unknown>;
