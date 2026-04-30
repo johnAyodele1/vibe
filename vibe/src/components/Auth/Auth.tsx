@@ -28,10 +28,7 @@ const Connect: React.FC = () => {
   const isProfileComplete = (currentUser: any) => {
     if (!currentUser) return false;
 
-    const fieldsComplete =
-      currentUser.firstName &&
-      currentUser.dateOfBirth &&
-      currentUser.gender &&
+    const requiredProfileFields =
       currentUser.location?.city &&
       currentUser.bio &&
       currentUser.bio.trim().length > 0 &&
@@ -39,10 +36,10 @@ const Connect: React.FC = () => {
       currentUser.photos.length >= 2;
 
     if (typeof currentUser.profileCompletion === 'number') {
-      return currentUser.profileCompletion >= 80 || Boolean(fieldsComplete);
+      return currentUser.profileCompletion >= 80 || Boolean(requiredProfileFields);
     }
 
-    return Boolean(fieldsComplete);
+    return Boolean(requiredProfileFields);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

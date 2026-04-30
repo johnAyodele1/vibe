@@ -592,21 +592,26 @@ const ProfileCreation: React.FC = () => {
         await checkAuthStatus();
 
         const isComplete = updatedUser
-          ?
-              typeof updatedUser.profileCompletion === 'number'
-                ? updatedUser.profileCompletion >= 80
-                : updatedUser.firstName &&
-                  updatedUser.dateOfBirth &&
-                  updatedUser.gender &&
+          ? typeof updatedUser.profileCompletion === 'number'
+              ?
+                  updatedUser.profileCompletion >= 80 ||
+                  Boolean(
+                    updatedUser.location?.city &&
+                      updatedUser.bio &&
+                      updatedUser.bio.trim().length > 0 &&
+                      updatedUser.photos &&
+                      updatedUser.photos.length >= 2,
+                  )
+              : Boolean(
                   updatedUser.location?.city &&
-                  updatedUser.bio &&
-                  updatedUser.bio.trim().length > 0 &&
-                  updatedUser.photos &&
-                  updatedUser.photos.length >= 2
+                    updatedUser.bio &&
+                    updatedUser.bio.trim().length > 0 &&
+                    updatedUser.photos &&
+                    updatedUser.photos.length >= 2,
+                )
           : false;
 
         if (isComplete) {
-          // Navigate to discovery page after a brief delay to let user see success message
           setTimeout(() => {
             navigate("/discovery");
           }, 1500);

@@ -25,10 +25,7 @@ function App() {
   const isProfileComplete = (currentUser = user) => {
     if (!currentUser) return false;
 
-    const fieldsComplete =
-      currentUser.firstName &&
-      currentUser.dateOfBirth &&
-      currentUser.gender &&
+    const requiredProfileFields =
       currentUser.location?.city &&
       currentUser.bio &&
       currentUser.bio.trim().length > 0 &&
@@ -36,10 +33,10 @@ function App() {
       currentUser.photos.length >= 2;
 
     if (typeof currentUser.profileCompletion === 'number') {
-      return currentUser.profileCompletion >= 80 || Boolean(fieldsComplete);
+      return currentUser.profileCompletion >= 80 || Boolean(requiredProfileFields);
     }
 
-    return Boolean(fieldsComplete);
+    return Boolean(requiredProfileFields);
   };
 
   useEffect(() => {

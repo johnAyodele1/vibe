@@ -53,8 +53,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const token = localStorage.getItem("accessToken");
     if (!token) {
       setLoading(false);
+      setIsAuthenticated(false);
       return null;
     }
+
+    setLoading(true);
 
     try {
       const response = await fetch(`${API_BASE_URL}/users/profile`, {
@@ -69,13 +72,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setIsAuthenticated(true);
         return data.data.user;
       }
+
       localStorage.removeItem("accessToken");
       localStorage.removeItem("refreshToken");
+      setIsAuthenticated(false);
       return null;
     } catch (error) {
       console.error("Auth check error:", error);
       localStorage.removeItem("accessToken");
       localStorage.removeItem("refreshToken");
+      setIsAuthenticated(false);
       return null;
     } finally {
       setLoading(false);
