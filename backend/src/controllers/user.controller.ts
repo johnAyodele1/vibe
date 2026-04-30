@@ -113,6 +113,8 @@ export const updateProfile = async (req: IExpressRequest, res: Response): Promis
     const allowedFields = [
       'firstName',
       'lastName',
+      'gender',
+      'dateOfBirth',
       'bio',
       'interests',
       'location',

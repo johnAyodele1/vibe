@@ -29,6 +29,8 @@ const ProfileCreation: React.FC = () => {
     "Drinks 🍸",
   ]);
   const [activeGender, setActiveGender] = useState("Women");
+  const [userGender, setUserGender] = useState("");
+  const [userBirthday, setUserBirthday] = useState("");
   const [ageRange, setAgeRange] = useState({ min: 18, max: 28 });
   const [distance, setDistance] = useState(25);
   const [bio, setBio] = useState("");
@@ -167,6 +169,13 @@ const ProfileCreation: React.FC = () => {
       const data = await response.json();
       if (data.success && data.data.user) {
         const user = data.data.user;
+
+        // Prefill gender and birthday
+        if (user.gender) setUserGender(user.gender);
+        if (user.dateOfBirth) {
+          const date = new Date(user.dateOfBirth);
+          setUserBirthday(date.toISOString().split("T")[0]);
+        }
 
         // Prefill bio
         if (user.bio) setBio(user.bio);
@@ -551,14 +560,27 @@ const ProfileCreation: React.FC = () => {
       toast.error("Please wait for your location to be determined");
       return;
     }
-    if (!bio.trim()) {
-      toast.error("Please add a bio");
+
+    if (!userGender) {
+      toast.error("Please select your gender");
+      return;
+    }
+
+    if (!userBirthday) {
+      toast.error("Please enter your date of birth");
+      return;
+    }
+
+    if (!bio.trim() || bio.trim().length <= 10) {
+      toast.error("Please add a bio (at least 11 characters)");
       return;
     }
 
     setLoading(true);
     try {
       const profileData = {
+        gender: userGender,
+        dateOfBirth: userBirthday,
         bio,
         interests: selectedInterests.map((interest) => interest.split(" ")[0]), // Remove emojis
         location: {
@@ -661,6 +683,47 @@ const ProfileCreation: React.FC = () => {
 
         {/* Main Scrollable Form */}
         <div className={styles.contentWrapper}>
+          {/* SECTION 0: BASIC INFO */}
+          <section className="flex flex-col gap-5">
+            <div className={styles.sectionHeader}>
+              <h1>First things first.</h1>
+              <p>Tell us a bit about yourself.</p>
+            </div>
+
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-bold text-slate-500 dark:text-white/60 uppercase tracking-wider">
+                  I am a
+                </label>
+                <select
+                  className="p-4 rounded-2xl bg-slate-100 dark:bg-white/10 border-none outline-none focus:ring-2 focus:ring-[#f42559] transition-all font-semibold"
+                  value={userGender}
+                  onChange={(e) => setUserGender(e.target.value)}
+                >
+                  <option value="">Select Gender</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Non-binary">Non-binary</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-bold text-slate-500 dark:text-white/60 uppercase tracking-wider">
+                  My Birthday
+                </label>
+                <input
+                  type="date"
+                  className="p-4 rounded-2xl bg-slate-100 dark:bg-white/10 border-none outline-none focus:ring-2 focus:ring-[#f42559] transition-all font-semibold"
+                  value={userBirthday}
+                  onChange={(e) => setUserBirthday(e.target.value)}
+                />
+              </div>
+            </div>
+          </section>
+
+          <div className={styles.divider}></div>
+
           {/* SECTION 1: VISUALS (PHOTOS) */}
           <section className="flex flex-col gap-5">
             <div className={styles.sectionHeader}>
