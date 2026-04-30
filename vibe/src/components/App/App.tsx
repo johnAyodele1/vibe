@@ -80,11 +80,7 @@ function App() {
           path="/profile"
           element={
             isAuthenticated ? (
-              isProfileComplete() ? (
-                <Navigate to="/discovery" replace />
-              ) : (
-                <ProfileCreation />
-              )
+              <ProfileCreation />
             ) : (
               <Navigate to="/auth" replace />
             )
