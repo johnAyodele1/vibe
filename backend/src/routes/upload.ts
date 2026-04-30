@@ -31,7 +31,7 @@ const upload = multer({
 });
 
 router.post('/photo', authenticateToken, upload.single('photo'), uploadPhoto);
-router.delete('/photo/:publicId', authenticateToken, deletePhoto);
+router.delete('/photo/:publicId(*)', authenticateToken, deletePhoto);
 router.put('/set-main/:index', authenticateToken, setMainPhoto);
 
 export default router;

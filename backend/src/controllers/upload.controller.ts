@@ -77,7 +77,9 @@ export const uploadPhoto = async (req: Request, res: Response): Promise<Response
 export const deletePhoto = async (req: Request, res: Response): Promise<Response> => {
   try {
     if (!req.user) return res.status(401).json({ success: false, message: 'Not authenticated' });
-    const publicId = req.params.publicId as string;
+    const publicId = req.params.publicId
+      ? decodeURIComponent(req.params.publicId as string)
+      : '';
 
     // Find and remove photo from user's photos array
     const user = await User.findById(req.user._id) as IUser | null;

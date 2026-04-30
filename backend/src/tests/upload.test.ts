@@ -72,5 +72,28 @@ describe('Upload Endpoints', () => {
       expect(res.body.success).toBe(false);
       expect(res.body.message).toContain('Photo not found');
     });
+
+    it('DELETE /api/upload/photo/:publicId(*) - should handle publicId values with slashes', async () => {
+      await User.findByIdAndUpdate(userId, {
+        photos: [
+          {
+            url: 'url1',
+            publicId: 'vibe-photos/test-photo-with-slash',
+            isMain: true,
+            order: 0,
+            uploadedAt: new Date(),
+          },
+        ],
+      });
+
+      const res = await request(app)
+        .delete('/api/upload/photo/vibe-photos/test-photo-with-slash')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      const user = await User.findById(userId);
+      expect(user?.photos.length).toBe(0);
+    });
   });
 });
