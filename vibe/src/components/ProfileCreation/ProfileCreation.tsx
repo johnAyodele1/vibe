@@ -359,24 +359,25 @@ const ProfileCreation: React.FC = () => {
     };
   };
 
-  // Handle photo deletion
-  const handlePhotoDelete = async (index: number) => {
+  const deletePhotoByIndex = async (
+    index: number,
+    suppressToast = false,
+  ) => {
     const metadata = photoMetadata[index];
     if (!metadata?.publicId) {
-      // If no publicId, just remove locally (for new photos not yet saved)
       setPhotos((prev) => prev.map((p, i) => (i === index ? "" : p)));
       setPhotoMetadata((prev) => {
         const next = { ...prev };
         delete next[index];
         return next;
       });
-      return;
+      return true;
     }
 
     try {
       const token = localStorage.getItem("accessToken");
       const response = await fetch(
-        `${API_BASE_URL}/upload/photo/${metadata.publicId}`,
+        `${API_BASE_URL}/upload/photo/${encodeURIComponent(metadata.publicId)}`,
         {
           method: "DELETE",
           headers: {
@@ -393,14 +394,27 @@ const ProfileCreation: React.FC = () => {
           delete next[index];
           return next;
         });
-        toast.success("Photo deleted successfully");
-      } else {
+        if (!suppressToast) {
+          toast.success("Photo deleted successfully");
+        }
+        return true;
+      }
+
+      if (!suppressToast) {
         toast.error(data.message || "Failed to delete photo");
       }
+      return false;
     } catch (error) {
       console.error("Photo delete error:", error);
-      toast.error("Error deleting photo. Please try again.");
+      if (!suppressToast) {
+        toast.error("Error deleting photo. Please try again.");
+      }
+      return false;
     }
+  };
+
+  const handlePhotoDelete = async (index: number) => {
+    await deletePhotoByIndex(index);
   };
 
   // Handle photo upload
@@ -417,6 +431,11 @@ const ProfileCreation: React.FC = () => {
         : photos.findIndex((photo) => photo === "");
 
     if (targetIndex === -1) return;
+
+    // Replace an existing photo in the same slot by deleting it first.
+    if (typeof index === "number") {
+      await deletePhotoByIndex(targetIndex, true);
+    }
 
     // Create local preview
     const previewUrl = URL.createObjectURL(file);
