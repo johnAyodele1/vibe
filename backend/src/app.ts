@@ -22,19 +22,19 @@ dotenv.config();
 
 const app = express();
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS) || 900000, // 15 minutes
-  max: Number(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
-  message: 'Too many requests from this IP, please try again later.',
-});
+// // Rate limiting
+// const limiter = rateLimit({
+//   windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS) || 900000, // 15 minutes
+//   max: Number(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
+//   message: 'Too many requests from this IP, please try again later.',
+// });
 
 // Middleware
 app.use(helmet());
 app.use(compression());
-if (process.env.NODE_ENV !== 'test') {
-  app.use(limiter);
-}
+// if (process.env.NODE_ENV !== 'test') {
+//   app.use(limiter);
+// }
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
