@@ -56,6 +56,16 @@ describe('User & Interaction Endpoints', () => {
       expect(res.body.data.user._id).toBe(userId);
     });
 
+    it('GET /api/users/:id - should get user by id', async () => {
+      const res = await request(app)
+        .get(`/api/users/${userId}`)
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.user._id).toBe(userId);
+    });
+
     it('PUT /api/users/profile - should update user profile', async () => {
       const res = await request(app)
         .put('/api/users/profile')
@@ -64,6 +74,44 @@ describe('User & Interaction Endpoints', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.data.user.firstName).toBe('Updated');
+    });
+
+    it('POST /api/users/:id/block - should block another user', async () => {
+      const otherUser = await User.create({
+        email: 'block@example.com',
+        password: 'password123',
+        firstName: 'Block',
+        dateOfBirth: '1995-01-01',
+        gender: 'Female'
+      });
+
+      const res = await request(app)
+        .post(`/api/users/${otherUser._id}/block`)
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      const user = await User.findById(userId);
+      expect(user?.blockedUsers.some((id) => id.toString() === otherUser._id.toString())).toBe(true);
+    });
+
+    it('POST /api/users/:id/report - should report a user', async () => {
+      const otherUser = await User.create({
+        email: 'report@example.com',
+        password: 'password123',
+        firstName: 'Report',
+        dateOfBirth: '1995-01-01',
+        gender: 'Female'
+      });
+
+      const res = await request(app)
+        .post(`/api/users/${otherUser._id}/report`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ reason: 'Inappropriate behaviour' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.message).toContain('reported');
     });
 
     it('DELETE /api/users/account - should delete account', async () => {

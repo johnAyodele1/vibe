@@ -48,8 +48,8 @@ describe('Upload Endpoints', () => {
     it('PUT /api/upload/set-main/:index - should set main photo', async () => {
         await User.findByIdAndUpdate(userId, {
             photos: [
-                { url: 'url1', isMain: true, order: 0, uploadedAt: new Date() },
-                { url: 'url2', isMain: false, order: 1, uploadedAt: new Date() }
+                { url: 'url1', publicId: 'public1', isMain: true, order: 0, uploadedAt: new Date() },
+                { url: 'url2', publicId: 'public2', isMain: false, order: 1, uploadedAt: new Date() }
             ]
         });
 
@@ -61,6 +61,16 @@ describe('Upload Endpoints', () => {
         const user = await User.findById(userId);
         expect(user?.photos[1].isMain).toBe(true);
         expect(user?.photos[0].isMain).toBe(false);
+    });
+
+    it('DELETE /api/upload/photo/:publicId - should return 404 for missing photo', async () => {
+      const res = await request(app)
+        .delete('/api/upload/photo/nonexistent-public-id')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toContain('Photo not found');
     });
   });
 });
