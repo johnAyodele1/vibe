@@ -453,6 +453,12 @@ const Discovery: React.FC = () => {
 
                     <div className={styles.gradientOverlay}></div>
 
+                    {photoLoadingSide && (
+                      <div className={styles.photoLoadFullOverlay}>
+                        <div className={styles.photoLoadSpinner} />
+                      </div>
+                    )}
+
                     {/* Photo Navigation Indicators */}
                     {currentProfile.photos.length > 1 && (
                       <div className={styles.photoIndicators}>
@@ -474,25 +480,13 @@ const Discovery: React.FC = () => {
                         onClick={prevPhoto}
                         onTouchStart={(e) => e.stopPropagation()}
                         aria-label="Previous photo"
-                      >
-                        {photoLoadingSide === "left" && (
-                          <div className={styles.photoLoadOverlay}>
-                            <div className={styles.photoLoadSpinner} />
-                          </div>
-                        )}
-                      </div>
+                      />
                       <div
                         className={styles.tapRight}
                         onClick={nextPhoto}
                         onTouchStart={(e) => e.stopPropagation()}
                         aria-label="Next photo"
-                      >
-                        {photoLoadingSide === "right" && (
-                          <div className={styles.photoLoadOverlay}>
-                            <div className={styles.photoLoadSpinner} />
-                          </div>
-                        )}
-                      </div>
+                      />
                     </div>
 
                     {/* Card Information */}
