@@ -11,11 +11,7 @@ const GoogleCallback: React.FC = () => {
   const isProfileComplete = (currentUser: any) => {
     if (!currentUser) return false;
 
-    if (typeof currentUser.profileCompletion === 'number') {
-      return currentUser.profileCompletion >= 80;
-    }
-
-    return (
+    const fieldsComplete =
       currentUser.firstName &&
       currentUser.dateOfBirth &&
       currentUser.gender &&
@@ -23,8 +19,13 @@ const GoogleCallback: React.FC = () => {
       currentUser.bio &&
       currentUser.bio.trim().length > 0 &&
       currentUser.photos &&
-      currentUser.photos.length >= 2
-    );
+      currentUser.photos.length >= 2;
+
+    if (typeof currentUser.profileCompletion === 'number') {
+      return currentUser.profileCompletion >= 80 || Boolean(fieldsComplete);
+    }
+
+    return Boolean(fieldsComplete);
   };
 
   useEffect(() => {

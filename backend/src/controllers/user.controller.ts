@@ -120,22 +120,24 @@ export const updateProfile = async (req: IExpressRequest, res: Response): Promis
       'settings',
     ];
 
-    const updates: Record<string, unknown> = {};
     const body = req.body as Record<string, unknown>;
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
     allowedFields.forEach((field) => {
       if (body[field] !== undefined) {
-        updates[field] = body[field];
+        (user as any)[field] = body[field];
       }
     });
 
-    const user = await User.findByIdAndUpdate(req.user._id, updates, {
-      new: true,
-    }).select('-password');
+    await user.save();
+
+    const updatedUser = await User.findById(req.user._id).select('-password');
 
     return res.json({
       success: true,
       message: 'Profile updated successfully',
-      data: { user },
+      data: { user: updatedUser },
     });
   } catch (error) {
     console.error('Update profile error:', error);
