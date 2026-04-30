@@ -548,93 +548,107 @@ const Discovery: React.FC = () => {
         </main>
 
         {/* Action Buttons */}
-        <div className={styles.actionArea}>
-          <div className={styles.actionGrid}>
-            {/* Dislike Button */}
-            <button
-              className={`${styles.actionBtn} ${styles.passBtn}`}
-              aria-label="Pass"
-              onClick={handleDislike}
-              disabled={!currentProfile || loadingAction !== null}
-              style={
-                loadingAction === "dislike"
-                  ? { border: "3px solid #f42559", position: "relative" }
-                  : {}
-              }
-            >
-              <span
-                className="material-symbols-outlined"
-                style={{ fontSize: "36px", transition: "color 0.2s" }}
+        {currentProfile && (
+          <div className={styles.actionArea}>
+            <div className={styles.actionGrid}>
+              {/* Dislike Button */}
+              <button
+                className={`${styles.actionBtn} ${styles.passBtn}`}
+                aria-label="Pass"
+                onClick={handleDislike}
+                disabled={!currentProfile || loadingAction !== null}
+                style={
+                  loadingAction === "dislike"
+                    ? {
+                        border: "3px solid #ffffff",
+                        filter: "brightness(1.05)",
+                        position: "relative",
+                      }
+                    : {}
+                }
               >
-                {loadingAction === "dislike" ? (
-                  <span className={styles.loadingCircle}></span>
-                ) : actionSuccess === "dislike" ? (
-                  <span style={{ color: "#4ade80" }}>done</span>
-                ) : (
-                  "close"
-                )}
-              </span>
-            </button>
-            {/* Super Like Button */}
-            <button
-              className={`${styles.actionBtn} ${styles.superBtn}`}
-              aria-label="Super Like"
-              onClick={handleSuperLike}
-              disabled={!currentProfile || loadingAction !== null}
-              style={
-                loadingAction === "super"
-                  ? { border: "3px solid #facc15", position: "relative" }
-                  : {}
-              }
-            >
-              <span
-                className="material-symbols-outlined"
-                style={{
-                  fontSize: "24px",
-                  fontVariationSettings: "'FILL' 1",
-                  transition: "color 0.2s",
-                }}
+                <span
+                  className="material-symbols-outlined"
+                  style={{ fontSize: "36px", transition: "color 0.2s" }}
+                >
+                  {loadingAction === "dislike" ? (
+                    <span className={styles.loadingCircle}></span>
+                  ) : actionSuccess === "dislike" ? (
+                    <span style={{ color: "#4ade80" }}>done</span>
+                  ) : (
+                    "close"
+                  )}
+                </span>
+              </button>
+              {/* Super Like Button */}
+              <button
+                className={`${styles.actionBtn} ${styles.superBtn}`}
+                aria-label="Super Like"
+                onClick={handleSuperLike}
+                disabled={!currentProfile || loadingAction !== null}
+                style={
+                  loadingAction === "super"
+                    ? {
+                        border: "3px solid #ffffff",
+                        filter: "brightness(1.05)",
+                        position: "relative",
+                      }
+                    : {}
+                }
               >
-                {loadingAction === "super" ? (
-                  <span className={styles.loadingCircle}></span>
-                ) : actionSuccess === "super" ? (
-                  <span style={{ color: "#facc15" }}>done</span>
-                ) : (
-                  "star"
-                )}
-              </span>
-            </button>
-            {/* Like Button */}
-            <button
-              className={`${styles.actionBtn} ${styles.likeBtn}`}
-              aria-label="Like"
-              onClick={handleLike}
-              disabled={!currentProfile || loadingAction !== null}
-              style={
-                loadingAction === "like"
-                  ? { border: "3px solid #f42559", position: "relative" }
-                  : {}
-              }
-            >
-              <span
-                className="material-symbols-outlined"
-                style={{
-                  fontSize: "32px",
-                  fontVariationSettings: "'FILL' 1",
-                  transition: "color 0.2s",
-                }}
+                <span
+                  className="material-symbols-outlined"
+                  style={{
+                    fontSize: "24px",
+                    fontVariationSettings: "'FILL' 1",
+                    transition: "color 0.2s",
+                  }}
+                >
+                  {loadingAction === "super" ? (
+                    <span className={styles.loadingCircle}></span>
+                  ) : actionSuccess === "super" ? (
+                    <span style={{ color: "#facc15" }}>done</span>
+                  ) : (
+                    "star"
+                  )}
+                </span>
+              </button>
+              {/* Like Button */}
+              <button
+                className={`${styles.actionBtn} ${styles.likeBtn}`}
+                aria-label="Like"
+                onClick={handleLike}
+                disabled={!currentProfile || loadingAction !== null}
+                style={
+                  loadingAction === "like"
+                    ? {
+                        border: "3px solid #ffffff",
+                        filter: "brightness(1.05)",
+                        position: "relative",
+                      }
+                    : {}
+                }
               >
-                {loadingAction === "like" ? (
-                  <span className={styles.loadingCircle}></span>
-                ) : actionSuccess === "like" ? (
-                  <span style={{ color: "#4ade80" }}>done</span>
-                ) : (
-                  "favorite"
-                )}
-              </span>
-            </button>
+                <span
+                  className="material-symbols-outlined"
+                  style={{
+                    fontSize: "32px",
+                    fontVariationSettings: "'FILL' 1",
+                    transition: "color 0.2s",
+                  }}
+                >
+                  {loadingAction === "like" ? (
+                    <span className={styles.loadingCircle}></span>
+                  ) : actionSuccess === "like" ? (
+                    <span style={{ color: "#4ade80" }}>done</span>
+                  ) : (
+                    "favorite"
+                  )}
+                </span>
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Bottom Navigation */}
         <BottomNavigation activeTab="discovery" notificationCount={3} />

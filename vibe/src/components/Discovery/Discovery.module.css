@@ -3,8 +3,8 @@
   display: inline-block;
   width: 28px;
   height: 28px;
-  border: 3px solid #f42559;
-  border-top: 3px solid transparent;
+  border: 3px solid rgba(255, 255, 255, 0.85);
+  border-top: 3px solid #ffffff;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   vertical-align: middle;
@@ -353,6 +353,11 @@
 
 .actionBtn:active {
   transform: scale(0.9);
+}
+
+.actionBtn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
 }
 
 .passBtn {
