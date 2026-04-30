@@ -8,6 +8,21 @@ const GoogleCallback: React.FC = () => {
   const location = useLocation();
   const { checkAuthStatus } = useAuth();
 
+  const isProfileComplete = (currentUser: any) => {
+    if (!currentUser) return false;
+
+    return (
+      currentUser.firstName &&
+      currentUser.dateOfBirth &&
+      currentUser.gender &&
+      currentUser.location?.city &&
+      currentUser.bio &&
+      currentUser.bio.trim().length > 0 &&
+      currentUser.photos &&
+      currentUser.photos.length >= 2
+    );
+  };
+
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const accessToken = params.get("accessToken");
@@ -25,9 +40,9 @@ const GoogleCallback: React.FC = () => {
       localStorage.setItem("refreshToken", refreshToken);
 
       // Verify authentication and get user data
-      checkAuthStatus().then(() => {
+      checkAuthStatus().then((currentUser) => {
         toast.success("Successfully logged in with Google!");
-        navigate("/discovery");
+        navigate(isProfileComplete(currentUser) ? "/discovery" : "/profile");
       });
     } else {
       navigate("/auth");

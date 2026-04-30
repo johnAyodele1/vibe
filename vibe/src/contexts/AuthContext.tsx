@@ -23,11 +23,11 @@ interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   loading: boolean;
-  login: (email: string, password: string) => Promise<boolean>;
-  signup: (userData: any) => Promise<boolean>;
-  googleLogin: (idToken: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<User | null>;
+  signup: (userData: any) => Promise<User | null>;
+  googleLogin: (idToken: string) => Promise<User | null>;
   logout: () => void;
-  checkAuthStatus: () => Promise<void>;
+  checkAuthStatus: () => Promise<User | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -49,11 +49,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const checkAuthStatus = async () => {
+  const checkAuthStatus = async (): Promise<User | null> => {
     const token = localStorage.getItem("accessToken");
     if (!token) {
       setLoading(false);
-      return;
+      return null;
     }
 
     try {
@@ -67,20 +67,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (data.success) {
         setUser(data.data.user);
         setIsAuthenticated(true);
-      } else {
-        localStorage.removeItem("accessToken");
-        localStorage.removeItem("refreshToken");
+        return data.data.user;
       }
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("refreshToken");
+      return null;
     } catch (error) {
       console.error("Auth check error:", error);
       localStorage.removeItem("accessToken");
       localStorage.removeItem("refreshToken");
+      return null;
     } finally {
       setLoading(false);
     }
   };
 
-  const login = async (email: string, password: string): Promise<boolean> => {
+  const login = async (email: string, password: string): Promise<User | null> => {
     try {
       const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: "POST",
@@ -97,16 +99,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         localStorage.setItem("refreshToken", data.data.tokens.refreshToken);
         setUser(data.data.user || null);
         setIsAuthenticated(true);
-        return true;
+        return data.data.user || null;
       }
-      return false;
+      return null;
     } catch (error) {
       console.error("Login error:", error);
-      return false;
+      return null;
     }
   };
 
-  const googleLogin = async (idToken: string): Promise<boolean> => {
+  const googleLogin = async (idToken: string): Promise<User | null> => {
     try {
       const response = await fetch(`${API_BASE_URL}/auth/google`, {
         method: "POST",
@@ -123,16 +125,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         localStorage.setItem("refreshToken", data.data.tokens.refreshToken);
         setUser(data.data.user || null);
         setIsAuthenticated(true);
-        return true;
+        return data.data.user || null;
       }
-      return false;
+      return null;
     } catch (error) {
       console.error("Google login error:", error);
-      return false;
+      return null;
     }
   };
 
-  const signup = async (userData: any): Promise<boolean> => {
+  const signup = async (userData: any): Promise<User | null> => {
     try {
       const response = await fetch(`${API_BASE_URL}/auth/signup`, {
         method: "POST",
@@ -149,12 +151,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         localStorage.setItem("refreshToken", data.data.tokens.refreshToken);
         setUser(data.data.user || null);
         setIsAuthenticated(true);
-        return true;
+        return data.data.user || null;
       }
-      return false;
+      return null;
     } catch (error) {
       console.error("Signup error:", error);
-      return false;
+      return null;
     }
   };
 

@@ -9,6 +9,7 @@ interface Analytics {
   totalReports: number;
   pendingReports: number;
   activeMatches: number;
+  siteVisits: number;
 }
 
 interface Report {
@@ -126,6 +127,10 @@ const AdminDashboard: React.FC = () => {
           <div className={styles.statCard}>
             <h3>Active Matches</h3>
             <span className={styles.statValue}>{analytics.activeMatches}</span>
+          </div>
+          <div className={styles.statCard}>
+            <h3>Site Visits</h3>
+            <span className={styles.statValue}>{analytics.siteVisits}</span>
           </div>
         </div>
       )}

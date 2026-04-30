@@ -2,6 +2,7 @@ import { Response, Request } from 'express';
 import User from '../models/User';
 import Report from '../models/Report';
 import Conversation from '../models/Conversation';
+import VisitorStat from '../models/VisitorStat';
 import { IExpressRequest } from '../types/express';
 import mongoose from 'mongoose';
 import { generateAccessToken } from '../middleware/auth';
@@ -44,6 +45,8 @@ export const getAnalytics = async (req: IExpressRequest, res: Response): Promise
       { $count: 'count' },
     ]);
 
+    const visitStat = await VisitorStat.findOne({ key: 'site_visits' });
+
     return res.json({
       success: true,
       data: {
@@ -51,6 +54,7 @@ export const getAnalytics = async (req: IExpressRequest, res: Response): Promise
         totalReports,
         pendingReports,
         activeMatches: activeMatches[0]?.count || 0,
+        siteVisits: visitStat?.count || 0,
       },
     });
   } catch (error) {

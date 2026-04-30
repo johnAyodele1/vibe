@@ -25,6 +25,21 @@ const Connect: React.FC = () => {
     window.location.href = `${API_BASE_URL}/auth/google`;
   };
 
+  const isProfileComplete = (currentUser: any) => {
+    if (!currentUser) return false;
+
+    return (
+      currentUser.firstName &&
+      currentUser.dateOfBirth &&
+      currentUser.gender &&
+      currentUser.location?.city &&
+      currentUser.bio &&
+      currentUser.bio.trim().length > 0 &&
+      currentUser.photos &&
+      currentUser.photos.length >= 2
+    );
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -44,7 +59,7 @@ const Connect: React.FC = () => {
           return;
         }
 
-        const success = await signup({
+        const user = await signup({
           email,
           password,
           firstName,
@@ -53,9 +68,9 @@ const Connect: React.FC = () => {
           gender,
         });
 
-        if (success) {
+        if (user) {
           toast.success("Account created successfully!");
-          navigate("/discovery");
+          navigate(isProfileComplete(user) ? "/discovery" : "/profile");
         } else {
           toast.error("Signup failed");
         }
@@ -66,11 +81,11 @@ const Connect: React.FC = () => {
           return;
         }
 
-        const success = await login(email, password);
+        const user = await login(email, password);
 
-        if (success) {
+        if (user) {
           toast.success("Logged in successfully!");
-          navigate("/discovery");
+          navigate(isProfileComplete(user) ? "/discovery" : "/profile");
         } else {
           toast.error("Login failed");
         }

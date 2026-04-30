@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "sonner";
 import Onboarding from "../Onboarding/Onboarding";
@@ -16,25 +17,36 @@ import AdminDashboard from "../Admin/AdminDashboard";
 import AdminLogin from "../Admin/AdminLogin";
 import LoadingScreen from "../LoadingScreen/LoadingScreen";
 import { useAuth } from "../../contexts/AuthContext";
+import { API_BASE_URL } from "../../config";
 
 function App() {
   const { user, isAuthenticated, loading } = useAuth();
 
-  const isProfileComplete = () => {
-    if (!user) return false;
+  const isProfileComplete = (currentUser = user) => {
+    if (!currentUser) return false;
 
     return (
-      user.firstName &&
-      user.dateOfBirth &&
-      user.gender &&
-      user.location &&
-      user.location.city &&
-      user.bio &&
-      user.bio.trim().length > 0 &&
-      user.photos &&
-      user.photos.length >= 2
+      currentUser.firstName &&
+      currentUser.dateOfBirth &&
+      currentUser.gender &&
+      currentUser.location?.city &&
+      currentUser.bio &&
+      currentUser.bio.trim().length > 0 &&
+      currentUser.photos &&
+      currentUser.photos.length >= 2
     );
   };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (sessionStorage.getItem('siteVisitTracked')) return;
+
+    fetch(`${API_BASE_URL}/analytics/visit`, {
+      method: 'POST',
+    })
+      .then(() => sessionStorage.setItem('siteVisitTracked', 'true'))
+      .catch((error) => console.error('Visit tracking failed:', error));
+  }, []);
 
   if (loading) {
     return <LoadingScreen />;
@@ -44,7 +56,20 @@ function App() {
     <>
       {isAuthenticated && <CallManager />}
       <Routes>
-        <Route path="/" element={<Onboarding />} />
+        <Route
+          path="/"
+          element={
+            isAuthenticated ? (
+              isProfileComplete() ? (
+                <Navigate to="/discovery" replace />
+              ) : (
+                <Navigate to="/profile" replace />
+              )
+            ) : (
+              <Onboarding />
+            )
+          }
+        />
         <Route path="/auth" element={<Auth />} />
         <Route path="/auth/callback" element={<GoogleCallback />} />
 
@@ -53,7 +78,11 @@ function App() {
           path="/profile"
           element={
             isAuthenticated ? (
-              <ProfileCreation />
+              isProfileComplete() ? (
+                <Navigate to="/discovery" replace />
+              ) : (
+                <ProfileCreation />
+              )
             ) : (
               <Navigate to="/auth" replace />
             )
@@ -66,7 +95,7 @@ function App() {
               isProfileComplete() ? (
                 <Favourites />
               ) : (
-                <Navigate to="/discovery" replace />
+                <Navigate to="/profile" replace />
               )
             ) : (
               <Navigate to="/auth" replace />
@@ -80,7 +109,7 @@ function App() {
               isProfileComplete() ? (
                 <Discovery />
               ) : (
-                <Navigate to="/discovery" replace />
+                <Navigate to="/profile" replace />
               )
             ) : (
               <Navigate to="/auth" replace />
@@ -94,7 +123,7 @@ function App() {
               isProfileComplete() ? (
                 <PublicProfileView />
               ) : (
-                <Navigate to="/discovery" replace />
+                <Navigate to="/profile" replace />
               )
             ) : (
               <Navigate to="/auth" replace />
@@ -108,7 +137,7 @@ function App() {
               isProfileComplete() ? (
                 <UserProfileView />
               ) : (
-                <Navigate to="/discovery" replace />
+                <Navigate to="/profile" replace />
               )
             ) : (
               <Navigate to="/auth" replace />
@@ -122,7 +151,7 @@ function App() {
               isProfileComplete() ? (
                 <Settings />
               ) : (
-                <Navigate to="/discovery" replace />
+                <Navigate to="/profile" replace />
               )
             ) : (
               <Navigate to="/auth" replace />
@@ -136,7 +165,7 @@ function App() {
               isProfileComplete() ? (
                 <ChatInterface />
               ) : (
-                <Navigate to="/discovery" replace />
+                <Navigate to="/profile" replace />
               )
             ) : (
               <Navigate to="/auth" replace />
@@ -161,7 +190,7 @@ function App() {
               isProfileComplete() ? (
                 <DirectMessage />
               ) : (
-                <Navigate to="/discovery" replace />
+                <Navigate to="/profile" replace />
               )
             ) : (
               <Navigate to="/auth" replace />

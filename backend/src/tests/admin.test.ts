@@ -81,6 +81,20 @@ describe('Admin Endpoints', () => {
     });
   });
 
+  describe('POST /api/analytics/visit', () => {
+    it('should increment visit counter', async () => {
+      const firstRes = await request(app).post('/api/analytics/visit');
+      expect(firstRes.status).toBe(200);
+      expect(firstRes.body.success).toBe(true);
+      expect(firstRes.body.data.visits).toBe(1);
+
+      const secondRes = await request(app).post('/api/analytics/visit');
+      expect(secondRes.status).toBe(200);
+      expect(secondRes.body.success).toBe(true);
+      expect(secondRes.body.data.visits).toBe(2);
+    });
+  });
+
   describe('GET /api/admin/analytics', () => {
     it('should return analytics for admin', async () => {
       const res = await request(app)
@@ -91,6 +105,7 @@ describe('Admin Endpoints', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.data).toHaveProperty('totalUsers');
       expect(res.body.data).toHaveProperty('totalReports');
+      expect(res.body.data).toHaveProperty('siteVisits');
     });
 
     it('should fail for non-admin user', async () => {
