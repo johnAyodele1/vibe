@@ -96,11 +96,11 @@ const DirectMessage: React.FC = () => {
   }, []);
 
   // Get the other participant
-  const otherParticipant = conversation?.participantInfo.find((p) =>
-    p.user._id?.toString()
-      ? p.user._id.toString() !== currentUserId
-      : String(p.user._id) !== currentUserId,
-  )?.user;
+  const otherParticipant = conversation?.participantInfo.find((p) => {
+    const participantId = p.user?._id;
+    if (!participantId) return false;
+    return String(participantId) !== currentUserId;
+  })?.user;
 
   // Scroll to bottom when new messages arrive
   const scrollToBottom = () => {
@@ -189,6 +189,7 @@ const DirectMessage: React.FC = () => {
       setConversation(prev => {
         if (!prev) return prev;
         const updatedParticipantInfo = prev.participantInfo.map(p => {
+          if (!p.user) return p;
           if (String(p.user._id) === targetId) {
             return {
               ...p,
