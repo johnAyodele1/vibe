@@ -3,6 +3,7 @@ import Message from '../models/Message';
 import Conversation from '../models/Conversation';
 import User from '../models/User';
 import { getIO } from '../socket';
+import { sendPushNotification } from '../services/notification.service';
 import { IConversation, IMessage } from '../types/models';
 import { Types } from 'mongoose';
 import { IExpressRequest } from '../types/express';
@@ -160,6 +161,17 @@ export const sendMessage = async (req: IExpressRequest, res: Response): Promise<
       io.to((conversation._id as Types.ObjectId).toString()).emit('message', message);
       io.to(receiverId).emit('message', message);
     }
+
+    // Send push notification
+    sendPushNotification(receiverId, {
+      title: `New message from ${req.user.firstName}`,
+      body: messageType === 'text' ? content : `Sent a ${messageType}`,
+      data: {
+        type: 'message',
+        conversationId: (conversation._id as Types.ObjectId).toString(),
+        senderId: currentUserId,
+      },
+    }).catch(err => console.error('Push notification failed:', err));
 
     return res.status(201).json({ success: true, data: { message } });
   } catch (error) {

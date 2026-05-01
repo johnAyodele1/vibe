@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import mongoose, { Types } from 'mongoose';
 import User from '../models/User';
 import Conversation from '../models/Conversation';
+import { sendPushNotification } from '../services/notification.service';
 import { IUser } from '../types/models';
 
 // @desc    Like a user
@@ -117,6 +118,29 @@ export const like = async (req: Request, res: Response): Promise<Response> => {
     }
 
     await Promise.all([currentUser.save(), targetUser.save()]);
+
+    if (isMatch) {
+      // Notify both users about the match
+      sendPushNotification(targetUserId, {
+        title: "It's a Match! 💖",
+        body: `You and ${currentUser.firstName} have matched! Start chatting now.`,
+        data: {
+          type: 'match',
+          userId: currentUserId,
+          conversationId,
+        },
+      }).catch(err => console.error('Push notification failed:', err));
+
+      sendPushNotification(currentUserId, {
+        title: "It's a Match! 💖",
+        body: `You and ${targetUser.firstName} have matched! Start chatting now.`,
+        data: {
+          type: 'match',
+          userId: targetUserId,
+          conversationId,
+        },
+      }).catch(err => console.error('Push notification failed:', err));
+    }
 
     return res.json({
       success: true,

@@ -3,6 +3,7 @@ import styles from "./Settings.module.css";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { API_BASE_URL } from "../../config";
+import { usePWA } from "../../contexts/PWAContext";
 
 const Icon = ({
   name,
@@ -47,6 +48,7 @@ interface User {
 
 const Settings: React.FC = () => {
   const navigate = useNavigate();
+  const { isInstallable, installApp, notificationPermission, requestNotificationPermission } = usePWA();
   const [isDark, setIsDark] = useState(true); // Default to dark based on HTML
   const [user, setUser] = useState<User | null>(null);
 
@@ -280,6 +282,42 @@ const Settings: React.FC = () => {
                 </p>
               </div>
               <button className={styles.upgradeBtn}>Upgrade Now</button>
+            </div>
+          </div>
+        </div>
+
+        {/* Section: App Settings */}
+        <div>
+          <h3 className={styles.sectionTitle}>App Settings</h3>
+          <div className={styles.listGroup}>
+            {/* Install App */}
+            {isInstallable && (
+              <div className={styles.listItem} onClick={installApp}>
+                <div className={styles.itemLabel}>
+                  <Icon
+                    name="download_for_offline"
+                    className="text-primary"
+                  />
+                  Install App
+                </div>
+                <div className={styles.itemValue}>
+                  <Icon name="arrow_forward_ios" className="text-lg opacity-50" />
+                </div>
+              </div>
+            )}
+            {/* Push Notifications Permission */}
+            <div className={styles.listItem} onClick={requestNotificationPermission}>
+              <div className={styles.itemLabel}>
+                <Icon
+                  name="notifications_active"
+                  className="text-gray-400 dark:text-[#ba9ca3]"
+                />
+                Push Notifications
+              </div>
+              <div className={styles.itemValue}>
+                <span className="capitalize">{notificationPermission}</span>
+                <Icon name="arrow_forward_ios" className="text-lg opacity-50" />
+              </div>
             </div>
           </div>
         </div>
