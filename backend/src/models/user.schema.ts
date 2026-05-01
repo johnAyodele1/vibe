@@ -214,6 +214,11 @@ export const userSchema = new Schema<IUser, IUserModel>(
       type: Boolean,
       default: false,
     },
+    fcmTokens: [
+      {
+        type: String,
+      },
+    ],
     lastNotificationSentAt: {
       type: Date,
       default: new Date(0), // Set to a very old date initially

@@ -9,6 +9,8 @@ import {
   getUserById,
   blockUser,
   reportUser,
+  updatePushToken,
+  updateLocation,
 } from '../controllers/user.controller';
 import {
   like,
@@ -21,6 +23,8 @@ const router = Router();
 
 router.get('/profile', authenticateToken, updateOnlineStatus, getProfile);
 router.put('/profile', authenticateToken, updateOnlineStatus, updateProfile);
+router.post('/push-token', authenticateToken, updateOnlineStatus, updatePushToken);
+router.put('/location', authenticateToken, updateOnlineStatus, updateLocation);
 router.get('/discover', authenticateToken, updateOnlineStatus, discover);
 router.get('/favourites', authenticateToken, updateOnlineStatus, getFavourites);
 router.delete('/account', authenticateToken, updateOnlineStatus, deleteAccount);

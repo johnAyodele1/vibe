@@ -75,6 +75,7 @@ export interface IUser extends Document {
   profileCompletion: number;
   lastActive: Date;
   isOnline: boolean;
+  fcmTokens: string[];
   lastNotificationSentAt: Date;
   verificationToken?: string;
   verificationTokenExpires?: Date;

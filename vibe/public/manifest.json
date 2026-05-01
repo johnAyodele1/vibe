@@ -1,0 +1,25 @@
+{
+  "name": "Vibe",
+  "short_name": "Vibe",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#221014",
+  "theme_color": "#f42559",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "48x48 72x72 96x96 128x128 256x256 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/vite.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "description": "Vibe - Dating App",
+  "categories": ["social", "lifestyle"]
+}

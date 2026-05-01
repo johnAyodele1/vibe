@@ -105,6 +105,63 @@ export const reportUser = async (req: IExpressRequest, res: Response): Promise<R
   }
 };
 
+// @desc    Update push notification token
+// @access  Private
+export const updatePushToken = async (req: IExpressRequest, res: Response): Promise<Response> => {
+  try {
+    if (!req.user) return res.status(401).json({ success: false, message: 'Not authenticated' });
+    const { token } = req.body;
+
+    if (!token) {
+      return res.status(400).json({ success: false, message: 'Token is required' });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    // Add token if it doesn't exist
+    if (!user.fcmTokens.includes(token)) {
+      user.fcmTokens.push(token);
+      await user.save();
+    }
+
+    return res.json({ success: true, message: 'Push token updated successfully' });
+  } catch (error) {
+    console.error('Update push token error:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// @desc    Update user location
+// @access  Private
+export const updateLocation = async (req: IExpressRequest, res: Response): Promise<Response> => {
+  try {
+    if (!req.user) return res.status(401).json({ success: false, message: 'Not authenticated' });
+    const { latitude, longitude, city, country } = req.body;
+
+    if (latitude === undefined || longitude === undefined) {
+      return res.status(400).json({ success: false, message: 'Coordinates are required' });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    user.location = {
+      type: 'Point',
+      coordinates: [longitude, latitude],
+      city: city || user.location.city,
+      country: country || user.location.country,
+    };
+
+    await user.save();
+
+    return res.json({ success: true, message: 'Location updated successfully' });
+  } catch (error) {
+    console.error('Update location error:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
 // @desc    Update user profile
 // @access  Private
 export const updateProfile = async (req: IExpressRequest, res: Response): Promise<Response> => {
