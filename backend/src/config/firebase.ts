@@ -6,8 +6,8 @@ dotenv.config();
 const FIREBASE_SERVICE_ACCOUNT = process.env.FIREBASE_SERVICE_ACCOUNT;
 
 export const initFirebase = () => {
-  if (!FIREBASE_SERVICE_ACCOUNT) {
-    console.warn('FIREBASE_SERVICE_ACCOUNT not found in environment variables. Push notifications will be disabled.');
+  if (!FIREBASE_SERVICE_ACCOUNT || FIREBASE_SERVICE_ACCOUNT === 'undefined' || FIREBASE_SERVICE_ACCOUNT === 'null') {
+    console.warn('FIREBASE_SERVICE_ACCOUNT not found or invalid in environment variables. Push notifications will be disabled.');
     return;
   }
 
@@ -24,9 +24,10 @@ export const initFirebase = () => {
     });
     console.log('Firebase Admin initialized successfully');
   } catch (error) {
-    console.error('Error initializing Firebase Admin:', error);
+    console.error('Error initializing Firebase Admin: Failed to parse FIREBASE_SERVICE_ACCOUNT JSON.');
+    console.error('Value of FIREBASE_SERVICE_ACCOUNT:', FIREBASE_SERVICE_ACCOUNT.substring(0, 100) + (FIREBASE_SERVICE_ACCOUNT.length > 100 ? '...' : ''));
     if (error instanceof Error) {
-      console.error('Error message:', error.message);
+      console.error('Parsing error message:', error.message);
     }
   }
 };
