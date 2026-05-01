@@ -62,17 +62,14 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  // Only intercept GET requests and http/https schemes
+  if (event.request.method !== 'GET' || !event.request.url.startsWith('http')) {
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then((response) => {
-      return response || fetch(event.request).catch((error) => {
-        console.error('[firebase-messaging-sw.js] Fetch failed for:', event.request.url, error);
-        // Return a custom response to avoid rejecting the promise passed to respondWith
-        return new Response('Network error occurred', {
-          status: 408,
-          statusText: 'Network Error',
-          headers: new Headers({ 'Content-Type': 'text/plain' })
-        });
-      });
+      return response || fetch(event.request);
     })
   );
 });
