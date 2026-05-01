@@ -169,7 +169,7 @@ const PublicProfileView: React.FC = () => {
             style={{
               backgroundImage: `url('${
                 user.photos?.find((photo) => photo.isMain)?.url ||
-                "https://via.placeholder.com/600x800"
+                "/placeholder.svg"
               }')`,
             }}
           />

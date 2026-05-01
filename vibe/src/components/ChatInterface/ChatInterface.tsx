@@ -227,7 +227,7 @@ const ChatInterface: React.FC = () => {
                           <img
                             src={
                               match.user?.photos?.find((p) => p.isMain)?.url ||
-                              "https://via.placeholder.com/150"
+                              "/placeholder.svg"
                             }
                             alt={match.user?.firstName || "Profile"}
                             className={styles.avatarImg}
@@ -307,7 +307,7 @@ const ChatInterface: React.FC = () => {
                         <img
                           src={
                             otherParticipant.photos?.find((p: any) => p.isMain)
-                              ?.url || "https://via.placeholder.com/150"
+                              ?.url || "/placeholder.svg"
                           }
                           alt={otherParticipant.firstName || "Profile"}
                           className={styles.avatarImg}
