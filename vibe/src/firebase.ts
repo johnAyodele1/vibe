@@ -1,23 +1,49 @@
 import { initializeApp } from "firebase/app";
-import { getMessaging, getToken, onMessage } from "firebase/messaging";
+import { getMessaging, getToken, onMessage, Messaging } from "firebase/messaging";
+import { API_BASE_URL } from "./config";
 
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+let messagingPromise: Promise<Messaging | null> | null = null;
+let firebaseConfigCache: any = null;
+
+const fetchFirebaseConfig = async () => {
+  if (firebaseConfigCache) return firebaseConfigCache;
+  try {
+    const response = await fetch(`${API_BASE_URL}/config/firebase`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch firebase config');
+    }
+    firebaseConfigCache = await response.json();
+    return firebaseConfigCache;
+  } catch (error) {
+    console.error('Error fetching firebase config:', error);
+    return null;
+  }
 };
 
-const app = initializeApp(firebaseConfig);
-export const messaging = getMessaging(app);
+const initFirebase = async (): Promise<Messaging | null> => {
+  if (messagingPromise) return messagingPromise;
+
+  messagingPromise = (async () => {
+    const firebaseConfig = await fetchFirebaseConfig();
+    if (!firebaseConfig) return null;
+
+    const app = initializeApp(firebaseConfig);
+    return getMessaging(app);
+  })();
+
+  return messagingPromise;
+};
 
 export const requestForToken = async () => {
   try {
+    const messaging = await initFirebase();
+    if (!messaging) return null;
+
+    const config = await fetchFirebaseConfig();
     const currentToken = await getToken(messaging, {
-      vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY,
+      vapidKey: config?.vapidKey || import.meta.env.VITE_FIREBASE_VAPID_KEY,
     });
+
     if (currentToken) {
       return currentToken;
     } else {
@@ -30,7 +56,22 @@ export const requestForToken = async () => {
   }
 };
 
-export const onMessageListener = (callback: (payload: any) => void) =>
-  onMessage(messaging, (payload) => {
-    callback(payload);
+export const onMessageListener = (callback: (payload: any) => void) => {
+  let unsubscribe: (() => void) | null = null;
+  let isCancelled = false;
+
+  initFirebase().then(messaging => {
+    if (messaging && !isCancelled) {
+      unsubscribe = onMessage(messaging, (payload) => {
+        callback(payload);
+      });
+    }
   });
+
+  return () => {
+    isCancelled = true;
+    if (unsubscribe) {
+      unsubscribe();
+    }
+  };
+};

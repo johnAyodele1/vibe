@@ -13,12 +13,21 @@ export const initFirebase = () => {
 
   try {
     const serviceAccount = JSON.parse(FIREBASE_SERVICE_ACCOUNT);
+
+    // Fix for private key newlines if they are escaped as literal \n
+    if (serviceAccount.private_key) {
+      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+    }
+
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
     });
     console.log('Firebase Admin initialized successfully');
   } catch (error) {
     console.error('Error initializing Firebase Admin:', error);
+    if (error instanceof Error) {
+      console.error('Error message:', error.message);
+    }
   }
 };
 
