@@ -1,29 +1,46 @@
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
 
-// These values should ideally be injected during build, but for now we'll assume they match the env
-firebase.initializeApp({
-  apiKey: "REPLACE_WITH_API_KEY",
-  authDomain: "REPLACE_WITH_AUTH_DOMAIN",
-  projectId: "REPLACE_WITH_PROJECT_ID",
-  storageBucket: "REPLACE_WITH_STORAGE_BUCKET",
-  messagingSenderId: "REPLACE_WITH_SENDER_ID",
-  appId: "REPLACE_WITH_APP_ID"
-});
+// Helper to get the correct API URL based on environment
+const getApiUrl = () => {
+  if (self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1') {
+    return 'http://localhost:5000/api';
+  }
+  // This should match the production URL in config.ts
+  return 'https://zippo-r8hk.onrender.com/api';
+};
 
-const messaging = firebase.messaging();
+const API_BASE_URL = getApiUrl();
 
-messaging.onBackgroundMessage((payload) => {
-  console.log('[firebase-messaging-sw.js] Received background message ', payload);
-  const notificationTitle = payload.notification.title;
-  const notificationOptions = {
-    body: payload.notification.body,
-    icon: '/favicon.svg',
-    data: payload.data
-  };
+const initFirebaseInSW = async () => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/config/firebase`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch firebase config');
+    }
+    const firebaseConfig = await response.json();
+    firebase.initializeApp(firebaseConfig);
 
-  self.registration.showNotification(notificationTitle, notificationOptions);
-});
+    const messaging = firebase.messaging();
+
+    messaging.onBackgroundMessage((payload) => {
+      console.log('[firebase-messaging-sw.js] Received background message ', payload);
+      const notificationTitle = payload.notification.title;
+      const notificationOptions = {
+        body: payload.notification.body,
+        icon: '/favicon.svg',
+        data: payload.data
+      };
+
+      self.registration.showNotification(notificationTitle, notificationOptions);
+    });
+  } catch (error) {
+    console.error('Error initializing Firebase in Service Worker:', error);
+  }
+};
+
+// Initialize as soon as possible
+initFirebaseInSW();
 
 // Cache core assets
 const CACHE_NAME = 'vibe-v1';
