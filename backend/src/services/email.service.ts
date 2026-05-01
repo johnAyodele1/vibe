@@ -3,8 +3,8 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const BREVO_API_KEY = process.env.BREVO_API_KEY;
-const BREVO_SENDER_EMAIL = process.env.BREVO_SENDER_EMAIL || 'noreply@vibe.com';
-const BREVO_SENDER_NAME = process.env.BREVO_SENDER_NAME || 'Vibe App';
+const BREVO_SENDER_EMAIL = process.env.BREVO_SENDER_EMAIL || 'contact@zippo.com.ng';
+const BREVO_SENDER_NAME = process.env.BREVO_SENDER_NAME || 'zippo dating app';
 
 export interface EmailOptions {
   to: string;

@@ -61,10 +61,10 @@ export const initNotificationJob = () => {
             htmlContent = `
               <div style="font-family: sans-serif; color: #333;">
                 <h1>Hello ${user.firstName}!</h1>
-                <p>Great news! You have <strong>new matches</strong> and <strong>new messages</strong> waiting for you on Vibe.</p>
+                <p>Great news! You have <strong>new matches</strong> and <strong>new messages</strong> waiting for you on Zippo.</p>
                 <p>Log in now to see who's interested and keep the conversation going!</p>
                 <br>
-                <p>Best,<br>The Vibe Team</p>
+                <p>Best,<br>The Zippo Team</p>
               </div>
             `;
           } else if (hasNewUnreadMessages) {
@@ -72,10 +72,10 @@ export const initNotificationJob = () => {
             htmlContent = `
               <div style="font-family: sans-serif; color: #333;">
                 <h1>Hello ${user.firstName}!</h1>
-                <p>You have <strong>new messages</strong> waiting for you on Vibe.</p>
+                <p>You have <strong>new messages</strong> waiting for you on Zippo.</p>
                 <p>Log in now to read them and reply!</p>
                 <br>
-                <p>Best,<br>The Vibe Team</p>
+                <p>Best,<br>The Zippo Team</p>
               </div>
             `;
           } else if (hasNewUnseenMatches) {
@@ -83,10 +83,10 @@ export const initNotificationJob = () => {
             htmlContent = `
               <div style="font-family: sans-serif; color: #333;">
                 <h1>Hello ${user.firstName}!</h1>
-                <p>You have <strong>new matches</strong> waiting for you on Vibe.</p>
+                <p>You have <strong>new matches</strong> waiting for you on Zippo.</p>
                 <p>Log in now to see your matches and start chatting!</p>
                 <br>
-                <p>Best,<br>The Vibe Team</p>
+                <p>Best,<br>The Zippo Team</p>
               </div>
             `;
           }
