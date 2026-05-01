@@ -18,6 +18,19 @@ export const getMatches = async (req: Request, res: Response): Promise<Response>
 
     const matches = user.matches.filter((match) => match.isActive);
 
+    // Mark matches as seen
+    let hasUnseen = false;
+    user.matches.forEach((match) => {
+      if (match.isActive && !match.isSeen) {
+        match.isSeen = true;
+        hasUnseen = true;
+      }
+    });
+
+    if (hasUnseen) {
+      await user.save();
+    }
+
     return res.json({ success: true, data: { matches } });
   } catch (error) {
     console.error('Get matches error:', error);
