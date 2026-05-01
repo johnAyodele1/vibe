@@ -5,7 +5,7 @@
     "module": "CommonJS",
     "types": ["node"],
     "skipLibCheck": true,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "moduleDetection": "force",
