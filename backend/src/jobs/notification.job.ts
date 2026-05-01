@@ -37,11 +37,10 @@ export const initNotificationJob = () => {
 
       for (const user of users) {
         // Check for NEW unseen matches since last notification
-        const hasNewUnseenMatches = user.matches.some(match =>
-          match.isActive &&
-          !match.isSeen &&
-          match.matchedAt > user.lastNotificationSentAt
-        );
+        const hasNewUnseenMatches = user.matches.some(match => {
+          const isNew = match.matchedAt > user.lastNotificationSentAt;
+          return match.isActive && !match.isSeen && isNew;
+        });
 
         // Check for NEW unread messages since last notification
         const newUnreadMessagesCount = await Message.countDocuments({
