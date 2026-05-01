@@ -14,11 +14,13 @@ const API_BASE_URL = getApiUrl();
 
 const initFirebaseInSW = async () => {
   try {
+    console.log('[firebase-messaging-sw.js] Fetching firebase config from:', `${API_BASE_URL}/config/firebase`);
     const response = await fetch(`${API_BASE_URL}/config/firebase`);
     if (!response.ok) {
-      throw new Error('Failed to fetch firebase config');
+      throw new Error(`Failed to fetch firebase config: ${response.status} ${response.statusText}`);
     }
     const firebaseConfig = await response.json();
+    console.log('[firebase-messaging-sw.js] Initializing Firebase with config');
     firebase.initializeApp(firebaseConfig);
 
     const messaging = firebase.messaging();
