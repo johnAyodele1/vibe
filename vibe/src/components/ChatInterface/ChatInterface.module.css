@@ -310,6 +310,14 @@
   align-items: center;
 }
 
+.messagePreview {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  min-width: 0;
+}
+
 .lastMessage {
   font-size: 14px;
   font-weight: 500;
@@ -317,7 +325,9 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 80%;
+  max-width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .lastMessageRead {

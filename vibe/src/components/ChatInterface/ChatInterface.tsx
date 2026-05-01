@@ -326,14 +326,7 @@ const ChatInterface: React.FC = () => {
                       </div>
 
                       <div className={styles.messageFooter}>
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "4px",
-                            overflow: "hidden",
-                          }}
-                        >
+                        <div className={styles.messagePreview}>
                           {lastMessage?.messageType === "photo" && (
                             <span
                               className="material-symbols-outlined"
