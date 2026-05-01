@@ -123,7 +123,7 @@ app.use((error: any, req: Request, res: Response, next: NextFunction) => {
 
   // Mongoose validation error
   if (error.name === 'ValidationError' && error.errors) {
-    const messages = Object.values(error.errors).map((val) => val.message);
+    const messages = Object.values(error.errors).map((val: any) => val.message);
     return res.status(400).json({
       success: false,
       message: 'Validation Error',
