@@ -54,7 +54,8 @@
   background-color: var(--color-bg-dark);
   color: var(--text-white);
   min-height: 100vh;
-  height: 100dvh;
+  height: 100vh;
+  overflow: hidden;
   overscroll-behavior: none;
   display: flex;
   flex-direction: column;
@@ -218,9 +219,10 @@
   flex: 1;
   overflow-y: auto;
   width: 100%;
-  padding: 0 16px 20px 16px;
+  padding: 0 16px 140px 16px;
   background-color: var(--color-bg-dark);
   -webkit-overflow-scrolling: touch;
+  scroll-padding-bottom: 160px;
 }
 
 .dateDivider {
@@ -340,25 +342,31 @@
 }
 
 .footer {
+  position: sticky;
+  bottom: 0;
+  left: 0;
   flex-shrink: 0;
   width: 100%;
   padding: 8px 16px calc(12px + env(safe-area-inset-bottom, 12px)) 16px;
   z-index: 30;
-  background-color: var(--color-bg-dark);
+  background-color: rgba(30, 30, 34, 0.95);
+  backdrop-filter: blur(16px);
 }
 
 .inputBar {
+  width: 100%;
   max-width: 672px;
   margin: 0 auto;
-  background-color: rgba(30, 30, 34, 0.9);
+  background-color: rgba(30, 30, 34, 0.95);
   backdrop-filter: blur(20px);
-  padding: 6px;
+  padding: 10px;
   border-radius: 16px;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 8px;
   box-shadow: var(--shadow-float);
   border: 1px solid rgba(255, 255, 255, 0.1);
+  flex-wrap: wrap;
 }
 
 .utilityBtn {
@@ -382,18 +390,20 @@
 .inputFieldWrapper {
   flex: 1;
   padding: 4px 0;
+  min-width: 0;
 }
 
 .inputField {
   width: 100%;
-  background: rgba(30, 30, 34, 0.9);
+  background: rgba(30, 30, 34, 0.95);
   border: none;
   color: white;
   font-size: 16px;
   line-height: 1.5;
-  height: 36px;
-  padding: 0;
-  border-radius: 8px;
+  min-height: 44px;
+  height: 44px;
+  padding: 0 12px;
+  border-radius: 12px;
 }
 .inputField:focus {
   outline: none;
@@ -652,4 +662,36 @@
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+@media (max-width: 640px) {
+  .container {
+    min-height: 100vh;
+    height: auto;
+  }
+
+  .chatStream {
+    padding: 0 12px 160px 12px;
+  }
+
+  .footer {
+    padding: 12px 12px calc(14px + env(safe-area-inset-bottom, 14px)) 12px;
+  }
+
+  .inputBar {
+    padding: 10px;
+    gap: 6px;
+  }
+
+  .inputField {
+    min-height: 48px;
+    height: 48px;
+  }
+
+  .utilityBtn,
+  .cameraBtn,
+  .sendBtn {
+    min-width: 42px;
+    min-height: 42px;
+  }
 }
