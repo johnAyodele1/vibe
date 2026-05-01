@@ -46,6 +46,7 @@ export interface IMatch {
   user: Types.ObjectId | IUser;
   matchedAt: Date;
   isActive: boolean;
+  isSeen: boolean;
 }
 
 export interface IUser extends Document {
@@ -74,6 +75,7 @@ export interface IUser extends Document {
   profileCompletion: number;
   lastActive: Date;
   isOnline: boolean;
+  lastNotificationSentAt: Date;
   verificationToken?: string;
   verificationTokenExpires?: Date;
   passwordResetToken?: string;

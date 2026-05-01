@@ -181,6 +181,10 @@ export const userSchema = new Schema<IUser, IUserModel>(
           type: Boolean,
           default: true,
         },
+        isSeen: {
+          type: Boolean,
+          default: false,
+        },
       },
     ],
     isVerified: {
@@ -209,6 +213,10 @@ export const userSchema = new Schema<IUser, IUserModel>(
     isOnline: {
       type: Boolean,
       default: false,
+    },
+    lastNotificationSentAt: {
+      type: Date,
+      default: new Date(0), // Set to a very old date initially
     },
     verificationToken: String,
     verificationTokenExpires: Date,

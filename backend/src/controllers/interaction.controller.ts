@@ -92,7 +92,8 @@ export const like = async (req: Request, res: Response): Promise<Response> => {
       currentUser.matches.push({
         user: new mongoose.Types.ObjectId(targetUserId),
         matchedAt: new Date(),
-        isActive: true
+        isActive: true,
+        isSeen: false
       });
     }
 
@@ -108,7 +109,8 @@ export const like = async (req: Request, res: Response): Promise<Response> => {
         targetUser.matches.push({
           user: req.user._id as Types.ObjectId,
           matchedAt: new Date(),
-          isActive: true
+          isActive: true,
+          isSeen: false
         });
       }
       isMatch = true;
