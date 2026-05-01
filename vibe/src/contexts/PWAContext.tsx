@@ -18,7 +18,9 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isInstallable, setIsInstallable] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
-    typeof window !== 'undefined' ? Notification.permission : 'default'
+    (typeof window !== 'undefined' && 'Notification' in window)
+      ? Notification.permission
+      : 'default' as NotificationPermission
   );
 
   useEffect(() => {
@@ -49,9 +51,9 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         // Check if we already requested location this session to avoid nagging
         const hasRequested = sessionStorage.getItem('locationRequestedThisSession');
 
-        if ('permissions' in navigator) {
+        if ('permissions' in navigator && (navigator.permissions as any).query) {
           try {
-            const status = await navigator.permissions.query({ name: 'geolocation' });
+            const status = await (navigator.permissions as any).query({ name: 'geolocation' });
             if (status.state === 'denied') {
               console.log('Geolocation permission denied');
               return;
