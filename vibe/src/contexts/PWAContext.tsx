@@ -45,8 +45,35 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // Handle periodic geolocation updates
   useEffect(() => {
     if (isAuthenticated && user) {
-      const interval = setInterval(updateUserLocation, 1000 * 60 * 15); // Every 15 minutes
-      updateUserLocation(); // Initial update
+      const checkAndUpdateLocation = async () => {
+        // Check if we already requested location this session to avoid nagging
+        const hasRequested = sessionStorage.getItem('locationRequestedThisSession');
+
+        if ('permissions' in navigator) {
+          try {
+            const status = await navigator.permissions.query({ name: 'geolocation' });
+            if (status.state === 'denied') {
+              console.log('Geolocation permission denied');
+              return;
+            }
+            if (status.state === 'prompt' && hasRequested) {
+              console.log('Geolocation in prompt state and already requested this session, skipping auto-prompt');
+              return;
+            }
+          } catch (e) {
+            console.error('Error checking geolocation permission:', e);
+          }
+        } else if (hasRequested) {
+          // Fallback for browsers without permissions API
+          return;
+        }
+
+        updateUserLocation();
+        sessionStorage.setItem('locationRequestedThisSession', 'true');
+      };
+
+      const interval = setInterval(checkAndUpdateLocation, 1000 * 60 * 15); // Every 15 minutes
+      checkAndUpdateLocation(); // Initial check/update
       return () => clearInterval(interval);
     }
   }, [isAuthenticated]);
@@ -63,10 +90,11 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, []);
 
   const syncPushToken = async () => {
-    const token = await requestForToken();
-    if (token) {
-      try {
-        await fetch(`${API_BASE_URL}/users/push-token`, {
+    try {
+      const token = await requestForToken();
+      if (token) {
+        console.log('FCM Token retrieved successfully');
+        const response = await fetch(`${API_BASE_URL}/users/push-token`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -74,9 +102,18 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           },
           body: JSON.stringify({ token }),
         });
-      } catch (error) {
-        console.error('Error syncing push token:', error);
+
+        if (response.ok) {
+          console.log('Push token synced with backend successfully');
+        } else {
+          const errorData = await response.json();
+          console.error('Failed to sync push token with backend:', errorData);
+        }
+      } else {
+        console.warn('No FCM token retrieved. Notifications may not work.');
       }
+    } catch (error) {
+      console.error('Error in syncPushToken:', error);
     }
   };
 
