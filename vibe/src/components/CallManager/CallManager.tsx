@@ -69,7 +69,7 @@ const CallManager: React.FC = () => {
               callerName: `${otherParticipant.firstName} ${otherParticipant.lastName}`,
               callerImage:
                 otherParticipant.photos?.find((p: any) => p.isMain)?.url ||
-                "https://via.placeholder.com/100",
+                "/placeholder.svg",
             });
             setShowModal(true);
           }
@@ -107,7 +107,7 @@ const CallManager: React.FC = () => {
         isOpen={showModal}
         callerName={incomingCall?.callerName || ""}
         callerImage={
-          incomingCall?.callerImage || "https://via.placeholder.com/100"
+          incomingCall?.callerImage || "/placeholder.svg"
         }
         isVideoCall={incomingCall?.isVideoCall || false}
         onAccept={handleAcceptCall}

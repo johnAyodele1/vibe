@@ -786,7 +786,7 @@ const DirectMessage: React.FC = () => {
                   style={{
                     backgroundImage: `url("${
                       otherParticipant?.photos.find((p) => p.isMain)?.url ||
-                      "https://via.placeholder.com/150"
+                      "/placeholder.svg"
                     }")`,
                   }}
                 />
@@ -900,7 +900,7 @@ const DirectMessage: React.FC = () => {
                         style={{
                           backgroundImage: `url("${
                             msg.sender.photos.find((p) => p.isMain)?.url ||
-                            "https://via.placeholder.com/150"
+                            "/placeholder.svg"
                           }")`,
                         }}
                       />
@@ -940,7 +940,7 @@ const DirectMessage: React.FC = () => {
                       style={{
                         backgroundImage: `url("${
                           otherParticipant?.photos.find((p) => p.isMain)?.url ||
-                          "https://via.placeholder.com/150"
+                          "/placeholder.svg"
                         }")`,
                       }}
                     />
@@ -1053,7 +1053,7 @@ const DirectMessage: React.FC = () => {
                       style={{
                         backgroundImage: `url("${
                           otherParticipant?.photos.find((p) => p.isMain)?.url ||
-                          "https://via.placeholder.com/150"
+                          "/placeholder.svg"
                         }")`,
                       }}
                     />

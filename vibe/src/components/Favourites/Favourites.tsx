@@ -125,7 +125,7 @@ const Favourites: React.FC = () => {
                       backgroundImage: `url('${
                         user.photos.find((p) => p.isMain)?.url ||
                         user.photos[0]?.url ||
-                        "https://via.placeholder.com/400"
+                        "/placeholder.svg"
                       }')`,
                     }}
                   />
