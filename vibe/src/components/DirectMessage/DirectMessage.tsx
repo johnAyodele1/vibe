@@ -60,7 +60,6 @@ const DirectMessage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const { socket } = useSocket();
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement | null>(null);
 
   // Call state
   const [callStatus, setCallStatus] = useState<CallStatus>("idle");
@@ -120,23 +119,6 @@ const DirectMessage: React.FC = () => {
       }
     };
   }, [conversationId]);
-
-  // Keep the mobile input visible when keyboard opens
-  useEffect(() => {
-    const input = inputRef.current;
-    if (!input) return;
-
-    const handleFocus = () => {
-      setTimeout(() => {
-        input.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      }, 50);
-    };
-
-    input.addEventListener("focus", handleFocus);
-    return () => {
-      input.removeEventListener("focus", handleFocus);
-    };
-  }, []);
 
   // FIXED: Bind local stream to video/audio elements whenever it changes
   useEffect(() => {
@@ -995,7 +977,8 @@ const DirectMessage: React.FC = () => {
 
             <div className={styles.inputFieldWrapper}>
               <input
-                  ref={inputRef}
+                className={styles.inputField}
+                type="text"
                 placeholder="Message..."
                 value={inputValue}
                 onChange={handleInputChange}
