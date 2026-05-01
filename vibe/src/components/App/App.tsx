@@ -21,6 +21,9 @@ import { API_BASE_URL } from "../../config";
 
 function App() {
   const { user, isAuthenticated, loading } = useAuth();
+  const isAdminAuthenticated =
+    typeof window !== "undefined" &&
+    localStorage.getItem("isAdminAuthenticated") === "true";
 
   const isProfileComplete = (currentUser = user) => {
     if (!currentUser) return false;
@@ -174,7 +177,7 @@ function App() {
         <Route
           path="/admin"
           element={
-            isAuthenticated ? (
+            isAdminAuthenticated ? (
               <AdminDashboard />
             ) : (
               <Navigate to="/admin/login" replace />
