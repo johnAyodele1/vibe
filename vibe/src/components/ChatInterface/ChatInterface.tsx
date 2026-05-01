@@ -135,23 +135,21 @@ const ChatInterface: React.FC = () => {
 
       // Update matches
       setMatches(prevMatches =>
-        prevMatches.map(match => {
-          if (!match.user) return match;
-          return String(match.user._id) === targetId
+        prevMatches.map(match =>
+          String(match.user._id) === targetId
             ? { ...match, user: { ...match.user, isOnline } }
-            : match;
-        })
+            : match
+        )
       );
 
       // Update conversations
       setConversations(prevConversations =>
         prevConversations.map(conv => {
-          const updatedParticipantInfo = conv.participantInfo.map(p => {
-            if (!p.user) return p;
-            return String(p.user._id) === targetId
+          const updatedParticipantInfo = conv.participantInfo.map(p =>
+            String(p.user._id) === targetId
               ? { ...p, user: { ...p.user, isOnline } }
-              : p;
-          });
+              : p
+          );
           return { ...conv, participantInfo: updatedParticipantInfo };
         })
       );
@@ -226,19 +224,19 @@ const ChatInterface: React.FC = () => {
                         <div className={styles.avatarContainer}>
                           <img
                             src={
-                              match.user?.photos?.find((p) => p.isMain)?.url ||
+                              match.user.photos.find((p) => p.isMain)?.url ||
                               "https://via.placeholder.com/150"
                             }
-                            alt={match.user?.firstName || "Profile"}
+                            alt={match.user.firstName}
                             className={styles.avatarImg}
                           />
                         </div>
                         <span
                           className={`${styles.statusIndicatorSmall} ${
-                            match.user?.isOnline ? styles.online : styles.offline
+                            match.user.isOnline ? styles.online : styles.offline
                           }`}
                           aria-label={
-                            match.user?.isOnline ? "Online" : "Offline"
+                            match.user.isOnline ? "Online" : "Offline"
                           }
                         />
                       </div>
@@ -248,8 +246,8 @@ const ChatInterface: React.FC = () => {
                         !match.isNew ? styles.matchNameRead : ""
                       }`}
                     >
-                      {match.user?.firstName || "Unknown"} {match.user?.lastName || ""},{" "}
-                      {match.user?.age ?? "–"}
+                      {match.user.firstName} {match.user.lastName},{" "}
+                      {match.user.age}
                     </span>
                   </div>
                 ))
@@ -275,11 +273,10 @@ const ChatInterface: React.FC = () => {
                 // Get current user ID
                 const currentUserId = (user as any)?._id || "";
                 const otherParticipantInfo = conversation.participantInfo.find(
-                  (p) => {
-                    const participantId = p.user?._id;
-                    if (!participantId) return false;
-                    return String(participantId) !== currentUserId;
-                  },
+                  (p) =>
+                    p.user._id?.toString()
+                      ? p.user._id.toString() !== currentUserId
+                      : String(p.user._id) !== currentUserId,
                 );
                 const otherParticipant = otherParticipantInfo?.user;
                 const unreadCount =
@@ -306,10 +303,10 @@ const ChatInterface: React.FC = () => {
                       <div className={styles.messageAvatar}>
                         <img
                           src={
-                            otherParticipant.photos?.find((p: any) => p.isMain)
+                            otherParticipant.photos.find((p: any) => p.isMain)
                               ?.url || "https://via.placeholder.com/150"
                           }
-                          alt={otherParticipant.firstName || "Profile"}
+                          alt={otherParticipant.firstName}
                           className={styles.avatarImg}
                         />
                       </div>
