@@ -53,12 +53,16 @@
   font-family: "Space Grotesk", sans-serif;
   background-color: var(--color-bg-dark);
   color: var(--text-white);
-  min-height: 100vh;
-  height: 100dvh;
   overscroll-behavior: none;
+  height: 100dvh;        /* use this as the ONLY height */
+  position: fixed;       /* lock it to the screen */
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  position: relative;
 }
 
 .header {
