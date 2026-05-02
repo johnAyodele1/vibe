@@ -122,8 +122,9 @@ app.use(express.static(path.join(__dirname, '../../vibe/dist')));
 // match one above, send back React's index.html file.
 app.get('*', (req: Request, res: Response) => {
   // If it looks like an asset or a file (has an extension), return 404 instead of index.html
-  if (req.path.includes('.') || req.path.startsWith('/assets/')) {
-    return res.status(404).send('Not found');
+  // This prevents returning index.html (with text/html MIME type) for missing assets
+  if (req.path.includes('.') || req.path.startsWith('/assets/') || req.path.startsWith('/src/')) {
+    return res.status(404).json({ error: 'Asset not found' });
   }
   res.sendFile(path.join(__dirname, '../../vibe/dist/index.html'));
 });
