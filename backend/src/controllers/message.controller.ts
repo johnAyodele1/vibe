@@ -21,7 +21,7 @@ export const getConversations = async (req: IExpressRequest, res: Response): Pro
         path: 'lastMessage',
         populate: { path: 'sender', select: 'firstName lastName' },
       })
-      .populate('participantInfo.user', 'firstName lastName photos isOnline')
+      .populate('participantInfo.user', 'firstName lastName photos isOnline lastActive')
       .sort({ lastMessageAt: -1 });
 
     return res.json({ success: true, data: { conversations } });
@@ -40,7 +40,7 @@ export const getConversation = async (req: IExpressRequest, res: Response): Prom
         path: 'lastMessage',
         populate: { path: 'sender', select: 'firstName lastName' },
       })
-      .populate('participantInfo.user', 'firstName lastName photos isOnline') as IConversation | null;
+      .populate('participantInfo.user', 'firstName lastName photos isOnline lastActive') as IConversation | null;
 
     if (!conversation || !conversation.participants.some(p => p.toString() === currentUserId)) {
       return res
@@ -59,7 +59,7 @@ export const getConversation = async (req: IExpressRequest, res: Response): Prom
           path: 'lastMessage',
           populate: { path: 'sender', select: 'firstName lastName' },
         })
-        .populate('participantInfo.user', 'firstName lastName photos isOnline') as IConversation | null;
+        .populate('participantInfo.user', 'firstName lastName photos isOnline lastActive') as IConversation | null;
     }
 
     return res.json({ success: true, data: { conversation } });

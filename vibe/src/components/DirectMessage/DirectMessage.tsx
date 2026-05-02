@@ -29,6 +29,40 @@ interface Message {
   isRead: boolean;
 }
 
+const formatLastSeen = (lastActive: string | Date | undefined) => {
+  if (!lastActive) return "Offline";
+
+  const now = new Date();
+  const activeDate = new Date(lastActive);
+  const diffInSeconds = Math.floor(
+    (now.getTime() - activeDate.getTime()) / 1000,
+  );
+
+  if (diffInSeconds < 60) {
+    return `${Math.max(0, diffInSeconds)} sec ago`;
+  }
+
+  const diffInMinutes = Math.floor(diffInSeconds / 60);
+  if (diffInMinutes < 60) {
+    return `${diffInMinutes} min ago`;
+  }
+
+  const diffInHours = Math.floor(diffInMinutes / 60);
+  if (diffInHours < 24) {
+    return `${diffInHours} hour${diffInHours > 1 ? "s" : ""} ago`;
+  }
+
+  const diffInDays = Math.floor(diffInHours / 24);
+  if (diffInDays < 5) {
+    return `${diffInDays} day${diffInDays > 1 ? "s" : ""} ago`;
+  }
+
+  const day = activeDate.getDate().toString().padStart(2, "0");
+  const month = (activeDate.getMonth() + 1).toString().padStart(2, "0");
+  const year = activeDate.getFullYear();
+  return `${day}/${month}/${year}`;
+};
+
 interface Conversation {
   _id: string;
   participants: string[];
@@ -42,7 +76,7 @@ interface Conversation {
         isMain: boolean;
       }[];
       isOnline: boolean;
-      lastActive: string;
+      lastActive?: string;
     };
   }[];
 }
@@ -60,6 +94,7 @@ const DirectMessage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const { socket } = useSocket();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const isInitialLoadRef = useRef(true);
 
   // Call state
   const [callStatus, setCallStatus] = useState<CallStatus>("idle");
@@ -103,16 +138,24 @@ const DirectMessage: React.FC = () => {
   })?.user;
 
   // Scroll to bottom when new messages arrive
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
   };
 
   useEffect(() => {
-    scrollToBottom();
+    if (messages.length > 0) {
+      if (isInitialLoadRef.current) {
+        scrollToBottom("auto");
+        isInitialLoadRef.current = false;
+      } else {
+        scrollToBottom("smooth");
+      }
+    }
   }, [messages]);
 
   // Cleanup typing timeout on unmount or conversation change
   useEffect(() => {
+    isInitialLoadRef.current = true;
     return () => {
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
@@ -195,7 +238,7 @@ const DirectMessage: React.FC = () => {
       }
     };
 
-    const handleUserStatus = ({ userId, isOnline }: { userId: string, isOnline: boolean }) => {
+    const handleUserStatus = ({ userId, isOnline, lastActive }: { userId: string, isOnline: boolean, lastActive?: string }) => {
       const targetId = String(userId);
       setConversation(prev => {
         if (!prev) return prev;
@@ -204,7 +247,7 @@ const DirectMessage: React.FC = () => {
           if (String(p.user._id) === targetId) {
             return {
               ...p,
-              user: { ...p.user, isOnline }
+              user: { ...p.user, isOnline, lastActive: lastActive || p.user.lastActive }
             };
           }
           return p;
@@ -875,7 +918,9 @@ const DirectMessage: React.FC = () => {
                       : styles.offlineStatus
                   }`}
                 >
-                  {otherParticipant?.isOnline ? "Online Now" : "Offline"}
+                  {otherParticipant?.isOnline
+                    ? "Online Now"
+                    : `Last seen ${formatLastSeen(otherParticipant?.lastActive)}`}
                 </span>
               </div>
             </div>
