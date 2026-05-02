@@ -52,7 +52,7 @@ const initFirebaseInSW = async () => {
 initFirebaseInSW();
 
 // Cache core assets
-const CACHE_NAME = 'vibe-v2'; // Bumped version
+const CACHE_NAME = 'vibe-v3'; // Bumped version
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
