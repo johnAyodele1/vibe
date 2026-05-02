@@ -6,6 +6,8 @@ import { toast } from 'sonner';
 
 interface PWAContextType {
   isInstallable: boolean;
+  isStandalone: boolean;
+  isIOS: boolean;
   installApp: () => Promise<void>;
   notificationPermission: NotificationPermission;
   requestNotificationPermission: () => Promise<void>;
@@ -17,6 +19,8 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const { isAuthenticated, user } = useAuth();
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isInstallable, setIsInstallable] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
     (typeof window !== 'undefined' && 'Notification' in window)
       ? Notification.permission
@@ -24,6 +28,24 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   );
 
   useEffect(() => {
+    // Detect if running in standalone mode
+    const checkStandalone = () => {
+      const isStandaloneMode =
+        window.matchMedia('(display-mode: standalone)').matches ||
+        (navigator as any).standalone ||
+        document.referrer.includes('android-app://');
+      setIsStandalone(!!isStandaloneMode);
+    };
+
+    // Detect iOS
+    const checkIOS = () => {
+      const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+      setIsIOS(ios);
+    };
+
+    checkStandalone();
+    checkIOS();
+
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e);
@@ -197,6 +219,8 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     <PWAContext.Provider
       value={{
         isInstallable,
+        isStandalone,
+        isIOS,
         installApp,
         notificationPermission,
         requestNotificationPermission,
