@@ -36,8 +36,14 @@ const initFirebase = async (): Promise<Messaging | null> => {
   return messagingPromise;
 };
 
-export const requestForToken = async () => {
+export const requestForToken = async (serviceWorkerRegistration?: ServiceWorkerRegistration) => {
   try {
+    // Only attempt to get token if permission is already granted
+    if (Notification.permission !== 'granted') {
+      console.log('Notification permission not granted. Skipping token retrieval.');
+      return null;
+    }
+
     const messaging = await initFirebase();
     if (!messaging) {
       console.warn('Firebase Messaging not initialized. Cannot request token.');
@@ -53,6 +59,7 @@ export const requestForToken = async () => {
 
     const currentToken = await getToken(messaging, {
       vapidKey: vapidKey,
+      serviceWorkerRegistration: serviceWorkerRegistration,
     });
 
     if (currentToken) {
