@@ -62,14 +62,28 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Only intercept GET requests and http/https schemes
-  if (event.request.method !== 'GET' || !event.request.url.startsWith('http')) {
+  // Only intercept same-origin GET requests
+  const url = new URL(event.request.url);
+  if (event.request.method !== 'GET' || url.origin !== self.location.origin) {
+    return;
+  }
+
+  // Only intercept specific core assets to avoid interfering with the main bundle or other dynamic content
+  // This prevents 'unexpected error' when the service worker tries to fetch assets it hasn't cached
+  const isAssetToCache = ASSETS_TO_CACHE.some(asset =>
+    url.pathname === asset || (asset === '/' && url.pathname === '/index.html')
+  );
+
+  if (!isAssetToCache) {
     return;
   }
 
   event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request);
+    caches.match(event.request).then((cachedResponse) => {
+      return cachedResponse || fetch(event.request).catch(() => {
+        // Fallback to nothing if both cache and network fail
+        return new Response('Network error occurred', { status: 408, headers: { 'Content-Type': 'text/plain' } });
+      });
     })
   );
 });
