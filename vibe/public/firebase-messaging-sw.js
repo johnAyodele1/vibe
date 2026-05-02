@@ -3,12 +3,11 @@ importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compa
 
 // Helper to get the correct API URL based on environment
 const getApiUrl = () => {
-  const origin = self.location.origin;
   if (self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1') {
     return 'http://localhost:5000/api';
   }
-  // Dynamically use the current origin for production if it's not localhost
-  return `${origin}/api`;
+  // Hardcoded production backend URL as it differs from the frontend origin
+  return 'https://zippo-r8hk.onrender.com/api';
 };
 
 const API_BASE_URL = getApiUrl();

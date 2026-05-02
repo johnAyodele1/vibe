@@ -40,8 +40,8 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // Handle push token sync
   useEffect(() => {
     if (isAuthenticated) {
-      // Attempt sync if granted or default (default may trigger browser prompt)
-      if (notificationPermission === 'granted' || notificationPermission === 'default') {
+      // Only sync automatically if already granted to avoid non-user-triggered prompts
+      if (notificationPermission === 'granted') {
         syncPushToken();
       }
 
@@ -110,7 +110,12 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const syncPushToken = async () => {
     try {
-      const token = await requestForToken();
+      let registration;
+      if ('serviceWorker' in navigator) {
+        registration = await navigator.serviceWorker.ready;
+      }
+
+      const token = await requestForToken(registration);
       if (token) {
         console.log('FCM Token retrieved successfully');
         const response = await fetch(`${API_BASE_URL}/users/push-token`, {
