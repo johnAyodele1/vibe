@@ -298,6 +298,9 @@ const ChatInterface: React.FC = () => {
                     onClick={() => {
                       toast.success(
                         `Opening chat with ${otherParticipant.firstName}`,
+                        {
+  duration: 500, // 2 seconds
+}
                       );
                       navigate(`/direct-message/${conversation._id}`);
                     }}

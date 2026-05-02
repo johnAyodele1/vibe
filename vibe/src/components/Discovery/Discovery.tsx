@@ -180,10 +180,14 @@ const Discovery: React.FC = () => {
         const conversationId = data.data.conversationId;
         if (conversationId && conversationId !== "null") {
           if (data.data.isMatch) {
-            toast.success("It's a match! 💕");
+            toast.success("It's a match! 💕", {
+  duration: 500,
+});
             navigate(`/direct-message/${conversationId}`);
           } else {
-            toast.success("Liked! Starting a chat 💬");
+           toast.success("Liked! Starting a chat 💬", {
+  duration: 500,
+});
             navigate(`/direct-message/${conversationId}`);
           }
         } else {
