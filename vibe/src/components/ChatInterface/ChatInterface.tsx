@@ -342,7 +342,18 @@ const ChatInterface: React.FC = () => {
                             </span>
                           )}
                           <p className={styles.lastMessage}>
-                            {lastMessage?.content || "Start a conversation!"}
+                            {lastMessage ? (
+                              <>
+                                <strong>
+                                  {lastMessage.sender._id === currentUserId
+                                    ? "You: "
+                                    : `${lastMessage.sender.firstName}: `}
+                                </strong>
+                                {lastMessage.content}
+                              </>
+                            ) : (
+                              "Start a conversation!"
+                            )}
                           </p>
                         </div>
 

@@ -17,7 +17,10 @@ export const getConversations = async (req: IExpressRequest, res: Response): Pro
       participants: req.user._id,
       isActive: true,
     })
-      .populate('lastMessage')
+      .populate({
+        path: 'lastMessage',
+        populate: { path: 'sender', select: 'firstName lastName' },
+      })
       .populate('participantInfo.user', 'firstName lastName photos isOnline')
       .sort({ lastMessageAt: -1 });
 
@@ -33,7 +36,10 @@ export const getConversation = async (req: IExpressRequest, res: Response): Prom
     if (!req.user) return res.status(401).json({ success: false, message: 'Not authenticated' });
     const currentUserId = (req.user._id as Types.ObjectId).toString();
     let conversation = await Conversation.findById(req.params.conversationId)
-      .populate('lastMessage')
+      .populate({
+        path: 'lastMessage',
+        populate: { path: 'sender', select: 'firstName lastName' },
+      })
       .populate('participantInfo.user', 'firstName lastName photos isOnline') as IConversation | null;
 
     if (!conversation || !conversation.participants.some(p => p.toString() === currentUserId)) {
@@ -49,7 +55,10 @@ export const getConversation = async (req: IExpressRequest, res: Response): Prom
     ) {
       await conversation.updateParticipantInfo();
       conversation = await Conversation.findById(req.params.conversationId)
-        .populate('lastMessage')
+        .populate({
+          path: 'lastMessage',
+          populate: { path: 'sender', select: 'firstName lastName' },
+        })
         .populate('participantInfo.user', 'firstName lastName photos isOnline') as IConversation | null;
     }
 
