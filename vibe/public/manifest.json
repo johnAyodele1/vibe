@@ -1,6 +1,6 @@
 {
-  "name": "Vibe",
-  "short_name": "Vibe",
+  "name": "Zippo",
+  "short_name": "Zippo",
   "start_url": "/",
   "gcm_sender_id": "455173170033",
   "display": "standalone",
@@ -21,6 +21,6 @@
       "purpose": "any"
     }
   ],
-  "description": "Vibe - Dating App",
+  "description": "Zippo - Dating App",
   "categories": ["social", "lifestyle"]
 }
