@@ -389,15 +389,6 @@ const Discovery: React.FC = () => {
                 >
                   Update Preferences
                 </button>
-                <p
-                  style={{
-                    color: "#ccc",
-                    fontSize: "14px",
-                    textAlign: "center",
-                  }}
-                >
-                  Or upgrade to Plus to get notified when you get a match!
-                </p>
               </div>
             </div>
           ) : (
