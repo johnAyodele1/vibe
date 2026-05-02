@@ -266,11 +266,23 @@ export const discover = async (req: IExpressRequest, res: Response): Promise<Res
       };
     }
 
-    const users = await User.find(query)
+    let users = await User.find(query)
       .select('firstName lastName age photos bio location interests')
       .skip(skip)
       .limit(Number(limit))
       .sort({ lastActive: -1 });
+
+    // Fallback: if no users found and location filter was used, try without location
+    if (users.length === 0 && query.location) {
+      const fallbackQuery = { ...query };
+      delete fallbackQuery.location;
+
+      users = await User.find(fallbackQuery)
+        .select('firstName lastName age photos bio location interests')
+        .skip(skip)
+        .limit(Number(limit))
+        .sort({ lastActive: -1 });
+    }
 
     // Increment view count for each discovered user
     if (users.length > 0) {
