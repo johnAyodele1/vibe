@@ -1,4 +1,5 @@
 import express, { Response, NextFunction, Request } from 'express';
+import path from 'path';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -31,7 +32,18 @@ const app = express();
 // });
 
 // Middleware
-app.use(helmet());
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        "script-src": ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com", "https://cdn.jsdelivr.net"],
+        "img-src": ["'self'", "data:", "https://www.gstatic.com", "https://lh3.googleusercontent.com"],
+        "connect-src": ["'self'", process.env.FRONTEND_URL || "https://zippo-r8hk.onrender.com"],
+      },
+    },
+  })
+);
 app.use(compression());
 // if (process.env.NODE_ENV !== 'test') {
 //   app.use(limiter);
@@ -103,12 +115,17 @@ app.get('/api/health', (req: Request, res: Response) => {
   });
 });
 
-// 404 handler
-app.use('*', (req: Request, res: Response) => {
-  res.status(404).json({
-    success: false,
-    message: 'Route not found',
-  });
+// Serve static files from the React app - MUST be after API routes
+app.use(express.static(path.join(__dirname, '../../vibe/dist')));
+
+// The "catchall" handler: for any request that doesn't
+// match one above, send back React's index.html file.
+app.get('*', (req: Request, res: Response) => {
+  // If it looks like an asset or a file (has an extension), return 404 instead of index.html
+  if (req.path.includes('.') || req.path.startsWith('/assets/')) {
+    return res.status(404).send('Not found');
+  }
+  res.sendFile(path.join(__dirname, '../../vibe/dist/index.html'));
 });
 
 interface MongooseError extends Error {
