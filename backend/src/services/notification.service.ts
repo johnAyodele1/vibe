@@ -33,6 +33,33 @@ export const sendPushNotification = async (
       },
       data: payload.data,
       tokens: user.fcmTokens,
+      android: {
+        priority: 'high',
+        notification: {
+          icon: 'stock_ticker_update',
+          color: '#f42559',
+          sound: 'default',
+        },
+      },
+      apns: {
+        payload: {
+          aps: {
+            contentAvailable: true,
+            sound: 'default',
+            badge: 1,
+          },
+        },
+      },
+      webpush: {
+        headers: {
+          Urgency: 'high',
+        },
+        notification: {
+          icon: '/favicon.svg',
+          badge: '/favicon.svg',
+          requireInteraction: false,
+        },
+      },
     };
 
     const response = await admin.messaging().sendEachForMulticast(message);

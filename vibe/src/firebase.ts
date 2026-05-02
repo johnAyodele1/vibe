@@ -54,7 +54,7 @@ export const requestForToken = async (serviceWorkerRegistration?: ServiceWorkerR
     const vapidKey = config?.vapidKey || import.meta.env.VITE_FIREBASE_VAPID_KEY;
 
     if (!vapidKey) {
-      console.warn('VAPID key is missing. Push notifications will not work.');
+      console.warn('VAPID key is missing. Push notifications will not work. Please check your backend environment variables.');
     }
 
     const currentToken = await getToken(messaging, {
@@ -70,6 +70,9 @@ export const requestForToken = async (serviceWorkerRegistration?: ServiceWorkerR
     }
   } catch (err) {
     console.error('An error occurred while retrieving FCM token:', err);
+    if (err instanceof Error) {
+      console.error('Error Details:', err.message, err.stack);
+    }
     return null;
   }
 };
