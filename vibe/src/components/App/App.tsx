@@ -13,7 +13,6 @@ import DirectMessage from "../DirectMessage/DirectMessage";
 import Discovery from "../Discovery/Discovery";
 import Favourites from "../Favourites/Favourites";
 import CallManager from "../CallManager/CallManager";
-import PWAInstallPrompt from "../PWAInstallPrompt/PWAInstallPrompt";
 import AdminDashboard from "../Admin/AdminDashboard";
 import AdminLogin from "../Admin/AdminLogin";
 import LoadingScreen from "../LoadingScreen/LoadingScreen";
@@ -61,7 +60,6 @@ function App() {
   return (
     <>
       {isAuthenticated && <CallManager />}
-      <PWAInstallPrompt />
       <Routes>
         <Route
           path="/"

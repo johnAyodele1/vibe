@@ -13,6 +13,13 @@ interface PWAContextType {
   requestNotificationPermission: () => Promise<void>;
 }
 
+declare global {
+  interface Window {
+    AddToHomeScreen: any;
+    AddToHomeScreenInstance: any;
+  }
+}
+
 const PWAContext = createContext<PWAContextType | undefined>(undefined);
 
 export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -58,6 +65,29 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     };
   }, []);
+
+  // Initialize and show AddToHomeScreen prompt
+  useEffect(() => {
+    if (!isStandalone && window.AddToHomeScreen) {
+      window.AddToHomeScreenInstance = new window.AddToHomeScreen({
+        appName: 'Vibe',
+        appNameDisplay: 'standalone',
+        appIconUrl: '/favicon.svg',
+        assetUrl: 'https://cdn.jsdelivr.net/gh/philfung/add-to-homescreen@3.5/dist/assets/img/',
+        maxDisplayCount: -1, // Correct property name: maxDisplayCount. No limit, show on every refresh as requested
+        displayOptions: { showMobile: true, showDesktop: true },
+        allowClose: true,
+        showArrow: true,
+      });
+
+      // Delay showing to ensure it's noticed and page is loaded
+      const timer = setTimeout(() => {
+        window.AddToHomeScreenInstance.show();
+      }, 1500);
+
+      return () => clearTimeout(timer);
+    }
+  }, [isStandalone]);
 
   // Handle push token sync
   useEffect(() => {
