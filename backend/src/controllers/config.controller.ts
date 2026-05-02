@@ -1,6 +1,10 @@
 import { Request, Response } from 'express';
 
 export const getFirebaseConfig = (req: Request, res: Response) => {
+  if (!process.env.FIREBASE_VAPID_KEY) {
+    console.warn('FIREBASE_VAPID_KEY is not set in environment variables. Web push notifications will fail.');
+  }
+
   const firebaseConfig = {
     apiKey: process.env.FIREBASE_API_KEY || "AIzaSyCzkC4-w2E3Slp7w8UlOBPXDB2RTxFWxs4",
     authDomain: process.env.FIREBASE_AUTH_DOMAIN || "zippodate.firebaseapp.com",

@@ -13,6 +13,14 @@ export const sendPushNotification = async (
   payload: NotificationPayload
 ) => {
   try {
+    // Ensure Firebase is initialized
+    try {
+      admin.messaging();
+    } catch (e) {
+      console.warn('Firebase Admin SDK not initialized. Skipping push notification.');
+      return;
+    }
+
     const user = await User.findById(userId) as IUser | null;
     if (!user || !user.fcmTokens || user.fcmTokens.length === 0) {
       return;

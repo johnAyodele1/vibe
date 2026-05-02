@@ -39,8 +39,25 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Handle push token sync
   useEffect(() => {
-    if (isAuthenticated && notificationPermission === 'granted') {
-      syncPushToken();
+    if (isAuthenticated) {
+      // Attempt sync if granted or default (default may trigger browser prompt)
+      if (notificationPermission === 'granted' || notificationPermission === 'default') {
+        syncPushToken();
+      }
+
+      if (notificationPermission === 'default') {
+        // Also suggest enabling notifications with a toast as a backup/clearer CTA
+        const hasPrompted = sessionStorage.getItem('notificationPromptedThisSession');
+        if (!hasPrompted) {
+          toast("Enable notifications to stay updated!", {
+            action: {
+              label: "Enable",
+              onClick: () => requestNotificationPermission(),
+            },
+          });
+          sessionStorage.setItem('notificationPromptedThisSession', 'true');
+        }
+      }
     }
   }, [isAuthenticated, notificationPermission]);
 

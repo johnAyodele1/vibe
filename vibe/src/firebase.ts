@@ -8,9 +8,11 @@ let firebaseConfigCache: any = null;
 const fetchFirebaseConfig = async () => {
   if (firebaseConfigCache) return firebaseConfigCache;
   try {
-    const response = await fetch(`${API_BASE_URL}/config/firebase`);
+    const url = `${API_BASE_URL}/config/firebase`;
+    const response = await fetch(url);
     if (!response.ok) {
-      throw new Error('Failed to fetch firebase config');
+      const errorText = await response.text();
+      throw new Error(`Failed to fetch firebase config from ${url}: ${response.status} ${response.statusText} - ${errorText}`);
     }
     firebaseConfigCache = await response.json();
     return firebaseConfigCache;
@@ -37,11 +39,20 @@ const initFirebase = async (): Promise<Messaging | null> => {
 export const requestForToken = async () => {
   try {
     const messaging = await initFirebase();
-    if (!messaging) return null;
+    if (!messaging) {
+      console.warn('Firebase Messaging not initialized. Cannot request token.');
+      return null;
+    }
 
     const config = await fetchFirebaseConfig();
+    const vapidKey = config?.vapidKey || import.meta.env.VITE_FIREBASE_VAPID_KEY;
+
+    if (!vapidKey) {
+      console.warn('VAPID key is missing. Push notifications will not work.');
+    }
+
     const currentToken = await getToken(messaging, {
-      vapidKey: config?.vapidKey || import.meta.env.VITE_FIREBASE_VAPID_KEY,
+      vapidKey: vapidKey,
     });
 
     if (currentToken) {
@@ -51,7 +62,7 @@ export const requestForToken = async () => {
       return null;
     }
   } catch (err) {
-    console.log('An error occurred while retrieving token. ', err);
+    console.error('An error occurred while retrieving FCM token:', err);
     return null;
   }
 };
