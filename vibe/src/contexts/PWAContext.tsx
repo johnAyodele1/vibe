@@ -6,9 +6,18 @@ import { toast } from 'sonner';
 
 interface PWAContextType {
   isInstallable: boolean;
+  isStandalone: boolean;
+  isIOS: boolean;
   installApp: () => Promise<void>;
   notificationPermission: NotificationPermission;
   requestNotificationPermission: () => Promise<void>;
+}
+
+declare global {
+  interface Window {
+    AddToHomeScreen: any;
+    AddToHomeScreenInstance: any;
+  }
 }
 
 const PWAContext = createContext<PWAContextType | undefined>(undefined);
@@ -17,6 +26,8 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const { isAuthenticated, user } = useAuth();
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isInstallable, setIsInstallable] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
     (typeof window !== 'undefined' && 'Notification' in window)
       ? Notification.permission
@@ -24,6 +35,24 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   );
 
   useEffect(() => {
+    // Detect if running in standalone mode
+    const checkStandalone = () => {
+      const isStandaloneMode =
+        window.matchMedia('(display-mode: standalone)').matches ||
+        (navigator as any).standalone ||
+        document.referrer.includes('android-app://');
+      setIsStandalone(!!isStandaloneMode);
+    };
+
+    // Detect iOS
+    const checkIOS = () => {
+      const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+      setIsIOS(ios);
+    };
+
+    checkStandalone();
+    checkIOS();
+
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e);
@@ -36,6 +65,29 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     };
   }, []);
+
+  // Initialize and show AddToHomeScreen prompt
+  useEffect(() => {
+    if (!isStandalone && window.AddToHomeScreen) {
+      window.AddToHomeScreenInstance = new window.AddToHomeScreen({
+        appName: 'Vibe',
+        appNameDisplay: 'standalone',
+        appIconUrl: '/favicon.svg',
+        assetUrl: 'https://cdn.jsdelivr.net/gh/philfung/add-to-homescreen@3.5/dist/assets/img/',
+        maxDisplayCount: -1, // Correct property name: maxDisplayCount. No limit, show on every refresh as requested
+        displayOptions: { showMobile: true, showDesktop: true },
+        allowClose: true,
+        showArrow: true,
+      });
+
+      // Delay showing to ensure it's noticed and page is loaded
+      const timer = setTimeout(() => {
+        window.AddToHomeScreenInstance.show();
+      }, 1500);
+
+      return () => clearTimeout(timer);
+    }
+  }, [isStandalone]);
 
   // Handle push token sync
   useEffect(() => {
@@ -197,6 +249,8 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     <PWAContext.Provider
       value={{
         isInstallable,
+        isStandalone,
+        isIOS,
         installApp,
         notificationPermission,
         requestNotificationPermission,
