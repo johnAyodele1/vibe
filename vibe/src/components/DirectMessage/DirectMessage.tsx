@@ -159,6 +159,17 @@ const DirectMessage: React.FC = () => {
         if (prev.some((m) => m._id === message._id)) {
           return prev;
         }
+
+        // If it's a message from current user, try to match it with an optimistic message
+        if (message.sender._id === currentUserId) {
+          const tempMsg = prev.find(
+            (m) => m._id.startsWith("temp-") && m.content === message.content,
+          );
+          if (tempMsg) {
+            return prev.map((m) => (m._id === tempMsg._id ? message : m));
+          }
+        }
+
         return [...prev, message];
       });
     };
@@ -316,6 +327,28 @@ const DirectMessage: React.FC = () => {
     if (!inputValue.trim() || !conversation || !otherParticipant || !token)
       return;
 
+    const content = inputValue.trim();
+    const tempId = `temp-${Date.now()}`;
+    const optimisticMessage: Message = {
+      _id: tempId,
+      content,
+      messageType: "text",
+      sender: {
+        _id: currentUserId,
+        firstName: user?.firstName || "Me",
+        lastName: "",
+        photos: user?.photos || [],
+      },
+      receiver: otherParticipant._id,
+      conversation: conversationId || "",
+      createdAt: new Date().toISOString(),
+      isRead: false,
+    };
+
+    // Optimistically add the message to the UI immediately
+    setMessages((prev) => [...prev, optimisticMessage]);
+    setInputValue("");
+
     try {
       const response = await fetch(`${API_BASE_URL}/messages`, {
         method: "POST",
@@ -325,24 +358,31 @@ const DirectMessage: React.FC = () => {
         },
         body: JSON.stringify({
           receiverId: otherParticipant._id,
-          content: inputValue,
+          content,
           messageType: "text",
         }),
       });
 
       const data = await response.json();
       if (data.success) {
-        setInputValue("");
-        // Optimistically add the message to the UI immediately
-        setMessages((prev) => [...prev, data.data.message]);
-        // Emit socket event to notify receiver in real-time
-        if (socket) {
-          socket.emit("message", data.data.message);
-        }
+        // Replace optimistic message with the real one from server
+        setMessages((prev) => {
+          // If the message was already added by socket, just remove the optimistic one
+          if (prev.some((m) => m._id === data.data.message._id)) {
+            return prev.filter((m) => m._id !== tempId);
+          }
+          return prev.map((m) => (m._id === tempId ? data.data.message : m));
+        });
+      } else {
+        throw new Error(data.message || "Failed to send message");
       }
     } catch (error) {
       console.error("Error sending message:", error);
       toast.error("Failed to send message");
+      // Remove optimistic message on error
+      setMessages((prev) => prev.filter((m) => m._id !== tempId));
+      // Restore input value
+      setInputValue(content);
     }
   };
 
