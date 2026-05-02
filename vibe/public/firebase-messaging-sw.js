@@ -1,5 +1,5 @@
-importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js');
 
 // Helper to get the correct API URL based on environment
 const getApiUrl = () => {
@@ -27,14 +27,21 @@ const initFirebaseInSW = async () => {
 
     messaging.onBackgroundMessage((payload) => {
       console.log('[firebase-messaging-sw.js] Received background message ', payload);
-      const notificationTitle = payload.notification.title;
+
+      const title = payload.notification?.title || payload.data?.title || 'New Notification';
+      const body = payload.notification?.body || payload.data?.body || 'You have a new update';
+
       const notificationOptions = {
-        body: payload.notification.body,
+        body: body,
         icon: '/favicon.svg',
-        data: payload.data
+        badge: '/favicon.svg',
+        data: payload.data,
+        vibrate: [100, 50, 100],
+        tag: payload.data?.type || 'general',
+        renotify: true
       };
 
-      self.registration.showNotification(notificationTitle, notificationOptions);
+      return self.registration.showNotification(title, notificationOptions);
     });
   } catch (error) {
     console.error('Error initializing Firebase in Service Worker:', error);
@@ -45,7 +52,7 @@ const initFirebaseInSW = async () => {
 initFirebaseInSW();
 
 // Cache core assets
-const CACHE_NAME = 'vibe-v1';
+const CACHE_NAME = 'vibe-v2'; // Bumped version
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -54,9 +61,26 @@ const ASSETS_TO_CACHE = [
 ];
 
 self.addEventListener('install', (event) => {
+  console.log('[firebase-messaging-sw.js] Service Worker installed');
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(ASSETS_TO_CACHE);
+    })
+  );
+});
+
+self.addEventListener('activate', (event) => {
+  console.log('[firebase-messaging-sw.js] Service Worker activated');
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cacheName) => {
+          if (cacheName !== CACHE_NAME) {
+            console.log('[firebase-messaging-sw.js] Deleting old cache:', cacheName);
+            return caches.delete(cacheName);
+          }
+        })
+      );
     })
   );
 });
@@ -69,7 +93,6 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Only intercept specific core assets to avoid interfering with the main bundle or other dynamic content
-  // This prevents 'unexpected error' when the service worker tries to fetch assets it hasn't cached
   const isAssetToCache = ASSETS_TO_CACHE.some(asset =>
     url.pathname === asset || (asset === '/' && url.pathname === '/index.html')
   );
@@ -81,9 +104,37 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       return cachedResponse || fetch(event.request).catch(() => {
-        // Fallback to nothing if both cache and network fail
         return new Response('Network error occurred', { status: 408, headers: { 'Content-Type': 'text/plain' } });
       });
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  console.log('[firebase-messaging-sw.js] Notification clicked:', event.notification.data);
+  event.notification.close();
+
+  const data = event.notification.data;
+  let targetUrl = '/';
+
+  if (data) {
+    if (data.type === 'message' && data.conversationId) {
+      targetUrl = `/chat/${data.conversationId}`;
+    } else if (data.type === 'match') {
+      targetUrl = '/chat';
+    }
+  }
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          return client.focus().then((c) => c.navigate(targetUrl));
+        }
+      }
+      if (clients.openWindow) {
+        return clients.openWindow(targetUrl);
+      }
     })
   );
 });

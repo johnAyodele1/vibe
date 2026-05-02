@@ -2,6 +2,7 @@
   "name": "Vibe",
   "short_name": "Vibe",
   "start_url": "/",
+  "gcm_sender_id": "455173170033",
   "display": "standalone",
   "background_color": "#221014",
   "theme_color": "#f42559",
