@@ -62,11 +62,12 @@ export const setupSocket = (server: HttpServer): Server => {
 
     if (isFirstConnection) {
       try {
+        const lastActive = new Date();
         await User.findByIdAndUpdate(userId, {
           isOnline: true,
-          lastActive: new Date(),
+          lastActive,
         });
-        io.emit('user:status', { userId, isOnline: true });
+        io.emit('user:status', { userId, isOnline: true, lastActive });
         console.log(`User ${userId} is now online`);
       } catch (err) {
         console.error('Error updating user status to online:', err);
@@ -85,11 +86,12 @@ export const setupSocket = (server: HttpServer): Server => {
 
       if (isNewlyOnline) {
         try {
+          const lastActive = new Date();
           await User.findByIdAndUpdate(targetUserId, {
             isOnline: true,
-            lastActive: new Date(),
+            lastActive,
           });
-          io.emit('user:status', { userId: targetUserId, isOnline: true });
+          io.emit('user:status', { userId: targetUserId, isOnline: true, lastActive });
         } catch (err) {
           console.error('Error updating user status to online:', err);
         }
@@ -104,11 +106,12 @@ export const setupSocket = (server: HttpServer): Server => {
         if (userSockets.size === 0) {
           userSocketMap.delete(targetUserId);
           try {
+            const lastActive = new Date();
             await User.findByIdAndUpdate(targetUserId, {
               isOnline: false,
-              lastActive: new Date(),
+              lastActive,
             });
-            io.emit('user:status', { userId: targetUserId, isOnline: false });
+            io.emit('user:status', { userId: targetUserId, isOnline: false, lastActive });
           } catch (err) {
             console.error('Error updating user status to offline:', err);
           }
@@ -214,11 +217,12 @@ export const setupSocket = (server: HttpServer): Server => {
         if (userSockets.size === 0) {
           userSocketMap.delete(userId);
           try {
+            const lastActive = new Date();
             await User.findByIdAndUpdate(userId, {
               isOnline: false,
-              lastActive: new Date(),
+              lastActive,
             });
-            io.emit('user:status', { userId, isOnline: false });
+            io.emit('user:status', { userId, isOnline: false, lastActive });
             console.log(`User ${userId} is now offline`);
           } catch (err) {
             console.error('Error updating user status to offline:', err);
