@@ -96,6 +96,12 @@ export const getMessages = async (req: IExpressRequest, res: Response): Promise<
       { isRead: true, readAt: new Date() },
     );
 
+    // Reset unread count for conversation
+    const conversation = await Conversation.findById(req.params.conversationId);
+    if (conversation) {
+      await conversation.resetUnreadCount(req.user._id as Types.ObjectId);
+    }
+
     return res.json({ success: true, data: { messages: messages.reverse() } });
   } catch (error) {
     console.error('Get messages error:', error);
@@ -161,6 +167,9 @@ export const sendMessage = async (req: IExpressRequest, res: Response): Promise<
     // Update conversation's last message
     await conversation.updateLastMessage(message);
 
+    // Increment unread count for receiver
+    await conversation.incrementUnreadCount(receiverId);
+
     // Populate sender info
     await message.populate('sender', 'firstName lastName photos');
 
@@ -185,6 +194,42 @@ export const sendMessage = async (req: IExpressRequest, res: Response): Promise<
     return res.status(201).json({ success: true, data: { message } });
   } catch (error) {
     console.error('Send message error:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// @desc    Mark conversation as read
+// @access  Private
+export const markAsRead = async (req: IExpressRequest, res: Response): Promise<Response> => {
+  try {
+    if (!req.user) return res.status(401).json({ success: false, message: 'Not authenticated' });
+
+    const { conversationId } = req.params;
+    const conversation = await Conversation.findById(conversationId);
+
+    if (!conversation) {
+      return res.status(404).json({ success: false, message: 'Conversation not found' });
+    }
+
+    if (!conversation.participants.some(p => p.toString() === (req.user!._id as Types.ObjectId).toString())) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+
+    await conversation.resetUnreadCount(req.user._id as Types.ObjectId);
+
+    // Also mark messages as read
+    await Message.updateMany(
+      {
+        conversation: conversationId,
+        receiver: req.user._id as Types.ObjectId,
+        isRead: false,
+      },
+      { isRead: true, readAt: new Date() }
+    );
+
+    return res.json({ success: true, message: 'Conversation marked as read' });
+  } catch (error) {
+    console.error('Mark as read error:', error);
     return res.status(500).json({ success: false, message: 'Server error' });
   }
 };
