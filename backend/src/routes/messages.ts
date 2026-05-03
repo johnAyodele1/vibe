@@ -6,6 +6,7 @@ import {
   getConversation,
   getMessages,
   sendMessage,
+  markAsRead,
 } from '../controllers/message.controller';
 
 const router = Router();
@@ -29,6 +30,13 @@ router.get(
   authenticateToken,
   updateOnlineStatus,
   getMessages,
+);
+
+router.put(
+  '/conversations/:conversationId/read',
+  authenticateToken,
+  updateOnlineStatus,
+  markAsRead,
 );
 
 router.post('/', authenticateToken, updateOnlineStatus, sendMessage);

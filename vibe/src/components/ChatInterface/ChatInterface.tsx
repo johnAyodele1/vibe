@@ -61,6 +61,7 @@ const ChatInterface: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { socket } = useSocket();
+  const currentUserId = user?._id || "";
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [matches, setMatches] = useState<Match[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -159,10 +160,72 @@ const ChatInterface: React.FC = () => {
 
     socket.on("user:status", handleStatusUpdate);
 
+    const handleNewMessage = (message: any) => {
+      if (!currentUserId) return;
+
+      setConversations((prevConversations) => {
+        const conversationIndex = prevConversations.findIndex(
+          (conv) => conv._id === message.conversation
+        );
+
+        if (conversationIndex !== -1) {
+          const updatedConversations = [...prevConversations];
+          const conv = updatedConversations[conversationIndex];
+
+          const isFromOther = String(message.sender._id) !== String(currentUserId);
+
+          // Update last message and unread count
+          const updatedConv = {
+            ...conv,
+            lastMessage: message,
+            lastMessageAt: message.createdAt,
+            unreadCount: {
+              ...conv.unreadCount,
+              [currentUserId]: isFromOther
+                ? (conv.unreadCount[currentUserId] || 0) + 1
+                : (conv.unreadCount[currentUserId] || 0)
+            }
+          };
+
+          // Move to top
+          updatedConversations.splice(conversationIndex, 1);
+          return [updatedConv, ...updatedConversations];
+        } else {
+          // If conversation not in list, we might need to fetch it or just wait for next refresh
+          // For now, let's just trigger a re-fetch if a new message comes for an unknown conversation
+          fetchConversations();
+          return prevConversations;
+        }
+      });
+    };
+
+    socket.on("message", handleNewMessage);
+
     return () => {
       socket.off("user:status", handleStatusUpdate);
+      socket.off("message", handleNewMessage);
     };
-  }, [socket]);
+  }, [socket, currentUserId]);
+
+  const fetchConversations = async () => {
+    try {
+      const token = localStorage.getItem("accessToken");
+      if (!token) return;
+
+      const conversationsResponse = await fetch(
+        `${API_BASE_URL}/messages/conversations`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
+      const conversationsData = await conversationsResponse.json();
+      if (conversationsData.success) {
+        setConversations(conversationsData.data.conversations);
+      }
+    } catch (error) {
+      console.error("Error fetching conversations:", error);
+    }
+  };
 
   return (
     <>
@@ -272,13 +335,12 @@ const ChatInterface: React.FC = () => {
               </div>
             ) : (
               conversations.map((conversation) => {
-                // Get current user ID
-                const currentUserId = (user as any)?._id || "";
+                if (!currentUserId) return null;
                 const otherParticipantInfo = conversation.participantInfo.find(
                   (p) => {
                     const participantId = p.user?._id;
                     if (!participantId) return false;
-                    return String(participantId) !== currentUserId;
+                    return String(participantId) !== String(currentUserId);
                   },
                 );
                 const otherParticipant = otherParticipantInfo?.user;
@@ -385,7 +447,10 @@ const ChatInterface: React.FC = () => {
         </main>
 
         {/* Bottom Navigation */}
-        <BottomNavigation activeTab="chat" />
+        <BottomNavigation
+          activeTab="chat"
+          unreadMessagesCount={conversations.reduce((acc, conv) => acc + (conv.unreadCount[currentUserId] || 0), 0)}
+        />
       </div>
     </>
   );
