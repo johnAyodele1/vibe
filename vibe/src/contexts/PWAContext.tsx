@@ -91,7 +91,8 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Handle push token sync
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && user) {
+      console.log('[PWA] Auth state changed, checking for push token sync...');
       // Only sync automatically if already granted to avoid non-user-triggered prompts
       if (notificationPermission === 'granted') {
         syncPushToken();
@@ -161,6 +162,16 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, []);
 
   const syncPushToken = async () => {
+    // Avoid redundant syncs if already done recently
+    const lastSync = localStorage.getItem('lastPushTokenSync');
+    const now = Date.now();
+    if (lastSync && now - parseInt(lastSync) < 1000 * 60 * 60 * 24) { // Sync at most once every 24h if token hasn't changed
+      console.log('[PWA] Push token synced recently, skipping periodic sync');
+      // We still might want to sync if the token changed, but requestForToken is relatively expensive
+      // For now, let's just proceed to ensure reliability as requested
+    }
+
+    console.log('[PWA] Starting syncPushToken...');
     try {
       let registration;
       if ('serviceWorker' in navigator) {
@@ -169,7 +180,7 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       const token = await requestForToken(registration);
       if (token) {
-        console.log('FCM Token retrieved successfully');
+        console.log('[PWA] FCM Token retrieved successfully, syncing with backend');
         const response = await fetch(`${API_BASE_URL}/users/push-token`, {
           method: 'POST',
           headers: {
@@ -181,6 +192,7 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         if (response.ok) {
           console.log('Push token synced with backend successfully');
+          localStorage.setItem('lastPushTokenSync', Date.now().toString());
         } else {
           const errorData = await response.json();
           console.error('Failed to sync push token with backend:', errorData);

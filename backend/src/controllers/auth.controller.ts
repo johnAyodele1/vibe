@@ -5,6 +5,7 @@ import { generateAccessToken, generateRefreshToken } from '../middleware/auth';
 import jwt from 'jsonwebtoken';
 import { IUser } from '../types/models';
 import { Types } from 'mongoose';
+import { notifyUsersOfNewJoiner } from '../services/notification.service';
 
 // @desc    Register user
 // @access  Public
@@ -43,6 +44,9 @@ export const signup = async (req: Request, res: Response): Promise<Response> => 
     });
 
     await user.save();
+
+    // Notify matching users about new joiner
+    notifyUsersOfNewJoiner(user).catch(err => console.error('Error notifying users of new joiner:', err));
 
     // Generate tokens
     const userId = (user._id as Types.ObjectId).toString();

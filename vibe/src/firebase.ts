@@ -37,16 +37,17 @@ const initFirebase = async (): Promise<Messaging | null> => {
 };
 
 export const requestForToken = async (serviceWorkerRegistration?: ServiceWorkerRegistration) => {
+  console.log('[FCM] Requesting FCM token...');
   try {
     // Only attempt to get token if permission is already granted
     if (Notification.permission !== 'granted') {
-      console.log('Notification permission not granted. Skipping token retrieval.');
+      console.log('[FCM] Notification permission not granted (' + Notification.permission + '). Skipping token retrieval.');
       return null;
     }
 
     const messaging = await initFirebase();
     if (!messaging) {
-      console.warn('Firebase Messaging not initialized. Cannot request token.');
+      console.warn('[FCM] Firebase Messaging not initialized. Cannot request token.');
       return null;
     }
 
@@ -54,7 +55,9 @@ export const requestForToken = async (serviceWorkerRegistration?: ServiceWorkerR
     const vapidKey = config?.vapidKey || import.meta.env.VITE_FIREBASE_VAPID_KEY;
 
     if (!vapidKey) {
-      console.warn('VAPID key is missing. Push notifications will not work. Please check your backend environment variables.');
+      console.warn('[FCM] VAPID key is missing. Push notifications will not work. Please check your backend environment variables.');
+    } else {
+      console.log('[FCM] Using VAPID key:', vapidKey.substring(0, 10) + '...');
     }
 
     const currentToken = await getToken(messaging, {
@@ -63,15 +66,16 @@ export const requestForToken = async (serviceWorkerRegistration?: ServiceWorkerR
     });
 
     if (currentToken) {
+      console.log('[FCM] Token retrieved:', currentToken.substring(0, 10) + '...');
       return currentToken;
     } else {
-      console.log('No registration token available. Request permission to generate one.');
+      console.log('[FCM] No registration token available. Request permission to generate one.');
       return null;
     }
   } catch (err) {
-    console.error('An error occurred while retrieving FCM token:', err);
+    console.error('[FCM] An error occurred while retrieving FCM token:', err);
     if (err instanceof Error) {
-      console.error('Error Details:', err.message, err.stack);
+      console.error('[FCM] Error Details:', err.message, err.stack);
     }
     return null;
   }
