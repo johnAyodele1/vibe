@@ -4,6 +4,7 @@ import User from '../models/User';
 import { generateAccessToken, generateRefreshToken } from '../middleware/auth';
 import { IUser } from '../types/models';
 import { Types } from 'mongoose';
+import { notifyUsersOfNewJoiner } from '../services/notification.service';
 
 const client = new OAuth2Client(
   process.env.GOOGLE_CLIENT_ID,
@@ -101,6 +102,9 @@ export const googleLogin = async (req: Request, res: Response): Promise<Response
 
         user = new User(newUser);
         await user.save();
+
+        // Notify matching users about new joiner
+        notifyUsersOfNewJoiner(user).catch(err => console.error('Error notifying users of new joiner:', err));
       }
     }
 

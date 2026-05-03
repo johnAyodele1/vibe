@@ -91,27 +91,35 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Handle push token sync
   useEffect(() => {
-    if (isAuthenticated) {
-      // Only sync automatically if already granted to avoid non-user-triggered prompts
-      if (notificationPermission === 'granted') {
-        syncPushToken();
-      }
+    if (isAuthenticated && user) {
+      console.log('[PWA] Checking notification state...');
 
-      if (notificationPermission === 'default') {
-        // Also suggest enabling notifications with a toast as a backup/clearer CTA
-        const hasPrompted = sessionStorage.getItem('notificationPromptedThisSession');
-        if (!hasPrompted) {
-          toast("Enable notifications to stay updated!", {
-            action: {
-              label: "Enable",
-              onClick: () => requestNotificationPermission(),
-            },
+      const hasToken = user.fcmTokens && user.fcmTokens.length > 0;
+
+      if (notificationPermission === 'granted') {
+        // Even if we have a token, we sync periodically or if forced
+        syncPushToken();
+      } else if (notificationPermission === 'default') {
+        // Prioritize: if they haven't decided, prompt them every time until they do
+        toast("Enable push notifications to get matches and messages on your phone!", {
+          action: {
+            label: "Enable Now",
+            onClick: () => requestNotificationPermission(),
+          },
+          duration: 15000,
+        });
+      } else if (notificationPermission === 'denied' && !hasToken) {
+        // If denied and we have no tokens, show a helpful message once per session
+        const hasWarned = sessionStorage.getItem('notificationDeniedWarned');
+        if (!hasWarned) {
+          toast.error("Push notifications are blocked in your browser settings. You'll miss out on instant match alerts!", {
+            duration: 6000,
           });
-          sessionStorage.setItem('notificationPromptedThisSession', 'true');
+          sessionStorage.setItem('notificationDeniedWarned', 'true');
         }
       }
     }
-  }, [isAuthenticated, notificationPermission]);
+  }, [isAuthenticated, user?.fcmTokens, notificationPermission]);
 
   // Handle periodic geolocation updates
   useEffect(() => {
@@ -161,6 +169,15 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, []);
 
   const syncPushToken = async () => {
+    // Avoid redundant syncs if already done recently
+    const lastSync = localStorage.getItem('lastPushTokenSync');
+    const now = Date.now();
+    if (lastSync && now - parseInt(lastSync) < 1000 * 60 * 60 * 24) { // Sync at most once every 24h if token hasn't changed
+      console.log('[PWA] Push token synced recently, skipping periodic sync');
+      return;
+    }
+
+    console.log('[PWA] Starting syncPushToken...');
     try {
       let registration;
       if ('serviceWorker' in navigator) {
@@ -169,7 +186,7 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       const token = await requestForToken(registration);
       if (token) {
-        console.log('FCM Token retrieved successfully');
+        console.log('[PWA] FCM Token retrieved successfully, syncing with backend');
         const response = await fetch(`${API_BASE_URL}/users/push-token`, {
           method: 'POST',
           headers: {
@@ -181,6 +198,7 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         if (response.ok) {
           console.log('Push token synced with backend successfully');
+          localStorage.setItem('lastPushTokenSync', Date.now().toString());
         } else {
           const errorData = await response.json();
           console.error('Failed to sync push token with backend:', errorData);

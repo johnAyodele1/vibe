@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import User from '../models/User';
 import Message from '../models/Message';
 import { sendEmail } from '../services/email.service';
+import { sendPushNotification } from '../services/notification.service';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -91,13 +92,23 @@ export const initNotificationJob = () => {
           }
 
           if (subject && htmlContent) {
-            const success = await sendEmail({
+            // Send email
+            const emailSuccess = await sendEmail({
               to: user.email,
               subject,
               htmlContent
             });
 
-            if (success) {
+            // Also send push notification
+            sendPushNotification(user._id.toString(), {
+              title: subject,
+              body: "Check Vibe to see your new updates!",
+              data: {
+                type: hasNewUnseenMatches && hasNewUnreadMessages ? 'both' : (hasNewUnreadMessages ? 'message' : 'match')
+              }
+            }).catch(err => console.error(`Error sending push notification to ${user.email}:`, err));
+
+            if (emailSuccess) {
               user.lastNotificationSentAt = new Date();
               await user.save();
               console.log(`Notification sent to ${user.email}`);
