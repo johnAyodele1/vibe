@@ -17,6 +17,7 @@ interface User {
   bio?: string;
   photos?: any[];
   profileCompletion?: number;
+  fcmTokens?: string[];
 }
 
 interface AuthContextType {

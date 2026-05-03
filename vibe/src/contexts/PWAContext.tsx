@@ -92,24 +92,34 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // Handle push token sync
   useEffect(() => {
     if (isAuthenticated && user) {
-      console.log('[PWA] Auth state changed, checking for push token sync...');
-      // Only sync automatically if already granted to avoid non-user-triggered prompts
-      if (notificationPermission === 'granted') {
-        syncPushToken();
-      }
+      console.log('[PWA] Checking notification state...');
 
-      if (notificationPermission === 'default') {
-        // Always suggest enabling notifications if not yet decided, as requested for prioritization
-        toast("Enable notifications to stay updated!", {
+      const hasToken = user.fcmTokens && user.fcmTokens.length > 0;
+
+      if (notificationPermission === 'granted') {
+        // Even if we have a token, we sync periodically or if forced
+        syncPushToken();
+      } else if (notificationPermission === 'default') {
+        // Prioritize: if they haven't decided, prompt them every time until they do
+        toast("Enable push notifications to get matches and messages on your phone!", {
           action: {
-            label: "Enable",
+            label: "Enable Now",
             onClick: () => requestNotificationPermission(),
           },
-          duration: 10000, // Longer duration for visibility
+          duration: 15000,
         });
+      } else if (notificationPermission === 'denied' && !hasToken) {
+        // If denied and we have no tokens, show a helpful message once per session
+        const hasWarned = sessionStorage.getItem('notificationDeniedWarned');
+        if (!hasWarned) {
+          toast.error("Push notifications are blocked in your browser settings. You'll miss out on instant match alerts!", {
+            duration: 6000,
+          });
+          sessionStorage.setItem('notificationDeniedWarned', 'true');
+        }
       }
     }
-  }, [isAuthenticated, notificationPermission]);
+  }, [isAuthenticated, user?.fcmTokens, notificationPermission]);
 
   // Handle periodic geolocation updates
   useEffect(() => {
@@ -164,8 +174,7 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const now = Date.now();
     if (lastSync && now - parseInt(lastSync) < 1000 * 60 * 60 * 24) { // Sync at most once every 24h if token hasn't changed
       console.log('[PWA] Push token synced recently, skipping periodic sync');
-      // We still might want to sync if the token changed, but requestForToken is relatively expensive
-      // For now, let's just proceed to ensure reliability as requested
+      return;
     }
 
     console.log('[PWA] Starting syncPushToken...');

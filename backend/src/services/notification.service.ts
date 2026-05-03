@@ -9,7 +9,7 @@ interface NotificationPayload {
 }
 
 export const sendPushNotification = async (
-  userId: string,
+  userId: string | IUser,
   payload: NotificationPayload
 ) => {
   try {
@@ -27,7 +27,13 @@ export const sendPushNotification = async (
       return;
     }
 
-    const user = await User.findById(userId) as IUser | null;
+    let user: IUser | null = null;
+    if (typeof userId === 'string') {
+      user = await User.findById(userId) as IUser | null;
+    } else {
+      user = userId;
+    }
+
     if (!user || !user.fcmTokens || user.fcmTokens.length === 0) {
       return;
     }
@@ -61,10 +67,18 @@ export const sendPushNotification = async (
           Urgency: 'high',
         },
         notification: {
+          title: payload.title,
+          body: payload.body,
           icon: '/favicon.svg',
           badge: '/favicon.svg',
-          requireInteraction: false,
+          tag: payload.data?.type || 'general',
+          renotify: true,
+          requireInteraction: true,
+          timestamp: Date.now(),
         },
+        fcmOptions: {
+          link: payload.data?.conversationId ? `/chat/${payload.data.conversationId}` : '/'
+        }
       },
     };
 
@@ -86,7 +100,7 @@ export const sendPushNotification = async (
       });
 
       if (failedTokens.length > 0) {
-        await User.findByIdAndUpdate(userId, {
+        await User.findByIdAndUpdate(user._id, {
           $pull: { fcmTokens: { $in: failedTokens } },
         });
       }
@@ -153,7 +167,7 @@ export const notifyUsersOfNewJoiner = async (newUser: IUser) => {
 
     for (const user of matchingUsers) {
       // Final distance check if needed, but for now we rely on the $near query
-      sendPushNotification(user._id.toString(), {
+      sendPushNotification(user, {
         title: "Someone new just joined! ✨",
         body: `${newUser.firstName} just joined Vibe and matches your preferences. Say hi!`,
         data: {
