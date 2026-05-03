@@ -45,9 +45,8 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!refreshing) {
       refreshing = true;
-      // We could reload here automatically, but better to let user finish what they're doing
-      // or if we already showed the toast, they might click refresh there.
-      console.log('Service worker controller changed. New version active.');
+      console.log('Service worker controller changed. New version active. Reloading...');
+      window.location.reload();
     }
   });
 }
