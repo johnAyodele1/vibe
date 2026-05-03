@@ -52,7 +52,7 @@ const initFirebaseInSW = async () => {
 initFirebaseInSW();
 
 // Cache core assets
-const CACHE_NAME = 'vibe-v8'; // Bumped version
+const CACHE_NAME = 'vibe-v9'; // Bumped version
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -62,6 +62,7 @@ const ASSETS_TO_CACHE = [
 
 self.addEventListener('install', (event) => {
   console.log('[firebase-messaging-sw.js] Service Worker installed');
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(ASSETS_TO_CACHE);
