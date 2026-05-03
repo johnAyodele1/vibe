@@ -72,6 +72,55 @@ export const uploadPhoto = async (req: Request, res: Response): Promise<Response
   }
 };
 
+// @desc    Upload image for chat
+// @access  Private
+export const uploadChatImage = async (req: Request, res: Response): Promise<Response> => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No file uploaded',
+      });
+    }
+
+    if (!req.user) return res.status(401).json({ success: false, message: 'Not authenticated' });
+
+    // Upload to Cloudinary
+    const result = await new Promise<UploadApiResponse>((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder: 'vibe-chat-images',
+          public_id: `chat_${(req.user!._id as Types.ObjectId).toString()}_${Date.now()}`,
+          transformation: [
+            { width: 1000, height: 1000, crop: 'limit' },
+            { quality: 'auto' },
+          ],
+        },
+        (error, result) => {
+          if (error || !result) reject(error);
+          else resolve(result);
+        }
+      );
+      stream.end(req.file!.buffer);
+    });
+
+    return res.json({
+      success: true,
+      message: 'Image uploaded successfully',
+      data: {
+        url: result.secure_url,
+        publicId: result.public_id,
+      },
+    });
+  } catch (error) {
+    console.error('Chat image upload error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error during upload',
+    });
+  }
+};
+
 // @desc    Delete user photo from Cloudinary
 // @access  Private
 export const deletePhoto = async (req: Request, res: Response): Promise<Response> => {
