@@ -99,17 +99,14 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
 
       if (notificationPermission === 'default') {
-        // Also suggest enabling notifications with a toast as a backup/clearer CTA
-        const hasPrompted = sessionStorage.getItem('notificationPromptedThisSession');
-        if (!hasPrompted) {
-          toast("Enable notifications to stay updated!", {
-            action: {
-              label: "Enable",
-              onClick: () => requestNotificationPermission(),
-            },
-          });
-          sessionStorage.setItem('notificationPromptedThisSession', 'true');
-        }
+        // Always suggest enabling notifications if not yet decided, as requested for prioritization
+        toast("Enable notifications to stay updated!", {
+          action: {
+            label: "Enable",
+            onClick: () => requestNotificationPermission(),
+          },
+          duration: 10000, // Longer duration for visibility
+        });
       }
     }
   }, [isAuthenticated, notificationPermission]);
