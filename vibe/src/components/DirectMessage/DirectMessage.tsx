@@ -88,6 +88,8 @@ const DirectMessage: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [inputValue, setInputValue] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [typingUser, setTypingUser] = useState<string | null>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -366,16 +368,16 @@ const DirectMessage: React.FC = () => {
     fetchData();
   }, [conversationId, token]);
 
-  const sendMessage = async () => {
-    if (!inputValue.trim() || !conversation || !otherParticipant || !token)
+  const sendMessage = async (contentOverride?: string, typeOverride: string = "text") => {
+    const content = contentOverride || inputValue.trim();
+    if (!content || !conversation || !otherParticipant || !token)
       return;
 
-    const content = inputValue.trim();
     const tempId = `temp-${Date.now()}`;
     const optimisticMessage: Message = {
       _id: tempId,
       content,
-      messageType: "text",
+      messageType: typeOverride,
       sender: {
         _id: currentUserId,
         firstName: user?.firstName || "Me",
@@ -390,7 +392,7 @@ const DirectMessage: React.FC = () => {
 
     // Optimistically add the message to the UI immediately
     setMessages((prev) => [...prev, optimisticMessage]);
-    setInputValue("");
+    if (!contentOverride) setInputValue("");
 
     try {
       const response = await fetch(`${API_BASE_URL}/messages`, {
@@ -402,7 +404,7 @@ const DirectMessage: React.FC = () => {
         body: JSON.stringify({
           receiverId: otherParticipant._id,
           content,
-          messageType: "text",
+          messageType: typeOverride,
         }),
       });
 
@@ -424,8 +426,47 @@ const DirectMessage: React.FC = () => {
       toast.error("Failed to send message");
       // Remove optimistic message on error
       setMessages((prev) => prev.filter((m) => m._id !== tempId));
-      // Restore input value
-      setInputValue(content);
+      // Restore input value if it was a text message
+      if (!contentOverride) setInputValue(content);
+    }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !token) return;
+
+    // Check if it's an image
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file");
+      return;
+    }
+
+    setIsUploading(true);
+    const formData = new FormData();
+    formData.append("image", file);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/upload/chat-image`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        await sendMessage(data.data.url, "image");
+      } else {
+        throw new Error(data.message || "Upload failed");
+      }
+    } catch (error) {
+      console.error("Error uploading image:", error);
+      toast.error("Failed to upload image");
+    } finally {
+      setIsUploading(false);
+      // Reset file input
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -995,9 +1036,18 @@ const DirectMessage: React.FC = () => {
                       <div
                         className={`${styles.bubble} ${
                           isSentByMe ? styles.bubbleSent : styles.bubbleReceived
-                        }`}
+                        } ${msg.messageType === "image" ? styles.bubbleImage : ""}`}
                       >
-                        <p>{msg.content}</p>
+                        {msg.messageType === "image" ? (
+                          <img
+                            src={msg.content}
+                            alt="Shared photo"
+                            className={styles.sharedImage}
+                            onLoad={() => scrollToBottom("smooth")}
+                          />
+                        ) : (
+                          <p>{msg.content}</p>
+                        )}
                       </div>
 
                       <span className={styles.timestamp}>
@@ -1047,17 +1097,29 @@ const DirectMessage: React.FC = () => {
         </main>
 
         <footer className={styles.footer}>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            accept="image/*"
+            style={{ display: "none" }}
+          />
           <div className={styles.inputBar}>
             <button
               className={styles.utilityBtn}
-              onClick={() => toast("Add attachment feature coming soon!")}
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
             >
-              <span
-                className="material-symbols-outlined"
-                style={{ fontSize: "24px" }}
-              >
-                add_circle
-              </span>
+              {isUploading ? (
+                <div className={styles.smallSpinner}></div>
+              ) : (
+                <span
+                  className="material-symbols-outlined"
+                  style={{ fontSize: "24px" }}
+                >
+                  add_circle
+                </span>
+              )}
             </button>
 
             <div className={styles.inputFieldWrapper}>
@@ -1074,7 +1136,8 @@ const DirectMessage: React.FC = () => {
             <div className={styles.actionGroup}>
               <button
                 className={styles.cameraBtn}
-                onClick={() => toast("Camera feature coming soon!")}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
               >
                 <span
                   className="material-symbols-outlined"
@@ -1085,8 +1148,8 @@ const DirectMessage: React.FC = () => {
               </button>
               <button
                 className={styles.sendBtn}
-                onClick={sendMessage}
-                disabled={!inputValue.trim()}
+                onClick={() => sendMessage()}
+                disabled={!inputValue.trim() || isUploading}
               >
                 <span
                   className="material-symbols-outlined"

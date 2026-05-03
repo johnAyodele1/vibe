@@ -5,6 +5,7 @@ import {
   uploadPhoto,
   deletePhoto,
   setMainPhoto,
+  uploadChatImage,
 } from '../controllers/upload.controller';
 
 const router = Router();
@@ -31,6 +32,7 @@ const upload = multer({
 });
 
 router.post('/photo', authenticateToken, upload.single('photo'), uploadPhoto);
+router.post('/chat-image', authenticateToken, upload.single('image'), uploadChatImage);
 router.delete('/photo/:publicId(*)', authenticateToken, deletePhoto);
 router.put('/set-main/:index', authenticateToken, setMainPhoto);
 
