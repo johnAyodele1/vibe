@@ -13,11 +13,13 @@ const Icon = ({
 interface BottomNavigationProps {
   activeTab?: "discovery" | "likes" | "chat" | "profile";
   notificationCount?: number;
+  unreadMessagesCount?: number;
 }
 
 const BottomNavigation: React.FC<BottomNavigationProps> = ({
   activeTab = "profile",
   notificationCount = 0,
+  unreadMessagesCount = 0,
 }) => {
   const navigate = useNavigate();
 
@@ -50,12 +52,19 @@ const BottomNavigation: React.FC<BottomNavigationProps> = ({
           />
         </button>
         <button className={styles.navBtn} onClick={() => navigate("/chat")}>
-          <Icon
-            name="chat_bubble"
-            className={`text-[28px] ${
-              activeTab === "chat" ? "text-primary" : "text-gray-500"
-            } hover:text-white transition-colors`}
-          />
+          <div className="relative">
+            {unreadMessagesCount > 0 && (
+              <div className="absolute -top-1 -right-1 size-4 bg-primary rounded-full border-2 border-[#181113] flex items-center justify-center">
+                <span className="text-[10px] text-white font-bold leading-none">{unreadMessagesCount}</span>
+              </div>
+            )}
+            <Icon
+              name="chat_bubble"
+              className={`text-[28px] ${
+                activeTab === "chat" ? "text-primary" : "text-gray-500"
+              } hover:text-white transition-colors`}
+            />
+          </div>
         </button>
         <button
           className={styles.navBtn}

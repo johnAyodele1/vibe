@@ -136,7 +136,7 @@ const DirectMessage: React.FC = () => {
   const otherParticipant = conversation?.participantInfo.find((p) => {
     const participantId = p.user?._id;
     if (!participantId) return false;
-    return String(participantId) !== currentUserId;
+    return String(participantId) !== String(currentUserId);
   })?.user;
 
   // Scroll to bottom when new messages arrive
@@ -312,7 +312,28 @@ const DirectMessage: React.FC = () => {
       endCall();
     };
 
-    socket.on("message", handleMessage);
+    const markConversationAsRead = async () => {
+      try {
+        await fetch(`${API_BASE_URL}/messages/conversations/${conversationId}/read`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+      } catch (err) {
+        console.error('Error marking conversation as read:', err);
+      }
+    };
+
+    const handleMessageExtended = (message: Message) => {
+      handleMessage(message);
+      // If we receive a message from the other person while in this chat, mark it as read
+      if (message.sender._id !== currentUserId) {
+        markConversationAsRead();
+      }
+    };
+
+    socket.on("message", handleMessageExtended);
     socket.on("typing", handleTyping);
     socket.on("stopTyping", handleStopTyping);
     socket.on("user:status", handleUserStatus);
@@ -322,7 +343,7 @@ const DirectMessage: React.FC = () => {
     socket.on("call:end", handleCallEnd);
 
     return () => {
-      socket.off("message", handleMessage);
+      socket.off("message", handleMessageExtended);
       socket.off("typing", handleTyping);
       socket.off("stopTyping", handleStopTyping);
       socket.off("user:status", handleUserStatus);

@@ -8,6 +8,7 @@ import React, {
 import { API_BASE_URL } from "../config";
 
 interface User {
+  _id: string;
   firstName?: string;
   dateOfBirth?: string;
   gender?: string;
