@@ -11,6 +11,7 @@ import {
   reportUser,
   updatePushToken,
   updateLocation,
+  getServiceProfiles,
 } from '../controllers/user.controller';
 import {
   like,
@@ -25,6 +26,7 @@ router.get('/profile', authenticateToken, updateOnlineStatus, getProfile);
 router.put('/profile', authenticateToken, updateOnlineStatus, updateProfile);
 router.post('/push-token', authenticateToken, updateOnlineStatus, updatePushToken);
 router.put('/location', authenticateToken, updateOnlineStatus, updateLocation);
+router.get('/services', authenticateToken, updateOnlineStatus, getServiceProfiles);
 router.get('/discover', authenticateToken, updateOnlineStatus, discover);
 router.get('/favourites', authenticateToken, updateOnlineStatus, getFavourites);
 router.delete('/account', authenticateToken, updateOnlineStatus, deleteAccount);

@@ -79,10 +79,28 @@ const CallManager: React.FC = () => {
       }
     };
 
+    const handleCallEnd = (data: any) => {
+      if (incomingCall && incomingCall.conversationId === data.conversationId) {
+        setShowModal(false);
+        setIncomingCall(null);
+      }
+    };
+
+    const handleCallReject = (data: any) => {
+      if (incomingCall && incomingCall.conversationId === data.conversationId) {
+        setShowModal(false);
+        setIncomingCall(null);
+      }
+    };
+
     socket.on("call:offer", handleCallOffer);
+    socket.on("call:end", handleCallEnd);
+    socket.on("call:reject", handleCallReject);
 
     return () => {
       socket.off("call:offer", handleCallOffer);
+      socket.off("call:end", handleCallEnd);
+      socket.off("call:reject", handleCallReject);
     };
   }, [socket, isAuthenticated, token, location.pathname, currentUserId]);
 
@@ -96,6 +114,9 @@ const CallManager: React.FC = () => {
   };
 
   const handleDeclineCall = () => {
+    if (incomingCall && socket) {
+      socket.emit("call:reject", { conversationId: incomingCall.conversationId });
+    }
     setShowModal(false);
     setIncomingCall(null);
     toast.info("Call declined");

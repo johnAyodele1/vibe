@@ -77,6 +77,11 @@ export interface IUser extends Document {
   isOnline: boolean;
   fcmTokens: string[];
   lastNotificationSentAt: Date;
+  isServiceProfile: boolean;
+  isLive: boolean;
+  hourlyRate?: number;
+  offeredServices: string[];
+  serviceLocation?: string;
   verificationToken?: string;
   verificationTokenExpires?: Date;
   passwordResetToken?: string;

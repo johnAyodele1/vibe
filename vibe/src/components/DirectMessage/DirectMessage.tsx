@@ -312,6 +312,12 @@ const DirectMessage: React.FC = () => {
       endCall();
     };
 
+    const handleCallReject = () => {
+      console.log("Remote peer rejected the call");
+      toast.info("Call rejected");
+      endCall();
+    };
+
     const markConversationAsRead = async () => {
       try {
         await fetch(`${API_BASE_URL}/messages/conversations/${conversationId}/read`, {
@@ -341,6 +347,7 @@ const DirectMessage: React.FC = () => {
     socket.on("call:answer", handleCallAnswer);
     socket.on("call:ice-candidate", handleIceCandidate);
     socket.on("call:end", handleCallEnd);
+    socket.on("call:reject", handleCallReject);
 
     return () => {
       socket.off("message", handleMessageExtended);
@@ -351,6 +358,7 @@ const DirectMessage: React.FC = () => {
       socket.off("call:answer", handleCallAnswer);
       socket.off("call:ice-candidate", handleIceCandidate);
       socket.off("call:end", handleCallEnd);
+      socket.off("call:reject", handleCallReject);
     };
   }, [socket, conversationId, token]);
 
@@ -719,7 +727,11 @@ const DirectMessage: React.FC = () => {
   const endCall = () => {
     // Notify remote peer that call is ending
     if (socket && callStatus !== "idle" && callStatus !== "ended") {
-      socket.emit("call:end", { conversationId });
+      if (callStatus === "receiving") {
+        socket.emit("call:reject", { conversationId });
+      } else {
+        socket.emit("call:end", { conversationId });
+      }
     }
 
     // Stop all local tracks

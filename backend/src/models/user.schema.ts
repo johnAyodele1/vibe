@@ -166,6 +166,10 @@ export const userSchema = new Schema<IUser, IUserModel>(
       type: Boolean,
       default: false,
     },
+    isLive: {
+      type: Boolean,
+      default: false,
+    },
     matches: [
       {
         user: {
@@ -222,6 +226,24 @@ export const userSchema = new Schema<IUser, IUserModel>(
     lastNotificationSentAt: {
       type: Date,
       default: new Date(0), // Set to a very old date initially
+    },
+    isServiceProfile: {
+      type: Boolean,
+      default: false,
+    },
+    hourlyRate: {
+      type: Number,
+      min: 0,
+    },
+    offeredServices: [
+      {
+        type: String,
+        trim: true,
+      },
+    ],
+    serviceLocation: {
+      type: String,
+      trim: true,
     },
     verificationToken: String,
     verificationTokenExpires: Date,

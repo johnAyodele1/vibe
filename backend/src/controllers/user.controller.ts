@@ -177,6 +177,10 @@ export const updateProfile = async (req: IExpressRequest, res: Response): Promis
       'settings',
       'gender',
       'dateOfBirth',
+      'isServiceProfile',
+      'hourlyRate',
+      'offeredServices',
+      'serviceLocation',
     ];
 
     const body = req.body as Record<string, unknown>;
@@ -281,6 +285,58 @@ export const discover = async (req: IExpressRequest, res: Response): Promise<Res
     return res.json({ success: true, data: { users } });
   } catch (error) {
     console.error('Discover users error:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// @desc    Get service profiles (Premium/Fuckmate zone)
+// @access  Private
+export const getServiceProfiles = async (req: IExpressRequest, res: Response): Promise<Response> => {
+  try {
+    if (!req.user) return res.status(401).json({ success: false, message: 'Not authenticated' });
+
+    const {
+      serviceType,
+      minPrice,
+      maxPrice,
+      location,
+      page = 1,
+      limit = 20
+    } = req.query;
+
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const query: any = {
+      isServiceProfile: true,
+      _id: { $ne: req.user._id }
+    };
+
+    if (serviceType) {
+      query.offeredServices = serviceType;
+    }
+
+    if (minPrice || maxPrice) {
+      query.hourlyRate = {};
+      if (minPrice) query.hourlyRate.$gte = Number(minPrice);
+      if (maxPrice) query.hourlyRate.$lte = Number(maxPrice);
+    }
+
+    if (location) {
+      query.serviceLocation = { $regex: location, $options: 'i' };
+    }
+
+    const profiles = await User.find(query)
+      .select('firstName lastName age photos bio offeredServices hourlyRate serviceLocation isOnline lastActive isLive')
+      .skip(skip)
+      .limit(Number(limit))
+      .sort({ lastActive: -1 });
+
+    return res.json({
+      success: true,
+      data: { profiles }
+    });
+  } catch (error) {
+    console.error('Get service profiles error:', error);
     return res.status(500).json({ success: false, message: 'Server error' });
   }
 };

@@ -208,6 +208,44 @@ export const setupSocket = (server: HttpServer): Server => {
       }
     });
 
+    socket.on('call:end', async (data: { conversationId: string }) => {
+      if (!data || !data.conversationId) return;
+      try {
+        const conversation = await Conversation.findById(data.conversationId) as IConversation | null;
+        if (!conversation) return;
+
+        const otherParticipant = conversation.participants.find(
+          (participant: Types.ObjectId) => participant.toString() !== socket.userId,
+        );
+
+        if (!otherParticipant) return;
+
+        socket.to(data.conversationId).emit('call:end', data);
+        socket.to(otherParticipant.toString()).emit('call:end', data);
+      } catch (error) {
+        console.error('Error handling call end:', error);
+      }
+    });
+
+    socket.on('call:reject', async (data: { conversationId: string }) => {
+      if (!data || !data.conversationId) return;
+      try {
+        const conversation = await Conversation.findById(data.conversationId) as IConversation | null;
+        if (!conversation) return;
+
+        const otherParticipant = conversation.participants.find(
+          (participant: Types.ObjectId) => participant.toString() !== socket.userId,
+        );
+
+        if (!otherParticipant) return;
+
+        socket.to(data.conversationId).emit('call:reject', data);
+        socket.to(otherParticipant.toString()).emit('call:reject', data);
+      } catch (error) {
+        console.error('Error handling call reject:', error);
+      }
+    });
+
     socket.on('disconnect', async () => {
       console.log('Socket disconnected for user:', userId);
 
