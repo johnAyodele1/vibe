@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import styles from "./DirectMessage.module.css";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import { API_BASE_URL } from "../../config";
 
@@ -83,6 +83,7 @@ interface Conversation {
 
 const DirectMessage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const { conversationId } = useParams<{ conversationId: string }>();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -192,6 +193,21 @@ const DirectMessage: React.FC = () => {
       }
     }
   }, [remoteStream]);
+
+  // Check for initial call from navigation state
+  useEffect(() => {
+    const state = location.state as { incomingCall?: any } | null;
+    if (state?.incomingCall && callStatus === "idle") {
+      console.log("Handling incoming call from navigation state:", state.incomingCall);
+      isVideoCallRef.current = state.incomingCall.isVideoCall || false;
+      setIncomingOffer(state.incomingCall);
+      setIsVideoCall(state.incomingCall.isVideoCall || false);
+      setCallStatus("receiving");
+
+      // Clear the state so it doesn't trigger again on refresh
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location, callStatus, navigate]);
 
   // Initialize socket connection
   useEffect(() => {

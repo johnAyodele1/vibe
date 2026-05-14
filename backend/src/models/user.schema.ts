@@ -195,6 +195,30 @@ export const userSchema = new Schema<IUser, IUserModel>(
       type: Boolean,
       default: false,
     },
+    isModel: {
+      type: Boolean,
+      default: false,
+    },
+    modelProfile: {
+      pricePerHour: {
+        type: Number,
+        default: 0,
+      },
+      services: [
+        {
+          type: String,
+          trim: true,
+        },
+      ],
+      isLive: {
+        type: Boolean,
+        default: false,
+      },
+      rating: {
+        type: Number,
+        default: 5.0,
+      },
+    },
     views: {
       type: Number,
       default: 0,

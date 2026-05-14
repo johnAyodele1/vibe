@@ -177,6 +177,8 @@ export const updateProfile = async (req: IExpressRequest, res: Response): Promis
       'settings',
       'gender',
       'dateOfBirth',
+      'isModel',
+      'modelProfile',
     ];
 
     const body = req.body as Record<string, unknown>;
@@ -281,6 +283,58 @@ export const discover = async (req: IExpressRequest, res: Response): Promise<Res
     return res.json({ success: true, data: { users } });
   } catch (error) {
     console.error('Discover users error:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// @desc    Get models for discovery
+// @access  Private
+export const getModels = async (req: IExpressRequest, res: Response): Promise<Response> => {
+  try {
+    if (!req.user) return res.status(401).json({ success: false, message: 'Not authenticated' });
+    const {
+      minPrice,
+      maxPrice,
+      services,
+      city,
+      isLive,
+      page = 1,
+      limit = 20
+    } = req.query;
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const query: Record<string, any> = {
+      isModel: true,
+      isBlocked: { $ne: true },
+      _id: { $ne: req.user._id as Types.ObjectId }
+    };
+
+    if (minPrice !== undefined) {
+      query['modelProfile.pricePerHour'] = { ...query['modelProfile.pricePerHour'], $gte: Number(minPrice) };
+    }
+    if (maxPrice !== undefined) {
+      query['modelProfile.pricePerHour'] = { ...query['modelProfile.pricePerHour'], $lte: Number(maxPrice) };
+    }
+    if (services) {
+      const servicesArray = (services as string).split(',');
+      query['modelProfile.services'] = { $in: servicesArray };
+    }
+    if (city) {
+      query['location.city'] = new RegExp(city as string, 'i');
+    }
+    if (isLive === 'true') {
+      query['modelProfile.isLive'] = true;
+    }
+
+    const models = await User.find(query)
+      .select('firstName lastName age photos bio location modelProfile isOnline lastActive isVerified')
+      .skip(skip)
+      .limit(Number(limit))
+      .sort({ 'modelProfile.isLive': -1, lastActive: -1 });
+
+    return res.json({ success: true, data: { models } });
+  } catch (error) {
+    console.error('Get models error:', error);
     return res.status(500).json({ success: false, message: 'Server error' });
   }
 };

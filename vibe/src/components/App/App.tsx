@@ -12,6 +12,7 @@ import ChatInterface from "../ChatInterface/ChatInterface";
 import DirectMessage from "../DirectMessage/DirectMessage";
 import Discovery from "../Discovery/Discovery";
 import Favourites from "../Favourites/Favourites";
+import PremiumZone from "../PremiumZone/PremiumZone";
 import CallManager from "../CallManager/CallManager";
 import AdminDashboard from "../Admin/AdminDashboard";
 import AdminLogin from "../Admin/AdminLogin";
@@ -72,6 +73,20 @@ function App() {
               )
             ) : (
               <Onboarding />
+            )
+          }
+        />
+        <Route
+          path="/hiddenurl"
+          element={
+            isAuthenticated ? (
+              isProfileComplete() ? (
+                <PremiumZone />
+              ) : (
+                <Navigate to="/profile" replace />
+              )
+            ) : (
+              <Navigate to="/auth" replace />
             )
           }
         />

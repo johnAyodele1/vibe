@@ -49,6 +49,13 @@ export interface IMatch {
   isSeen: boolean;
 }
 
+export interface IModelProfile {
+  pricePerHour: number;
+  services: string[];
+  isLive: boolean;
+  rating: number;
+}
+
 export interface IUser extends Document {
   email: string;
   password?: string;
@@ -71,6 +78,8 @@ export interface IUser extends Document {
   isVerified: boolean;
   isBlocked: boolean;
   isPremium: boolean;
+  isModel: boolean;
+  modelProfile?: IModelProfile;
   views: number;
   profileCompletion: number;
   lastActive: Date;

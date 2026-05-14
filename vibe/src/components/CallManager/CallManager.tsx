@@ -90,8 +90,15 @@ const CallManager: React.FC = () => {
     if (!incomingCall) return;
 
     setShowModal(false);
-    // Navigate to DM page - the DirectMessage component will handle the call setup
-    navigate(`/direct-message/${incomingCall.conversationId}`);
+    // Navigate to DM page - passing call data in state to trigger immediate answering
+    navigate(`/direct-message/${incomingCall.conversationId}`, {
+      state: {
+        incomingCall: {
+          offer: incomingCall.offer,
+          isVideoCall: incomingCall.isVideoCall
+        }
+      }
+    });
     setIncomingCall(null);
   };
 
