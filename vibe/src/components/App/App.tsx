@@ -16,6 +16,15 @@ import CallManager from "../CallManager/CallManager";
 import AdminDashboard from "../Admin/AdminDashboard";
 import AdminLogin from "../Admin/AdminLogin";
 import LoadingScreen from "../LoadingScreen/LoadingScreen";
+import AdultZoneLayout from "../AdultZone/AdultZoneLayout";
+import AdultHome from "../AdultZone/AdultHome";
+import LiveCams from "../AdultZone/LiveCams";
+import NaughtyRooms from "../AdultZone/NaughtyRooms";
+import PrivateSext from "../AdultZone/PrivateSext";
+import RandomStranger from "../AdultZone/RandomStranger";
+import HookUpTonight from "../AdultZone/HookUpTonight";
+import VIPLounge from "../AdultZone/VIPLounge";
+import Wallet from "../AdultZone/Wallet";
 import { useAuth } from "../../contexts/AuthContext";
 import { API_BASE_URL } from "../../config";
 
@@ -198,6 +207,18 @@ function App() {
             )
           }
         />
+
+        {/* Adult Zone Routes */}
+        <Route path="/adult" element={<AdultZoneLayout />}>
+          <Route index element={<AdultHome />} />
+          <Route path="cams" element={<LiveCams />} />
+          <Route path="rooms" element={<NaughtyRooms />} />
+          <Route path="sext" element={<PrivateSext />} />
+          <Route path="random" element={<RandomStranger />} />
+          <Route path="hookup" element={<HookUpTonight />} />
+          <Route path="vip" element={<VIPLounge />} />
+          <Route path="wallet" element={<Wallet />} />
+        </Route>
 
         {/* Default redirect */}
         <Route path="*" element={<Navigate to="/" replace />} />
