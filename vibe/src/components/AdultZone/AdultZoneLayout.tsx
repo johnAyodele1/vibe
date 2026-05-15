@@ -10,7 +10,7 @@ const AdultZoneLayout: React.FC = () => {
     const stored = localStorage.getItem('adultZoneVerified');
     if (stored) {
       try {
-        const { verified, timestamp } = JSON.parse(stored);
+        const { verified } = JSON.parse(stored);
         // Expire after 24 hours if needed, but for now we trust session/storage
         if (verified) {
           setIsVerified(true);
