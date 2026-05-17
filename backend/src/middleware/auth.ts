@@ -1,6 +1,7 @@
 import jwt, { SignOptions } from 'jsonwebtoken';
 import { Response, NextFunction, Request } from 'express';
 import User from '../models/User';
+import AdultUser from '../models/AdultUser';
 import { Types } from 'mongoose';
 
 // Generate access token
@@ -44,7 +45,13 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
     ) as { userId: string };
 
     // Get user from database
-    const user = await User.findById(decoded.userId).select('-password');
+    let user = await User.findById(decoded.userId).select('-password');
+
+    // If not found in User, check AdultUser
+    if (!user) {
+      user = await AdultUser.findById(decoded.userId).select('-password') as any;
+    }
+
     if (!user) {
       return res.status(401).json({
         success: false,

@@ -1,0 +1,219 @@
+import { Schema, Document, Types, Model } from 'mongoose';
+
+export interface IAdultPhoto {
+  url: string;
+  publicId: string | null;
+  isMain: boolean;
+  order: number;
+  uploadedAt: Date;
+}
+
+export interface ILoginHistory {
+  ip: string;
+  userAgent: string;
+  timestamp: Date;
+  success: boolean;
+}
+
+export interface IAdultUser extends Document {
+  email: string;
+  passwordHash: string;
+  role: 'user' | 'provider';
+  username: string;
+  displayName: string;
+  ageVerified: boolean;
+  ageVerifiedAt?: Date;
+  dateOfBirth: Date;
+  country: string;
+  profilePhoto?: string;
+  bio?: string;
+  credits: number;
+  subscriptionTier: 'none' | 'gold' | 'platinum' | 'diamond';
+  subscriptionExpiresAt?: Date;
+  isActive: boolean;
+  isBanned: boolean;
+  banReason?: string;
+  twoFactorEnabled: boolean;
+  twoFactorSecret?: string;
+  emailVerified: boolean;
+  emailVerificationToken?: string;
+  passwordResetToken?: string;
+  passwordResetExpires?: Date;
+  loginHistory: ILoginHistory[];
+  providerProfile?: {
+    stageName: string;
+    categories: string[];
+    isLive: boolean;
+    pricePerMinute: number;
+    tipMinimum: number;
+    totalEarnings: number;
+    pendingPayout: number;
+    verificationStatus: 'pending' | 'approved' | 'rejected';
+    idVerificationDocUrl?: string;
+    contentTags: string[];
+    rating: {
+      average: number;
+      count: number;
+    };
+  };
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface IAdultUserModel extends Model<IAdultUser> {}
+
+export interface ICreditTransaction extends Document {
+  userId: Types.ObjectId;
+  type: 'purchase' | 'tip' | 'refund' | 'subscription' | 'payout' | 'bonus';
+  amount: number;
+  usdAmount: number;
+  description: string;
+  relatedUserId?: Types.ObjectId;
+  paymentProvider?: 'stripe' | 'apple' | 'google' | 'crypto';
+  paymentIntentId?: string;
+  status: 'pending' | 'completed' | 'failed' | 'refunded';
+  metadata?: any;
+  createdAt: Date;
+}
+
+export interface IRoom extends Document {
+  name: string;
+  description: string;
+  category: string;
+  createdBy: Types.ObjectId;
+  isActive: boolean;
+  activeUsers: {
+    userId: Types.ObjectId;
+    joinedAt: Date;
+  }[];
+  maxUsers: number;
+  isExplicit: boolean;
+  mood: 'chill' | 'wild' | 'explicit';
+  tags: string[];
+  isPinned: boolean;
+  messageCount: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface IMessage extends Document {
+  conversationId: string;
+  senderId: Types.ObjectId;
+  receiverId?: Types.ObjectId;
+  content: string;
+  messageType: 'text' | 'image' | 'voice' | 'gift' | 'system';
+  mediaUrl?: string;
+  mediaBlurred: boolean;
+  unlockCost: number;
+  unlockedBy: Types.ObjectId[];
+  reactions: {
+    userId: Types.ObjectId;
+    emoji: string;
+  }[];
+  isRead: boolean;
+  readAt?: Date;
+  isDeleted: boolean;
+  deletedAt?: Date;
+  createdAt: Date;
+}
+
+export interface ICamSession extends Document {
+  providerId: Types.ObjectId;
+  sessionType: 'public' | 'private' | 'vip_only' | 'premium_only';
+  status: 'scheduled' | 'live' | 'ended' | 'interrupted';
+  streamKey: string;
+  streamPlaybackUrl: string;
+  thumbnailUrl?: string;
+  previewGifUrl?: string;
+  startedAt?: Date;
+  endedAt?: Date;
+  durationSeconds: number;
+  peakViewerCount: number;
+  totalViewerCount: number;
+  totalTipsReceived: number;
+  totalTipsUsdValue: number;
+  privateShowRate: number;
+  tags: string[];
+  title: string;
+  resolution: '720p' | '1080p' | '4K';
+  isHD: boolean;
+  isInteractive: boolean;
+  chatEnabled: boolean;
+  recordingEnabled: boolean;
+  recordingUrl?: string;
+  reportCount: number;
+  isFlagged: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ICamViewer extends Document {
+  sessionId: Types.ObjectId;
+  userId: Types.ObjectId;
+  joinedAt: Date;
+  leftAt?: Date;
+  totalWatchSeconds: number;
+  totalTipped: number;
+  isInPrivateShow: boolean;
+  privateShowStartedAt?: Date;
+  privateShowEndedAt?: Date;
+  privateShowCreditsSpent: number;
+  deviceType: 'desktop' | 'mobile' | 'tablet';
+  connectionQuality: 'low' | 'medium' | 'high';
+}
+
+export interface ICamTip extends Document {
+  sessionId: Types.ObjectId;
+  senderId: Types.ObjectId;
+  providerId: Types.ObjectId;
+  amount: number;
+  message?: string;
+  isAnonymous: boolean;
+  triggeredGoal: boolean;
+  goalId?: string;
+  createdAt: Date;
+}
+
+export interface ICamGoal extends Document {
+  sessionId: Types.ObjectId;
+  providerId: Types.ObjectId;
+  title: string;
+  targetCredits: number;
+  currentCredits: number;
+  isCompleted: boolean;
+  completedAt?: Date;
+  isActive: boolean;
+  createdAt: Date;
+}
+
+export interface IPrivateShowRequest extends Document {
+  sessionId: Types.ObjectId;
+  requesterId: Types.ObjectId;
+  providerId: Types.ObjectId;
+  status: 'pending' | 'accepted' | 'rejected' | 'ended' | 'expired';
+  creditsPerMinute: number;
+  totalCreditsSpent: number;
+  startedAt?: Date;
+  endedAt?: Date;
+  privateStreamKey?: string;
+  privatePlaybackUrl?: string;
+  expiresAt: Date;
+  createdAt: Date;
+}
+
+export interface IProviderEarnings extends Document {
+  providerId: Types.ObjectId;
+  period: string;
+  totalTipsCredits: number;
+  totalPrivateShowCredits: number;
+  totalCreditsEarned: number;
+  platformFeePercent: number;
+  netCreditsAfterFee: number;
+  usdEquivalent: number;
+  payoutStatus: 'pending' | 'processing' | 'paid' | 'failed';
+  payoutMethod: 'bank' | 'crypto' | 'check';
+  payoutReference?: string;
+  paidAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}

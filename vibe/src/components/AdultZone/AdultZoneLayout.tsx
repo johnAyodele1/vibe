@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, Outlet } from 'react-router-dom';
 import AgeGate from './AgeGate';
+import AdultAuthModal from './AdultAuthModal';
+import { useAdultAuth } from '../../contexts/AdultAuthContext';
 
 const AdultZoneLayout: React.FC = () => {
   const [isVerified, setIsVerified] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const { isAuthenticated, logout, user } = useAdultAuth();
   const location = useLocation();
 
   useEffect(() => {
@@ -65,12 +69,26 @@ const AdultZoneLayout: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-4">
-            <div className="hidden xs:flex items-center bg-[var(--az-bg-tertiary)] px-3 py-1.5 rounded-full border border-[var(--az-border)]">
-              <span className="text-xs font-mono text-[var(--az-accent-gold)]">💎 240 Credits</span>
-            </div>
-            <Link to="/adult/wallet" className="w-8 h-8 rounded-full bg-[var(--az-bg-secondary)] border border-[var(--az-border)] flex items-center justify-center overflow-hidden">
-              <img src="/placeholder.svg" alt="User" className="w-full h-full object-cover" />
-            </Link>
+            {isAuthenticated ? (
+              <>
+                <div className="hidden xs:flex items-center bg-[var(--az-bg-tertiary)] px-3 py-1.5 rounded-full border border-[var(--az-border)]">
+                  <span className="text-xs font-mono text-[var(--az-accent-gold)]">💎 {user?.credits || 0} Credits</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Link to="/adult/wallet" className="w-8 h-8 rounded-full bg-[var(--az-bg-secondary)] border border-[var(--az-border)] flex items-center justify-center overflow-hidden">
+                    <img src="/placeholder.svg" alt="User" className="w-full h-full object-cover" />
+                  </Link>
+                  <button onClick={logout} className="text-xs text-[var(--az-text-muted)] hover:text-white uppercase font-bold">Logout</button>
+                </div>
+              </>
+            ) : (
+              <button
+                onClick={() => setIsAuthModalOpen(true)}
+                className="px-6 py-2 bg-[var(--az-accent-primary)] text-white text-xs font-bold uppercase tracking-widest rounded-full shadow-[0_0_10px_var(--az-glow)]"
+              >
+                Login
+              </button>
+            )}
           </div>
         </div>
       </nav>
@@ -79,6 +97,11 @@ const AdultZoneLayout: React.FC = () => {
       <main className="flex-grow">
         <Outlet />
       </main>
+
+      <AdultAuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+      />
 
       {/* Mobile Bottom Navigation */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 az-glass border-t border-[var(--az-border)] pb-safe">

@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import "./index.css";
 import App from "./components/App/App";
 import { AuthProvider } from "./contexts/AuthContext";
+import { AdultAuthProvider } from "./contexts/AdultAuthContext";
 import { SocketProvider } from "./contexts/SocketContext";
 import { PWAProvider } from "./contexts/PWAContext";
 
@@ -54,13 +55,15 @@ if ('serviceWorker' in navigator) {
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <AuthProvider>
-      <SocketProvider>
-        <PWAProvider>
-          <BrowserRouter>
-            <App />
-          </BrowserRouter>
-        </PWAProvider>
-      </SocketProvider>
+      <AdultAuthProvider>
+        <SocketProvider>
+          <PWAProvider>
+            <BrowserRouter>
+              <App />
+            </BrowserRouter>
+          </PWAProvider>
+        </SocketProvider>
+      </AdultAuthProvider>
     </AuthProvider>
   </StrictMode>
 );

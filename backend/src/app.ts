@@ -19,6 +19,7 @@ import uploadRoutes from './routes/upload';
 import adminRoutes from './routes/admin';
 import analyticsRoutes from './routes/analytics';
 import configRoutes from './routes/config';
+import adultRoutes from './routes/adult.routes';
 
 dotenv.config();
 
@@ -105,6 +106,7 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/config', configRoutes);
+app.use('/api/adult', adultRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req: Request, res: Response) => {
