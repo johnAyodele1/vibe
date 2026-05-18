@@ -4,7 +4,7 @@ import { http, HttpResponse } from 'msw';
 const API_BASE_URL = 'http://localhost:5000/api';
 
 export const handlers = [
-  http.post(`${API_BASE_URL}/adult/auth/login`, async ({ request }) => {
+  http.post(`${API_BASE_URL}/adult/auth/login`, async () => {
     return HttpResponse.json({
       success: true,
       data: {
