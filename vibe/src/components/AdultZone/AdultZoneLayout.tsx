@@ -1,29 +1,31 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link, useLocation, Outlet } from 'react-router-dom';
 import AgeGate from './AgeGate';
 import AdultAuthModal from './AdultAuthModal';
+import LoadingScreen from '../LoadingScreen/LoadingScreen';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
 
 const AdultZoneLayout: React.FC = () => {
-  const [isVerified, setIsVerified] = useState(false);
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const { isAuthenticated, logout, user } = useAdultAuth();
-  const location = useLocation();
-
-  useEffect(() => {
+  const [isVerified, setIsVerified] = useState(() => {
     const stored = localStorage.getItem('adultZoneVerified');
     if (stored) {
       try {
         const { verified } = JSON.parse(stored);
-        // Expire after 24 hours if needed, but for now we trust session/storage
-        if (verified) {
-          setIsVerified(true);
-        }
+        return !!verified;
       } catch (e) {
-        console.error('Error parsing verification status');
+        return false;
       }
     }
-  }, []);
+    return false;
+  });
+
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const { isAuthenticated, logout, user, loading } = useAdultAuth();
+  const location = useLocation();
+
+  if (loading) {
+    return <LoadingScreen />;
+  }
 
   if (!isVerified) {
     return <AgeGate onVerified={() => setIsVerified(true)} />;
