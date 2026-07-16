@@ -90,7 +90,7 @@ describe('Adult Zone Backend Production Tests', () => {
   let providerId: string;
 
   describe('Authentication', () => {
-    it('should register a new adult user', async () => {
+    it('should register a new adult user and return tokens directly', async () => {
       const res = await request(app)
         .post('/api/adult/auth/register')
         .send({
@@ -105,6 +105,9 @@ describe('Adult Zone Backend Production Tests', () => {
 
       expect(res.status).toBe(201);
       expect(res.body.success).toBe(true);
+      expect(res.body.data.accessToken).toBeDefined();
+      userToken = res.body.data.accessToken;
+      userId = res.body.data.user.id;
     });
 
     it('should reject underage registration', async () => {
@@ -124,20 +127,22 @@ describe('Adult Zone Backend Production Tests', () => {
       expect(res.body.error.code).toBe('VALIDATION_ERROR');
     });
 
-    it('should verify email and return tokens for user', async () => {
-      const user = await AdultUser.findOne({ email: 'test@adult.com' });
+    it('should allow registered user to login directly', async () => {
       const res = await request(app)
-        .get(`/api/adult/auth/verify-email?token=${user?.emailVerificationToken}`);
+        .post('/api/adult/auth/login')
+        .send({
+          email: 'test@adult.com',
+          password: 'Password123!@#',
+        });
 
       expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
       expect(res.body.data.accessToken).toBeDefined();
-      userToken = res.body.data.accessToken;
-      userId = res.body.data.user.id;
     });
 
-    it('should register and verify a provider', async () => {
+    it('should register a provider and return tokens directly', async () => {
       // Register provider
-      await request(app)
+      const res = await request(app)
         .post('/api/adult/auth/register')
         .send({
           email: 'provider@adult.com',
@@ -149,11 +154,9 @@ describe('Adult Zone Backend Production Tests', () => {
           country: 'US',
         });
 
-      const provider = await AdultUser.findOne({ email: 'provider@adult.com' });
-      const res = await request(app)
-        .get(`/api/adult/auth/verify-email?token=${provider?.emailVerificationToken}`);
-
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.accessToken).toBeDefined();
       providerToken = res.body.data.accessToken;
       providerId = res.body.data.user.id;
     });
