@@ -18,7 +18,6 @@ export const register = async (req: Request, res: Response) => {
     return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Email or username already in use' } });
   }
 
-  const verificationToken = crypto.randomBytes(32).toString('hex');
   const user = new AdultUser({
     email,
     passwordHash: password, // Pre-save hook hashes this
@@ -27,13 +26,32 @@ export const register = async (req: Request, res: Response) => {
     dateOfBirth,
     role,
     country,
-    emailVerificationToken: verificationToken,
+    emailVerified: true,
   });
 
   await user.save();
-  await sendVerificationEmail(email, verificationToken);
 
-  res.status(201).json({ success: true, message: 'Verify your email to continue' });
+  const { accessToken, refreshToken } = generateTokens(user._id.toString());
+
+  res.cookie('refreshToken', refreshToken, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict', maxAge: 7 * 24 * 60 * 60 * 1000 });
+  res.status(201).json({
+    success: true,
+    data: {
+      accessToken,
+      tokens: {
+        accessToken,
+        refreshToken
+      },
+      user: {
+        id: user._id,
+        username: user.username,
+        role: user.role,
+        ageVerified: user.ageVerified,
+        tier: user.subscriptionTier,
+        credits: user.credits
+      }
+    }
+  });
 };
 
 export const verifyEmail = async (req: Request, res: Response) => {
@@ -81,14 +99,27 @@ export const login = async (req: Request, res: Response) => {
     return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Invalid credentials' } });
   }
 
-  if (!user.emailVerified) {
-    return res.status(403).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Email not verified' } });
-  }
-
   const { accessToken, refreshToken } = generateTokens(user._id.toString());
 
   res.cookie('refreshToken', refreshToken, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict', maxAge: 7 * 24 * 60 * 60 * 1000 });
-  res.json({ success: true, data: { accessToken, user: { id: user._id, username: user.username, role: user.role, ageVerified: user.ageVerified, tier: user.subscriptionTier } } });
+  res.json({
+    success: true,
+    data: {
+      accessToken,
+      tokens: {
+        accessToken,
+        refreshToken
+      },
+      user: {
+        id: user._id,
+        username: user.username,
+        role: user.role,
+        ageVerified: user.ageVerified,
+        tier: user.subscriptionTier,
+        credits: user.credits
+      }
+    }
+  });
 };
 
 export const verifyAge = async (req: Request, res: Response) => {

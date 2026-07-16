@@ -25,6 +25,10 @@ dotenv.config();
 
 const app = express();
 
+// Configure Express to trust proxies (first hop) behind reverse proxies like Render.
+// This resolves express-rate-limit unexpected X-Forwarded-For configuration warnings/errors.
+app.set('trust proxy', 1);
+
 // // Rate limiting
 // const limiter = rateLimit({
 //   windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS) || 900000, // 15 minutes
