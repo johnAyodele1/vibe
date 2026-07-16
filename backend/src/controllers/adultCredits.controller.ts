@@ -87,3 +87,63 @@ export const tip = async (req: Request, res: Response) => {
     session.endSession();
   }
 };
+
+export const subscribeToTier = async (req: Request, res: Response) => {
+  const { tier } = req.body;
+  const user = req.adultUser;
+
+  if (!user) {
+    return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
+  }
+
+  const PRICES: Record<string, number> = {
+    gold: 100,
+    platinum: 250,
+    diamond: 500
+  };
+
+  const cost = PRICES[tier];
+  if (!cost) {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid tier' } });
+  }
+
+  if (user.credits < cost) {
+    return res.status(400).json({ success: false, error: { code: 'INSUFFICIENT_CREDITS', message: 'Insufficient balance' } });
+  }
+
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    user.credits -= cost;
+    user.subscriptionTier = tier;
+    user.subscriptionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+    await user.save({ session });
+
+    await CreditTransaction.create([{
+      userId: user._id,
+      type: 'subscription',
+      amount: -cost,
+      usdAmount: 0,
+      description: `Upgrade to ${tier.toUpperCase()} VIP membership`,
+      status: 'completed',
+    }], { session });
+
+    await session.commitTransaction();
+
+    res.json({
+      success: true,
+      message: `Successfully subscribed to ${tier.toUpperCase()}`,
+      data: {
+        credits: user.credits,
+        subscriptionTier: user.subscriptionTier,
+        subscriptionExpiresAt: user.subscriptionExpiresAt
+      }
+    });
+  } catch (err) {
+    await session.abortTransaction();
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Subscription transaction failed' } });
+  } finally {
+    session.endSession();
+  }
+};

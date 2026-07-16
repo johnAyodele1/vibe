@@ -46,6 +46,9 @@ export interface IAdultUser extends Document {
     isLive: boolean;
     pricePerMinute: number;
     tipMinimum: number;
+    videoCallPrice?: number;
+    audioCallPrice?: number;
+    privateSextPrice?: number;
     totalEarnings: number;
     pendingPayout: number;
     verificationStatus: 'pending' | 'approved' | 'rejected';

@@ -71,3 +71,78 @@ export const updateProviderStatus = async (req: Request, res: Response) => {
 
     res.json({ success: true, message: `Provider ${status}` });
 };
+
+export const updateProviderProfile = async (req: Request, res: Response) => {
+  const user = req.adultUser;
+  if (!user || user.role !== 'provider') {
+    return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Only providers can update profile' } });
+  }
+
+  const {
+    stageName,
+    bio,
+    country,
+    profilePhoto,
+    categories,
+    contentTags,
+    pricePerMinute,
+    tipMinimum,
+    videoCallPrice,
+    audioCallPrice,
+    privateSextPrice,
+  } = req.body;
+
+  if (stageName && stageName !== user.providerProfile?.stageName) {
+    const existing = await AdultUser.findOne({ 'providerProfile.stageName': stageName, _id: { $ne: user._id } });
+    if (existing) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Stage name already in use' } });
+    }
+  }
+
+  if (bio !== undefined) user.bio = bio;
+  if (country !== undefined) user.country = country;
+  if (profilePhoto !== undefined) user.profilePhoto = profilePhoto;
+
+  if (!user.providerProfile) {
+    user.providerProfile = {
+      stageName: stageName || '',
+      categories: categories || [],
+      contentTags: contentTags || [],
+      pricePerMinute: pricePerMinute || 0,
+      tipMinimum: tipMinimum || 0,
+      videoCallPrice: videoCallPrice || 0,
+      audioCallPrice: audioCallPrice || 0,
+      privateSextPrice: privateSextPrice || 0,
+      totalEarnings: 0,
+      pendingPayout: 0,
+      verificationStatus: 'pending',
+      isLive: false,
+      rating: { average: 0, count: 0 },
+    };
+  } else {
+    if (stageName !== undefined) user.providerProfile.stageName = stageName;
+    if (categories !== undefined) user.providerProfile.categories = categories;
+    if (contentTags !== undefined) user.providerProfile.contentTags = contentTags;
+    if (pricePerMinute !== undefined) user.providerProfile.pricePerMinute = pricePerMinute;
+    if (tipMinimum !== undefined) user.providerProfile.tipMinimum = tipMinimum;
+    if (videoCallPrice !== undefined) user.providerProfile.videoCallPrice = videoCallPrice;
+    if (audioCallPrice !== undefined) user.providerProfile.audioCallPrice = audioCallPrice;
+    if (privateSextPrice !== undefined) user.providerProfile.privateSextPrice = privateSextPrice;
+  }
+
+  await user.save();
+
+  res.json({
+    success: true,
+    message: 'Profile updated successfully',
+    data: {
+      user: {
+        id: user._id,
+        bio: user.bio,
+        country: user.country,
+        profilePhoto: user.profilePhoto,
+        providerProfile: user.providerProfile,
+      }
+    }
+  });
+};

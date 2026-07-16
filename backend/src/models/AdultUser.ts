@@ -99,6 +99,9 @@ const adultUserSchema = new Schema<IAdultUser, IAdultUserModel>(
       isLive: { type: Boolean, default: false },
       pricePerMinute: { type: Number, default: 0 },
       tipMinimum: { type: Number, default: 0 },
+      videoCallPrice: { type: Number, default: 0 },
+      audioCallPrice: { type: Number, default: 0 },
+      privateSextPrice: { type: Number, default: 0 },
       totalEarnings: { type: Number, default: 0 },
       pendingPayout: { type: Number, default: 0 },
       verificationStatus: {
