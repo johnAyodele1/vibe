@@ -36,9 +36,13 @@ const NaughtyRooms: React.FC = () => {
               </div>
               <div className="flex flex-col items-end">
                 <div className="flex -space-x-2 mb-2">
-                  {[1, 2, 3].map(i => (
-                    <div key={i} className="w-8 h-8 rounded-full border-2 border-[var(--az-bg-secondary)] bg-gray-800 overflow-hidden">
-                      <img src="/placeholder.svg" className="w-full h-full object-cover" />
+                  {[
+                    "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=100&auto=format&fit=crop",
+                    "https://images.unsplash.com/photo-1517841905240-472988babdf9?q=80&w=100&auto=format&fit=crop",
+                    "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=100&auto=format&fit=crop"
+                  ].map((url, index) => (
+                    <div key={index} className="w-8 h-8 rounded-full border-2 border-[var(--az-bg-secondary)] bg-gray-800 overflow-hidden">
+                      <img src={url} className="w-full h-full object-cover" />
                     </div>
                   ))}
                   <div className="w-8 h-8 rounded-full border-2 border-[var(--az-bg-secondary)] bg-[var(--az-bg-tertiary)] flex items-center justify-center text-[10px] text-[var(--az-text-secondary)]">

@@ -92,9 +92,10 @@ const Connect: React.FC = () => {
           toast.error("Login failed");
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Auth error:", error);
-      toast.error("Network error. Please try again.");
+      const errorMessage = error.message || "Network error. Please try again.";
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }

@@ -1,7 +1,118 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { API_BASE_URL } from '../../config';
+
+const FALLBACK_PERFORMERS = [
+  {
+    _id: "mock-1",
+    firstName: "Amara Lux",
+    providerProfile: {
+      isLive: true,
+      rating: { average: 4.9, count: 120 },
+      viewerCount: 245,
+      country: "🇬🇧",
+      tags: ["sensual", "brunette", "tattooed"],
+    },
+    photos: [{ url: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=600&auto=format&fit=crop" }],
+    age: 23,
+    country: "London, UK"
+  },
+  {
+    _id: "mock-2",
+    firstName: "Elena Rostova",
+    providerProfile: {
+      isLive: true,
+      rating: { average: 4.8, count: 85 },
+      viewerCount: 189,
+      country: "🇫🇷",
+      tags: ["petite", "blonde", "elegant"],
+    },
+    photos: [{ url: "https://images.unsplash.com/photo-1517841905240-472988babdf9?q=80&w=600&auto=format&fit=crop" }],
+    age: 22,
+    country: "Paris, FR"
+  },
+  {
+    _id: "mock-3",
+    firstName: "Zara Brooks",
+    providerProfile: {
+      isLive: false,
+      rating: { average: 4.7, count: 50 },
+      viewerCount: 0,
+      country: "🇯🇵",
+      tags: ["exotic", "cosplay", "gaming"],
+    },
+    photos: [{ url: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=600&auto=format&fit=crop" }],
+    age: 24,
+    country: "Tokyo, JP"
+  },
+  {
+    _id: "mock-4",
+    firstName: "Sasha Grey",
+    providerProfile: {
+      isLive: true,
+      rating: { average: 4.9, count: 210 },
+      viewerCount: 312,
+      country: "🇩🇪",
+      tags: ["goth", "alt", "ebony"],
+    },
+    photos: [{ url: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?q=80&w=600&auto=format&fit=crop" }],
+    age: 26,
+    country: "Berlin, DE"
+  },
+  {
+    _id: "mock-5",
+    firstName: "Marcus Vance",
+    providerProfile: {
+      isLive: true,
+      rating: { average: 4.9, count: 42 },
+      viewerCount: 94,
+      country: "🇺🇸",
+      tags: ["muscle", "charismatic", "dominant"],
+    },
+    photos: [{ url: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=600&auto=format&fit=crop" }],
+    age: 25,
+    country: "New York, US"
+  },
+  {
+    _id: "mock-6",
+    firstName: "Dominic Cruz",
+    providerProfile: {
+      isLive: false,
+      rating: { average: 4.6, count: 31 },
+      viewerCount: 0,
+      country: "🇺🇸",
+      tags: ["athletic", "charming", "sensual"],
+    },
+    photos: [{ url: "https://images.unsplash.com/photo-1501196354995-cbb51c65aaea?q=80&w=600&auto=format&fit=crop" }],
+    age: 27,
+    country: "Miami, US"
+  }
+];
 
 const AdultHome: React.FC = () => {
+  const [performers, setPerformers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchPerformers = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/adult/providers`);
+        const data = await response.json();
+        if (data.success && data.data.providers && data.data.providers.length > 0) {
+          setPerformers(data.data.providers.slice(0, 6));
+        } else {
+          setPerformers(FALLBACK_PERFORMERS);
+        }
+      } catch (err) {
+        console.error('Failed to fetch performers for home page:', err);
+        setPerformers(FALLBACK_PERFORMERS);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchPerformers();
+  }, []);
+
   const serviceCards = [
     {
       id: 'cams',
@@ -158,35 +269,49 @@ const AdultHome: React.FC = () => {
           </div>
 
           <div className="flex gap-6 overflow-x-auto pb-8 no-scrollbar snap-x snap-mandatory">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
-              <div key={i} className="min-w-[280px] h-96 bg-[var(--az-bg-secondary)] rounded-xl border border-[var(--az-border)] overflow-hidden snap-start flex-shrink-0 group">
-                <div className="h-2/3 relative">
-                  <img src="/placeholder.svg" alt="Performer" className="w-full h-full object-cover filter blur-[2px] group-hover:blur-0 transition-all duration-500" />
-                  <div className="absolute top-3 left-3 flex gap-2">
-                    <span className="bg-[var(--az-accent-primary)] text-white text-[8px] font-bold px-1.5 py-0.5 rounded uppercase">🔴 Live</span>
-                    <span className="bg-black/50 text-white text-[8px] font-bold px-1.5 py-0.5 rounded uppercase">New</span>
-                  </div>
-                </div>
-                <div className="p-4 flex flex-col justify-between h-1/3">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h4 className="font-serif italic text-white text-lg">Amara Lux {i}</h4>
-                      <p className="text-[10px] text-[var(--az-text-secondary)] uppercase tracking-tighter">23 • London, UK</p>
+            {loading ? (
+              [1, 2, 3, 4].map(i => (
+                <div key={i} className="min-w-[280px] h-96 bg-[var(--az-bg-secondary)] rounded-xl border border-[var(--az-border)] overflow-hidden snap-start flex-shrink-0 animate-pulse" />
+              ))
+            ) : (
+              performers.map((p) => {
+                const photoUrl = p.profilePhoto || p.photos?.[0]?.url || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=600&auto=format&fit=crop";
+                const isLiveNow = p.providerProfile?.isLive;
+                const ratingVal = typeof p.providerProfile?.rating === 'object' ? p.providerProfile?.rating?.average : p.providerProfile?.rating;
+                const displayName = p.displayName || p.providerProfile?.stageName || p.firstName;
+                return (
+                  <div key={p._id} className="min-w-[280px] h-96 bg-[var(--az-bg-secondary)] rounded-xl border border-[var(--az-border)] overflow-hidden snap-start flex-shrink-0 group">
+                    <div className="h-2/3 relative">
+                      <img src={photoUrl} alt={displayName} className="w-full h-full object-cover filter blur-[1px] group-hover:blur-0 transition-all duration-500" />
+                      <div className="absolute top-3 left-3 flex gap-2">
+                        {isLiveNow && (
+                          <span className="bg-[var(--az-accent-primary)] text-white text-[8px] font-bold px-1.5 py-0.5 rounded uppercase">🔴 Live</span>
+                        )}
+                        <span className="bg-black/50 text-white text-[8px] font-bold px-1.5 py-0.5 rounded uppercase">New</span>
+                      </div>
                     </div>
-                    <div className="text-[var(--az-accent-gold)] text-sm">⭐ 4.9</div>
-                  </div>
-                  <div className="flex items-center justify-between mt-4">
-                    <div className="flex gap-2">
-                      <button className="w-8 h-8 rounded-full border border-[var(--az-border)] flex items-center justify-center hover:bg-[var(--az-accent-primary)] transition-colors">💬</button>
-                      <button className="w-8 h-8 rounded-full border border-[var(--az-border)] flex items-center justify-center hover:bg-[var(--az-accent-rose)] transition-colors">❤️</button>
+                    <div className="p-4 flex flex-col justify-between h-1/3">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <h4 className="font-serif italic text-white text-lg">{displayName}</h4>
+                          <p className="text-[10px] text-[var(--az-text-secondary)] uppercase tracking-tighter">{p.age || 23} • {p.country || 'London, UK'}</p>
+                        </div>
+                        <div className="text-[var(--az-accent-gold)] text-sm">⭐ {ratingVal || 4.9}</div>
+                      </div>
+                      <div className="flex items-center justify-between mt-4">
+                        <div className="flex gap-2">
+                          <button className="w-8 h-8 rounded-full border border-[var(--az-border)] flex items-center justify-center hover:bg-[var(--az-accent-primary)] transition-colors">💬</button>
+                          <button className="w-8 h-8 rounded-full border border-[var(--az-border)] flex items-center justify-center hover:bg-[var(--az-accent-rose)] transition-colors">❤️</button>
+                        </div>
+                        <button className="px-4 py-1.5 bg-[var(--az-bg-tertiary)] text-[var(--az-text-primary)] text-[10px] font-bold rounded-full border border-[var(--az-border)] hover:border-[var(--az-accent-gold)] transition-colors">
+                          Send Tip
+                        </button>
+                      </div>
                     </div>
-                    <button className="px-4 py-1.5 bg-[var(--az-bg-tertiary)] text-[var(--az-text-primary)] text-[10px] font-bold rounded-full border border-[var(--az-border)] hover:border-[var(--az-accent-gold)] transition-colors">
-                      Send Tip
-                    </button>
                   </div>
-                </div>
-              </div>
-            ))}
+                );
+              })
+            )}
           </div>
         </div>
       </section>
