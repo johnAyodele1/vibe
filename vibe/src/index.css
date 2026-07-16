@@ -7,6 +7,63 @@
   --background-dark: #221014;
   --background-discovery: #12080a;
   --background-messenger: #131315;
+
+  /* Adult Zone Design System */
+  --az-bg-primary: #0a0608;         /* Near-black with red undertone */
+  --az-bg-secondary: #130d10;       /* Cards, elevated surfaces */
+  --az-bg-tertiary: #1e1318;        /* Hover states, inputs */
+  --az-accent-primary: #c8102e;     /* Deep crimson — primary CTA */
+  --az-accent-gold: #c9a84c;        /* Gold — premium badges, borders */
+  --az-accent-rose: #e8496a;        /* Rose pink — secondary highlights */
+  --az-text-primary: #f5edf0;       /* Off-white, warm */
+  --az-text-secondary: #a08898;     /* Muted lavender-grey */
+  --az-text-muted: #5a3d47;         /* Very muted, hints and labels */
+  --az-border: rgba(200, 16, 46, 0.15); /* Subtle crimson border */
+  --az-glow: rgba(200, 16, 46, 0.3);   /* Glow effect color */
+}
+
+/* Adult Zone Global Styles */
+.az-glass {
+  background: rgba(19, 13, 16, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.az-grain {
+  position: relative;
+}
+
+.az-grain::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  opacity: 0.03;
+  z-index: 9999;
+}
+
+.az-card-hover {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.az-card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 0 24px var(--az-glow);
+  border-color: var(--az-accent-primary);
+}
+
+@keyframes az-pulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.3); opacity: 0.7; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.az-pulse-red {
+  animation: az-pulse 2s infinite;
 }
 
 /* Custom scrollbar hiding for cleaner mobile look */
