@@ -65,7 +65,7 @@ const LiveCams: React.FC = () => {
           >
             <div className="aspect-[3/4] relative overflow-hidden bg-black">
               <img
-                src={p.photos?.[0]?.url || "/placeholder.svg"}
+                src={p.photos?.[0]?.url || p.profilePhoto || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=600&auto=format&fit=crop"}
                 alt={p.firstName}
                 className="w-full h-full object-cover opacity-70 group-hover:scale-110 transition-transform duration-700"
               />

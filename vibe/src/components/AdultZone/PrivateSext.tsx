@@ -2,10 +2,10 @@ import React from 'react';
 
 const PrivateSext: React.FC = () => {
   const conversations = [
-    { name: 'Elena Rose', preview: 'Did you see what I sent you? 😉', time: '2m', unread: 2, online: true },
-    { name: 'Marcus Steel', preview: 'Can\'t wait for tonight...', time: '1h', unread: 0, online: true },
-    { name: 'Siren00', preview: 'Unlock the photo to see more.', time: '5h', unread: 1, online: false },
-    { name: 'VIP Hostess', preview: 'Welcome to your private lounge.', time: '1d', unread: 0, online: false },
+    { name: 'Elena Rose', preview: 'Did you see what I sent you? 😉', time: '2m', unread: 2, online: true, photoUrl: "https://images.unsplash.com/photo-1517841905240-472988babdf9?q=80&w=150&auto=format&fit=crop" },
+    { name: 'Marcus Steel', preview: 'Can\'t wait for tonight...', time: '1h', unread: 0, online: true, photoUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=150&auto=format&fit=crop" },
+    { name: 'Siren00', preview: 'Unlock the photo to see more.', time: '5h', unread: 1, online: false, photoUrl: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=150&auto=format&fit=crop" },
+    { name: 'VIP Hostess', preview: 'Welcome to your private lounge.', time: '1d', unread: 0, online: false, photoUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=150&auto=format&fit=crop" },
   ];
 
   return (
@@ -20,7 +20,7 @@ const PrivateSext: React.FC = () => {
             <div key={c.name} className="p-4 flex gap-4 cursor-pointer hover:bg-[var(--az-bg-secondary)] transition-colors border-b border-[var(--az-border)]/50 group">
               <div className="relative flex-shrink-0">
                 <div className="w-12 h-12 rounded-full overflow-hidden border border-[var(--az-border)]">
-                  <img src="/placeholder.svg" className="w-full h-full object-cover" />
+                  <img src={c.photoUrl} className="w-full h-full object-cover" />
                 </div>
                 {c.online && <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-[#070406]" />}
               </div>
@@ -49,7 +49,7 @@ const PrivateSext: React.FC = () => {
         <div className="p-4 az-glass border-b border-[var(--az-border)] flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full overflow-hidden border border-[var(--az-accent-rose)]">
-              <img src="/placeholder.svg" className="w-full h-full object-cover" />
+              <img src="https://images.unsplash.com/photo-1517841905240-472988babdf9?q=80&w=150&auto=format&fit=crop" className="w-full h-full object-cover" />
             </div>
             <div>
               <h3 className="font-bold text-[var(--az-text-primary)]">Elena Rose</h3>
@@ -79,7 +79,7 @@ const PrivateSext: React.FC = () => {
 
           <div className="flex flex-col items-start">
             <div className="relative w-64 h-80 rounded-2xl overflow-hidden border border-[var(--az-border)] shadow-2xl group cursor-pointer">
-              <img src="/placeholder.svg" className="w-full h-full object-cover filter blur-2xl transition-all group-hover:blur-xl" />
+              <img src="https://images.unsplash.com/photo-1524504388940-b1c1722653e1?q=80&w=400&auto=format&fit=crop" className="w-full h-full object-cover filter blur-2xl transition-all group-hover:blur-xl" />
               <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center text-center p-4">
                 <span className="text-3xl mb-4">🔒</span>
                 <p className="text-xs font-bold text-white mb-6 uppercase tracking-widest">Locked Media Content</p>

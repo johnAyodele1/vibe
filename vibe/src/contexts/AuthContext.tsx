@@ -7,6 +7,50 @@ import React, {
 } from "react";
 import { API_BASE_URL } from "../config";
 
+export function extractErrorMessage(data: any): string {
+  if (!data) return 'An unknown error occurred';
+
+  let detailsList: string[] = [];
+
+  // Zod validation details
+  const details = data.error?.details || data.details;
+  if (Array.isArray(details)) {
+    details.forEach((issue: any) => {
+      if (issue.message) {
+        const field = Array.isArray(issue.path) ? issue.path[issue.path.length - 1] : '';
+        const fieldName = field ? `${field}: ` : '';
+        detailsList.push(`${fieldName}${issue.message}`);
+      }
+    });
+  }
+
+  // Express validator errors
+  const errors = data.errors;
+  if (Array.isArray(errors)) {
+    errors.forEach((err: any) => {
+      if (err.msg) {
+        const field = err.path || err.param;
+        const fieldName = field ? `${field}: ` : '';
+        detailsList.push(`${fieldName}${err.msg}`);
+      }
+    });
+  }
+
+  if (detailsList.length > 0) {
+    return detailsList.join('; ');
+  }
+
+  // Fallback to main message
+  if (data.error?.message) {
+    return data.error.message;
+  }
+  if (data.message) {
+    return data.message;
+  }
+
+  return 'Request failed';
+}
+
 interface User {
   _id: string;
   firstName?: string;
@@ -109,10 +153,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setIsAuthenticated(true);
         return data.data.user || null;
       }
-      return null;
+      const errMsg = extractErrorMessage(data);
+      throw new Error(errMsg);
     } catch (error) {
       console.error("Login error:", error);
-      return null;
+      throw error;
     }
   };
 
@@ -135,10 +180,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setIsAuthenticated(true);
         return data.data.user || null;
       }
-      return null;
+      const errMsg = extractErrorMessage(data);
+      throw new Error(errMsg);
     } catch (error) {
       console.error("Google login error:", error);
-      return null;
+      throw error;
     }
   };
 
@@ -161,10 +207,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setIsAuthenticated(true);
         return data.data.user || null;
       }
-      return null;
+      const errMsg = extractErrorMessage(data);
+      throw new Error(errMsg);
     } catch (error) {
       console.error("Signup error:", error);
-      return null;
+      throw error;
     }
   };
 

@@ -85,7 +85,7 @@ const AdultZoneLayout: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-3">
                   <Link to="/wallet" className="w-8 h-8 rounded-full bg-[var(--az-bg-secondary)] border border-[var(--az-border)] flex items-center justify-center overflow-hidden">
-                    <img src="/placeholder.svg" alt="User" className="w-full h-full object-cover" />
+                    <img src={user?.profilePhoto || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=100&auto=format&fit=crop"} alt="User" className="w-full h-full object-cover" />
                   </Link>
                   <button onClick={logout} className="text-xs text-[var(--az-text-muted)] hover:text-white uppercase font-bold">Logout</button>
                 </div>

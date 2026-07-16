@@ -10,7 +10,14 @@ const HookUpTonight: React.FC = () => {
     distance: `${(Math.random() * 5).toFixed(1)} km`,
     intention: ['Tonight Only', 'FWB', 'Casual'][i % 3],
     isVerified: i % 3 === 0,
-    isOnline: i % 2 === 0
+    isOnline: i % 2 === 0,
+    photoUrl: [
+      "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=600&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1517841905240-472988babdf9?q=80&w=600&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=600&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?q=80&w=600&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=600&auto=format&fit=crop",
+    ][i % 5]
   }));
 
   return (
@@ -74,7 +81,7 @@ const HookUpTonight: React.FC = () => {
             <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4">
               {profiles.map((p) => (
                 <div key={p.id} className="relative aspect-[2/3] rounded-xl overflow-hidden border border-[var(--az-border)] bg-[var(--az-bg-secondary)] group cursor-pointer az-card-hover">
-                  <img src="/placeholder.svg" className="w-full h-full object-cover filter blur-sm group-hover:blur-0 transition-all duration-500" />
+                  <img src={p.photoUrl} className="w-full h-full object-cover filter blur-sm group-hover:blur-0 transition-all duration-500" />
 
                   {p.isOnline && (
                     <div className="absolute top-3 left-3 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-black shadow-[0_0_8px_green]" />
