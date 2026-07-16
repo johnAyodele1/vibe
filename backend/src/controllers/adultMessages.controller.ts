@@ -3,6 +3,8 @@ import AdultMessage from '../models/AdultMessage';
 import AdultUser from '../models/AdultUser';
 import { encrypt, decrypt } from '../services/encryptionService';
 import mongoose from 'mongoose';
+import { getClientPrice } from '../services/pricingService';
+import CreditTransaction from '../models/CreditTransaction';
 
 export const getConversations = async (req: Request, res: Response) => {
   const userId = req.adultUser?._id;
@@ -63,15 +65,59 @@ export const unlockMedia = async (req: Request, res: Response) => {
   if (!message) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Message not found' } });
   if (message.unlockedBy.includes(user._id)) return res.json({ success: true, message: 'Already unlocked' });
 
-  if (user.credits < message.unlockCost) {
+  const clientCost = getClientPrice(message.unlockCost);
+
+  if (user.credits < clientCost) {
     return res.status(400).json({ success: false, error: { code: 'INSUFFICIENT_CREDITS', message: 'Insufficient balance' } });
   }
 
-  user.credits -= message.unlockCost;
-  await user.save();
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
-  message.unlockedBy.push(user._id);
-  await message.save();
+  try {
+    user.credits -= clientCost;
+    await user.save({ session });
 
-  res.json({ success: true, message: 'Media unlocked', data: { mediaUrl: message.mediaUrl } });
+    const provider = await AdultUser.findById(message.senderId).session(session);
+    if (provider) {
+      provider.credits += message.unlockCost;
+      if (provider.providerProfile) {
+        provider.providerProfile.totalEarnings += message.unlockCost;
+      }
+      await provider.save({ session });
+    }
+
+    await CreditTransaction.create([{
+      userId: user._id,
+      type: 'tip',
+      amount: -clientCost,
+      usdAmount: 0,
+      description: `Unlock media from ${provider?.username || 'provider'}`,
+      relatedUserId: provider?._id,
+      status: 'completed',
+    }], { session });
+
+    if (provider) {
+      await CreditTransaction.create([{
+        userId: provider._id,
+        type: 'tip',
+        amount: message.unlockCost,
+        usdAmount: 0,
+        description: `Media unlock by ${user.username}`,
+        relatedUserId: user._id,
+        status: 'completed',
+      }], { session });
+    }
+
+    message.unlockedBy.push(user._id);
+    await message.save({ session });
+
+    await session.commitTransaction();
+    res.json({ success: true, message: 'Media unlocked', data: { mediaUrl: message.mediaUrl } });
+  } catch (err) {
+    await session.abortTransaction();
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Transaction failed' } });
+  } finally {
+    session.endSession();
+  }
 };

@@ -6,6 +6,10 @@ import CamViewer from '../models/CamViewer';
 import PrivateShowRequest from '../models/PrivateShowRequest';
 import { decrypt } from '../services/encryptionService';
 import mongoose from 'mongoose';
+import { getClientPrice } from '../services/pricingService';
+
+// Centralized map for active call tickers accessible across all socket connections in the adult namespace
+const activeCallTickers = new Map<string, NodeJS.Timeout>();
 
 export const setupAdultSocket = (io: Server) => {
   const adultNamespace = io.of('/adult');
@@ -98,6 +102,7 @@ export const setupAdultSocket = (io: Server) => {
         const session = await CamSession.findById(data.sessionId);
         if (!session) return;
 
+        // The user sees/agrees to the marked-up price, but we save the base creditsPerMinute in the show request
         const request = new PrivateShowRequest({
           sessionId: session._id,
           requesterId: socket.data.user._id,
@@ -133,7 +138,7 @@ export const setupAdultSocket = (io: Server) => {
           sessionId: request.sessionId
         });
 
-        // Start credit deduction ticker
+        // Start credit deduction ticker with 15% markup
         const ticker = setInterval(async () => {
           const session = await PrivateShowRequest.findById(request._id);
           if (!session || session.status !== 'accepted') {
@@ -142,7 +147,9 @@ export const setupAdultSocket = (io: Server) => {
           }
 
           const user = await AdultUser.findById(session.requesterId);
-          if (!user || user.credits < session.creditsPerMinute) {
+          const markedUpRate = getClientPrice(session.creditsPerMinute);
+
+          if (!user || user.credits < markedUpRate) {
             session.status = 'ended';
             session.endedAt = new Date();
             await session.save();
@@ -156,12 +163,12 @@ export const setupAdultSocket = (io: Server) => {
           const mongoSession = await mongoose.startSession();
           try {
             mongoSession.startTransaction();
-            await AdultUser.findByIdAndUpdate(user._id, { $inc: { credits: -session.creditsPerMinute } }, { session: mongoSession });
-            await AdultUser.findByIdAndUpdate(session.providerId, { $inc: { 'providerProfile.totalEarnings': session.creditsPerMinute } }, { session: mongoSession });
-            await PrivateShowRequest.findByIdAndUpdate(session._id, { $inc: { totalCreditsSpent: session.creditsPerMinute } }, { session: mongoSession });
+            await AdultUser.findByIdAndUpdate(user._id, { $inc: { credits: -markedUpRate } }, { session: mongoSession });
+            await AdultUser.findByIdAndUpdate(session.providerId, { $inc: { credits: session.creditsPerMinute, 'providerProfile.totalEarnings': session.creditsPerMinute } }, { session: mongoSession });
+            await PrivateShowRequest.findByIdAndUpdate(session._id, { $inc: { totalCreditsSpent: markedUpRate } }, { session: mongoSession });
             await mongoSession.commitTransaction();
 
-            adultNamespace.to(`user:${session.requesterId}`).emit('credits:updated', user.credits - session.creditsPerMinute);
+            adultNamespace.to(`user:${session.requesterId}`).emit('credits:updated', user.credits - markedUpRate);
           } catch (e) {
             await mongoSession.abortTransaction();
           } finally {
@@ -173,11 +180,133 @@ export const setupAdultSocket = (io: Server) => {
       }
     });
 
+    // --- Call Signaling & Call Billing ---
+    socket.on('call:request', async (data: { providerId: string, isVideo: boolean }) => {
+      try {
+        const provider = await AdultUser.findById(data.providerId);
+        if (!provider || provider.role !== 'provider' || !provider.providerProfile) {
+          socket.emit('call:error', { message: 'Provider not found or invalid' });
+          return;
+        }
+
+        const rate = data.isVideo ? (provider.providerProfile.videoCallPrice || 0) : (provider.providerProfile.audioCallPrice || 0);
+        const userPrice = getClientPrice(rate);
+
+        if (socket.data.user.credits < userPrice) {
+          socket.emit('call:error', { message: 'Insufficient credits to start this call' });
+          return;
+        }
+
+        adultNamespace.to(`user:${provider._id}`).emit('call:incoming', {
+          callerId: socket.data.user._id,
+          callerUsername: socket.data.user.username,
+          isVideo: data.isVideo,
+          rate: userPrice,
+        });
+      } catch (err) {
+        console.error('Call request error:', err);
+      }
+    });
+
+    socket.on('call:accept', async (data: { callerId: string, isVideo: boolean }) => {
+      try {
+        const provider = socket.data.user;
+        const caller = await AdultUser.findById(data.callerId);
+        if (!caller) return;
+
+        const rate = data.isVideo ? (provider.providerProfile.videoCallPrice || 0) : (provider.providerProfile.audioCallPrice || 0);
+        const userPrice = getClientPrice(rate);
+
+        if (caller.credits < userPrice) {
+          socket.emit('call:error', { message: 'User has insufficient credits' });
+          adultNamespace.to(`user:${data.callerId}`).emit('call:rejected', { reason: 'insufficient_credits' });
+          return;
+        }
+
+        const callId = `${data.callerId}_${provider._id}`;
+
+        adultNamespace.to(`user:${data.callerId}`).emit('call:accepted', {
+          providerId: provider._id,
+          isVideo: data.isVideo,
+          callId
+        });
+
+        socket.join(`call:${callId}`);
+
+        const ticker = setInterval(async () => {
+          const currentUser = await AdultUser.findById(data.callerId);
+          const currentProvider = await AdultUser.findById(provider._id);
+
+          if (!currentUser || !currentProvider || currentUser.credits < userPrice) {
+            clearInterval(ticker);
+            activeCallTickers.delete(callId);
+            adultNamespace.to(`call:${callId}`).emit('call:ended', { reason: 'insufficient_credits' });
+            return;
+          }
+
+          const mongoSession = await mongoose.startSession();
+          try {
+            mongoSession.startTransaction();
+            await AdultUser.findByIdAndUpdate(currentUser._id, { $inc: { credits: -userPrice } }, { session: mongoSession });
+            await AdultUser.findByIdAndUpdate(currentProvider._id, { $inc: { credits: rate, 'providerProfile.totalEarnings': rate } }, { session: mongoSession });
+            await mongoSession.commitTransaction();
+
+            adultNamespace.to(`user:${currentUser._id}`).emit('credits:updated', currentUser.credits - userPrice);
+          } catch (e) {
+            await mongoSession.abortTransaction();
+          } finally {
+            mongoSession.endSession();
+          }
+        }, 60000);
+
+        activeCallTickers.set(callId, ticker);
+      } catch (err) {
+        console.error('Call accept error:', err);
+      }
+    });
+
+    socket.on('call:reject', (data: { callerId: string }) => {
+      adultNamespace.to(`user:${data.callerId}`).emit('call:rejected', { reason: 'declined' });
+    });
+
+    socket.on('call:end', (data: { callId: string }) => {
+      const ticker = activeCallTickers.get(data.callId);
+      if (ticker) {
+        clearInterval(ticker);
+        activeCallTickers.delete(data.callId);
+      }
+      adultNamespace.to(`call:${data.callId}`).emit('call:ended', { reason: 'ended' });
+    });
+
+    socket.on('call:join', (data: { callId: string }) => {
+      socket.join(`call:${data.callId}`);
+    });
+
+    socket.on('call:offer', (data: { callId: string, offer: any }) => {
+      socket.to(`call:${data.callId}`).emit('call:offer', data);
+    });
+
+    socket.on('call:answer', (data: { callId: string, answer: any }) => {
+      socket.to(`call:${data.callId}`).emit('call:answer', data);
+    });
+
+    socket.on('call:ice-candidate', (data: { callId: string, candidate: any }) => {
+      socket.to(`call:${data.callId}`).emit('call:ice-candidate', data);
+    });
+
     // Individual user room for notifications
     socket.join(`user:${socket.data.user._id}`);
 
     socket.on('disconnect', () => {
       console.log(`Adult Socket disconnected: ${socket.id}`);
+      // Clean up any active tickers associated with this user/provider
+      for (const [callId, ticker] of activeCallTickers.entries()) {
+        if (callId.includes(socket.data.user._id.toString())) {
+          clearInterval(ticker);
+          activeCallTickers.delete(callId);
+          adultNamespace.to(`call:${callId}`).emit('call:ended', { reason: 'participant_disconnected' });
+        }
+      }
     });
   });
 };
