@@ -9,7 +9,7 @@ const AdultHome: React.FC = () => {
       tagline: 'Watch stunning performers live, tip to interact',
       icon: '📹',
       stats: '🔴 340 online',
-      path: '/adult/cams',
+      path: '/cams',
       color: 'from-red-900/40'
     },
     {
@@ -18,7 +18,7 @@ const AdultHome: React.FC = () => {
       tagline: 'Join themed group chat rooms, no limits',
       icon: '🔞',
       stats: '🔴 1.2K active',
-      path: '/adult/rooms',
+      path: '/rooms',
       color: 'from-purple-900/40'
     },
     {
@@ -27,7 +27,7 @@ const AdultHome: React.FC = () => {
       tagline: 'One-on-one explicit text & photo exchange',
       icon: '💬',
       stats: '🔴 3.4K chatting',
-      path: '/adult/sext',
+      path: '/sext',
       color: 'from-pink-900/40'
     },
     {
@@ -36,7 +36,7 @@ const AdultHome: React.FC = () => {
       tagline: 'Matched with a random adult, no names needed',
       icon: '🎲',
       stats: '🔴 890 waiting',
-      path: '/adult/random',
+      path: '/random',
       color: 'from-indigo-900/40'
     },
     {
@@ -45,7 +45,7 @@ const AdultHome: React.FC = () => {
       tagline: 'Find someone nearby for tonight',
       icon: '🌙',
       stats: '🔴 150 nearby',
-      path: '/adult/hookup',
+      path: '/hookup',
       color: 'from-orange-900/40'
     },
     {
@@ -54,7 +54,7 @@ const AdultHome: React.FC = () => {
       tagline: 'Premium members only — exclusive content',
       icon: '⭐',
       stats: '🔴 Elite access',
-      path: '/adult/vip',
+      path: '/vip',
       color: 'from-yellow-900/40'
     }
   ];
@@ -94,6 +94,15 @@ const AdultHome: React.FC = () => {
             <button className="w-full sm:w-auto px-10 py-4 border-2 border-[var(--az-accent-rose)] text-[var(--az-accent-rose)] font-bold uppercase tracking-widest rounded-full hover:bg-[var(--az-accent-rose)] hover:text-white transition-all">
               View Live Now
             </button>
+          </div>
+
+          <div className="mt-8">
+            <Link
+              to="/dating"
+              className="inline-flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-pink-500 to-red-500 hover:from-pink-600 hover:to-red-600 text-white font-bold uppercase tracking-wider rounded-full shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5"
+            >
+              <span>Want something deeper? Join the Dating App ❤️</span>
+            </Link>
           </div>
         </div>
       </section>
@@ -143,7 +152,7 @@ const AdultHome: React.FC = () => {
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between mb-10">
             <h2 className="text-3xl font-serif italic text-[var(--az-text-primary)]">Recommended For You</h2>
-            <Link to="/adult/cams" className="text-[10px] font-bold uppercase tracking-widest text-[var(--az-accent-gold)] hover:underline">
+            <Link to="/cams" className="text-[10px] font-bold uppercase tracking-widest text-[var(--az-accent-gold)] hover:underline">
               View All
             </Link>
           </div>

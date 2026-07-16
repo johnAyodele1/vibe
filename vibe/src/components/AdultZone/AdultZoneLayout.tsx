@@ -32,11 +32,11 @@ const AdultZoneLayout: React.FC = () => {
   }
 
   const navLinks = [
-    { name: 'Live Cams', path: '/adult/cams' },
-    { name: 'Naughty Rooms', path: '/adult/rooms' },
-    { name: 'Private Sext', path: '/adult/sext' },
-    { name: 'Random Stranger', path: '/adult/random' },
-    { name: 'Hook Up Tonight', path: '/adult/hookup' },
+    { name: 'Live Cams', path: '/cams' },
+    { name: 'Naughty Rooms', path: '/rooms' },
+    { name: 'Private Sext', path: '/sext' },
+    { name: 'Random Stranger', path: '/random' },
+    { name: 'Hook Up Tonight', path: '/hookup' },
   ];
 
   return (
@@ -44,7 +44,7 @@ const AdultZoneLayout: React.FC = () => {
       {/* Top Navigation */}
       <nav className="sticky top-0 z-50 az-glass border-b border-[var(--az-border)] px-4 py-3 md:px-8">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <Link to="/adult" className="flex items-center gap-2 group">
+          <Link to="/" className="flex items-center gap-2 group">
             <div className="w-8 h-8 bg-[var(--az-accent-primary)] rounded flex items-center justify-center text-white font-bold text-lg shadow-[0_0_10px_var(--az-glow)] group-hover:scale-110 transition-transform">
               V
             </div>
@@ -71,13 +71,20 @@ const AdultZoneLayout: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-4">
+            <Link
+              to="/dating"
+              className="hidden lg:flex items-center gap-1.5 px-4 py-1.5 bg-gradient-to-r from-pink-500/20 to-red-500/20 hover:from-pink-500/30 hover:to-red-500/30 border border-pink-500/30 hover:border-pink-500/50 text-[var(--az-accent-rose)] hover:text-white rounded-full text-xs font-bold transition-all duration-300"
+            >
+              <span>Something Deeper? ❤️</span>
+            </Link>
+
             {isAuthenticated ? (
               <>
                 <div className="hidden xs:flex items-center bg-[var(--az-bg-tertiary)] px-3 py-1.5 rounded-full border border-[var(--az-border)]">
                   <span className="text-xs font-mono text-[var(--az-accent-gold)]">💎 {user?.credits || 0} Credits</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <Link to="/adult/wallet" className="w-8 h-8 rounded-full bg-[var(--az-bg-secondary)] border border-[var(--az-border)] flex items-center justify-center overflow-hidden">
+                  <Link to="/wallet" className="w-8 h-8 rounded-full bg-[var(--az-bg-secondary)] border border-[var(--az-border)] flex items-center justify-center overflow-hidden">
                     <img src="/placeholder.svg" alt="User" className="w-full h-full object-cover" />
                   </Link>
                   <button onClick={logout} className="text-xs text-[var(--az-text-muted)] hover:text-white uppercase font-bold">Logout</button>
@@ -109,11 +116,11 @@ const AdultZoneLayout: React.FC = () => {
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 az-glass border-t border-[var(--az-border)] pb-safe">
         <div className="flex justify-around items-center h-16">
           {[
-            { icon: '🔴', path: '/adult', label: 'Home' },
-            { icon: '📹', path: '/adult/cams', label: 'Live' },
-            { icon: '💬', path: '/adult/sext', label: 'Sext' },
-            { icon: '🎲', path: '/adult/random', label: 'Random' },
-            { icon: '🌙', path: '/adult/hookup', label: 'Hook Up' },
+            { icon: '🔴', path: '/', label: 'Home' },
+            { icon: '📹', path: '/cams', label: 'Live' },
+            { icon: '💬', path: '/sext', label: 'Sext' },
+            { icon: '🎲', path: '/random', label: 'Random' },
+            { icon: '🌙', path: '/hookup', label: 'Hook Up' },
           ].map((item) => (
             <Link
               key={item.path}

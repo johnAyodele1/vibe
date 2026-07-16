@@ -70,8 +70,21 @@ function App() {
     <>
       {isAuthenticated && <CallManager />}
       <Routes>
+        {/* Adult Zone is now the main layout at / */}
+        <Route path="/" element={<AdultZoneLayout />}>
+          <Route index element={<AdultHome />} />
+          <Route path="cams" element={<LiveCams />} />
+          <Route path="rooms" element={<NaughtyRooms />} />
+          <Route path="sext" element={<PrivateSext />} />
+          <Route path="random" element={<RandomStranger />} />
+          <Route path="hookup" element={<HookUpTonight />} />
+          <Route path="vip" element={<VIPLounge />} />
+          <Route path="wallet" element={<Wallet />} />
+        </Route>
+
+        {/* Dating App onboarding and entry path */}
         <Route
-          path="/"
+          path="/dating"
           element={
             isAuthenticated ? (
               isProfileComplete() ? (
@@ -84,6 +97,7 @@ function App() {
             )
           }
         />
+
         <Route path="/auth" element={<Auth />} />
         <Route path="/auth/callback" element={<GoogleCallback />} />
 
@@ -207,18 +221,6 @@ function App() {
             )
           }
         />
-
-        {/* Adult Zone Routes */}
-        <Route path="/adult" element={<AdultZoneLayout />}>
-          <Route index element={<AdultHome />} />
-          <Route path="cams" element={<LiveCams />} />
-          <Route path="rooms" element={<NaughtyRooms />} />
-          <Route path="sext" element={<PrivateSext />} />
-          <Route path="random" element={<RandomStranger />} />
-          <Route path="hookup" element={<HookUpTonight />} />
-          <Route path="vip" element={<VIPLounge />} />
-          <Route path="wallet" element={<Wallet />} />
-        </Route>
 
         {/* Default redirect */}
         <Route path="*" element={<Navigate to="/" replace />} />
