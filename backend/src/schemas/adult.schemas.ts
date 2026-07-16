@@ -3,11 +3,7 @@ import { z } from 'zod';
 export const registerSchema = z.object({
   body: z.object({
     email: z.string().email(),
-    password: z.string()
-      .min(12)
-      .regex(/[A-Z]/, 'Must contain at least one uppercase letter')
-      .regex(/[0-9]/, 'Must contain at least one number')
-      .regex(/[^A-Za-z0-9]/, 'Must contain at least one special character'),
+    password: z.string().min(6),
     username: z.string().min(3),
     displayName: z.string().min(1),
     dateOfBirth: z.string().refine((dob) => {

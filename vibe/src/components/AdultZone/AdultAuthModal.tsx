@@ -13,9 +13,10 @@ const AdultAuthModal: React.FC<AdultAuthModalProps> = ({ isOpen, onClose, defaul
   const [formData, setFormData] = useState({
     email: '',
     password: '',
-    firstName: '',
+    username: '',
+    displayName: '',
     dateOfBirth: '',
-    gender: 'Female'
+    country: ''
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -72,14 +73,24 @@ const AdultAuthModal: React.FC<AdultAuthModalProps> = ({ isOpen, onClose, defaul
                 </button>
               </div>
 
-              <input
-                type="text"
-                placeholder="First Name"
-                required
-                className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white focus:border-[var(--az-accent-rose)] outline-none"
-                value={formData.firstName}
-                onChange={e => setFormData({ ...formData, firstName: e.target.value })}
-              />
+              <div className="grid grid-cols-2 gap-4">
+                <input
+                  type="text"
+                  placeholder="Username"
+                  required
+                  className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white focus:border-[var(--az-accent-rose)] outline-none"
+                  value={formData.username}
+                  onChange={e => setFormData({ ...formData, username: e.target.value })}
+                />
+                <input
+                  type="text"
+                  placeholder={role === 'provider' ? 'Stage Name' : 'Display Name'}
+                  required
+                  className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white focus:border-[var(--az-accent-rose)] outline-none"
+                  value={formData.displayName}
+                  onChange={e => setFormData({ ...formData, displayName: e.target.value })}
+                />
+              </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <input
@@ -89,16 +100,14 @@ const AdultAuthModal: React.FC<AdultAuthModalProps> = ({ isOpen, onClose, defaul
                   value={formData.dateOfBirth}
                   onChange={e => setFormData({ ...formData, dateOfBirth: e.target.value })}
                 />
-                <select
-                  className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white outline-none"
-                  value={formData.gender}
-                  onChange={e => setFormData({ ...formData, gender: e.target.value })}
-                >
-                  <option value="Female">Female</option>
-                  <option value="Male">Male</option>
-                  <option value="Trans">Trans</option>
-                  <option value="Other">Other</option>
-                </select>
+                <input
+                  type="text"
+                  placeholder="Country"
+                  required
+                  className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white focus:border-[var(--az-accent-rose)] outline-none"
+                  value={formData.country}
+                  onChange={e => setFormData({ ...formData, country: e.target.value })}
+                />
               </div>
             </>
           )}
