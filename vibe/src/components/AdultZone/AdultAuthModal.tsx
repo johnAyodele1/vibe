@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
+import { useCountries } from '../../hooks/useLocation';
 
 interface AdultAuthModalProps {
   isOpen: boolean;
@@ -21,6 +22,7 @@ const AdultAuthModal: React.FC<AdultAuthModalProps> = ({ isOpen, onClose, defaul
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login, signup } = useAdultAuth();
+  const { data: countries } = useCountries();
 
   if (!isOpen) return null;
 
@@ -108,14 +110,26 @@ const AdultAuthModal: React.FC<AdultAuthModalProps> = ({ isOpen, onClose, defaul
                   value={formData.dateOfBirth}
                   onChange={e => setFormData({ ...formData, dateOfBirth: e.target.value })}
                 />
-                <input
-                  type="text"
-                  placeholder="Country"
+                <select
                   required
-                  className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white focus:border-[var(--az-accent-rose)] outline-none"
+                  className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white outline-none focus:border-[var(--az-accent-rose)]"
                   value={formData.country}
                   onChange={e => setFormData({ ...formData, country: e.target.value })}
-                />
+                >
+                  <option value="" disabled>Country</option>
+                  {Array.isArray(countries) && countries.map(c => (
+                    <option key={c.code} value={c.name} className="bg-[var(--az-bg-secondary)] text-white">
+                      {c.flag} {c.name}
+                    </option>
+                  ))}
+                  {(!countries || countries.length === 0) && (
+                    <>
+                      <option value="United Kingdom" className="bg-[var(--az-bg-secondary)] text-white">🇬🇧 United Kingdom</option>
+                      <option value="United States" className="bg-[var(--az-bg-secondary)] text-white">🇺🇸 United States</option>
+                      <option value="Nigeria" className="bg-[var(--az-bg-secondary)] text-white">🇳🇬 Nigeria</option>
+                    </>
+                  )}
+                </select>
               </div>
             </>
           )}

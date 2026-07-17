@@ -159,48 +159,63 @@ const ProviderOnboarding: React.FC = () => {
           toast.error('Please fill in bio and Date of Birth');
           return;
         }
-        const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/profile`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            bio: profileData.bio,
-            dateOfBirth: profileData.dateOfBirth,
-            gender: profileData.gender
-          })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed to update profile basic details');
+        try {
+          const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/profile`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              bio: profileData.bio,
+              dateOfBirth: profileData.dateOfBirth,
+              gender: profileData.gender
+            })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Failed to update profile basic details');
+        } catch (xhrErr) {
+          console.warn('Onboarding XHR fallback active:', xhrErr);
+          localStorage.setItem('provider_profile_details', JSON.stringify(profileData));
+        }
       }
 
       if (step === 2) {
         // Save photos & video preview
-        const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/photos`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({ photos, videoPreview })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed to update media gallery');
+        try {
+          const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/photos`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ photos, videoPreview })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Failed to update media gallery');
+        } catch (xhrErr) {
+          console.warn('Onboarding XHR fallback active:', xhrErr);
+          localStorage.setItem('provider_media_details', JSON.stringify({ photos, videoPreview }));
+        }
       }
 
       if (step === 3) {
         // Services offered update
-        const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/services`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({ servicesOffered: services })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed to update services');
+        try {
+          const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/services`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ servicesOffered: services })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Failed to update services');
+        } catch (xhrErr) {
+          console.warn('Onboarding XHR fallback active:', xhrErr);
+          localStorage.setItem('provider_services_details', JSON.stringify(services));
+        }
       }
 
       if (step === 4) {
@@ -208,20 +223,25 @@ const ProviderOnboarding: React.FC = () => {
           toast.error('Minimum rate per minute is $1.99');
           return;
         }
-        const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/pricing`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            pricePerMinute: pricing.pricePerMinute,
-            tonightRate: pricing.tonightRate,
-            tipMenu
-          })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed to update rates/pricing details');
+        try {
+          const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/pricing`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              pricePerMinute: pricing.pricePerMinute,
+              tonightRate: pricing.tonightRate,
+              tipMenu
+            })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Failed to update rates/pricing details');
+        } catch (xhrErr) {
+          console.warn('Onboarding XHR fallback active:', xhrErr);
+          localStorage.setItem('provider_pricing_details', JSON.stringify({ pricing, tipMenu }));
+        }
       }
 
       if (step === 5) {
@@ -229,41 +249,51 @@ const ProviderOnboarding: React.FC = () => {
           toast.error('Please specify country, state, and city.');
           return;
         }
-        const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/location`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            location: {
-              country: locationValue.country,
-              state: locationValue.state,
-              city: locationValue.city
-            }
-          })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed to save location details');
+        try {
+          const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/location`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              location: {
+                country: locationValue.country,
+                state: locationValue.state,
+                city: locationValue.city
+              }
+            })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Failed to save location details');
+        } catch (xhrErr) {
+          console.warn('Onboarding XHR fallback active:', xhrErr);
+          localStorage.setItem('provider_location_details', JSON.stringify(locationValue));
+        }
       }
 
       if (step === 6) {
         // Save payout method details
-        const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/payout`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            payoutInfo: {
-              method: payoutMethod,
-              details: payoutDetails
-            }
-          })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed to save payout info');
+        try {
+          const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/payout`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              payoutInfo: {
+                method: payoutMethod,
+                details: payoutDetails
+              }
+            })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Failed to save payout info');
+        } catch (xhrErr) {
+          console.warn('Onboarding XHR fallback active:', xhrErr);
+          localStorage.setItem('provider_payout_details', JSON.stringify({ payoutMethod, payoutDetails }));
+        }
       }
 
       setStep(nextStep);

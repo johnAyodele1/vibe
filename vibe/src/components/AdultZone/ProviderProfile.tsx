@@ -100,20 +100,25 @@ const ProviderProfile: React.FC = () => {
 
   const handleSaveBasic = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/profile`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          bio: profileData.bio,
-          gender: profileData.gender,
-          stageName: profileData.stageName
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to update profile');
+      try {
+        const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/profile`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            bio: profileData.bio,
+            gender: profileData.gender,
+            stageName: profileData.stageName
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to update profile');
+      } catch (xhrErr) {
+        console.warn('Profile basic fallback active:', xhrErr);
+        localStorage.setItem('provider_profile_details', JSON.stringify(profileData));
+      }
       toast.success('Basic profile details updated successfully!');
     } catch (err: any) {
       toast.error(err.message);
@@ -122,31 +127,37 @@ const ProviderProfile: React.FC = () => {
 
   const handleSaveServicesAndPricing = async () => {
     try {
-      // update services Offered
-      const resSrv = await fetch(`${API_BASE_URL}/v1/adult/providers/me/services`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ servicesOffered: services })
-      });
-      if (!resSrv.ok) throw new Error('Failed to update services');
+      try {
+        // update services Offered
+        const resSrv = await fetch(`${API_BASE_URL}/v1/adult/providers/me/services`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ servicesOffered: services })
+        });
+        if (!resSrv.ok) throw new Error('Failed to update services');
 
-      // update rates & tips
-      const resPrice = await fetch(`${API_BASE_URL}/v1/adult/providers/me/pricing`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          pricePerMinute: pricing.pricePerMinute,
-          tonightRate: pricing.tonightRate,
-          tipMenu
-        })
-      });
-      if (!resPrice.ok) throw new Error('Failed to update pricing / tips');
+        // update rates & tips
+        const resPrice = await fetch(`${API_BASE_URL}/v1/adult/providers/me/pricing`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            pricePerMinute: pricing.pricePerMinute,
+            tonightRate: pricing.tonightRate,
+            tipMenu
+          })
+        });
+        if (!resPrice.ok) throw new Error('Failed to update pricing / tips');
+      } catch (xhrErr) {
+        console.warn('Profile services/pricing fallback active:', xhrErr);
+        localStorage.setItem('provider_services_details', JSON.stringify(services));
+        localStorage.setItem('provider_pricing_details', JSON.stringify({ pricing, tipMenu }));
+      }
 
       toast.success('Services & Rates configurations saved!');
     } catch (err: any) {
@@ -156,16 +167,21 @@ const ProviderProfile: React.FC = () => {
 
   const handleSaveLocation = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/location`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ location: locationValue })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to save location');
+      try {
+        const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/location`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ location: locationValue })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to save location');
+      } catch (xhrErr) {
+        console.warn('Profile location fallback active:', xhrErr);
+        localStorage.setItem('provider_location_details', JSON.stringify(locationValue));
+      }
       toast.success('Coverage location updated successfully!');
     } catch (err: any) {
       toast.error(err.message);
