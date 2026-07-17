@@ -20,6 +20,7 @@ import adminRoutes from './routes/admin';
 import analyticsRoutes from './routes/analytics';
 import configRoutes from './routes/config';
 import adultRoutes from './routes/adult.routes';
+import v1Routes from './routes/v1.routes';
 
 dotenv.config();
 
@@ -111,6 +112,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/config', configRoutes);
 app.use('/api/adult', adultRoutes);
+app.use('/api/v1', v1Routes);
 
 // Health check endpoint
 app.get('/api/health', (req: Request, res: Response) => {

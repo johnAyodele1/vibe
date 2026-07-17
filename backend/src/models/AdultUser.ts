@@ -115,6 +115,35 @@ const adultUserSchema = new Schema<IAdultUser, IAdultUserModel>(
         average: { type: Number, default: 0 },
         count: { type: Number, default: 0 },
       },
+      tonightRate: Number,
+      tipMenu: [
+        {
+          amount: Number,
+          action: String,
+        }
+      ],
+      payoutInfo: {
+        method: String,
+        details: Schema.Types.Mixed,
+      },
+      photos: [String],
+      videoPreview: String,
+      servicesOffered: [String],
+      location: {
+        country: {
+          code: String,
+          name: String,
+        },
+        state: {
+          code: String,
+          name: String,
+        },
+        city: {
+          name: String,
+          lat: Number,
+          lng: Number,
+        },
+      },
     },
   },
   {
