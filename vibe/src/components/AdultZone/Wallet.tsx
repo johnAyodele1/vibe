@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { API_BASE_URL } from '../../config';
 
 const Wallet: React.FC = () => {
+  const navigate = useNavigate();
+  const { user } = useAdultAuth();
   const [wallet, setWallet] = useState<any>(null);
   const [bundles, setBundles] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
@@ -79,10 +83,14 @@ const Wallet: React.FC = () => {
   };
 
   useEffect(() => {
+    if (user && user.role === 'provider') {
+      navigate('/adult/provider/dashboard');
+      return;
+    }
     fetchWallet();
     fetchBundles();
     fetchTransactions();
-  }, [token]);
+  }, [token, user, navigate]);
 
   const handlePurchase = async (bundleId: string) => {
     if (!token) {

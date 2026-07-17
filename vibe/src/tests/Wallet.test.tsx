@@ -1,6 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import Wallet from '../components/AdultZone/Wallet';
+
+vi.mock('../contexts/AdultAuthContext', () => ({
+  useAdultAuth: () => ({
+    user: { id: 'user1', email: 'member@vibe.com', role: 'user' },
+    isAuthenticated: true
+  })
+}));
 
 const mockFetch = vi.fn();
 (globalThis as any).fetch = mockFetch;
@@ -48,7 +56,11 @@ describe('Wallet Component', () => {
   });
 
   it('displays credit balance and estimated USD value from API', async () => {
-    render(<Wallet />);
+    render(
+      <MemoryRouter>
+        <Wallet />
+      </MemoryRouter>
+    );
 
     await waitFor(() => {
       expect(screen.getByText('240')).toBeInTheDocument();
@@ -58,7 +70,11 @@ describe('Wallet Component', () => {
   });
 
   it('renders credit bundles from API with badges', async () => {
-    render(<Wallet />);
+    render(
+      <MemoryRouter>
+        <Wallet />
+      </MemoryRouter>
+    );
 
     await waitFor(() => {
       expect(screen.getByText('Starter')).toBeInTheDocument();
@@ -68,7 +84,11 @@ describe('Wallet Component', () => {
   });
 
   it('renders transactions table from API', async () => {
-    render(<Wallet />);
+    render(
+      <MemoryRouter>
+        <Wallet />
+      </MemoryRouter>
+    );
 
     await waitFor(() => {
       expect(screen.getByText('purchase')).toBeInTheDocument();
@@ -77,7 +97,11 @@ describe('Wallet Component', () => {
   });
 
   it('handles credit bundle purchase interaction', async () => {
-    render(<Wallet />);
+    render(
+      <MemoryRouter>
+        <Wallet />
+      </MemoryRouter>
+    );
 
     await waitFor(() => {
       expect(screen.getByText('Starter')).toBeInTheDocument();

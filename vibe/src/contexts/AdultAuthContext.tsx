@@ -58,8 +58,8 @@ interface AdultAuthContextType {
   user: AdultUser | null;
   isAuthenticated: boolean;
   loading: boolean;
-  login: (credentials: any) => Promise<void>;
-  signup: (data: any) => Promise<void>;
+  login: (credentials: any) => Promise<any>;
+  signup: (data: any) => Promise<any>;
   logout: () => void;
 }
 
@@ -102,6 +102,7 @@ export const AdultAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (data.success) {
       localStorage.setItem('adultAccessToken', data.data.tokens.accessToken);
       setUser(data.data.user);
+      return data.data.user;
     } else {
       const errMsg = extractErrorMessage(data);
       throw new Error(errMsg);
@@ -118,6 +119,7 @@ export const AdultAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (result.success) {
       localStorage.setItem('adultAccessToken', result.data.tokens.accessToken);
       setUser(result.data.user);
+      return result.data.user;
     } else {
       const errMsg = extractErrorMessage(result);
       throw new Error(errMsg);
