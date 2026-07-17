@@ -39,9 +39,17 @@ const Wallet: React.FC = () => {
     try {
       const res = await fetch(`${API_BASE_URL}/v1/adult/wallet/bundles`);
       const data = await res.json();
-      setBundles(data);
+      if (Array.isArray(data)) {
+        setBundles(data);
+      } else if (data && Array.isArray(data.data)) {
+        setBundles(data.data);
+      } else {
+        console.error('Bundles data is not an array:', data);
+        setBundles([]);
+      }
     } catch (err) {
       console.error('Failed to fetch bundles:', err);
+      setBundles([]);
     } finally {
       setLoadingBundles(false);
     }
@@ -54,11 +62,17 @@ const Wallet: React.FC = () => {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
-      if (data.transactions) {
+      if (data && Array.isArray(data.transactions)) {
         setTransactions(data.transactions);
+      } else if (Array.isArray(data)) {
+        setTransactions(data);
+      } else {
+        console.error('Transactions data is not an array:', data);
+        setTransactions([]);
       }
     } catch (err) {
       console.error('Failed to fetch transactions:', err);
+      setTransactions([]);
     } finally {
       setLoadingTx(false);
     }
@@ -150,7 +164,7 @@ const Wallet: React.FC = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-20">
-          {bundles.map((bundle) => {
+          {Array.isArray(bundles) && bundles.map((bundle) => {
             const isBestValue = bundle.badge === 'Best Value';
             return (
               <div
@@ -198,7 +212,7 @@ const Wallet: React.FC = () => {
           </div>
         ) : (
           <div className="bg-[var(--az-bg-secondary)] rounded-2xl border border-[var(--az-border)] overflow-hidden">
-            {transactions.length === 0 ? (
+            {!Array.isArray(transactions) || transactions.length === 0 ? (
               <div className="p-8 text-center text-sm text-[var(--az-text-secondary)] font-serif italic">
                 No transactions yet. Purchases and tips will appear here.
               </div>

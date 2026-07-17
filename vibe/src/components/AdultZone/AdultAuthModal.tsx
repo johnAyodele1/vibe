@@ -35,6 +35,22 @@ const AdultAuthModal: React.FC<AdultAuthModalProps> = ({ isOpen, onClose, defaul
         await signup({ ...formData, role });
       }
       onClose();
+      // Role-based post login redirection logic
+      const storedToken = localStorage.getItem('adultAccessToken');
+      if (storedToken) {
+        // Simple base64 decoding of JWT payload
+        try {
+          const payloadBase64 = storedToken.split('.')[1];
+          const decoded = JSON.parse(atob(payloadBase64));
+          if (decoded.role === 'provider' || role === 'provider') {
+            window.location.href = '/adult/provider/onboarding';
+          } else {
+            window.location.href = '/';
+          }
+        } catch (jwtErr) {
+          window.location.href = '/';
+        }
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {

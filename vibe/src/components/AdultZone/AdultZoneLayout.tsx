@@ -31,7 +31,15 @@ const AdultZoneLayout: React.FC = () => {
     return <AgeGate onVerified={() => setIsVerified(true)} />;
   }
 
-  const navLinks = [
+  const isProvider = user?.role === 'provider';
+
+  const navLinks = isProvider ? [
+    { name: 'Dashboard', path: '/adult/provider/dashboard' },
+    { name: 'Earnings', path: '/adult/provider/earnings' },
+    { name: 'Messages', path: '/adult/provider/messages' },
+    { name: 'Profile Editor', path: '/adult/provider/profile' },
+    { name: 'Settings', path: '/adult/provider/settings' }
+  ] : [
     { name: 'Live Cams', path: '/cams' },
     { name: 'Naughty Rooms', path: '/rooms' },
     { name: 'Private Sext', path: '/sext' },
@@ -115,7 +123,26 @@ const AdultZoneLayout: React.FC = () => {
       {/* Mobile Bottom Navigation */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 az-glass border-t border-[var(--az-border)] pb-safe">
         <div className="flex justify-around items-center h-16">
-          {[
+          {isProvider ? [
+            { icon: '📊', path: '/adult/provider/dashboard', label: 'Studio' },
+            { icon: '💰', path: '/adult/provider/earnings', label: 'Earnings' },
+            { icon: '💬', path: '/adult/provider/messages', label: 'Inbox' },
+            { icon: '👤', path: '/adult/provider/profile', label: 'Profile' },
+            { icon: '⚙️', path: '/adult/provider/settings', label: 'Settings' }
+          ].map((item) => (
+            <Link
+              key={item.path}
+              to={item.path}
+              className={`flex flex-col items-center gap-1 p-2 min-w-[64px] transition-all ${
+                location.pathname === item.path ? 'scale-110' : 'opacity-60'
+              }`}
+            >
+              <span className="text-xl">{item.icon}</span>
+              <span className={`text-[10px] uppercase tracking-tighter ${location.pathname === item.path ? 'text-[var(--az-accent-rose)] font-bold' : ''}`}>
+                {item.label}
+              </span>
+            </Link>
+          )) : [
             { icon: '🔴', path: '/', label: 'Home' },
             { icon: '📹', path: '/cams', label: 'Live' },
             { icon: '💬', path: '/sext', label: 'Sext' },
