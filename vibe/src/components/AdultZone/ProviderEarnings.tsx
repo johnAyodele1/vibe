@@ -1,38 +1,90 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { API_BASE_URL } from '../../config';
 
 const ProviderEarnings: React.FC = () => {
   const navigate = useNavigate();
   const token = localStorage.getItem('adultAccessToken');
 
   const [dateRange, setDateRange] = useState('This Month');
-  const [totalEarned] = useState(74200);
-  const [paidOut, setPaidOut] = useState(450.00);
-  const [pending, setPending] = useState(106.50);
+  const [totalEarned, setTotalEarned] = useState(0);
+  const [paidOut, setPaidOut] = useState(0);
+  const [pending, setPending] = useState(0);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [timeline, setTimeline] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const [transactions] = useState<any[]>([
-    { id: '1', date: 'Jul 15', type: 'Tip', from: 'Member_3821', amount: 500, usd: 3.75, status: 'Completed' },
-    { id: '2', date: 'Jul 15', type: 'Private Call', from: 'Member_2214', amount: 1200, usd: 9.00, status: 'Completed' },
-    { id: '3', date: 'Jul 14', type: 'Tip', from: 'Anonymous', amount: 100, usd: 0.75, status: 'Completed' },
-    { id: '4', date: 'Jul 14', type: 'Payout', from: 'Bank Transfer', amount: -60000, usd: -450.00, status: 'Paid' }
-  ]);
+  const fetchEarnings = async () => {
+    if (!token) return;
+    try {
+      setIsLoading(true);
+      const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/earnings?dateRange=${dateRange}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      const json = await res.json();
+      if (json.success) {
+        setTotalEarned(json.data.totalEarned);
+        setPaidOut(json.data.paidOut);
+        setPending(json.data.pending);
+        setTransactions(json.data.transactions);
+        setTimeline(json.data.timeline || []);
+      } else {
+        toast.error(json.error?.message || 'Failed to fetch earnings');
+      }
+    } catch (err: any) {
+      toast.error('Error connecting to the server');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!token) {
       navigate('/');
+      return;
     }
-  }, [token, navigate]);
+    fetchEarnings();
+  }, [token, navigate, dateRange]);
 
-  const requestEarlyPayout = () => {
+  const requestEarlyPayout = async () => {
     if (pending < 50.00) {
       toast.error('Minimum payout threshold is $50.00 USD');
       return;
     }
-    toast.success('Your early payout request has been queued!');
-    setPaidOut(prev => prev + pending);
-    setPending(0);
+    try {
+      const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/payout`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      const json = await res.json();
+      if (json.success) {
+        toast.success('Your early payout request has been processed successfully!');
+        fetchEarnings(); // refresh the numbers and transactions
+      } else {
+        toast.error(json.error?.message || 'Failed to process payout');
+      }
+    } catch (err: any) {
+      toast.error('Error initiating payout request');
+    }
   };
+
+  if (isLoading && transactions.length === 0) {
+    return (
+      <div className="min-h-screen bg-[var(--az-bg-primary)] text-white flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="w-12 h-12 border-4 border-[var(--az-accent-gold)] border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="text-sm font-bold uppercase tracking-widest text-[var(--az-text-secondary)]">Loading Earnings Audit...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[var(--az-bg-primary)] text-white font-sans az-grain py-24 px-4 sm:px-6 lg:px-8">
@@ -46,7 +98,7 @@ const ProviderEarnings: React.FC = () => {
           </div>
 
           <select
-            className="bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-xl px-4 py-2.5 text-xs font-bold uppercase tracking-widest text-white outline-none"
+            className="bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-xl px-4 py-2.5 text-xs font-bold uppercase tracking-widest text-white outline-none cursor-pointer"
             value={dateRange}
             onChange={e => setDateRange(e.target.value)}
           >
@@ -89,23 +141,34 @@ const ProviderEarnings: React.FC = () => {
           <h3 className="text-lg font-serif italic text-white mb-6">Earnings Timeline Performance</h3>
 
           <div className="h-64 w-full bg-[var(--az-bg-tertiary)] rounded-2xl border border-[var(--az-border)]/50 flex flex-col justify-between p-6">
-            {/* Visual simulation of area graph */}
-            <div className="flex items-end justify-between h-40 border-b border-[var(--az-border)]/50 pb-2">
-              <div className="w-[10%] bg-gradient-to-t from-[var(--az-accent-primary)]/40 to-[var(--az-accent-primary)] h-[20%] rounded-t" />
-              <div className="w-[10%] bg-gradient-to-t from-[var(--az-accent-primary)]/40 to-[var(--az-accent-primary)] h-[45%] rounded-t" />
-              <div className="w-[10%] bg-gradient-to-t from-[var(--az-accent-primary)]/40 to-[var(--az-accent-primary)] h-[30%] rounded-t" />
-              <div className="w-[10%] bg-gradient-to-t from-[var(--az-accent-primary)]/40 to-[var(--az-accent-primary)] h-[80%] rounded-t" />
-              <div className="w-[10%] bg-gradient-to-t from-[var(--az-accent-primary)]/40 to-[var(--az-accent-primary)] h-[65%] rounded-t" />
-              <div className="w-[10%] bg-gradient-to-t from-[var(--az-accent-primary)]/40 to-[var(--az-accent-primary)] h-[95%] rounded-t" />
+            {/* Visual simulation of area graph using real timeline data */}
+            <div className="flex items-end justify-between h-40 border-b border-[var(--az-border)]/50 pb-2 px-2">
+              {timeline.map((t, idx) => {
+                const maxVal = Math.max(...timeline.map(item => item.credits), 0);
+                const pct = maxVal > 0 ? (t.credits / maxVal) * 100 : 0;
+                const heightPct = Math.max(pct, 5); // visually nice baseline of 5% minimum
+                return (
+                  <div
+                    key={idx}
+                    className="w-[12%] flex flex-col items-center group relative cursor-pointer"
+                  >
+                    {/* Tooltip on hover */}
+                    <div className="absolute -top-10 scale-0 group-hover:scale-100 transition-all bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded px-2 py-1 text-[9px] font-mono whitespace-nowrap z-10 shadow-lg">
+                      💎 {t.credits} (${(t.credits * 0.0075).toFixed(2)} est.)
+                    </div>
+                    <div
+                      style={{ height: `${heightPct}%` }}
+                      className="w-full bg-gradient-to-t from-[var(--az-accent-primary)]/40 to-[var(--az-accent-primary)] rounded-t transition-all duration-500"
+                    />
+                  </div>
+                );
+              })}
             </div>
 
-            <div className="flex justify-between text-[10px] text-[var(--az-text-secondary)] font-mono uppercase tracking-wider">
-              <span>Mon</span>
-              <span>Tue</span>
-              <span>Wed</span>
-              <span>Thu</span>
-              <span>Fri</span>
-              <span>Sat</span>
+            <div className="flex justify-between text-[10px] text-[var(--az-text-secondary)] font-mono uppercase tracking-wider px-2">
+              {timeline.map((t, idx) => (
+                <span key={idx} className="w-[12%] text-center">{t.dayName}</span>
+              ))}
             </div>
           </div>
         </div>
@@ -127,22 +190,38 @@ const ProviderEarnings: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--az-border)]/50">
-                  {transactions.map(tx => (
-                    <tr key={tx.id} className="hover:bg-[var(--az-bg-tertiary)]/20 transition-colors">
-                      <td className="p-4 text-xs font-mono text-white">{tx.date}</td>
-                      <td className="p-4 font-semibold text-white capitalize">{tx.type}</td>
-                      <td className="p-4 text-[var(--az-text-secondary)]">{tx.from}</td>
-                      <td className={`p-4 font-mono font-bold ${tx.amount > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {tx.amount > 0 ? `+${tx.amount}` : tx.amount}
-                      </td>
-                      <td className="p-4 font-mono text-white">${tx.usd.toFixed(2)}</td>
-                      <td className="p-4">
-                        <span className={`px-2.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest ${tx.status === 'Completed' || tx.status === 'Paid' ? 'bg-green-950/40 text-green-400 border border-green-500/30' : 'bg-yellow-950/40 text-yellow-400 border border-yellow-500/30'}`}>
-                          {tx.status}
-                        </span>
+                  {transactions.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="p-8 text-center text-xs text-[var(--az-text-muted)] italic">
+                        No transactions found for this period.
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    transactions.map(tx => (
+                      <tr key={tx.id} className="hover:bg-[var(--az-bg-tertiary)]/20 transition-colors">
+                        <td className="p-4 text-xs font-mono text-white">{tx.date}</td>
+                        <td className="p-4 font-semibold text-white capitalize">{tx.type}</td>
+                        <td className="p-4 text-[var(--az-text-secondary)]">{tx.from}</td>
+                        <td className={`p-4 font-mono font-bold ${tx.amount > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {tx.amount > 0 ? `+${tx.amount}` : tx.amount}
+                        </td>
+                        <td className="p-4 font-mono text-white">
+                          {tx.usd < 0 ? `-$${Math.abs(tx.usd).toFixed(2)}` : `$${tx.usd.toFixed(2)}`}
+                        </td>
+                        <td className="p-4">
+                          <span className={`px-2.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest ${
+                            tx.status === 'Completed' || tx.status === 'Paid'
+                              ? 'bg-green-950/40 text-green-400 border border-green-500/30'
+                              : tx.status === 'Failed'
+                              ? 'bg-red-950/40 text-red-400 border border-red-500/30'
+                              : 'bg-yellow-950/40 text-yellow-400 border border-yellow-500/30'
+                          }`}>
+                            {tx.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>

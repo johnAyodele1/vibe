@@ -13,7 +13,9 @@ import {
   updateStatus,
   updatePhotos,
   updateSchedule,
-  getProviderDashboard
+  getProviderDashboard,
+  getProviderEarnings,
+  requestPayout
 } from '../controllers/providerOnboarding.controller';
 import {
   getWallet,
@@ -62,6 +64,8 @@ router.put('/adult/sext/conversations/:conversationId/read', verifyAdultJWT, mar
 // Provider Onboarding & Profile update routes
 router.get('/adult/providers/me', verifyAdultJWT, getMyProfile);
 router.get('/adult/providers/me/dashboard', verifyAdultJWT, getProviderDashboard);
+router.get('/adult/providers/me/earnings', verifyAdultJWT, getProviderEarnings);
+router.post('/adult/providers/me/payout', verifyAdultJWT, requestPayout);
 router.put('/adult/providers/me/profile', verifyAdultJWT, updateProfile);
 router.put('/adult/providers/me/services', verifyAdultJWT, updateServices);
 router.put('/adult/providers/me/pricing', verifyAdultJWT, updatePricing);
