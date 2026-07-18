@@ -42,6 +42,7 @@ export interface IAdultUser extends Document {
   loginHistory: ILoginHistory[];
   providerProfile?: {
     stageName: string;
+    gender?: string;
     categories: string[];
     isLive: boolean;
     pricePerMinute: number;
