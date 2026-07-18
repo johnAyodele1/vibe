@@ -11,6 +11,7 @@ const ProviderOnboarding: React.FC = () => {
   const token = localStorage.getItem('adultAccessToken');
 
   const [step, setStep] = useState(1);
+  const [userId, setUserId] = useState<string>('');
   const [profileData, setProfileData] = useState({
     bio: '',
     gender: 'female',
@@ -49,20 +50,119 @@ const ProviderOnboarding: React.FC = () => {
   });
 
   const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [loadingProfile, setLoadingProfile] = useState(true);
 
   // Suggested values for calculation
   const [calcMinutes, setCalcMinutes] = useState(30);
 
+  // Fetch full provider profile on mount to pre-populate form
   useEffect(() => {
     if (!token) {
       navigate('/');
       return;
     }
-    // If user has complete status or if not provider, redirect accordingly
     if (user && user.role !== 'provider') {
       navigate('/');
+      return;
     }
+
+    const fetchProfile = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success && data.data?.user) {
+          const u = data.data.user;
+          const profile = u.providerProfile || {};
+          const curUserId = u._id || u.id;
+          setUserId(curUserId);
+
+          // Pre-populate profile basic info
+          let formattedDob = '';
+          if (u.dateOfBirth) {
+            formattedDob = new Date(u.dateOfBirth).toISOString().split('T')[0];
+          }
+
+          setProfileData({
+            bio: u.bio || '',
+            gender: profile.gender || 'female',
+            dateOfBirth: formattedDob,
+          });
+
+          if (profile.photos && Array.isArray(profile.photos)) {
+            setPhotos(profile.photos);
+          }
+          if (profile.videoPreview) {
+            setVideoPreview(profile.videoPreview);
+          }
+          if (profile.servicesOffered && Array.isArray(profile.servicesOffered) && profile.servicesOffered.length > 0) {
+            setServices(profile.servicesOffered);
+          }
+          setPricing({
+            pricePerMinute: profile.pricePerMinute || 3.99,
+            tonightRate: profile.tonightRate || 150,
+            chargeForMedia: profile.chargeForMedia || false,
+            pricePerPhoto: profile.pricePerPhoto || 10,
+            pricePerVideo: profile.pricePerVideo || 25,
+          });
+
+          if (profile.tipMenu && Array.isArray(profile.tipMenu) && profile.tipMenu.length > 0) {
+            setTipMenu(profile.tipMenu);
+          }
+          if (profile.location) {
+            setLocationValue(profile.location);
+          }
+          if (profile.payoutInfo) {
+            setPayoutMethod(profile.payoutInfo.method || 'bank');
+            if (profile.payoutInfo.details) {
+              setPayoutDetails(prev => ({
+                ...prev,
+                ...profile.payoutInfo.details
+              }));
+            }
+          }
+
+          // Determine current step
+          const savedStep = localStorage.getItem(`provider_onboarding_step_${curUserId}`);
+          if (savedStep) {
+            setStep(parseInt(savedStep));
+          } else {
+            // Auto-detect step based on completeness
+            if (!u.bio || !formattedDob) {
+              setStep(1);
+            } else if (!profile.photos || profile.photos.length === 0) {
+              setStep(2);
+            } else if (!profile.servicesOffered || profile.servicesOffered.length === 0) {
+              setStep(3);
+            } else if (!profile.pricePerMinute) {
+              setStep(4);
+            } else if (!profile.location || !profile.location.city) {
+              setStep(5);
+            } else if (!profile.payoutInfo || !profile.payoutInfo.method) {
+              setStep(6);
+            } else {
+              setStep(7);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching provider profile:', err);
+      } finally {
+        setLoadingProfile(false);
+      }
+    };
+
+    fetchProfile();
   }, [user, token, navigate]);
+
+  const handleSetStep = (nextStep: number) => {
+    setStep(nextStep);
+    if (userId) {
+      localStorage.setItem(`provider_onboarding_step_${userId}`, nextStep.toString());
+    }
+  };
 
   const handleProfilePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -153,6 +253,7 @@ const ProviderOnboarding: React.FC = () => {
   };
 
   const saveStep = async (nextStep: number) => {
+    setSaving(true);
     try {
       if (step === 1) {
         if (!profileData.bio || !profileData.dateOfBirth) {
@@ -231,7 +332,7 @@ const ProviderOnboarding: React.FC = () => {
               'Authorization': `Bearer ${token}`
             },
             body: JSON.stringify({
-              pricePerMinute: pricing.pricePerMinute,
+              perMinuteRate: pricing.pricePerMinute,
               tonightRate: pricing.tonightRate,
               tipMenu
             })
@@ -257,11 +358,9 @@ const ProviderOnboarding: React.FC = () => {
               'Authorization': `Bearer ${token}`
             },
             body: JSON.stringify({
-              location: {
-                country: locationValue.country,
-                state: locationValue.state,
-                city: locationValue.city
-              }
+              country: locationValue.country,
+              state: locationValue.state,
+              city: locationValue.city
             })
           });
           const data = await res.json();
@@ -296,13 +395,28 @@ const ProviderOnboarding: React.FC = () => {
         }
       }
 
-      setStep(nextStep);
+      handleSetStep(nextStep);
     } catch (err: any) {
       toast.error(err.message || 'Operation failed');
+    } finally {
+      setSaving(false);
     }
   };
 
   const stepsList = ['Profile', 'Photos', 'Services', 'Pricing', 'Location', 'Payout', 'Done'];
+
+  if (loadingProfile) {
+    return (
+      <div className="min-h-screen bg-[var(--az-bg-primary)] text-white font-sans az-grain flex flex-col items-center justify-center p-4">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="w-12 h-12 border-4 border-[var(--az-accent-rose)] border-t-transparent rounded-full animate-spin shadow-[0_0_15px_rgba(244,63,94,0.3)]"></div>
+          <p className="text-sm font-serif italic text-[var(--az-text-secondary)] uppercase tracking-widest animate-pulse">
+            Curating your exclusive profile...
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[var(--az-bg-primary)] text-white font-sans az-grain flex flex-col py-24 px-4 sm:px-6 lg:px-8">
@@ -324,17 +438,19 @@ const ProviderOnboarding: React.FC = () => {
         {/* Breadcrumbs */}
         <div className="hidden sm:flex justify-between mt-4">
           {stepsList.map((st, i) => (
-            <span
+            <button
               key={st}
-              className={`text-[10px] font-bold uppercase tracking-wider ${step === i + 1 ? 'text-[var(--az-accent-rose)]' : step > i + 1 ? 'text-green-400' : 'text-[var(--az-text-muted)]'}`}
+              disabled={saving}
+              onClick={() => handleSetStep(i + 1)}
+              className={`text-[10px] font-bold uppercase tracking-wider transition-colors outline-none cursor-pointer ${step === i + 1 ? 'text-[var(--az-accent-rose)] border-b border-[var(--az-accent-rose)] pb-0.5' : step > i + 1 ? 'text-green-400 hover:text-green-300' : 'text-[var(--az-text-muted)] hover:text-white'}`}
             >
               {st}
-            </span>
+            </button>
           ))}
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto w-full bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-3xl p-8 shadow-2xl relative">
+      <div className="max-w-2xl mx-auto w-full bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-3xl p-6 sm:p-8 shadow-2xl relative">
         {step === 1 && (
           <div className="space-y-6">
             <div>
@@ -361,7 +477,7 @@ const ProviderOnboarding: React.FC = () => {
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">Gender</label>
                   <select
-                    className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white outline-none"
+                    className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white outline-none focus:border-[var(--az-accent-rose)] transition-colors"
                     value={profileData.gender}
                     onChange={e => setProfileData({ ...profileData, gender: e.target.value })}
                   >
@@ -375,21 +491,53 @@ const ProviderOnboarding: React.FC = () => {
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">Date of Birth</label>
                   <input
-                    type="date"
-                    className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white outline-none"
+                    type="text"
+                    placeholder="YYYY-MM-DD"
+                    className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white outline-none focus:border-[var(--az-accent-rose)] transition-colors"
                     value={profileData.dateOfBirth}
-                    onChange={e => setProfileData({ ...profileData, dateOfBirth: e.target.value })}
+                    onChange={e => {
+                      const val = e.target.value;
+                      // Restrict characters to digits, construct YYYY-MM-DD cleanly
+                      const digits = val.replace(/\D/g, '');
+                      let formatted = '';
+                      if (digits.length > 0) {
+                        formatted += digits.substring(0, 4);
+                      }
+                      if (digits.length > 4) {
+                        formatted += '-' + digits.substring(4, 6);
+                      }
+                      if (digits.length > 6) {
+                        formatted += '-' + digits.substring(6, 8);
+                      }
+                      setProfileData({ ...profileData, dateOfBirth: formatted });
+                    }}
                   />
+                  <span className="text-[10px] text-[var(--az-text-muted)] mt-1 block">Format: YYYY-MM-DD (e.g. 1995-05-15)</span>
                 </div>
               </div>
             </div>
 
-            <div className="pt-6 flex justify-between">
-              <button onClick={logout} className="px-6 py-3 bg-[var(--az-bg-tertiary)] hover:bg-[var(--az-bg-primary)] border border-[var(--az-border)] text-[var(--az-text-secondary)] font-bold text-xs uppercase tracking-widest rounded-xl transition-all">
+            <div className="pt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between sm:items-center">
+              <button
+                onClick={logout}
+                disabled={saving}
+                className="w-full sm:w-auto px-6 py-3 bg-[var(--az-bg-tertiary)] hover:bg-[var(--az-bg-primary)] border border-[var(--az-border)] text-[var(--az-text-secondary)] font-bold text-xs uppercase tracking-widest rounded-xl transition-all"
+              >
                 Cancel
               </button>
-              <button onClick={() => saveStep(2)} className="px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg">
-                Save & Continue →
+              <button
+                onClick={() => saveStep(2)}
+                disabled={saving}
+                className="w-full sm:w-auto px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg flex items-center justify-center"
+              >
+                {saving ? (
+                  <span className="flex items-center gap-2">
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Processing...
+                  </span>
+                ) : (
+                  'Save & Continue →'
+                )}
               </button>
             </div>
           </div>
@@ -417,8 +565,14 @@ const ProviderOnboarding: React.FC = () => {
                       </button>
                     </div>
                   ))}
-                  {photos.length < 8 && (
-                    <label className="aspect-square bg-[var(--az-bg-tertiary)] border-2 border-dashed border-[var(--az-border)] hover:border-[var(--az-accent-rose)] rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all">
+                  {uploading && (
+                    <div className="aspect-square bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl flex flex-col items-center justify-center">
+                      <div className="w-6 h-6 border-2 border-[var(--az-accent-rose)] border-t-transparent rounded-full animate-spin"></div>
+                      <span className="text-[10px] uppercase font-bold text-[var(--az-text-secondary)] mt-2">Uploading...</span>
+                    </div>
+                  )}
+                  {photos.length < 8 && !uploading && (
+                    <label className="aspect-square bg-[var(--az-bg-tertiary)] border-2 border-dashed border-var(--az-border) hover:border-[var(--az-accent-rose)] rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all">
                       <span className="text-2xl text-[var(--az-text-secondary)]">+</span>
                       <span className="text-[10px] uppercase font-bold text-[var(--az-text-secondary)] mt-1">Upload</span>
                       <input type="file" accept="image/*" className="hidden" onChange={handleProfilePhotoUpload} disabled={uploading} />
@@ -440,25 +594,53 @@ const ProviderOnboarding: React.FC = () => {
                     </button>
                   </div>
                 ) : (
-                  <label className="w-full py-10 bg-[var(--az-bg-tertiary)] border-2 border-dashed border-[var(--az-border)] hover:border-[var(--az-accent-rose)] rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all">
-                    <span className="text-3xl">📹</span>
-                    <span className="text-xs text-[var(--az-text-secondary)] font-serif italic mt-2">A short preview video gets up to 3x more profile traffic!</span>
+                  <label className="w-full py-10 bg-[var(--az-bg-tertiary)] border-2 border-dashed border-var(--az-border) hover:border-[var(--az-accent-rose)] rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all">
+                    {uploading ? (
+                      <>
+                        <div className="w-8 h-8 border-3 border-[var(--az-accent-rose)] border-t-transparent rounded-full animate-spin"></div>
+                        <span className="text-xs text-[var(--az-text-secondary)] font-bold uppercase mt-3">Uploading Video...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-3xl">📹</span>
+                        <span className="text-xs text-[var(--az-text-secondary)] font-serif italic mt-2">A short preview video gets up to 3x more profile traffic!</span>
+                      </>
+                    )}
                     <input type="file" accept="video/*" className="hidden" onChange={handleVideoUpload} disabled={uploading} />
                   </label>
                 )}
               </div>
             </div>
 
-            <div className="pt-6 flex justify-between">
-              <button onClick={() => setStep(1)} className="px-6 py-3 bg-[var(--az-bg-tertiary)] hover:bg-[var(--az-bg-primary)] border border-[var(--az-border)] text-[var(--az-text-secondary)] font-bold text-xs uppercase tracking-widest rounded-xl transition-all">
+            <div className="pt-6 flex flex-col-reverse gap-4 sm:flex-row sm:justify-between sm:items-center">
+              <button
+                onClick={() => handleSetStep(1)}
+                disabled={saving}
+                className="w-full sm:w-auto px-6 py-3 bg-[var(--az-bg-tertiary)] hover:bg-[var(--az-bg-primary)] border border-[var(--az-border)] text-[var(--az-text-secondary)] font-bold text-xs uppercase tracking-widest rounded-xl transition-all"
+              >
                 ← Back
               </button>
-              <div className="flex gap-4">
-                <button onClick={() => setStep(3)} className="text-xs font-bold text-[var(--az-text-secondary)] hover:text-white uppercase tracking-widest">
+              <div className="flex flex-col-reverse gap-2 w-full sm:w-auto sm:flex-row sm:gap-4 sm:items-center">
+                <button
+                  onClick={() => handleSetStep(3)}
+                  disabled={saving}
+                  className="w-full sm:w-auto text-center py-2 text-xs font-bold text-[var(--az-text-secondary)] hover:text-white uppercase tracking-widest"
+                >
                   Skip
                 </button>
-                <button onClick={() => saveStep(3)} className="px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg">
-                  Save & Continue →
+                <button
+                  onClick={() => saveStep(3)}
+                  disabled={saving}
+                  className="w-full sm:w-auto px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg flex items-center justify-center"
+                >
+                  {saving ? (
+                    <span className="flex items-center gap-2">
+                      <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Processing...
+                    </span>
+                  ) : (
+                    'Save & Continue →'
+                  )}
                 </button>
               </div>
             </div>
@@ -497,12 +679,27 @@ const ProviderOnboarding: React.FC = () => {
               })}
             </div>
 
-            <div className="pt-6 flex justify-between">
-              <button onClick={() => setStep(2)} className="px-6 py-3 bg-[var(--az-bg-tertiary)] hover:bg-[var(--az-bg-primary)] border border-[var(--az-border)] text-[var(--az-text-secondary)] font-bold text-xs uppercase tracking-widest rounded-xl transition-all">
+            <div className="pt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between sm:items-center">
+              <button
+                onClick={() => handleSetStep(2)}
+                disabled={saving}
+                className="w-full sm:w-auto px-6 py-3 bg-[var(--az-bg-tertiary)] hover:bg-[var(--az-bg-primary)] border border-[var(--az-border)] text-[var(--az-text-secondary)] font-bold text-xs uppercase tracking-widest rounded-xl transition-all"
+              >
                 ← Back
               </button>
-              <button onClick={() => saveStep(4)} className="px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg">
-                Save & Continue →
+              <button
+                onClick={() => saveStep(4)}
+                disabled={saving}
+                className="w-full sm:w-auto px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg flex items-center justify-center"
+              >
+                {saving ? (
+                  <span className="flex items-center gap-2">
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Processing...
+                  </span>
+                ) : (
+                  'Save & Continue →'
+                )}
               </button>
             </div>
           </div>
@@ -559,26 +756,38 @@ const ProviderOnboarding: React.FC = () => {
                   </button>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {tipMenu.map((item, idx) => (
-                    <div key={idx} className="flex gap-2 items-center">
-                      <span className="text-xs">💎</span>
-                      <input
-                        type="number"
-                        className="w-16 bg-black border border-[var(--az-border)] rounded-lg px-2 py-2 text-white font-mono text-center"
-                        value={item.amount}
-                        onChange={e => updateTipItem(idx, 'amount', parseInt(e.target.value) || 0)}
-                      />
-                      <input
-                        type="text"
-                        placeholder="What you'll perform for this tip"
-                        className="flex-grow bg-black border border-[var(--az-border)] rounded-lg px-3 py-2 text-white text-xs"
-                        value={item.action}
-                        onChange={e => updateTipItem(idx, 'action', e.target.value)}
-                      />
-                      <button onClick={() => removeTipItem(idx)} className="text-[var(--az-accent-primary)] hover:text-white text-xs px-2">
-                        ✕
-                      </button>
+                    <div key={idx} className="flex flex-col gap-2 p-3 bg-black/20 rounded-xl border border-[var(--az-border)]/50 sm:flex-row sm:items-center sm:bg-transparent sm:p-0 sm:border-0 sm:gap-2">
+                      <div className="flex items-center gap-2 justify-between sm:justify-start">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs">💎</span>
+                          <span className="text-[10px] uppercase font-bold text-[var(--az-text-secondary)] sm:hidden">Credits:</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            className="w-20 sm:w-16 bg-black border border-[var(--az-border)] rounded-lg px-2 py-1.5 text-white font-mono text-center text-sm sm:text-xs"
+                            value={item.amount}
+                            onChange={e => updateTipItem(idx, 'amount', parseInt(e.target.value) || 0)}
+                          />
+                          <button onClick={() => removeTipItem(idx)} className="sm:hidden text-[var(--az-accent-primary)] hover:text-white text-xs p-1">
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                      <div className="flex-grow flex items-center gap-2 w-full">
+                        <input
+                          type="text"
+                          placeholder="What you'll perform for this tip"
+                          className="flex-grow bg-black border border-[var(--az-border)] rounded-lg px-3 py-2 text-white text-xs w-full"
+                          value={item.action}
+                          onChange={e => updateTipItem(idx, 'action', e.target.value)}
+                        />
+                        <button onClick={() => removeTipItem(idx)} className="hidden sm:block text-[var(--az-accent-primary)] hover:text-white text-xs px-2">
+                          ✕
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -614,12 +823,27 @@ const ProviderOnboarding: React.FC = () => {
               </div>
             </div>
 
-            <div className="pt-6 flex justify-between">
-              <button onClick={() => setStep(3)} className="px-6 py-3 bg-[var(--az-bg-tertiary)] hover:bg-[var(--az-bg-primary)] border border-[var(--az-border)] text-[var(--az-text-secondary)] font-bold text-xs uppercase tracking-widest rounded-xl transition-all">
+            <div className="pt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between sm:items-center">
+              <button
+                onClick={() => handleSetStep(3)}
+                disabled={saving}
+                className="w-full sm:w-auto px-6 py-3 bg-[var(--az-bg-tertiary)] hover:bg-[var(--az-bg-primary)] border border-[var(--az-border)] text-[var(--az-text-secondary)] font-bold text-xs uppercase tracking-widest rounded-xl transition-all"
+              >
                 ← Back
               </button>
-              <button onClick={() => saveStep(5)} className="px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg">
-                Save & Continue →
+              <button
+                onClick={() => saveStep(5)}
+                disabled={saving}
+                className="w-full sm:w-auto px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg flex items-center justify-center"
+              >
+                {saving ? (
+                  <span className="flex items-center gap-2">
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Processing...
+                  </span>
+                ) : (
+                  'Save & Continue →'
+                )}
               </button>
             </div>
           </div>
@@ -637,12 +861,12 @@ const ProviderOnboarding: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">Coverage Area</label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
                   {['My city only', 'My state/region', 'Anywhere'].map(area => (
                     <button
                       key={area}
                       onClick={() => setCoverageArea(area)}
-                      className={`py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest border transition-all ${coverageArea === area ? 'bg-[var(--az-accent-primary)] text-white border-transparent' : 'bg-[var(--az-bg-tertiary)] text-[var(--az-text-secondary)] border-[var(--az-border)]'}`}
+                      className={`py-2 px-1 rounded-xl text-[8px] min-[360px]:text-[9px] sm:text-[10px] font-bold uppercase tracking-wider min-[360px]:tracking-widest border transition-all ${coverageArea === area ? 'bg-[var(--az-accent-primary)] text-white border-transparent' : 'bg-[var(--az-bg-tertiary)] text-[var(--az-text-secondary)] border-[var(--az-border)]'}`}
                     >
                       {area}
                     </button>
@@ -661,12 +885,27 @@ const ProviderOnboarding: React.FC = () => {
               )}
             </div>
 
-            <div className="pt-6 flex justify-between">
-              <button onClick={() => setStep(4)} className="px-6 py-3 bg-[var(--az-bg-tertiary)] hover:bg-[var(--az-bg-primary)] border border-[var(--az-border)] text-[var(--az-text-secondary)] font-bold text-xs uppercase tracking-widest rounded-xl transition-all">
+            <div className="pt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between sm:items-center">
+              <button
+                onClick={() => handleSetStep(4)}
+                disabled={saving}
+                className="w-full sm:w-auto px-6 py-3 bg-[var(--az-bg-tertiary)] hover:bg-[var(--az-bg-primary)] border border-[var(--az-border)] text-[var(--az-text-secondary)] font-bold text-xs uppercase tracking-widest rounded-xl transition-all"
+              >
                 ← Back
               </button>
-              <button onClick={() => saveStep(6)} className="px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg">
-                Save & Continue →
+              <button
+                onClick={() => saveStep(6)}
+                disabled={saving}
+                className="w-full sm:w-auto px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg flex items-center justify-center"
+              >
+                {saving ? (
+                  <span className="flex items-center gap-2">
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Processing...
+                  </span>
+                ) : (
+                  'Save & Continue →'
+                )}
               </button>
             </div>
           </div>
@@ -680,7 +919,7 @@ const ProviderOnboarding: React.FC = () => {
             </div>
 
             <div className="space-y-6">
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
                 {[
                   { id: 'bank', name: 'Bank Transfer' },
                   { id: 'paypal', name: 'PayPal' },
@@ -689,7 +928,7 @@ const ProviderOnboarding: React.FC = () => {
                   <button
                     key={opt.id}
                     onClick={() => setPayoutMethod(opt.id)}
-                    className={`py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest border transition-all ${payoutMethod === opt.id ? 'bg-[var(--az-accent-primary)] text-white border-transparent' : 'bg-[var(--az-bg-tertiary)] text-[var(--az-text-secondary)] border-[var(--az-border)]'}`}
+                    className={`py-2 px-1 rounded-xl text-[8px] min-[360px]:text-[9px] sm:text-[10px] font-bold uppercase tracking-wider min-[360px]:tracking-widest border transition-all ${payoutMethod === opt.id ? 'bg-[var(--az-accent-primary)] text-white border-transparent' : 'bg-[var(--az-bg-tertiary)] text-[var(--az-text-secondary)] border-[var(--az-border)]'}`}
                   >
                     {opt.name}
                   </button>
@@ -702,7 +941,7 @@ const ProviderOnboarding: React.FC = () => {
                     <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">Bank Name</label>
                     <input
                       type="text"
-                      className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white outline-none"
+                      className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white outline-none focus:border-[var(--az-accent-rose)] transition-colors"
                       value={payoutDetails.bankName}
                       onChange={e => setPayoutDetails({ ...payoutDetails, bankName: e.target.value })}
                     />
@@ -712,7 +951,7 @@ const ProviderOnboarding: React.FC = () => {
                       <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">Account Number</label>
                       <input
                         type="text"
-                        className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white outline-none"
+                        className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white outline-none focus:border-[var(--az-accent-rose)] transition-colors"
                         value={payoutDetails.accountNumber}
                         onChange={e => setPayoutDetails({ ...payoutDetails, accountNumber: e.target.value })}
                       />
@@ -721,7 +960,7 @@ const ProviderOnboarding: React.FC = () => {
                       <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">Routing/Sort Code</label>
                       <input
                         type="text"
-                        className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white outline-none"
+                        className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white outline-none focus:border-[var(--az-accent-rose)] transition-colors"
                         value={payoutDetails.routingCode}
                         onChange={e => setPayoutDetails({ ...payoutDetails, routingCode: e.target.value })}
                       />
@@ -735,7 +974,7 @@ const ProviderOnboarding: React.FC = () => {
                   <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">PayPal Registered Email</label>
                   <input
                     type="email"
-                    className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white outline-none"
+                    className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white outline-none focus:border-[var(--az-accent-rose)] transition-colors"
                     value={payoutDetails.paypalEmail}
                     onChange={e => setPayoutDetails({ ...payoutDetails, paypalEmail: e.target.value })}
                   />
@@ -747,7 +986,7 @@ const ProviderOnboarding: React.FC = () => {
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">Currency Network</label>
                     <select
-                      className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white outline-none"
+                      className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white outline-none focus:border-[var(--az-accent-rose)] transition-colors"
                       value={payoutDetails.cryptoCurrency}
                       onChange={e => setPayoutDetails({ ...payoutDetails, cryptoCurrency: e.target.value })}
                     >
@@ -760,7 +999,7 @@ const ProviderOnboarding: React.FC = () => {
                     <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">Wallet Address</label>
                     <input
                       type="text"
-                      className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white outline-none"
+                      className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white outline-none focus:border-[var(--az-accent-rose)] transition-colors"
                       value={payoutDetails.cryptoAddress}
                       onChange={e => setPayoutDetails({ ...payoutDetails, cryptoAddress: e.target.value })}
                     />
@@ -769,16 +1008,35 @@ const ProviderOnboarding: React.FC = () => {
               )}
             </div>
 
-            <div className="pt-6 flex justify-between">
-              <button onClick={() => setStep(5)} className="px-6 py-3 bg-[var(--az-bg-tertiary)] hover:bg-[var(--az-bg-primary)] border border-[var(--az-border)] text-[var(--az-text-secondary)] font-bold text-xs uppercase tracking-widest rounded-xl transition-all">
+            <div className="pt-6 flex flex-col-reverse gap-4 sm:flex-row sm:justify-between sm:items-center">
+              <button
+                onClick={() => handleSetStep(5)}
+                disabled={saving}
+                className="w-full sm:w-auto px-6 py-3 bg-[var(--az-bg-tertiary)] hover:bg-[var(--az-bg-primary)] border border-[var(--az-border)] text-[var(--az-text-secondary)] font-bold text-xs uppercase tracking-widest rounded-xl transition-all"
+              >
                 ← Back
               </button>
-              <div className="flex gap-4">
-                <button onClick={() => setStep(7)} className="text-xs font-bold text-[var(--az-text-secondary)] hover:text-white uppercase tracking-widest">
+              <div className="flex flex-col-reverse gap-2 w-full sm:w-auto sm:flex-row sm:gap-4 sm:items-center">
+                <button
+                  onClick={() => handleSetStep(7)}
+                  disabled={saving}
+                  className="w-full sm:w-auto text-center py-2 text-xs font-bold text-[var(--az-text-secondary)] hover:text-white uppercase tracking-widest"
+                >
                   Set Up Later
                 </button>
-                <button onClick={() => saveStep(7)} className="px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg">
-                  Save & Complete Setup →
+                <button
+                  onClick={() => saveStep(7)}
+                  disabled={saving}
+                  className="w-full sm:w-auto px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg flex items-center justify-center"
+                >
+                  {saving ? (
+                    <span className="flex items-center gap-2">
+                      <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Processing...
+                    </span>
+                  ) : (
+                    'Save & Complete Setup →'
+                  )}
                 </button>
               </div>
             </div>

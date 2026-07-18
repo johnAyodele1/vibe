@@ -95,6 +95,7 @@ const adultUserSchema = new Schema<IAdultUser, IAdultUserModel>(
     ],
     providerProfile: {
       stageName: String,
+      gender: String,
       categories: [String],
       isLive: { type: Boolean, default: false },
       pricePerMinute: { type: Number, default: 0 },

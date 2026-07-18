@@ -494,8 +494,10 @@ export const updateProfile = async (req: Request, res: Response) => {
       user.dateOfBirth = dob;
     }
 
-    // Since gender isn't directly on AdultUser, let's keep it in providerProfile or bio metadata
-    // We can also store gender on the model as mixed metadata if needed
+    if (gender !== undefined) {
+      user.providerProfile!.gender = gender;
+    }
+
     await user.save();
 
     return res.json({ success: true, message: 'Profile updated successfully', data: { user } });
