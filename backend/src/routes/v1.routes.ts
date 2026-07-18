@@ -33,6 +33,7 @@ import {
   unlockMedia,
   markAsRead
 } from '../controllers/adultSext.controller';
+import * as roomsController from '../controllers/adultRooms.controller';
 
 const router = express.Router();
 
@@ -74,5 +75,43 @@ router.put('/adult/providers/me/payout', verifyAdultJWT, updatePayout);
 router.put('/adult/providers/me/status', verifyAdultJWT, updateStatus);
 router.put('/adult/providers/me/photos', verifyAdultJWT, updatePhotos);
 router.put('/adult/providers/me/schedule', verifyAdultJWT, updateSchedule);
+
+// Naughty Rooms API
+router.get('/adult/rooms', verifyAdultJWT, roomsController.getRooms);
+router.post('/adult/rooms', verifyAdultJWT, roomsController.createRoom);
+router.get('/adult/rooms/:roomId', verifyAdultJWT, roomsController.getRoom);
+router.post('/adult/rooms/:roomId/join', verifyAdultJWT, roomsController.joinRoom);
+router.post('/adult/rooms/:roomId/leave', verifyAdultJWT, roomsController.leaveRoom);
+router.get('/adult/rooms/:roomId/members', verifyAdultJWT, roomsController.getRoomMembers);
+router.get('/adult/rooms/:roomId/leaderboard', verifyAdultJWT, roomsController.getRoomLeaderboard);
+
+// Threads
+router.get('/adult/rooms/:roomId/threads', verifyAdultJWT, roomsController.getThreads);
+router.post('/adult/rooms/:roomId/threads', verifyAdultJWT, roomsController.createThread);
+router.get('/adult/rooms/:roomId/threads/:threadId', verifyAdultJWT, roomsController.getThread);
+router.post('/adult/rooms/:roomId/threads/:threadId/react', verifyAdultJWT, roomsController.reactThread);
+router.put('/adult/rooms/:roomId/threads/:threadId/pin', verifyAdultJWT, roomsController.pinThread);
+router.put('/adult/rooms/:roomId/threads/:threadId/lock', verifyAdultJWT, roomsController.lockThread);
+
+// Messages (main feed)
+router.get('/adult/rooms/:roomId/messages', verifyAdultJWT, roomsController.getMessages);
+router.post('/adult/rooms/:roomId/messages', verifyAdultJWT, roomsController.sendMessage);
+router.post('/adult/rooms/:roomId/messages/:messageId/react', verifyAdultJWT, roomsController.reactMessage);
+router.delete('/adult/rooms/:roomId/messages/:messageId', verifyAdultJWT, roomsController.deleteMessage);
+
+// Thread replies
+router.get('/adult/rooms/:roomId/threads/:threadId/replies', verifyAdultJWT, roomsController.getReplies);
+router.post('/adult/rooms/:roomId/threads/:threadId/replies', verifyAdultJWT, roomsController.postReply);
+router.post('/adult/rooms/:roomId/threads/:threadId/replies/:replyId/react', verifyAdultJWT, roomsController.reactReply);
+
+// Polls
+router.get('/adult/rooms/:roomId/polls/active', verifyAdultJWT, roomsController.getActivePolls);
+router.post('/adult/rooms/:roomId/polls', verifyAdultJWT, roomsController.createPoll);
+router.post('/adult/rooms/:roomId/polls/:pollId/vote', verifyAdultJWT, roomsController.votePoll);
+
+// Moderation
+router.post('/adult/rooms/:roomId/report', verifyAdultJWT, roomsController.reportRoom);
+router.post('/adult/rooms/:roomId/members/:userId/mute', verifyAdultJWT, roomsController.muteUser);
+router.delete('/adult/rooms/:roomId/members/:userId', verifyAdultJWT, roomsController.kickUser);
 
 export default router;

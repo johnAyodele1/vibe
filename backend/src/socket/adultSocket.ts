@@ -34,13 +34,17 @@ export const setupAdultSocket = (io: Server) => {
   adultNamespace.on('connection', (socket: Socket) => {
     console.log(`Adult Socket connected: ${socket.id}`);
 
-    // Room events
-    socket.on('room:join', (roomId: string) => {
+    // Room events (for both standard rooms and naughty rooms)
+    socket.on('room:join', (data: any) => {
+      const roomId = typeof data === 'string' ? data : data?.roomId;
+      if (!roomId) return;
       socket.join(`room:${roomId}`);
       adultNamespace.to(`room:${roomId}`).emit('room:userJoined', { userId: socket.data.user._id, count: adultNamespace.adapter.rooms.get(`room:${roomId}`)?.size });
     });
 
-    socket.on('room:leave', (roomId: string) => {
+    socket.on('room:leave', (data: any) => {
+      const roomId = typeof data === 'string' ? data : data?.roomId;
+      if (!roomId) return;
       socket.leave(`room:${roomId}`);
       adultNamespace.to(`room:${roomId}`).emit('room:userLeft', { userId: socket.data.user._id, count: adultNamespace.adapter.rooms.get(`room:${roomId}`)?.size });
     });
@@ -52,6 +56,44 @@ export const setupAdultSocket = (io: Server) => {
             content: data.content,
             createdAt: new Date(),
         });
+    });
+
+    socket.on('room:typing', (data: { roomId: string }) => {
+      if (!data || !data.roomId) return;
+      const { roomId } = data;
+      socket.to(`room:${roomId}`).emit('room:typing', {
+        userId: socket.data.user._id,
+        displayName: socket.data.user.displayName || socket.data.user.username,
+      });
+    });
+
+    socket.on('room:stop_typing', (data: { roomId: string }) => {
+      // Can be used to clear typing list if needed
+    });
+
+    socket.on('thread:join', (data: { threadId: string }) => {
+      if (!data || !data.threadId) return;
+      const { threadId } = data;
+      socket.join(`thread:${threadId}`);
+    });
+
+    socket.on('thread:leave', (data: { threadId: string }) => {
+      if (!data || !data.threadId) return;
+      const { threadId } = data;
+      socket.leave(`thread:${threadId}`);
+    });
+
+    socket.on('thread:typing', (data: { threadId: string }) => {
+      if (!data || !data.threadId) return;
+      const { threadId } = data;
+      socket.to(`thread:${threadId}`).emit('thread:typing', {
+        userId: socket.data.user._id,
+        displayName: socket.data.user.displayName || socket.data.user.username,
+      });
+    });
+
+    socket.on('thread:stop_typing', (data: { threadId: string }) => {
+      // Thread stop typing
     });
 
     // Private Chat events
