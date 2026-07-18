@@ -177,4 +177,32 @@ describe('Provider Onboarding & Profile API', () => {
     expect(res.body.uploadUrl).toBeDefined();
     expect(res.body.publicUrl).toBeDefined();
   });
+
+  it('PUT /api/v1/adult/providers/me/schedule updates schedule and GET /me/dashboard returns stats', async () => {
+    const scheduleData = [
+      { day: 'Monday', active: true, start: '10:00', end: '22:00' },
+      { day: 'Tuesday', active: false, start: '12:00', end: '23:59' }
+    ];
+
+    const putRes = await request(app)
+      .put('/api/v1/adult/providers/me/schedule')
+      .set('Authorization', `Bearer ${providerToken}`)
+      .send({ schedule: scheduleData })
+      .expect(200);
+
+    expect(putRes.body.success).toBe(true);
+    expect(putRes.body.data.user.providerProfile.schedule.length).toBe(2);
+    expect(putRes.body.data.user.providerProfile.schedule[0].start).toBe('10:00');
+
+    const getRes = await request(app)
+      .get('/api/v1/adult/providers/me/dashboard')
+      .set('Authorization', `Bearer ${providerToken}`)
+      .expect(200);
+
+    expect(getRes.body.success).toBe(true);
+    expect(getRes.body.data.stats).toBeDefined();
+    expect(getRes.body.data.recentSessions).toBeDefined();
+    expect(getRes.body.data.recentMessages).toBeDefined();
+    expect(getRes.body.data.schedule).toBeDefined();
+  });
 });

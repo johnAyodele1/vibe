@@ -86,6 +86,9 @@ const ProviderProfile: React.FC = () => {
           if (profile.location) {
             setLocationValue(profile.location);
           }
+          if (profile.schedule && profile.schedule.length > 0) {
+            setSchedule(profile.schedule);
+          }
         }
       } catch (err) {
         console.error('Failed to pre-populate profile editor:', err);
@@ -185,6 +188,24 @@ const ProviderProfile: React.FC = () => {
       toast.success('Coverage location updated successfully!');
     } catch (err: any) {
       toast.error(err.message);
+    }
+  };
+
+  const handleSaveSchedule = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/schedule`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ schedule })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save schedule');
+      toast.success('Weekly calendar parameters saved successfully!');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save schedule');
     }
   };
 
@@ -375,7 +396,7 @@ const ProviderProfile: React.FC = () => {
               </div>
 
               <button
-                onClick={() => toast.success('Weekly calendar parameters saved successfully!')}
+                onClick={handleSaveSchedule}
                 className="px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-md"
               >
                 Save Schedule

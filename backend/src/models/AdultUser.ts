@@ -144,6 +144,27 @@ const adultUserSchema = new Schema<IAdultUser, IAdultUserModel>(
           lng: Number,
         },
       },
+      profileViews: { type: Number, default: 0 },
+      activeSubs: { type: Number, default: 0 },
+      schedule: {
+        type: [
+          {
+            day: String,
+            active: { type: Boolean, default: true },
+            start: { type: String, default: '12:00' },
+            end: { type: String, default: '23:59' },
+          }
+        ],
+        default: [
+          { day: 'Monday', active: true, start: '12:00', end: '23:59' },
+          { day: 'Tuesday', active: true, start: '12:00', end: '23:59' },
+          { day: 'Wednesday', active: true, start: '12:00', end: '23:59' },
+          { day: 'Thursday', active: true, start: '12:00', end: '23:59' },
+          { day: 'Friday', active: true, start: '12:00', end: '23:59' },
+          { day: 'Saturday', active: true, start: '12:00', end: '23:59' },
+          { day: 'Sunday', active: true, start: '12:00', end: '23:59' }
+        ]
+      }
     },
   },
   {

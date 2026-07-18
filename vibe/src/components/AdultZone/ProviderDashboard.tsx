@@ -1,43 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { API_BASE_URL } from '../../config';
 import { toast } from 'sonner';
 
 const ProviderDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { user } = useAdultAuth();
   const token = localStorage.getItem('adultAccessToken');
 
   const [isLive, setIsLive] = useState(false);
+  const [stageName, setStageName] = useState('Stage Name');
   const [stats, setStats] = useState<any>({
-    todayEarnings: 2400,
-    weekEarnings: 18500,
-    monthEarnings: 74200,
-    profileViews: 1247,
-    newMessages: 23,
-    activeSubs: 89,
-    avgRating: 4.8,
-    reviewCount: 312
+    todayEarnings: 0,
+    weekEarnings: 0,
+    monthEarnings: 0,
+    profileViews: 0,
+    newMessages: 0,
+    activeSubs: 0,
+    avgRating: 0,
+    reviewCount: 0
   });
 
-  const [recentSessions] = useState<any[]>([
-    { date: 'Yesterday 9PM - 11:30PM', tips: 4200, peakViewers: 89 },
-    { date: '2 days ago 8PM - 10PM', tips: 2800, peakViewers: 64 }
-  ]);
-
-  const [recentMessages] = useState<any[]>([
-    { id: '1', name: 'MemberName123', text: 'Hey, are you available tonight?', time: '2 min ago' },
-    { id: '2', name: 'DiscreetUser', text: 'Loved your last show! ❤️', time: '1 hr ago' },
-    { id: '3', name: 'User_8821', text: '[🔒 Premium message]', time: '3 hr ago' }
-  ]);
-
-  const [schedule] = useState<any[]>([
-    { day: 'Mon', hours: '8PM – 2AM' },
-    { day: 'Wed', hours: '9PM – 1AM' },
-    { day: 'Fri', hours: '8PM – 3AM' },
-    { day: 'Sat', hours: 'All day' }
-  ]);
+  const [recentSessions, setRecentSessions] = useState<any[]>([]);
+  const [recentMessages, setRecentMessages] = useState<any[]>([]);
+  const [schedule, setSchedule] = useState<any[]>([]);
 
   useEffect(() => {
     if (!token) {
@@ -46,23 +31,60 @@ const ProviderDashboard: React.FC = () => {
     }
     const fetchDashboardData = async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me`, {
+        const userRes = await fetch(`${API_BASE_URL}/v1/adult/providers/me`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const userData = await userRes.json();
+        if (userRes.ok && userData.success && userData.data.user) {
+          const profile = userData.data.user.providerProfile || {};
+          setIsLive(profile.isLive ?? false);
+          setStageName(profile.stageName || userData.data.user.displayName || userData.data.user.username || 'Stage Name');
+        }
+
+        const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/dashboard`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await res.json();
-        if (res.ok && data.success && data.data.user) {
-          const profile = data.data.user.providerProfile || {};
-          setIsLive(profile.isLive ?? false);
-          setStats({
-            todayEarnings: Math.floor(profile.totalEarnings * 0.2) || 2400,
-            weekEarnings: Math.floor(profile.totalEarnings * 0.6) || 18500,
-            monthEarnings: profile.totalEarnings || 74200,
-            profileViews: 1247,
-            newMessages: 23,
-            activeSubs: 89,
-            avgRating: profile.rating?.average || 4.8,
-            reviewCount: profile.rating?.count || 312
-          });
+        if (res.ok && data.success) {
+          const d = data.data;
+          setStats(d.stats);
+          setRecentSessions(d.recentSessions || []);
+          setRecentMessages(d.recentMessages || []);
+
+          const dayShortNames: { [key: string]: string } = {
+            'Monday': 'Mon',
+            'Tuesday': 'Tue',
+            'Wednesday': 'Wed',
+            'Thursday': 'Thu',
+            'Friday': 'Fri',
+            'Saturday': 'Sat',
+            'Sunday': 'Sun'
+          };
+
+          const formatTime = (timeStr: string) => {
+            if (!timeStr) return '';
+            const [h, m] = timeStr.split(':');
+            const hours = parseInt(h, 10);
+            const minutes = parseInt(m, 10);
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            const displayHours = hours % 12 === 0 ? 12 : hours % 12;
+            const displayMinutes = minutes > 0 ? `:${m}` : '';
+            return `${displayHours}${displayMinutes}${ampm}`;
+          };
+
+          const formatHours = (start: string, end: string) => {
+            if (start === '00:00' && end === '23:59') return 'All day';
+            return `${formatTime(start)} – ${formatTime(end)}`;
+          };
+
+          const mappedSchedule = (d.schedule || [])
+            .filter((s: any) => s.active)
+            .map((s: any) => ({
+              day: dayShortNames[s.day] || s.day,
+              hours: formatHours(s.start, s.end)
+            }));
+
+          setSchedule(mappedSchedule);
         }
       } catch (err) {
         console.error('Failed to load real dashboard metrics:', err);
@@ -103,7 +125,7 @@ const ProviderDashboard: React.FC = () => {
               Provider Studio
             </h1>
             <p className="text-xs text-[var(--az-text-secondary)] mt-1">
-              Welcome back, <span className="text-[var(--az-accent-rose)] font-bold">{user?.firstName || 'Stage Name'}</span>
+              Welcome back, <span className="text-[var(--az-accent-rose)] font-bold">{stageName}</span>
             </p>
           </div>
 
@@ -180,15 +202,19 @@ const ProviderDashboard: React.FC = () => {
               </div>
 
               <div className="space-y-4">
-                {recentSessions.map((session, i) => (
-                  <div key={i} className="flex justify-between items-center border-b border-[var(--az-border)]/50 pb-3 last:border-0 last:pb-0 text-sm">
-                    <div>
-                      <p className="font-medium text-white">{session.date}</p>
-                      <p className="text-[10px] text-[var(--az-text-secondary)]">👁️ {session.peakViewers} peak spectators</p>
+                {recentSessions.length > 0 ? (
+                  recentSessions.map((session, i) => (
+                    <div key={i} className="flex justify-between items-center border-b border-[var(--az-border)]/50 pb-3 last:border-0 last:pb-0 text-sm">
+                      <div>
+                        <p className="font-medium text-white">{session.date}</p>
+                        <p className="text-[10px] text-[var(--az-text-secondary)]">👁️ {session.peakViewers} peak spectators</p>
+                      </div>
+                      <span className="font-mono text-[var(--az-accent-gold)] font-bold">💎 {session.tips}</span>
                     </div>
-                    <span className="font-mono text-[var(--az-accent-gold)] font-bold">💎 {session.tips}</span>
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  <p className="text-xs text-[var(--az-text-muted)] italic text-center py-4">No recent streaming sessions recorded.</p>
+                )}
               </div>
             </div>
 
@@ -201,18 +227,24 @@ const ProviderDashboard: React.FC = () => {
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {schedule.map((sch, i) => (
-                  <div key={i} className="bg-[var(--az-bg-tertiary)] rounded-xl p-3 text-center border border-[var(--az-border)]">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--az-accent-rose)] mb-1">{sch.day}</p>
-                    <p className="text-xs text-white whitespace-nowrap">{sch.hours}</p>
+                {schedule.length > 0 ? (
+                  schedule.map((sch, i) => (
+                    <div key={i} className="bg-[var(--az-bg-tertiary)] rounded-xl p-3 text-center border border-[var(--az-border)]">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--az-accent-rose)] mb-1">{sch.day}</p>
+                      <p className="text-xs text-white whitespace-nowrap">{sch.hours}</p>
+                    </div>
+                  ))
+                ) : (
+                  <div className="col-span-full py-4 text-center">
+                    <p className="text-xs text-[var(--az-text-muted)] italic">No availability set. Update your calendar.</p>
                   </div>
-                ))}
+                )}
               </div>
             </div>
           </div>
 
           {/* Right Block: Recent Messages Inbox Previews */}
-          <div className="bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-3xl p-6 flex flex-col h-full">
+          <div className="bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-3xl p-6 flex flex-col h-full animate-fadeIn">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-lg font-serif italic text-white">Recent Member Messages</h3>
               <button onClick={() => navigate('/adult/provider/messages')} className="text-xs text-[var(--az-accent-gold)] uppercase font-bold tracking-widest hover:underline">
@@ -220,21 +252,28 @@ const ProviderDashboard: React.FC = () => {
               </button>
             </div>
 
-            <div className="space-y-4 flex-grow">
-              {recentMessages.map(msg => (
-                <div key={msg.id} className="p-4 bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-2xl flex items-center justify-between hover:scale-[1.01] transition-transform cursor-pointer" onClick={() => navigate('/adult/provider/messages')}>
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-[var(--az-bg-primary)] border border-[var(--az-border)] flex items-center justify-center text-xs font-mono">
-                      👤
+            <div className="space-y-4 flex-grow flex flex-col justify-start">
+              {recentMessages.length > 0 ? (
+                recentMessages.map(msg => (
+                  <div key={msg.id} className="p-4 bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-2xl flex items-center justify-between hover:scale-[1.01] transition-transform cursor-pointer" onClick={() => navigate('/adult/provider/messages')}>
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-[var(--az-bg-primary)] border border-[var(--az-border)] flex items-center justify-center text-xs font-mono">
+                        👤
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-white">{msg.name}</h4>
+                        <p className="text-[11px] text-[var(--az-text-secondary)] mt-0.5">{msg.text}</p>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="text-xs font-bold text-white">{msg.name}</h4>
-                      <p className="text-[11px] text-[var(--az-text-secondary)] mt-0.5">{msg.text}</p>
-                    </div>
+                    <span className="text-[9px] text-[var(--az-text-muted)] font-mono">{msg.time}</span>
                   </div>
-                  <span className="text-[9px] text-[var(--az-text-muted)] font-mono">{msg.time}</span>
+                ))
+              ) : (
+                <div className="flex-grow flex flex-col items-center justify-center text-center py-12">
+                  <span className="text-2xl mb-2">✉️</span>
+                  <p className="text-xs text-[var(--az-text-muted)] italic">Your inbox is currently empty.</p>
                 </div>
-              ))}
+              )}
             </div>
           </div>
 
