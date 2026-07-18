@@ -193,6 +193,19 @@ const ProviderProfile: React.FC = () => {
 
   const handleSaveSchedule = async () => {
     try {
+      // Validate schedule format first!
+      const timeRegex = /^(0?[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$/;
+      for (const sch of schedule) {
+        if (sch.active) {
+          if (!sch.start || !timeRegex.test(sch.start)) {
+            throw new Error(`Invalid start time format for ${sch.day}. Please use HH:MM format (e.g., 12:00 to 23:59). Entered: "${sch.start || ''}"`);
+          }
+          if (!sch.end || !timeRegex.test(sch.end)) {
+            throw new Error(`Invalid end time format for ${sch.day}. Please use HH:MM format (e.g., 12:00 to 23:59). Entered: "${sch.end || ''}"`);
+          }
+        }
+      }
+
       const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/schedule`, {
         method: 'PUT',
         headers: {
@@ -202,7 +215,7 @@ const ProviderProfile: React.FC = () => {
         body: JSON.stringify({ schedule })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to save schedule');
+      if (!res.ok) throw new Error(data.error?.message || data.error || 'Failed to save schedule');
       toast.success('Weekly calendar parameters saved successfully!');
     } catch (err: any) {
       toast.error(err.message || 'Failed to save schedule');

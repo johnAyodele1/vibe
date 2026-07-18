@@ -205,4 +205,19 @@ describe('Provider Onboarding & Profile API', () => {
     expect(getRes.body.data.recentMessages).toBeDefined();
     expect(getRes.body.data.schedule).toBeDefined();
   });
+
+  it('PUT /api/v1/adult/providers/me/schedule rejects invalid time format like 2nn3:59', async () => {
+    const invalidScheduleData = [
+      { day: 'Monday', active: true, start: '2nn3:59', end: '23:59' }
+    ];
+
+    const res = await request(app)
+      .put('/api/v1/adult/providers/me/schedule')
+      .set('Authorization', `Bearer ${providerToken}`)
+      .send({ schedule: invalidScheduleData })
+      .expect(400);
+
+    expect(res.body.success).toBe(false);
+    expect(res.body.error.message).toContain('Invalid start time format for Monday');
+  });
 });
