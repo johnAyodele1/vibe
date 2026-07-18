@@ -69,6 +69,9 @@ export interface IAdultUser extends Document {
       state?: { code: string; name: string };
       city?: { name: string; lat: number; lng: number };
     };
+    profileViews?: number;
+    activeSubs?: number;
+    schedule?: Array<{ day: string; active: boolean; start: string; end: string }>;
   };
   createdAt: Date;
   updatedAt: Date;
