@@ -27,9 +27,16 @@ const NaughtyRooms: React.FC = () => {
   const [rooms, setRooms] = useState<any[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(true);
   const [categoryFilter, setCategoryFilter] = useState('🔥 All');
-  const [moodFilter, setMoodFilter] = useState('All Moods');
 
-  // Categories and Moods defined in spec
+  // Room Creation Modal States
+  const [isCreateRoomModalOpen, setIsCreateRoomModalOpen] = useState(false);
+  const [newRoomName, setNewRoomName] = useState('');
+  const [newRoomDescription, setNewRoomDescription] = useState('');
+  const [newRoomCategory, setNewRoomCategory] = useState('💋 Casual');
+  const [newRoomMood, setNewRoomMood] = useState('chill');
+  const [submittingRoom, setSubmittingRoom] = useState(false);
+
+  // Categories defined in spec
   const categories = [
     '🔥 All',
     '💋 Casual',
@@ -40,7 +47,65 @@ const NaughtyRooms: React.FC = () => {
     '⭐ VIP Exclusive'
   ];
 
-  const moods = ['All Moods', 'Chill', 'Wild', 'Explicit'];
+  const handleCreateRoomClick = () => {
+    if (!currentUser) {
+      toast.error('You must be logged in to create a room');
+      return;
+    }
+    let initialCategory = categoryFilter;
+    if (initialCategory === '🔥 All') {
+      initialCategory = '💋 Casual';
+    }
+    setNewRoomCategory(initialCategory);
+    setIsCreateRoomModalOpen(true);
+  };
+
+  const handleCreateRoomSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newRoomName.trim()) {
+      toast.error('Room name is required');
+      return;
+    }
+
+    try {
+      setSubmittingRoom(true);
+      const response = await fetch(`${API_BASE_URL}/v1/adult/rooms`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          name: newRoomName,
+          description: newRoomDescription,
+          category: newRoomCategory,
+          mood: newRoomMood,
+          tags: [],
+          coverGradient: ['#c8102e', '#0a0608'],
+          icon: '🌶️',
+          rules: [
+            'No real contact info sharing.',
+            'Explicit content allowed — respect others.',
+            'No hate speech or discrimination.'
+          ],
+          requiresSubscription: newRoomCategory === '⭐ VIP Exclusive'
+        }),
+      });
+
+      const data = await response.json();
+      if (data.success && data.data?.room) {
+        toast.success(`Room "${data.data.room.name}" created successfully!`);
+        setIsCreateRoomModalOpen(false);
+        setNewRoomName('');
+        setNewRoomDescription('');
+        handleJoinEnterRoom(data.data.room);
+      } else {
+        toast.error(data.error?.message || 'Failed to create room');
+      }
+    } catch (err) {
+      console.error('Error creating room:', err);
+      toast.error('Error creating room');
+    } finally {
+      setSubmittingRoom(false);
+    }
+  };
 
   // --------------------------------------------------------------------------
   // Fetch Rooms
@@ -52,9 +117,6 @@ const NaughtyRooms: React.FC = () => {
       const params = [];
       if (categoryFilter !== '🔥 All') {
         params.push(`category=${encodeURIComponent(categoryFilter)}`);
-      }
-      if (moodFilter !== 'All Moods') {
-        params.push(`mood=${encodeURIComponent(moodFilter)}`);
       }
       if (params.length > 0) {
         urlStr += `?${params.join('&')}`;
@@ -80,7 +142,7 @@ const NaughtyRooms: React.FC = () => {
     if (!roomId) {
       fetchRoomsList();
     }
-  }, [roomId, categoryFilter, moodFilter]);
+  }, [roomId, categoryFilter]);
 
   // --------------------------------------------------------------------------
   // Join Room Redirect / Trigger
@@ -163,7 +225,7 @@ const NaughtyRooms: React.FC = () => {
       </div>
 
       {/* Category filters (horizontal scroll) */}
-      <div className="flex gap-2 overflow-x-auto pb-4 mb-4 no-scrollbar scroll-smooth">
+      <div className="flex gap-2 overflow-x-auto pb-4 mb-10 no-scrollbar scroll-smooth">
         {categories.map((c) => (
           <button
             key={c}
@@ -175,23 +237,6 @@ const NaughtyRooms: React.FC = () => {
             }`}
           >
             {c}
-          </button>
-        ))}
-      </div>
-
-      {/* Mood filters */}
-      <div className="flex flex-wrap gap-2 mb-10 justify-center md:justify-start">
-        {moods.map((m) => (
-          <button
-            key={m}
-            onClick={() => setMoodFilter(m)}
-            className={`px-4 py-1.5 rounded-full text-xs transition-all border ${
-              moodFilter === m
-                ? 'bg-[var(--az-accent-rose)] border-transparent text-white'
-                : 'bg-[var(--az-bg-tertiary)] border-[var(--az-border)] text-[var(--az-text-secondary)] hover:text-white'
-            }`}
-          >
-            {m}
           </button>
         ))}
       </div>
@@ -210,13 +255,13 @@ const NaughtyRooms: React.FC = () => {
             No rooms match your vibe right now
           </h3>
           <p className="text-sm text-[var(--az-text-secondary)] mb-6">
-            Try a different mood or check back later
+            Try a different category or create your own room to start the conversation!
           </p>
           <button
-            onClick={() => { setCategoryFilter('🔥 All'); setMoodFilter('All Moods'); }}
+            onClick={handleCreateRoomClick}
             className="px-6 py-2.5 bg-[var(--az-accent-primary)] text-white text-xs font-bold uppercase tracking-wider rounded-xl hover:scale-105 active:scale-95 transition-all"
           >
-            Clear Filters
+            Create a Room
           </button>
         </div>
       ) : (
@@ -322,6 +367,93 @@ const NaughtyRooms: React.FC = () => {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* CREATE ROOM MODAL */}
+      {isCreateRoomModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]">
+          <div className="bg-[#180a0e] border border-[var(--az-border)] rounded-2xl p-6 w-full max-w-xl max-h-[90vh] overflow-y-auto relative shadow-2xl">
+            <div className="flex justify-between items-center pb-3 border-b border-white/10 mb-5">
+              <h3 className="text-lg font-serif italic text-white font-bold" style={{ fontFamily: 'Playfair Display, serif' }}>
+                Create a Naughty Room
+              </h3>
+              <button onClick={() => setIsCreateRoomModalOpen(false)} className="text-gray-500 hover:text-white text-base">✕</button>
+            </div>
+
+            <form onSubmit={handleCreateRoomSubmit} className="space-y-4 text-left">
+              <div>
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">
+                  Room Name (required)
+                </label>
+                <input
+                  type="text"
+                  value={newRoomName}
+                  onChange={(e) => setNewRoomName(e.target.value)}
+                  maxLength={50}
+                  required
+                  placeholder="e.g. Secret Desires, Late Night Whispers..."
+                  className="w-full bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[var(--az-accent-rose)]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">
+                  Description
+                </label>
+                <textarea
+                  value={newRoomDescription}
+                  onChange={(e) => setNewRoomDescription(e.target.value)}
+                  maxLength={200}
+                  rows={3}
+                  placeholder="Tell people what your room is about..."
+                  className="w-full bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[var(--az-accent-rose)] resize-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">
+                    Category
+                  </label>
+                  <select
+                    value={newRoomCategory}
+                    onChange={(e) => setNewRoomCategory(e.target.value)}
+                    className="w-full bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-[var(--az-accent-rose)]"
+                  >
+                    {categories.filter(c => c !== '🔥 All').map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">
+                    Vibe Mood
+                  </label>
+                  <select
+                    value={newRoomMood}
+                    onChange={(e) => setNewRoomMood(e.target.value)}
+                    className="w-full bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-[var(--az-accent-rose)]"
+                  >
+                    <option value="chill">Chill</option>
+                    <option value="wild">Wild</option>
+                    <option value="explicit">Explicit</option>
+                  </select>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={submittingRoom || !newRoomName.trim()}
+                className="w-full py-3 bg-[var(--az-accent-primary)] hover:bg-rose-700 disabled:opacity-40 disabled:hover:bg-[var(--az-accent-primary)] text-white text-xs font-bold uppercase tracking-widest rounded-xl transition-all shadow-lg mt-4"
+              >
+                {submittingRoom ? 'Creating Room...' : 'Create and Join Room'}
+              </button>
+            </form>
+          </div>
         </div>
       )}
     </div>

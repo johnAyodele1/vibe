@@ -115,15 +115,71 @@ describe('NaughtyRooms Component', () => {
     });
   });
 
-  it('handles mood filter pills click triggers correctly', async () => {
+  it('renders "no rooms" screen with a Create Room button, opens the modal, submits and joins', async () => {
+    server.use(
+      http.get('**/v1/adult/rooms', () => {
+        return HttpResponse.json({
+          success: true,
+          data: { rooms: [] },
+        });
+      }),
+      http.post('**/v1/adult/rooms', () => {
+        return HttpResponse.json({
+          success: true,
+          data: {
+            room: {
+              _id: 'newly-created-room-id',
+              name: 'My New Private Room',
+              description: 'Created room description',
+              category: 'roleplay',
+              mood: 'chill',
+              memberCount: 1,
+              requiresSubscription: false,
+            }
+          }
+        });
+      }),
+      http.post('**/v1/adult/rooms/newly-created-room-id/join', () => {
+        return HttpResponse.json({
+          success: true,
+          data: {
+            membership: { role: 'admin' }
+          }
+        });
+      })
+    );
+
     render(<NaughtyRooms />);
 
-    const wildPill = screen.getByText('Wild');
-    fireEvent.click(wildPill);
-
-    // Should load cards
+    // Wait for "No rooms match..." to appear
     await waitFor(() => {
-      expect(screen.getByText('Chill Castle')).toBeInTheDocument();
+      expect(screen.getByText(/No rooms match your vibe right now/i)).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(/create your own room/i)).toBeInTheDocument();
+
+    // Click "Create a Room" button
+    const createBtn = screen.getByRole('button', { name: /Create a Room/i });
+    fireEvent.click(createBtn);
+
+    // Expect modal to open
+    expect(screen.getByText('Create a Naughty Room')).toBeInTheDocument();
+
+    // Fill in Room Name
+    const nameInput = screen.getByPlaceholderText(/e.g. Secret Desires/i);
+    fireEvent.change(nameInput, { target: { value: 'My New Private Room' } });
+
+    // Fill in Description
+    const descInput = screen.getByPlaceholderText(/Tell people what your room is about/i);
+    fireEvent.change(descInput, { target: { value: 'Created room description' } });
+
+    // Submit form
+    const submitBtn = screen.getByRole('button', { name: /Create and Join Room/i });
+    fireEvent.click(submitBtn);
+
+    // Should call POST /v1/adult/rooms and handleJoinEnterRoom internally, navigating to /rooms/newly-created-room-id
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/rooms/newly-created-room-id');
     });
   });
 
