@@ -56,6 +56,175 @@ export const getPresignedUrl = async (req: Request, res: Response) => {
   }
 };
 
+export const getProviderEarnings = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user || user.role !== 'provider') {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Only providers can view earnings' } });
+    }
+
+    const { dateRange = 'This Month' } = req.query;
+
+    // 1. Fetch all transactions for this user
+    const transactions = await CreditTransaction.find({ userId: user._id })
+      .populate('relatedUserId', 'username displayName')
+      .sort({ createdAt: -1 });
+
+    // 2. Filter transactions based on dateRange if specified
+    const now = new Date();
+    let filteredTransactions = transactions;
+
+    if (dateRange === 'Today') {
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      filteredTransactions = transactions.filter(tx => new Date(tx.createdAt) >= startOfToday);
+    } else if (dateRange === 'This Week') {
+      const startOfWeek = new Date();
+      startOfWeek.setDate(startOfWeek.getDate() - 7);
+      filteredTransactions = transactions.filter(tx => new Date(tx.createdAt) >= startOfWeek);
+    } else if (dateRange === 'This Month') {
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      filteredTransactions = transactions.filter(tx => new Date(tx.createdAt) >= startOfMonth);
+    }
+
+    // 3. Calculate metrics
+    const totalEarned = user.providerProfile?.totalEarnings || 0;
+
+    // paidOutCredits is the sum of completed payout transactions
+    const payoutTxs = transactions.filter(tx => tx.type === 'payout' && tx.status === 'completed');
+    const paidOutCredits = payoutTxs.reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+
+    // pendingCredits is remaining balance: totalEarned - paidOutCredits
+    const pendingCredits = Math.max(0, totalEarned - paidOutCredits);
+
+    const paidOutUsd = paidOutCredits * 0.0075;
+    const pendingUsd = pendingCredits * 0.0075;
+
+    // 4. Calculate Earnings Timeline (last 6 days)
+    const timeline: any[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      timeline.push({
+        dayName: d.toLocaleDateString('en-US', { weekday: 'short' }), // e.g. "Mon"
+        dateString: d.toDateString(),
+        credits: 0
+      });
+    }
+
+    // Populate timeline with positive earnings transactions
+    transactions.forEach(tx => {
+      if (tx.amount > 0 && tx.status === 'completed') {
+        const txDateStr = new Date(tx.createdAt).toDateString();
+        const dayObj = timeline.find(t => t.dateString === txDateStr);
+        if (dayObj) {
+          dayObj.credits += tx.amount;
+        }
+      }
+    });
+
+    // 5. Format transactions list for response
+    const formattedTransactions = filteredTransactions.map(tx => {
+      const txDate = new Date(tx.createdAt);
+      const dateLabel = txDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+      // Determine Type label
+      let typeLabel = tx.type.charAt(0).toUpperCase() + tx.type.slice(1);
+      if (tx.type === 'tip') typeLabel = 'Tip';
+      else if (tx.type === 'payout') typeLabel = 'Payout';
+
+      // Determine From/Method label
+      let fromLabel = 'Anonymous';
+      if (tx.type === 'payout') {
+        fromLabel = user.providerProfile?.payoutInfo?.method || 'Bank Transfer';
+        if (fromLabel === 'bank') fromLabel = 'Bank Transfer';
+        else if (fromLabel === 'crypto') fromLabel = 'Crypto';
+        else if (fromLabel === 'check') fromLabel = 'Check';
+      } else if (tx.relatedUserId) {
+        const relatedUser = tx.relatedUserId as any;
+        fromLabel = relatedUser.displayName || relatedUser.username || 'Anonymous';
+      }
+
+      return {
+        id: tx._id,
+        date: dateLabel,
+        type: typeLabel,
+        from: fromLabel,
+        amount: tx.amount,
+        usd: Math.abs(tx.amount) * 0.0075 * (tx.amount < 0 ? -1 : 1),
+        status: tx.status === 'completed' ? 'Completed' : tx.status.charAt(0).toUpperCase() + tx.status.slice(1)
+      };
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        totalEarned,
+        paidOut: paidOutUsd,
+        pending: pendingUsd,
+        timeline,
+        transactions: formattedTransactions
+      }
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const requestPayout = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user || user.role !== 'provider') {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Only providers can request payout' } });
+    }
+
+    // 1. Calculate pending credits
+    const transactions = await CreditTransaction.find({ userId: user._id, status: 'completed' });
+    const totalEarned = user.providerProfile?.totalEarnings || 0;
+    const payoutTxs = transactions.filter(tx => tx.type === 'payout');
+    const paidOutCredits = payoutTxs.reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+    const pendingCredits = Math.max(0, totalEarned - paidOutCredits);
+    const pendingUsd = pendingCredits * 0.0075;
+
+    if (pendingUsd < 50.00) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Minimum payout threshold is $50.00 USD' } });
+    }
+
+    // 2. Check user has enough credits to withdraw (user.credits)
+    const payoutAmountCredits = Math.min(pendingCredits, user.credits);
+
+    if (payoutAmountCredits <= 0) {
+      return res.status(400).json({ success: false, error: { code: 'INSUFFICIENT_CREDITS', message: 'No withdrawable credit balance remaining in your wallet' } });
+    }
+
+    // 3. Perform payout deduction and transaction creation
+    user.credits -= payoutAmountCredits;
+    if (user.providerProfile) {
+      user.providerProfile.pendingPayout = 0; // Reset pending payout field if any
+    }
+    await user.save();
+
+    const payoutTx = await CreditTransaction.create({
+      userId: user._id,
+      type: 'payout',
+      amount: -payoutAmountCredits,
+      usdAmount: -(payoutAmountCredits * 0.0075),
+      description: 'Payout to configured coordinates',
+      status: 'completed'
+    });
+
+    return res.json({
+      success: true,
+      message: 'Payout request successfully completed',
+      data: {
+        transaction: payoutTx,
+        newBalance: user.credits
+      }
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 export const updateSchedule = async (req: Request, res: Response) => {
   try {
     const user = req.adultUser;
