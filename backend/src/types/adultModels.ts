@@ -58,6 +58,17 @@ export interface IAdultUser extends Document {
       average: number;
       count: number;
     };
+    tonightRate?: number;
+    tipMenu?: Array<{ amount: number; action: string }>;
+    payoutInfo?: { method: string; details: any };
+    photos?: string[];
+    videoPreview?: string;
+    servicesOffered?: string[];
+    location?: {
+      country?: { code: string; name: string };
+      state?: { code: string; name: string };
+      city?: { name: string; lat: number; lng: number };
+    };
   };
   createdAt: Date;
   updatedAt: Date;
