@@ -110,6 +110,92 @@ export interface IRoom extends Document {
   tags: string[];
   isPinned: boolean;
   messageCount: number;
+  coverGradient: string[];
+  icon: string;
+  rules: string[];
+  requiresSubscription: boolean;
+  memberCount: number;
+  moderators: Types.ObjectId[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface IAdultThread extends Document {
+  roomId: Types.ObjectId;
+  authorId: Types.ObjectId;
+  authorName: string;
+  authorAvatarUrl?: string;
+  title: string;
+  body: string;
+  mediaUrl?: string;
+  replyCount: number;
+  viewCount: number;
+  reactionCounts: {
+    [key: string]: number;
+  };
+  reactions: {
+    userId: Types.ObjectId;
+    emoji: string;
+  }[];
+  isPinned: boolean;
+  isLocked: boolean;
+  lastReplyAt?: Date;
+  lastReplyAuthor?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface IReaction {
+  emoji: string;
+  userIds: Types.ObjectId[];
+  count: number;
+}
+
+export interface IAdultRoomMessage extends Document {
+  roomId: Types.ObjectId;
+  threadId?: Types.ObjectId | null;
+  senderId: Types.ObjectId;
+  senderName: string;
+  senderAvatarUrl?: string;
+  senderBadge?: string | null;
+  content: string;
+  mediaUrl?: string | null;
+  mediaType?: 'image' | 'gif' | 'audio' | null;
+  isExplicit: boolean;
+  replyToMessageId?: Types.ObjectId | null;
+  reactions: IReaction[];
+  isPinned: boolean;
+  isDeleted: boolean;
+  deletedAt?: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface IRoomMembership extends Document {
+  roomId: Types.ObjectId;
+  userId: Types.ObjectId;
+  role: 'member' | 'moderator' | 'admin';
+  joinedAt: Date;
+  lastSeenAt: Date;
+  messageCount: number;
+  tipsReceived: number;
+  mutedUntil?: Date | null;
+}
+
+export interface IPollOption {
+  id: string;
+  text: string;
+  voteCount: number;
+}
+
+export interface IAdultRoomPoll extends Document {
+  roomId: Types.ObjectId;
+  createdBy: Types.ObjectId;
+  question: string;
+  options: IPollOption[];
+  voterIds: Types.ObjectId[];
+  expiresAt: Date;
+  isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

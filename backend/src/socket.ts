@@ -5,6 +5,7 @@ import Conversation from './models/Conversation';
 import User from './models/User';
 import { IConversation, IUser } from './types/models';
 import { Types } from 'mongoose';
+import { setupAdultSocket } from './socket/adultSocket';
 
 let ioInstance: Server;
 const userSocketMap = new Map<string, Set<string>>(); // Stores a Set of socket IDs per userId
@@ -22,6 +23,13 @@ export const setupSocket = (server: HttpServer): Server => {
     },
   });
   ioInstance = io;
+
+  // Setup Adult Zone namespace
+  try {
+    setupAdultSocket(io);
+  } catch (err) {
+    console.error('Failed to setup adult socket namespace:', err);
+  }
 
   // Authenticate socket
   io.use((socket: AuthenticatedSocket, next) => {

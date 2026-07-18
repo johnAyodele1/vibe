@@ -50,6 +50,30 @@ const roomSchema = new Schema<IRoom>(
       type: Number,
       default: 0,
     },
+    coverGradient: {
+      type: [String],
+      default: ["#c8102e", "#0a0608"],
+    },
+    icon: {
+      type: String,
+      default: "🔴",
+    },
+    rules: {
+      type: [String],
+      default: [],
+    },
+    requiresSubscription: {
+      type: Boolean,
+      default: false,
+    },
+    memberCount: {
+      type: Number,
+      default: 0,
+    },
+    moderators: {
+      type: [{ type: Schema.Types.ObjectId, ref: 'AdultUser' }],
+      default: [],
+    },
   },
   {
     timestamps: true,
