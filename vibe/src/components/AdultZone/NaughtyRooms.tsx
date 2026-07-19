@@ -67,6 +67,32 @@ const NaughtyRooms: React.FC = () => {
       return;
     }
 
+    // Curate beautiful coverGradients & icons matching category/mood for high fidelity
+    let coverGradient = ['#c8102e', '#0a0608'];
+    let icon = '🌶️';
+
+    const cleanCat = newRoomCategory.replace(/[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD00-\uDFFF]/g, '').trim().toLowerCase();
+
+    if (cleanCat === 'casual') {
+      coverGradient = ['#12080a', '#1a090d'];
+      icon = '🍸';
+    } else if (cleanCat === 'roleplay') {
+      coverGradient = ['#2d090d', '#100304'];
+      icon = '🎭';
+    } else if (cleanCat === 'group fantasy') {
+      coverGradient = ['#092315', '#030d07'];
+      icon = '👥';
+    } else if (cleanCat === 'lgbtq+') {
+      coverGradient = ['#1e0a2d', '#080310'];
+      icon = '🌈';
+    } else if (cleanCat === 'spicy') {
+      coverGradient = ['#1b092a', '#0a0310'];
+      icon = '🌶️';
+    } else if (cleanCat === 'vip exclusive') {
+      coverGradient = ['#1a1105', '#0a0702'];
+      icon = '⭐';
+    }
+
     try {
       setSubmittingRoom(true);
       const response = await fetch(`${API_BASE_URL}/v1/adult/rooms`, {
@@ -78,8 +104,8 @@ const NaughtyRooms: React.FC = () => {
           category: newRoomCategory,
           mood: newRoomMood,
           tags: [],
-          coverGradient: ['#c8102e', '#0a0608'],
-          icon: '🌶️',
+          coverGradient,
+          icon,
           rules: [
             'No real contact info sharing.',
             'Explicit content allowed — respect others.',

@@ -13,8 +13,92 @@ import mongoose from 'mongoose';
 // 1. ROOMS CONTROLLER METHODS
 // ==========================================
 
+let seeded = false;
+
+const seedDefaultRooms = async () => {
+  if (seeded) return;
+  try {
+    // Ensure we have a system user/moderator to assign as creator
+    let systemUser = await AdultUser.findOne({ role: 'provider' });
+    if (!systemUser) {
+      systemUser = await AdultUser.findOne({ role: 'user' });
+    }
+    if (!systemUser) {
+      // Create a default system/mod provider user
+      systemUser = new AdultUser({
+        email: 'system.host@vibe.com',
+        passwordHash: 'dummyhash',
+        username: 'systemhost',
+        displayName: 'System Host',
+        dateOfBirth: new Date('1990-01-01'),
+        role: 'provider',
+        ageVerified: true,
+        country: 'USA',
+        credits: 1000,
+      });
+      await systemUser.save();
+    }
+
+    const defaultRooms = [
+      {
+        name: 'After Dark Lounge',
+        description: 'Classy conversation and casual vibes',
+        category: 'casual',
+        mood: 'chill',
+        memberCount: 245,
+        icon: '🍸',
+        coverGradient: ['#12080a', '#1a090d'],
+        createdBy: systemUser._id,
+      },
+      {
+        name: 'The Red Room',
+        description: 'High intensity, explicit roleplay only',
+        category: 'roleplay',
+        mood: 'wild',
+        memberCount: 890,
+        icon: '💋',
+        coverGradient: ['#2d090d', '#100304'],
+        createdBy: systemUser._id,
+      },
+      {
+        name: 'Fantasy Forest',
+        description: 'Themed scenarios and storytelling',
+        category: 'group fantasy',
+        mood: 'explicit',
+        memberCount: 120,
+        icon: '🌲',
+        coverGradient: ['#092315', '#030d07'],
+        createdBy: systemUser._id,
+      },
+      {
+        name: 'Midnight Desires',
+        description: 'Open sharing and media exchange',
+        category: 'spicy',
+        mood: 'wild',
+        memberCount: 560,
+        icon: '😈',
+        coverGradient: ['#1b092a', '#0a0310'],
+        createdBy: systemUser._id,
+      }
+    ];
+
+    for (const dr of defaultRooms) {
+      const exists = await Room.findOne({ name: dr.name });
+      if (!exists) {
+        const room = new Room(dr);
+        await room.save();
+        console.log(`Seeded default room: ${dr.name}`);
+      }
+    }
+    seeded = true;
+  } catch (err) {
+    console.error('Error seeding default rooms:', err);
+  }
+};
+
 export const getRooms = async (req: Request, res: Response) => {
   try {
+    await seedDefaultRooms();
     const { category, mood, page = 1, limit = 20 } = req.query;
     const filter: any = { isActive: true };
 
