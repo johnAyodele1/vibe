@@ -339,13 +339,13 @@ const NaughtyRooms: React.FC = () => {
                   <div className="flex flex-col items-end">
                     <div className="flex -space-x-2 mb-2">
                       <div className="w-8 h-8 rounded-full border-2 border-[var(--az-bg-secondary)] bg-gray-800 overflow-hidden">
-                        <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&amp;w=100&amp;auto=format&amp;fit=crop" className="w-full h-full object-cover" alt="" />
+                        <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=100&auto=format&fit=crop" className="w-full h-full object-cover" alt="" />
                       </div>
                       <div className="w-8 h-8 rounded-full border-2 border-[var(--az-bg-secondary)] bg-gray-800 overflow-hidden">
-                        <img src="https://images.unsplash.com/photo-1517841905240-472988babdf9?q=80&amp;w=100&amp;auto=format&amp;fit=crop" class="w-full h-full object-cover" alt="" />
+                        <img src="https://images.unsplash.com/photo-1517841905240-472988babdf9?q=80&w=100&auto=format&fit=crop" className="w-full h-full object-cover" alt="" />
                       </div>
                       <div className="w-8 h-8 rounded-full border-2 border-[var(--az-bg-secondary)] bg-gray-800 overflow-hidden">
-                        <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&amp;w=100&amp;auto=format&amp;fit=crop" class="w-full h-full object-cover" alt="" />
+                        <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=100&auto=format&fit=crop" className="w-full h-full object-cover" alt="" />
                       </div>
                       <div className="w-8 h-8 rounded-full border-2 border-[var(--az-bg-secondary)] bg-[var(--az-bg-tertiary)] flex items-center justify-center text-[10px] text-[var(--az-text-secondary)]">
                         +
