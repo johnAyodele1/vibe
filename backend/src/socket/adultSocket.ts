@@ -7,12 +7,16 @@ import PrivateShowRequest from '../models/PrivateShowRequest';
 import { decrypt } from '../services/encryptionService';
 import mongoose from 'mongoose';
 import { getClientPrice } from '../services/pricingService';
+import app from '../app';
 
 // Centralized map for active call tickers accessible across all socket connections in the adult namespace
 const activeCallTickers = new Map<string, NodeJS.Timeout>();
 
 export const setupAdultSocket = (io: Server) => {
   const adultNamespace = io.of('/adult');
+
+  // Attach namespace to express app for access in REST controllers
+  app.set('adultNamespace', adultNamespace);
 
   adultNamespace.use(async (socket, next) => {
     try {
@@ -102,6 +106,32 @@ export const setupAdultSocket = (io: Server) => {
             senderId: socket.data.user._id,
             isTyping: data.isTyping
         });
+    });
+
+    // Conversation room events
+    socket.on('conv:join', (data: { conversationId: string }) => {
+      if (!data || !data.conversationId) return;
+      socket.join(`conv:${data.conversationId}`);
+    });
+
+    socket.on('conv:leave', (data: { conversationId: string }) => {
+      if (!data || !data.conversationId) return;
+      socket.leave(`conv:${data.conversationId}`);
+    });
+
+    socket.on('sext:typing', (data: { conversationId: string }) => {
+      if (!data || !data.conversationId) return;
+      socket.to(`conv:${data.conversationId}`).emit('sext:typing', {
+        userId: socket.data.user._id,
+        displayName: socket.data.user.displayName || socket.data.user.username
+      });
+    });
+
+    socket.on('sext:stop_typing', (data: { conversationId: string }) => {
+      if (!data || !data.conversationId) return;
+      socket.to(`conv:${data.conversationId}`).emit('sext:stop_typing', {
+        userId: socket.data.user._id
+      });
     });
 
     // Cam Events

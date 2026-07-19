@@ -24,13 +24,25 @@ const adultMessageSchema = new Schema<IMessage>(
     messageType: {
       type: String,
       required: true,
-      enum: ['text', 'image', 'voice', 'gift', 'system'],
+      enum: ['text', 'image', 'video', 'audio', 'voice_note', 'gift', 'locked_image', 'locked_video', 'request_photo', 'system', 'voice'],
       default: 'text',
     },
     mediaUrl: String,
+    mediaThumbnailUrl: String,
+    mediaDurationSeconds: Number,
+    mediaFileSizeBytes: Number,
+    mediaMimeType: String,
+    isLocked: {
+      type: Boolean,
+      default: false,
+    },
+    creditCost: {
+      type: Number,
+      default: 0,
+    },
     mediaBlurred: {
       type: Boolean,
-      default: true,
+      default: false,
     },
     unlockCost: {
       type: Number,
@@ -42,10 +54,31 @@ const adultMessageSchema = new Schema<IMessage>(
         ref: 'AdultUser',
       },
     ],
+    gift: {
+      giftId: String,
+      giftName: String,
+      giftIconUrl: String,
+      giftValue: Number,
+      message: String,
+    },
+    photoRequest: {
+      status: {
+        type: String,
+        enum: ['pending', 'fulfilled', 'declined'],
+      },
+      note: String,
+      fulfilledMessageId: {
+        type: Schema.Types.ObjectId,
+        ref: 'AdultMessage',
+        default: null,
+      },
+    },
+    systemText: String,
     reactions: [
       {
         userId: { type: Schema.Types.ObjectId, ref: 'AdultUser' },
         emoji: String,
+        reactedAt: { type: Date, default: Date.now },
       },
     ],
     isRead: {
@@ -58,6 +91,18 @@ const adultMessageSchema = new Schema<IMessage>(
       default: false,
     },
     deletedAt: Date,
+    deletedBy: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: 'AdultUser',
+      },
+    ],
+    reportedBy: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: 'AdultUser',
+      },
+    ],
   },
   {
     timestamps: { createdAt: true, updatedAt: false },

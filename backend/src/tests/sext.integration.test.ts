@@ -4,6 +4,8 @@ import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import app from '../app';
 import AdultUser from '../models/AdultUser';
 import AdultMessage from '../models/AdultMessage';
+import AdultGift from '../models/AdultGift';
+import AdultCall from '../models/AdultCall';
 import jwt from 'jsonwebtoken';
 
 describe('Private Messaging (Sext) Integration Tests', () => {
@@ -14,6 +16,7 @@ describe('Private Messaging (Sext) Integration Tests', () => {
   let memberId: string;
   let providerId: string;
   let conversationId: string;
+  let testGiftId: string;
 
   beforeAll(async () => {
     mongoServer = await MongoMemoryReplSet.create({
@@ -30,7 +33,7 @@ describe('Private Messaging (Sext) Integration Tests', () => {
       dateOfBirth: new Date('1998-01-01'),
       role: 'user',
       country: 'Nigeria',
-      credits: 100, // 100 credits initial
+      credits: 200, // 200 credits initial
     });
     await member.save();
     memberId = member._id.toString();
@@ -43,11 +46,14 @@ describe('Private Messaging (Sext) Integration Tests', () => {
       dateOfBirth: new Date('1995-01-01'),
       role: 'provider',
       country: 'Nigeria',
+      credits: 0,
       providerProfile: {
         stageName: 'Lucia Star',
         categories: ['live_cam'],
         isLive: true,
-        pricePerMinute: 0,
+        pricePerMinute: 5,
+        videoCallPrice: 5,
+        audioCallPrice: 2,
         tipMinimum: 0,
         totalEarnings: 0,
         pendingPayout: 0,
@@ -73,6 +79,18 @@ describe('Private Messaging (Sext) Integration Tests', () => {
     memberToken = jwt.sign({ sub: memberId }, process.env.ADULT_JWT_SECRET || 'adult_secret');
     providerToken = jwt.sign({ sub: providerId }, process.env.ADULT_JWT_SECRET || 'adult_secret');
     strangerToken = jwt.sign({ sub: stranger._id.toString() }, process.env.ADULT_JWT_SECRET || 'adult_secret');
+
+    // Create a default gift for testing
+    const gift = new AdultGift({
+      name: 'Test Rose',
+      iconUrl: 'rose',
+      creditCost: 15,
+      category: 'romantic',
+      isActive: true,
+      sortOrder: 1
+    });
+    await gift.save();
+    testGiftId = gift._id.toString();
   });
 
   afterAll(async () => {
@@ -125,7 +143,6 @@ describe('Private Messaging (Sext) Integration Tests', () => {
   });
 
   it('unread count increments when message is received', async () => {
-    // Member sends message. Receiver (provider) should have 1 unread.
     const conversationsRes = await request(app)
       .get('/api/v1/adult/sext/conversations')
       .set('Authorization', `Bearer ${providerToken}`)
@@ -153,7 +170,6 @@ describe('Private Messaging (Sext) Integration Tests', () => {
   });
 
   it('paid media message shows isUnlocked: false before purchase', async () => {
-    // Provider sends locked media to Member
     const msgRes = await request(app)
       .post(`/api/v1/adult/sext/messages/${conversationId}`)
       .set('Authorization', `Bearer ${providerToken}`)
@@ -167,7 +183,6 @@ describe('Private Messaging (Sext) Integration Tests', () => {
 
     const messageId = msgRes.body.id;
 
-    // Member gets messages
     const listRes = await request(app)
       .get(`/api/v1/adult/sext/conversations/${conversationId}/messages`)
       .set('Authorization', `Bearer ${memberToken}`)
@@ -180,7 +195,6 @@ describe('Private Messaging (Sext) Integration Tests', () => {
   });
 
   it('unlock endpoint deducts credits and sets isUnlocked: true', async () => {
-    // Send message again to get a fresh message
     const msgRes = await request(app)
       .post(`/api/v1/adult/sext/messages/${conversationId}`)
       .set('Authorization', `Bearer ${providerToken}`)
@@ -194,7 +208,6 @@ describe('Private Messaging (Sext) Integration Tests', () => {
 
     const messageId = msgRes.body.id;
 
-    // Unlock it
     const unlockRes = await request(app)
       .post(`/api/v1/adult/sext/messages/${messageId}/unlock`)
       .set('Authorization', `Bearer ${memberToken}`)
@@ -203,18 +216,16 @@ describe('Private Messaging (Sext) Integration Tests', () => {
     expect(unlockRes.body.success).toBe(true);
     expect(unlockRes.body.mediaUrl).toBe('https://ex.com/pic.png');
 
-    // Check member's remaining balance. Base cost 40 * 1.15 = 46 (rounded up)
-    // 100 - 46 = 54
+    // Balance checks: cost 40 tipped: 40 * 1.15 = 46. Remaining: 200 - 46 = 154
     const walletRes = await request(app)
       .get('/api/v1/adult/wallet')
       .set('Authorization', `Bearer ${memberToken}`)
       .expect(200);
 
-    expect(walletRes.body.creditBalance).toBe(54);
+    expect(walletRes.body.creditBalance).toBe(154);
   });
 
   it('unlock with insufficient credits returns 402', async () => {
-    // Try to unlock something expensive
     const msgRes = await request(app)
       .post(`/api/v1/adult/sext/messages/${conversationId}`)
       .set('Authorization', `Bearer ${providerToken}`)
@@ -222,7 +233,7 @@ describe('Private Messaging (Sext) Integration Tests', () => {
         content: 'VVIP video',
         mediaUrl: 'https://ex.com/vvip.mp4',
         mediaType: 'image',
-        creditCost: 100, // Client cost is 115 credits, user has 54 credits remaining
+        creditCost: 150, // client cost is 173, user has 154 remaining
       })
       .expect(201);
 
@@ -230,5 +241,177 @@ describe('Private Messaging (Sext) Integration Tests', () => {
       .post(`/api/v1/adult/sext/messages/${msgRes.body.id}/unlock`)
       .set('Authorization', `Bearer ${memberToken}`)
       .expect(402);
+  });
+
+  // Soft Deletes
+  it('user can soft-delete their own message', async () => {
+    const msgRes = await request(app)
+      .post(`/api/v1/adult/sext/messages/${conversationId}`)
+      .set('Authorization', `Bearer ${memberToken}`)
+      .send({
+        content: 'To be deleted text',
+        mediaType: 'text',
+      })
+      .expect(201);
+
+    const messageId = msgRes.body.id;
+
+    await request(app)
+      .delete(`/api/v1/adult/sext/messages/${messageId}`)
+      .set('Authorization', `Bearer ${memberToken}`)
+      .expect(200);
+
+    const listRes = await request(app)
+      .get(`/api/v1/adult/sext/conversations/${conversationId}/messages`)
+      .set('Authorization', `Bearer ${memberToken}`)
+      .expect(200);
+
+    const deletedMsg = listRes.body.find((m: any) => m.id === messageId);
+    expect(deletedMsg.content).toBe('[Message deleted]');
+  });
+
+  it('user cannot soft-delete another user\'s message', async () => {
+    const msgRes = await request(app)
+      .post(`/api/v1/adult/sext/messages/${conversationId}`)
+      .set('Authorization', `Bearer ${providerToken}`)
+      .send({
+        content: 'Lucia text',
+        mediaType: 'text',
+      })
+      .expect(201);
+
+    await request(app)
+      .delete(`/api/v1/adult/sext/messages/${msgRes.body.id}`)
+      .set('Authorization', `Bearer ${memberToken}`)
+      .expect(403);
+  });
+
+  // Reactions
+  it('toggles emoji reaction on message', async () => {
+    const msgRes = await request(app)
+      .post(`/api/v1/adult/sext/messages/${conversationId}`)
+      .set('Authorization', `Bearer ${memberToken}`)
+      .send({
+        content: 'Reaction post',
+        mediaType: 'text',
+      })
+      .expect(201);
+
+    const messageId = msgRes.body.id;
+
+    // React with 🔥
+    const reactRes = await request(app)
+      .post(`/api/v1/adult/sext/messages/${messageId}/react`)
+      .set('Authorization', `Bearer ${memberToken}`)
+      .send({ emoji: '🔥' })
+      .expect(200);
+
+    expect(reactRes.body.length).toBe(1);
+    expect(reactRes.body[0].emoji).toBe('🔥');
+
+    // Toggle reaction off
+    const unreactRes = await request(app)
+      .post(`/api/v1/adult/sext/messages/${messageId}/react`)
+      .set('Authorization', `Bearer ${memberToken}`)
+      .send({ emoji: '🔥' })
+      .expect(200);
+
+    expect(unreactRes.body.length).toBe(0);
+  });
+
+  // Gifts
+  it('GET /gifts/catalogue returns active gifts', async () => {
+    const res = await request(app)
+      .get('/api/v1/adult/gifts/catalogue')
+      .set('Authorization', `Bearer ${memberToken}`)
+      .expect(200);
+
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body.length).toBeGreaterThan(0);
+  });
+
+  it('can send a gift and deduct credits', async () => {
+    // Member balance before: 154 credits. Selected gift costs 15 credits.
+    const res = await request(app)
+      .post(`/api/v1/adult/sext/conversations/${conversationId}/send-gift`)
+      .set('Authorization', `Bearer ${memberToken}`)
+      .send({
+        giftId: testGiftId,
+        message: 'A nice rose for you!'
+      })
+      .expect(200);
+
+    expect(res.body.message).toBeDefined();
+    expect(res.body.senderNewBalance).toBe(139); // 154 - 15
+  });
+
+  // Photo Requests
+  it('creates and fulfills photo request successfully', async () => {
+    const reqRes = await request(app)
+      .post(`/api/v1/adult/sext/conversations/${conversationId}/request-photo`)
+      .set('Authorization', `Bearer ${memberToken}`)
+      .send({ note: 'Send me some lingerie pic' })
+      .expect(201);
+
+    expect(reqRes.body.photoRequest.status).toBe('pending');
+    expect(reqRes.body.photoRequest.note).toBe('Send me some lingerie pic');
+
+    const reqMsgId = reqRes.body.id;
+
+    // Lucia fulfills
+    const fulfillRes = await request(app)
+      .put(`/api/v1/adult/sext/photo-requests/${reqMsgId}/fulfill`)
+      .set('Authorization', `Bearer ${providerToken}`)
+      .send({
+        mediaUrl: 'https://ex.com/lingerie.png',
+        isLocked: true,
+        creditCost: 50
+      })
+      .expect(200);
+
+    expect(fulfillRes.body.requestMessage.photoRequest.status).toBe('fulfilled');
+    expect(fulfillRes.body.imageMessage).toBeDefined();
+  });
+
+  // Calls
+  it('initiates and ends video call correctly', async () => {
+    const callRes = await request(app)
+      .post('/api/v1/adult/sext/calls/initiate')
+      .set('Authorization', `Bearer ${memberToken}`)
+      .send({
+        conversationId,
+        type: 'video'
+      })
+      .expect(200);
+
+    expect(callRes.body.callId).toBeDefined();
+    expect(callRes.body.webrtcRoomId).toBeDefined();
+
+    const callId = callRes.body.callId;
+
+    // Accept call
+    await request(app)
+      .put(`/api/v1/adult/sext/calls/${callId}/accept`)
+      .set('Authorization', `Bearer ${providerToken}`)
+      .expect(200);
+
+    // End call
+    const endRes = await request(app)
+      .put(`/api/v1/adult/sext/calls/${callId}/end`)
+      .set('Authorization', `Bearer ${memberToken}`)
+      .expect(200);
+
+    expect(endRes.body.durationSeconds).toBeDefined();
+    expect(endRes.body.creditsDeducted).toBeDefined();
+  });
+
+  it('retrieves call history', async () => {
+    const res = await request(app)
+      .get('/api/v1/adult/sext/calls/history')
+      .set('Authorization', `Bearer ${memberToken}`)
+      .expect(200);
+
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body.length).toBeGreaterThan(0);
   });
 });
