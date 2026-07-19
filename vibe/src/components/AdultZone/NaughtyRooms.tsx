@@ -71,24 +71,24 @@ const NaughtyRooms: React.FC = () => {
     let coverGradient = ['#c8102e', '#0a0608'];
     let icon = '🌶️';
 
-    const cleanCat = newRoomCategory.replace(/[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD00-\uDFFF]/g, '').trim().toLowerCase();
+    const catLower = newRoomCategory.toLowerCase();
 
-    if (cleanCat === 'casual') {
+    if (catLower.includes('casual')) {
       coverGradient = ['#12080a', '#1a090d'];
       icon = '🍸';
-    } else if (cleanCat === 'roleplay') {
+    } else if (catLower.includes('roleplay')) {
       coverGradient = ['#2d090d', '#100304'];
-      icon = '🎭';
-    } else if (cleanCat === 'group fantasy') {
+      icon = '💋';
+    } else if (catLower.includes('group fantasy')) {
       coverGradient = ['#092315', '#030d07'];
-      icon = '👥';
-    } else if (cleanCat === 'lgbtq+') {
+      icon = '🌲';
+    } else if (catLower.includes('lgbtq')) {
       coverGradient = ['#1e0a2d', '#080310'];
       icon = '🌈';
-    } else if (cleanCat === 'spicy') {
+    } else if (catLower.includes('spicy')) {
       coverGradient = ['#1b092a', '#0a0310'];
-      icon = '🌶️';
-    } else if (cleanCat === 'vip exclusive') {
+      icon = '😈';
+    } else if (catLower.includes('vip')) {
       coverGradient = ['#1a1105', '#0a0702'];
       icon = '⭐';
     }
