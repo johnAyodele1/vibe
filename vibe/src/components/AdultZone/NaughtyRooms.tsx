@@ -291,105 +291,91 @@ const NaughtyRooms: React.FC = () => {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {rooms.map((room) => {
             const hasAccess = !room.requiresSubscription || (currentUser && currentUser.credits >= 10);
-            const coverGrad = room.coverGradient && room.coverGradient.length >= 2
-              ? `linear-gradient(135deg, ${room.coverGradient[0]} 0%, ${room.coverGradient[1]} 100%)`
-              : 'linear-gradient(135deg, #c8102e 0%, #0a0608 100%)';
+            const cleanMood = (room.mood || 'chill').toLowerCase();
+
+            // Match mood to specified border colors and badge states
+            let borderClass = 'border-blue-500/30';
+            let badgeClass = 'bg-[var(--az-bg-tertiary)] text-[var(--az-text-secondary)]';
+            let moodLabel = 'Chill';
+
+            if (cleanMood === 'explicit') {
+              borderClass = 'border-purple-500/30';
+              badgeClass = 'bg-[var(--az-bg-tertiary)] text-[var(--az-text-secondary)]';
+              moodLabel = 'Explicit';
+            } else if (cleanMood === 'wild') {
+              badgeClass = 'bg-[var(--az-accent-primary)] text-white';
+              moodLabel = 'Wild';
+              // Check name for red room custom color vs midnight desires pink color
+              if (room.name.toLowerCase().includes('red')) {
+                borderClass = 'border-red-500/50';
+              } else {
+                borderClass = 'border-pink-500/40';
+              }
+            } else {
+              borderClass = 'border-blue-500/30';
+              badgeClass = 'bg-[var(--az-bg-tertiary)] text-[var(--az-text-secondary)]';
+              moodLabel = 'Chill';
+            }
 
             return (
               <div
                 key={room._id}
-                className="relative p-6 rounded-2xl border border-[var(--az-border)] overflow-hidden transition-all duration-300 group hover:-translate-y-1 hover:border-[var(--az-accent-rose)] hover:shadow-[0_0_24px_rgba(200,16,46,0.2)]"
-                style={{
-                  background: coverGrad,
-                }}
+                className={`p-8 bg-[var(--az-bg-secondary)] rounded-2xl border-2 ${borderClass} az-card-hover group transition-all duration-300`}
               >
-                {/* 8% grain texture overlay */}
-                <div className="absolute inset-0 pointer-events-none opacity-[0.08] mix-blend-overlay bg-[url('https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=400')]" />
-
-                {/* Shimmer effect border on card hover */}
-                <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-10 transition-opacity bg-gradient-to-r from-transparent via-white to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]" />
-
-                <div className="relative z-10 flex flex-col h-full justify-between">
+                <div className="flex justify-between items-start mb-6">
                   <div>
-                    {/* Top row */}
-                    <div className="flex justify-between items-center mb-4">
-                      <div className="flex items-center gap-3">
-                        <span className="text-3xl">{room.icon || '🔴'}</span>
-                        <h3 className="text-xl font-serif font-bold text-white leading-tight" style={{ fontFamily: 'Playfair Display, serif' }}>
-                          {room.name}
-                        </h3>
-                      </div>
-                      <span className={`text-[9px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full ${
-                        room.mood === 'explicit'
-                          ? 'bg-red-600/80 text-white shadow-[0_0_8px_rgba(220,38,38,0.5)]'
-                          : room.mood === 'wild'
-                            ? 'bg-amber-600/80 text-white'
-                            : 'bg-teal-600/80 text-white'
-                      }`}>
-                        {room.mood || 'Chill'}
-                      </span>
-                    </div>
-
-                    {/* Room Description */}
-                    <p className="text-xs text-gray-300 font-sans line-clamp-2 mb-6 min-h-[32px]">
-                      {room.description || 'Welcome to this interactive Adult Naughty Room! Join to start chatting.'}
-                    </p>
+                    <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded ${badgeClass}`}>
+                      {moodLabel}
+                    </span>
+                    <h3 className="text-3xl font-serif italic text-[var(--az-text-primary)] mt-3 group-hover:text-[var(--az-accent-rose)] transition-colors">
+                      {room.icon && <span className="mr-2 text-2xl not-italic">{room.icon}</span>}
+                      {room.name}
+                    </h3>
                   </div>
 
-                  {/* Bottom row */}
-                  <div className="flex items-end justify-between border-t border-white/10 pt-4">
-                    <div>
-                      {/* LIVE counting up pulsing indicator */}
-                      <div className="flex items-center gap-2 mb-2 text-white">
-                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse shadow-[0_0_6px_#f00]" />
-                        <span className="text-[10px] font-mono font-bold tracking-wider">
-                          {(room.memberCount || 0).toLocaleString()} ONLINE
-                        </span>
+                  <div className="flex flex-col items-end">
+                    <div className="flex -space-x-2 mb-2">
+                      <div className="w-8 h-8 rounded-full border-2 border-[var(--az-bg-secondary)] bg-gray-800 overflow-hidden">
+                        <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&amp;w=100&amp;auto=format&amp;fit=crop" className="w-full h-full object-cover" alt="" />
                       </div>
-
-                      {/* Stacked avatars */}
-                      <div className="flex -space-x-2">
-                        {[
-                          'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=100&auto=format&fit=crop',
-                          'https://images.unsplash.com/photo-1517841905240-472988babdf9?q=80&w=100&auto=format&fit=crop',
-                          'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=100&auto=format&fit=crop',
-                        ].map((url, idx) => (
-                          <img
-                            key={idx}
-                            src={url}
-                            className="w-6 h-6 rounded-full border border-gray-900 object-cover"
-                            alt="Active user"
-                          />
-                        ))}
-                        <div className="w-6 h-6 rounded-full bg-black/60 border border-gray-900 flex items-center justify-center text-[8px] text-gray-300 font-bold">
-                          +{room.memberCount > 3 ? room.memberCount - 3 : 2}
-                        </div>
+                      <div className="w-8 h-8 rounded-full border-2 border-[var(--az-bg-secondary)] bg-gray-800 overflow-hidden">
+                        <img src="https://images.unsplash.com/photo-1517841905240-472988babdf9?q=80&amp;w=100&amp;auto=format&amp;fit=crop" class="w-full h-full object-cover" alt="" />
+                      </div>
+                      <div className="w-8 h-8 rounded-full border-2 border-[var(--az-bg-secondary)] bg-gray-800 overflow-hidden">
+                        <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&amp;w=100&amp;auto=format&amp;fit=crop" class="w-full h-full object-cover" alt="" />
+                      </div>
+                      <div className="w-8 h-8 rounded-full border-2 border-[var(--az-bg-secondary)] bg-[var(--az-bg-tertiary)] flex items-center justify-center text-[10px] text-[var(--az-text-secondary)]">
+                        +
                       </div>
                     </div>
-
-                    {/* Action button */}
-                    <div>
-                      {!hasAccess ? (
-                        <button
-                          onClick={() => handleJoinEnterRoom(room)}
-                          className="px-4 py-2 bg-gradient-to-r from-yellow-500 to-amber-600 text-black text-xs font-bold rounded-full flex items-center gap-1 shadow-lg"
-                        >
-                          🔒 Gold+
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleJoinEnterRoom(room)}
-                          className="px-5 py-2.5 rounded-full bg-transparent hover:bg-white hover:text-black border border-white text-white text-xs font-bold tracking-widest uppercase transition-all shadow-[0_4px_12px_rgba(0,0,0,0.3)]"
-                        >
-                          Enter Room
-                        </button>
-                      )}
-                    </div>
+                    <span className="text-[10px] font-mono text-[var(--az-text-secondary)] font-bold">
+                      {(room.memberCount || 0).toLocaleString()} MEMBERS ONLINE
+                    </span>
                   </div>
                 </div>
+
+                <p className="text-[var(--az-text-secondary)] font-serif italic mb-8 border-l-2 border-[var(--az-border)] pl-4">
+                  "{room.description || 'Welcome to this interactive Adult Naughty Room! Join to start chatting.'}"
+                </p>
+
+                {!hasAccess ? (
+                  <button
+                    onClick={() => handleJoinEnterRoom(room)}
+                    className="w-full py-4 bg-[var(--az-bg-tertiary)] hover:bg-[var(--az-accent-primary)] text-[var(--az-text-primary)] font-bold uppercase tracking-widest rounded-xl transition-all border border-[var(--az-border)] shadow-[0_4px_12px_rgba(0,0,0,0.3)] flex items-center justify-center gap-1.5"
+                  >
+                    🔒 Gold+ Join Room
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleJoinEnterRoom(room)}
+                    className="w-full py-4 bg-[var(--az-bg-tertiary)] hover:bg-[var(--az-accent-primary)] text-[var(--az-text-primary)] font-bold uppercase tracking-widest rounded-xl transition-all border border-[var(--az-border)] shadow-[0_4px_12px_rgba(0,0,0,0.3)]"
+                  >
+                    Join Room
+                  </button>
+                )}
               </div>
             );
           })}
