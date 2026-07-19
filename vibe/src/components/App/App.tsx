@@ -84,6 +84,7 @@ function App() {
           <Route index element={adultIsAuthenticated && adultUser?.role === 'provider' ? <Navigate to="/adult/provider/dashboard" replace /> : <AdultHome />} />
           <Route path="cams" element={<LiveCams />} />
           <Route path="rooms" element={<NaughtyRooms />} />
+          <Route path="rooms/:roomId" element={<NaughtyRooms />} />
           <Route path="sext" element={<PrivateSext />} />
           <Route path="random" element={<RandomStranger />} />
           <Route path="hookup" element={<HookUpTonight />} />
