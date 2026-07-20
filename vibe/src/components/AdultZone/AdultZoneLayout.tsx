@@ -4,6 +4,7 @@ import AgeGate from './AgeGate';
 import AdultAuthModal from './AdultAuthModal';
 import LoadingScreen from '../LoadingScreen/LoadingScreen';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
+import { TipSheet } from './TipSheet';
 
 const AdultZoneLayout: React.FC = () => {
   const [isVerified, setIsVerified] = useState(() => {
@@ -119,6 +120,8 @@ const AdultZoneLayout: React.FC = () => {
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
       />
+
+      <TipSheet />
 
       {/* Mobile Bottom Navigation */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 az-glass border-t border-[var(--az-border)] pb-safe">

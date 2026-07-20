@@ -25,7 +25,8 @@ import {
   getTransactions,
   createPurchaseIntent,
   simulateWebhookSuccess,
-  getSubscriptionPlans
+  getSubscriptionPlans,
+  directTip
 } from '../controllers/wallet.controller';
 import {
   startConversation,
@@ -70,6 +71,7 @@ router.get('/adult/wallet/transactions', verifyAdultJWT, getTransactions);
 router.post('/adult/wallet/purchase/intent', verifyAdultJWT, createPurchaseIntent);
 router.post('/adult/wallet/purchase/webhook', simulateWebhookSuccess);
 router.get('/adult/subscriptions/plans', getSubscriptionPlans);
+router.post('/adult/wallet/tip', verifyAdultJWT, directTip);
 
 // Adult Sext Messaging routes
 router.get('/adult/sext/conversations', verifyAdultJWT, getConversations);

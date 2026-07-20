@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../../config';
+import { useTipSheetStore } from './useTipSheetStore';
+import { toast } from 'sonner';
 
 const FALLBACK_PERFORMERS = [
   {
@@ -90,8 +92,68 @@ const FALLBACK_PERFORMERS = [
 ];
 
 const AdultHome: React.FC = () => {
+  const navigate = useNavigate();
+  const openSheet = useTipSheetStore((state) => state.openSheet);
+
   const [performers, setPerformers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [messageLoading, setMessageLoading] = useState<string | null>(null);
+  const [flashingTips, setFlashingTips] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    const handleHighlight = (e: Event) => {
+      const providerId = (e as CustomEvent).detail?.providerId;
+      if (providerId) {
+        setFlashingTips((prev) => ({ ...prev, [providerId]: true }));
+        setTimeout(() => {
+          setFlashingTips((prev) => ({ ...prev, [providerId]: false }));
+        }, 2000);
+      }
+    };
+    window.addEventListener('tip-success-highlight', handleHighlight);
+    return () => window.removeEventListener('tip-success-highlight', handleHighlight);
+  }, []);
+
+  const handleMessageClick = async (providerId: string) => {
+    setMessageLoading(providerId);
+    try {
+      const response = await fetch(`${API_BASE_URL}/v1/adult/sext/conversations`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('adultAccessToken')}`
+        },
+        body: JSON.stringify({ recipientId: providerId })
+      });
+      const data = await response.json();
+      if (data.conversationId) {
+        const isMobile = window.innerWidth < 768;
+        if (isMobile) {
+          navigate(`/adult/sext/${data.conversationId}`);
+        } else {
+          navigate(`/adult/sext?conversation=${data.conversationId}`);
+        }
+      } else {
+        toast.error('Could not start conversation. Please try again.');
+      }
+    } catch (err) {
+      toast.error('Could not start conversation. Please try again.');
+    } finally {
+      setMessageLoading(null);
+    }
+  };
+
+  const handleTipClick = (p: any) => {
+    const photoUrl = p.profilePhoto || p.photos?.[0]?.url || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=600&auto=format&fit=crop";
+    const displayName = p.displayName || p.providerProfile?.stageName || p.firstName;
+    const userId = p.userId || p._id;
+    openSheet({
+      userId,
+      stageName: displayName,
+      avatarUrl: photoUrl,
+      isOnline: p.providerProfile?.isLive || false
+    });
+  };
 
   useEffect(() => {
     const fetchPerformers = async () => {
@@ -300,10 +362,30 @@ const AdultHome: React.FC = () => {
                       </div>
                       <div className="flex items-center justify-between mt-4">
                         <div className="flex gap-2">
-                          <button className="w-8 h-8 rounded-full border border-[var(--az-border)] flex items-center justify-center hover:bg-[var(--az-accent-primary)] transition-colors">💬</button>
-                          <button className="w-8 h-8 rounded-full border border-[var(--az-border)] flex items-center justify-center hover:bg-[var(--az-accent-rose)] transition-colors">❤️</button>
+                          <button
+                            data-testid="provider-card-message-btn"
+                            disabled={messageLoading !== null}
+                            onClick={() => handleMessageClick(p.userId || p._id)}
+                            className="w-8 h-8 rounded-full border border-[var(--az-border)] flex items-center justify-center hover:bg-[var(--az-accent-primary)] transition-colors text-white/70 hover:text-white"
+                          >
+                            {messageLoading === (p.userId || p._id) ? (
+                              <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                              </svg>
+                            ) : (
+                              '💬'
+                            )}
+                          </button>
+                          <button className="w-8 h-8 rounded-full border border-[var(--az-border)] flex items-center justify-center hover:bg-[var(--az-accent-rose)] transition-colors text-white/70">❤️</button>
                         </div>
-                        <button className="px-4 py-1.5 bg-[var(--az-bg-tertiary)] text-[var(--az-text-primary)] text-[10px] font-bold rounded-full border border-[var(--az-border)] hover:border-[var(--az-accent-gold)] transition-colors">
+                        <button
+                          onClick={() => handleTipClick(p)}
+                          className={`px-4 py-1.5 text-[10px] font-bold rounded-full border transition-all duration-300
+                            ${flashingTips[p.userId || p._id]
+                              ? 'bg-green-950/40 border-green-500 text-green-500 shadow-[0_0_12px_rgba(34,197,94,0.3)] scale-105'
+                              : 'bg-[var(--az-bg-tertiary)] text-[var(--az-text-primary)] border-[var(--az-border)] hover:border-[var(--az-accent-gold)] hover:bg-[var(--az-accent-primary)]/10 hover:text-[var(--az-accent-gold)]'}`}
+                        >
                           Send Tip
                         </button>
                       </div>

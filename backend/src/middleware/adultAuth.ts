@@ -18,6 +18,14 @@ export const verifyAdultJWT = async (req: Request, res: Response, next: NextFunc
 
     if (!token) return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Token required' } });
 
+    // Check if it's a dating zone token
+    try {
+      jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret');
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Dating token not allowed in Adult Zone' } });
+    } catch (e) {
+      // Not a dating token, proceed
+    }
+
     const decoded = jwt.verify(token, process.env.ADULT_JWT_SECRET || 'adult_secret') as { sub: string };
     const user = await AdultUser.findById(decoded.sub);
 
