@@ -68,6 +68,15 @@ const adultUserSchema = new Schema<IAdultUser, IAdultUserModel>(
       type: Boolean,
       default: true,
     },
+    status: {
+      type: String,
+      enum: ['pending', 'active', 'inactive'],
+      default: 'pending',
+    },
+    isVerified: {
+      type: Boolean,
+      default: false,
+    },
     isBanned: {
       type: Boolean,
       default: false,
@@ -130,6 +139,7 @@ const adultUserSchema = new Schema<IAdultUser, IAdultUserModel>(
       photos: [String],
       videoPreview: String,
       servicesOffered: [String],
+      coverageArea: { type: String, default: 'city' },
       location: {
         country: {
           code: String,
@@ -147,6 +157,12 @@ const adultUserSchema = new Schema<IAdultUser, IAdultUserModel>(
       },
       profileViews: { type: Number, default: 0 },
       activeSubs: { type: Number, default: 0 },
+      onboarding: {
+        currentStep: { type: Number, default: 1, min: 1, max: 7 },
+        completedSteps: { type: [Number], default: [] },
+        isComplete: { type: Boolean, default: false },
+        completedAt: { type: Date, default: null },
+      },
       schedule: {
         type: [
           {

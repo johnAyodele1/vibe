@@ -40,6 +40,8 @@ export interface IAdultUser extends Document {
   passwordResetToken?: string;
   passwordResetExpires?: Date;
   loginHistory: ILoginHistory[];
+  status?: string;
+  isVerified?: boolean;
   providerProfile?: {
     stageName: string;
     gender?: string;
@@ -65,6 +67,7 @@ export interface IAdultUser extends Document {
     photos?: string[];
     videoPreview?: string;
     servicesOffered?: string[];
+    coverageArea?: string;
     location?: {
       country?: { code: string; name: string };
       state?: { code: string; name: string };
@@ -73,6 +76,12 @@ export interface IAdultUser extends Document {
     profileViews?: number;
     activeSubs?: number;
     schedule?: Array<{ day: string; active: boolean; start: string; end: string }>;
+    onboarding?: {
+      currentStep: number;
+      completedSteps: number[];
+      isComplete: boolean;
+      completedAt: Date | null;
+    };
   };
   createdAt: Date;
   updatedAt: Date;

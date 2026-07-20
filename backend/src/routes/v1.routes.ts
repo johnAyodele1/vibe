@@ -15,7 +15,9 @@ import {
   updateSchedule,
   getProviderDashboard,
   getProviderEarnings,
-  requestPayout
+  requestPayout,
+  getOnboardingProgress,
+  saveOnboardingStep
 } from '../controllers/providerOnboarding.controller';
 import {
   getWallet,
@@ -100,6 +102,8 @@ router.put('/adult/sext/calls/:callId/end', verifyAdultJWT, endCall);
 router.get('/adult/sext/calls/history', verifyAdultJWT, getCallHistory);
 
 // Provider Onboarding & Profile update routes
+router.get('/adult/providers/me/onboarding', verifyAdultJWT, getOnboardingProgress);
+router.put('/adult/providers/me/onboarding/step/:stepNumber', verifyAdultJWT, saveOnboardingStep);
 router.get('/adult/providers/me', verifyAdultJWT, getMyProfile);
 router.get('/adult/providers/me/dashboard', verifyAdultJWT, getProviderDashboard);
 router.get('/adult/providers/me/earnings', verifyAdultJWT, getProviderEarnings);

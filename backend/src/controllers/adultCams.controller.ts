@@ -10,18 +10,33 @@ export const getCams = async (req: Request, res: Response) => {
   const query: any = { status };
 
   const sessions = await CamSession.find(query)
-    .populate('providerId', 'providerProfile username profilePhoto')
-    .limit(Number(limit))
-    .skip((Number(page) - 1) * Number(limit));
+    .populate({
+      path: 'providerId',
+      match: {
+        status: 'active',
+        'providerProfile.onboarding.isComplete': true,
+        isVerified: true
+      },
+      select: 'providerProfile username profilePhoto'
+    });
 
-  const total = await CamSession.countDocuments(query);
-  res.json({ success: true, data: { sessions, total, page: Number(page), pages: Math.ceil(total / Number(limit)) } });
+  const filtered = sessions.filter(s => s.providerId !== null);
+  const total = filtered.length;
+  const paginated = filtered.slice((Number(page) - 1) * Number(limit), Number(page) * Number(limit));
+
+  res.json({ success: true, data: { sessions: paginated, total, page: Number(page), pages: Math.ceil(total / Number(limit)) } });
 };
 
 export const startStream = async (req: Request, res: Response) => {
   const provider = req.adultUser;
-  if (!provider || provider.role !== 'provider' || provider.providerProfile?.verificationStatus !== 'approved') {
-    return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Not an approved provider' } });
+  if (
+    !provider ||
+    provider.role !== 'provider' ||
+    provider.status !== 'active' ||
+    provider.providerProfile?.onboarding?.isComplete !== true ||
+    provider.isVerified !== true
+  ) {
+    return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Not an approved active provider' } });
   }
 
   const active = await CamSession.findOne({ providerId: provider._id, status: 'live' });
