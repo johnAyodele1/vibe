@@ -132,7 +132,6 @@ export const TipSheet: React.FC = () => {
   if (!isOpen || !provider) return null;
 
   // Amount computation
-  const isCustomSelected = selectedAmount === null && customAmount !== '';
   const finalAmount = selectedAmount !== null ? selectedAmount : (parseInt(customAmount) || 0);
 
   // Swipe gesture for mobile swipe down dismiss
