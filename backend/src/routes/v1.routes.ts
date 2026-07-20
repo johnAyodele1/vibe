@@ -31,7 +31,22 @@ import {
   getMessages,
   sendMessage,
   unlockMedia,
-  markAsRead
+  markAsRead,
+  getConversationById,
+  deleteConversation,
+  muteConversation,
+  deleteMessage,
+  reactMessage,
+  requestPhoto,
+  fulfillPhotoRequest,
+  declinePhotoRequest,
+  getGiftsCatalogue,
+  sendGift,
+  initiateCall,
+  acceptCall,
+  declineCall,
+  endCall,
+  getCallHistory
 } from '../controllers/adultSext.controller';
 import * as roomsController from '../controllers/adultRooms.controller';
 
@@ -56,11 +71,33 @@ router.get('/adult/subscriptions/plans', getSubscriptionPlans);
 
 // Adult Sext Messaging routes
 router.get('/adult/sext/conversations', verifyAdultJWT, getConversations);
+router.post('/adult/sext/conversations', verifyAdultJWT, startConversation);
 router.post('/adult/sext/conversations/:userId/start', verifyAdultJWT, startConversation);
+router.get('/adult/sext/conversations/:conversationId', verifyAdultJWT, getConversationById);
+router.delete('/adult/sext/conversations/:conversationId', verifyAdultJWT, deleteConversation);
+router.put('/adult/sext/conversations/:conversationId/mute', verifyAdultJWT, muteConversation);
 router.get('/adult/sext/conversations/:conversationId/messages', verifyAdultJWT, getMessages);
 router.post('/adult/sext/messages/:conversationId', verifyAdultJWT, sendMessage);
+router.delete('/adult/sext/messages/:messageId', verifyAdultJWT, deleteMessage);
+router.post('/adult/sext/messages/:messageId/react', verifyAdultJWT, reactMessage);
 router.post('/adult/sext/messages/:messageId/unlock', verifyAdultJWT, unlockMedia);
 router.put('/adult/sext/conversations/:conversationId/read', verifyAdultJWT, markAsRead);
+
+// Photo Requests
+router.post('/adult/sext/conversations/:conversationId/request-photo', verifyAdultJWT, requestPhoto);
+router.put('/adult/sext/photo-requests/:messageId/fulfill', verifyAdultJWT, fulfillPhotoRequest);
+router.put('/adult/sext/photo-requests/:messageId/decline', verifyAdultJWT, declinePhotoRequest);
+
+// Gifts
+router.get('/adult/gifts/catalogue', verifyAdultJWT, getGiftsCatalogue);
+router.post('/adult/sext/conversations/:conversationId/send-gift', verifyAdultJWT, sendGift);
+
+// Calls
+router.post('/adult/sext/calls/initiate', verifyAdultJWT, initiateCall);
+router.put('/adult/sext/calls/:callId/accept', verifyAdultJWT, acceptCall);
+router.put('/adult/sext/calls/:callId/decline', verifyAdultJWT, declineCall);
+router.put('/adult/sext/calls/:callId/end', verifyAdultJWT, endCall);
+router.get('/adult/sext/calls/history', verifyAdultJWT, getCallHistory);
 
 // Provider Onboarding & Profile update routes
 router.get('/adult/providers/me', verifyAdultJWT, getMyProfile);

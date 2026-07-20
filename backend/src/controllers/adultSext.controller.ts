@@ -1,11 +1,15 @@
 import { Request, Response } from 'express';
-import AdultMessage from '../models/AdultMessage';
-import AdultUser from '../models/AdultUser';
-import { encrypt, decrypt } from '../services/encryptionService';
 import mongoose from 'mongoose';
-import { getClientPrice } from '../services/pricingService';
+import AdultUser from '../models/AdultUser';
+import AdultMessage from '../models/AdultMessage';
+import AdultConversation from '../models/AdultConversation';
+import AdultCall from '../models/AdultCall';
+import AdultGift from '../models/AdultGift';
 import CreditTransaction from '../models/CreditTransaction';
+import { encrypt, decrypt } from '../services/encryptionService';
+import { getClientPrice } from '../services/pricingService';
 
+// Backwards compatibility startConversation route
 export const startConversation = async (req: Request, res: Response) => {
   try {
     const user = req.adultUser;
@@ -13,25 +17,63 @@ export const startConversation = async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: 'Auth required' });
     }
 
-    const { userId } = req.params;
-    if (!userId) {
-      return res.status(400).json({ success: false, error: 'Recipient userId is required' });
+    const recipientId = req.params.userId || req.body.recipientId;
+    if (!recipientId) {
+      return res.status(400).json({ success: false, error: 'Recipient userId/recipientId is required' });
     }
 
-    const conversationId = [user._id.toString(), userId].sort().join('_');
-
-    // Just verify the recipient exists
-    const recipient = await AdultUser.findById(userId);
+    const recipient = await AdultUser.findById(recipientId);
     if (!recipient) {
       return res.status(404).json({ success: false, error: 'Recipient not found' });
     }
 
-    return res.json({ success: true, conversationId });
+    const conversationId = [user._id.toString(), recipientId.toString()].sort().join('_');
+
+    // Find or create conversation
+    let conversation = await AdultConversation.findById(conversationId);
+    const isNew = !conversation;
+
+    if (!conversation) {
+      conversation = new AdultConversation({
+        _id: conversationId,
+        participants: [user._id, recipient._id],
+        participantProfiles: [
+          {
+            userId: user._id,
+            displayName: user.displayName || user.username,
+            avatarUrl: user.profilePhoto || '/placeholder.svg',
+            accountType: user.role === 'provider' ? 'provider' : 'member',
+            isOnline: user.providerProfile?.isLive || false,
+          },
+          {
+            userId: recipient._id,
+            displayName: recipient.providerProfile?.stageName || recipient.displayName || recipient.username,
+            avatarUrl: recipient.profilePhoto || '/placeholder.svg',
+            accountType: recipient.role === 'provider' ? 'provider' : 'member',
+            isOnline: recipient.providerProfile?.isLive || false,
+          }
+        ],
+        unreadCounts: {
+          [user._id.toString()]: 0,
+          [recipient._id.toString()]: 0,
+        }
+      });
+      await conversation.save();
+    } else {
+      // If conversation was soft-deleted, restore it
+      if (conversation.deletedBy && conversation.deletedBy.some(id => id.toString() === user._id.toString())) {
+        conversation.deletedBy = conversation.deletedBy.filter(id => id.toString() !== user._id.toString());
+        await conversation.save();
+      }
+    }
+
+    return res.json({ success: true, conversationId, isNew });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
   }
 };
 
+// GET /api/v1/adult/sext/conversations
 export const getConversations = async (req: Request, res: Response) => {
   try {
     const user = req.adultUser;
@@ -39,53 +81,55 @@ export const getConversations = async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: 'Auth required' });
     }
 
-    const userId = user._id;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
 
-    // Get all messages where user is sender or receiver
-    const messages = await AdultMessage.find({
-      $or: [{ senderId: userId }, { receiverId: userId }]
-    }).sort({ createdAt: -1 });
+    const query = {
+      participants: user._id,
+      deletedBy: { $ne: user._id }
+    };
 
-    const conversationGroups = new Map<string, any[]>();
-    messages.forEach(msg => {
-      const group = conversationGroups.get(msg.conversationId) || [];
-      group.push(msg);
-      conversationGroups.set(msg.conversationId, group);
-    });
+    const conversations = await AdultConversation.find(query)
+      .sort({ updatedAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
 
-    const results: any[] = [];
+    const results = [];
 
-    for (const [convId, msgs] of conversationGroups.entries()) {
-      const lastMsgObj = msgs[0];
-      const otherUserIdStr = lastMsgObj.senderId.toString() === userId.toString()
-        ? lastMsgObj.receiverId.toString()
-        : lastMsgObj.senderId.toString();
+    for (const conv of conversations) {
+      const otherProfile = conv.participantProfiles.find(p => p.userId?.toString() !== user._id.toString());
+      const otherUser = otherProfile ? await AdultUser.findById(otherProfile.userId) : null;
 
-      const otherUser = await AdultUser.findById(otherUserIdStr).select('displayName profilePhoto providerProfile country');
+      // Unread count
+      const unreadCount = conv.unreadCounts.get(user._id.toString()) || 0;
 
-      const unreadCount = msgs.filter(m => m.receiverId.toString() === userId.toString() && !m.isRead).length;
-
-      let decryptedContent = '';
-      try {
-        decryptedContent = decrypt(lastMsgObj.content);
-      } catch (err) {
-        decryptedContent = lastMsgObj.content;
+      let preview = '';
+      if (conv.lastMessage?.content) {
+        try {
+          preview = decrypt(conv.lastMessage.content);
+        } catch {
+          preview = conv.lastMessage.content;
+        }
       }
 
       results.push({
-        conversationId: convId,
-        otherUser: otherUser ? {
-          id: otherUser._id,
-          displayName: otherUser.providerProfile?.stageName || otherUser.displayName || 'User',
-          avatarUrl: otherUser.profilePhoto || '/placeholder.svg',
-          isOnline: otherUser.providerProfile?.isLive || false,
+        conversationId: conv._id,
+        otherUser: otherProfile ? {
+          id: otherProfile.userId,
+          displayName: otherUser?.providerProfile?.stageName || otherProfile.displayName || 'User',
+          avatarUrl: otherUser?.profilePhoto || otherProfile.avatarUrl || '/placeholder.svg',
+          isOnline: otherUser?.providerProfile?.isLive || otherProfile.isOnline || false,
+          accountType: otherProfile.accountType
         } : null,
-        lastMessage: {
-          id: lastMsgObj._id,
-          content: decryptedContent,
-          createdAt: lastMsgObj.createdAt,
-        },
+        lastMessage: conv.lastMessage?.sentAt ? {
+          content: preview,
+          mediaType: conv.lastMessage.mediaType,
+          senderId: conv.lastMessage.senderId,
+          sentAt: conv.lastMessage.sentAt
+        } : null,
         unreadCount,
+        isMuted: conv.mutedBy.some(id => id.toString() === user._id.toString()),
+        isBlocked: conv.blockedBy.length > 0
       });
     }
 
@@ -95,6 +139,119 @@ export const getConversations = async (req: Request, res: Response) => {
   }
 };
 
+// GET /api/v1/adult/sext/conversations/:conversationId
+export const getConversationById = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const { conversationId } = req.params;
+    const conversation = await AdultConversation.findById(conversationId);
+
+    if (!conversation) {
+      return res.status(404).json({ success: false, error: 'Conversation not found' });
+    }
+
+    if (!conversation.participants.some(id => id.toString() === user._id.toString())) {
+      return res.status(403).json({ success: false, error: 'Forbidden' });
+    }
+
+    const otherProfile = conversation.participantProfiles.find(p => p.userId?.toString() !== user._id.toString());
+    const otherUser = otherProfile ? await AdultUser.findById(otherProfile.userId) : null;
+
+    return res.json({
+      conversationId: conversation._id,
+      unreadCount: conversation.unreadCounts.get(user._id.toString()) || 0,
+      otherUser: otherProfile ? {
+        id: otherProfile.userId,
+        displayName: otherUser?.providerProfile?.stageName || otherProfile.displayName || 'User',
+        avatarUrl: otherUser?.profilePhoto || otherProfile.avatarUrl || '/placeholder.svg',
+        isOnline: otherUser?.providerProfile?.isLive || otherProfile.isOnline || false,
+        accountType: otherProfile.accountType,
+        bio: otherUser?.bio || '',
+        country: otherUser?.country || ''
+      } : null
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// DELETE /api/v1/adult/sext/conversations/:conversationId
+export const deleteConversation = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const { conversationId } = req.params;
+    const conversation = await AdultConversation.findById(conversationId);
+
+    if (!conversation) {
+      return res.status(404).json({ success: false, error: 'Conversation not found' });
+    }
+
+    if (!conversation.participants.some(id => id.toString() === user._id.toString())) {
+      return res.status(403).json({ success: false, error: 'Forbidden' });
+    }
+
+    // Add to deletedBy list of conversation
+    if (!conversation.deletedBy.some(id => id.toString() === user._id.toString())) {
+      conversation.deletedBy.push(user._id);
+      await conversation.save();
+    }
+
+    // Add to deletedBy list for all messages in conversation
+    await AdultMessage.updateMany(
+      { conversationId },
+      { $addToSet: { deletedBy: user._id } }
+    );
+
+    return res.json({ success: true, message: 'Conversation deleted successfully' });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// PUT /api/v1/adult/sext/conversations/:conversationId/mute
+export const muteConversation = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const { conversationId } = req.params;
+    const { muted } = req.body;
+
+    const conversation = await AdultConversation.findById(conversationId);
+    if (!conversation) {
+      return res.status(404).json({ success: false, error: 'Conversation not found' });
+    }
+
+    if (!conversation.participants.some(id => id.toString() === user._id.toString())) {
+      return res.status(403).json({ success: false, error: 'Forbidden' });
+    }
+
+    if (muted) {
+      if (!conversation.mutedBy.some(id => id.toString() === user._id.toString())) {
+        conversation.mutedBy.push(user._id);
+      }
+    } else {
+      conversation.mutedBy = conversation.mutedBy.filter(id => id.toString() !== user._id.toString());
+    }
+
+    await conversation.save();
+    return res.json({ success: true, isMuted: muted });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// GET /api/v1/adult/sext/conversations/:conversationId/messages
 export const getMessages = async (req: Request, res: Response) => {
   try {
     const user = req.adultUser;
@@ -103,34 +260,59 @@ export const getMessages = async (req: Request, res: Response) => {
     }
 
     const { conversationId } = req.params;
+    const before = req.query.before as string;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 30;
 
-    const messages = await AdultMessage.find({ conversationId })
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(limit);
+    const query: any = {
+      conversationId,
+      deletedBy: { $ne: user._id }
+    };
+
+    if (before) {
+      query._id = { $lt: new mongoose.Types.ObjectId(before) };
+    }
+
+    let queryBuilder = AdultMessage.find(query).sort({ createdAt: -1 });
+
+    if (!before) {
+      queryBuilder = queryBuilder.skip((page - 1) * limit);
+    }
+
+    const messages = await queryBuilder.limit(limit);
 
     const formatted = messages.map(m => {
       let decryptedContent = '';
       try {
         decryptedContent = decrypt(m.content);
-      } catch (err) {
+      } catch {
         decryptedContent = m.content;
       }
 
-      const isUnlocked = m.unlockedBy.some(id => id.toString() === user._id.toString()) ||
+      // Check unlock details
+      const cost = m.creditCost || m.unlockCost || 0;
+      const isUnlocked = cost === 0 ||
         m.senderId.toString() === user._id.toString() ||
-        m.unlockCost === 0;
+        m.unlockedBy.some(id => id.toString() === user._id.toString());
 
       return {
         id: m._id,
         senderId: m.senderId,
-        content: decryptedContent,
-        mediaUrl: isUnlocked ? m.mediaUrl : '', // Lock the url if not paid
+        receiverId: m.receiverId,
+        content: m.isDeleted ? '[Message deleted]' : decryptedContent,
+        mediaUrl: isUnlocked ? m.mediaUrl : '',
+        mediaThumbnailUrl: m.mediaThumbnailUrl || '',
+        mediaDurationSeconds: m.mediaDurationSeconds,
+        mediaFileSizeBytes: m.mediaFileSizeBytes,
+        mediaMimeType: m.mediaMimeType,
         mediaType: m.messageType,
-        creditCost: m.unlockCost,
+        creditCost: cost,
         isUnlocked,
+        gift: m.gift,
+        photoRequest: m.photoRequest,
+        systemText: m.systemText,
+        reactions: m.reactions,
+        isDeleted: m.isDeleted,
         createdAt: m.createdAt,
         readAt: m.readAt,
       };
@@ -142,6 +324,7 @@ export const getMessages = async (req: Request, res: Response) => {
   }
 };
 
+// POST /api/v1/adult/sext/messages/:conversationId
 export const sendMessage = async (req: Request, res: Response) => {
   try {
     const user = req.adultUser;
@@ -150,111 +333,120 @@ export const sendMessage = async (req: Request, res: Response) => {
     }
 
     const { conversationId } = req.params;
-    const { content = '', mediaUrl = '', creditCost = 0, mediaType = 'text' } = req.body;
+    const {
+      type = 'text',
+      content = '',
+      mediaUrl = '',
+      mediaThumbnailUrl = '',
+      mediaDurationSeconds = 0,
+      mediaFileSizeBytes = 0,
+      mediaMimeType = '',
+      creditCost = 0,
+      gift = null,
+      photoRequest = null,
+      systemText = ''
+    } = req.body;
 
-    const convIdStr = String(conversationId);
-    const parts = convIdStr.split('_');
-    const receiverId = parts.find((p: string) => p !== user._id.toString());
-    if (!receiverId) {
-      return res.status(400).json({ success: false, error: 'Invalid conversationId' });
+    const conversation = await AdultConversation.findById(conversationId);
+    if (!conversation) {
+      return res.status(404).json({ success: false, error: 'Conversation not found' });
+    }
+
+    if (conversation.blockedBy.length > 0) {
+      return res.status(403).json({ success: false, error: 'This conversation is blocked' });
+    }
+
+    const otherParticipantId = conversation.participants.find(id => id.toString() !== user._id.toString());
+    if (!otherParticipantId) {
+      return res.status(400).json({ success: false, error: 'Recipient not found' });
+    }
+
+    // Set lock value
+    let finalCreditCost = creditCost;
+    let finalIsLocked = creditCost > 0;
+    if (user.role === 'provider' && (type === 'locked_image' || type === 'locked_video')) {
+      finalCreditCost = Math.max(1, creditCost);
+      finalIsLocked = true;
     }
 
     const message = new AdultMessage({
-      conversationId: convIdStr,
+      conversationId,
       senderId: user._id,
-      receiverId: new mongoose.Types.ObjectId(receiverId),
+      receiverId: otherParticipantId,
       content: encrypt(content),
-      messageType: mediaType,
+      messageType: type,
       mediaUrl,
-      unlockCost: creditCost,
-      mediaBlurred: creditCost > 0,
+      mediaThumbnailUrl,
+      mediaDurationSeconds,
+      mediaFileSizeBytes,
+      mediaMimeType,
+      isLocked: finalIsLocked,
+      creditCost: finalCreditCost,
+      unlockCost: finalCreditCost, // backward compatible
+      mediaBlurred: finalIsLocked,
+      gift,
+      photoRequest,
+      systemText
     });
 
     await message.save();
 
-    return res.status(201).json({
+    // Reset deletedBy in case receiver/sender deleted it earlier
+    conversation.deletedBy = [];
+    conversation.lastMessage = {
+      content: encrypt(content || (type === 'gift' ? `🎁 Sent you a ${gift?.giftName || 'gift'}` : `[${type}]`)),
+      mediaType: type,
+      senderId: user._id,
+      sentAt: new Date()
+    };
+
+    // Increment unread count for other party
+    const receiverIdStr = otherParticipantId.toString();
+    const currentUnread = conversation.unreadCounts.get(receiverIdStr) || 0;
+    conversation.unreadCounts.set(receiverIdStr, currentUnread + 1);
+
+    await conversation.save();
+
+    const responsePayload = {
       id: message._id,
       senderId: message.senderId,
+      receiverId: message.receiverId,
       content,
-      mediaUrl,
-      mediaType,
-      creditCost,
-      isUnlocked: true,
+      mediaUrl: finalIsLocked ? '' : mediaUrl,
+      mediaThumbnailUrl,
+      mediaDurationSeconds,
+      mediaFileSizeBytes,
+      mediaMimeType,
+      mediaType: type,
+      creditCost: finalCreditCost,
+      isUnlocked: !finalIsLocked,
+      gift,
+      photoRequest,
+      systemText,
+      reactions: [],
+      isDeleted: false,
       createdAt: message.createdAt,
-    });
+      readAt: null
+    };
+
+    // Socket emission (handled mostly in Socket.io but let's make sure it relays)
+    const ns = req.app.get('adultNamespace');
+    if (ns) {
+      ns.to(`conv:${conversationId}`).emit('sext:new_message', { message: responsePayload });
+      ns.to(`user:${receiverIdStr}`).emit('sext:conversation_updated', {
+        conversationId,
+        lastMessage: responsePayload,
+        unreadCount: currentUnread + 1
+      });
+    }
+
+    return res.status(201).json(responsePayload);
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
   }
 };
 
-export const unlockMedia = async (req: Request, res: Response) => {
-  const { messageId } = req.params;
-  const user = req.adultUser;
-  if (!user) return res.status(401).json({ success: false, error: 'Auth required' });
-
-  const message = await AdultMessage.findById(messageId);
-  if (!message) return res.status(404).json({ success: false, error: 'Message not found' });
-  if (message.unlockedBy.some(id => id.toString() === user._id.toString())) {
-    return res.json({ success: true, mediaUrl: message.mediaUrl });
-  }
-
-  const clientCost = getClientPrice(message.unlockCost || 0);
-
-  if (user.credits < clientCost) {
-    return res.status(402).json({ success: false, error: 'Insufficient credits' });
-  }
-
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
-  try {
-    user.credits -= clientCost;
-    await user.save({ session });
-
-    const provider = await AdultUser.findById(message.senderId).session(session);
-    if (provider) {
-      provider.credits += message.unlockCost;
-      if (provider.providerProfile) {
-        provider.providerProfile.totalEarnings += message.unlockCost;
-      }
-      await provider.save({ session });
-    }
-
-    await CreditTransaction.create([{
-      userId: user._id,
-      type: 'tip',
-      amount: -clientCost,
-      usdAmount: 0,
-      description: `Unlock media from ${provider?.username || 'provider'}`,
-      relatedUserId: provider?._id,
-      status: 'completed',
-    }], { session });
-
-    if (provider) {
-      await CreditTransaction.create([{
-        userId: provider._id,
-        type: 'tip',
-        amount: message.unlockCost,
-        usdAmount: 0,
-        description: `Media unlock by ${user.username}`,
-        relatedUserId: user._id,
-        status: 'completed',
-      }], { session });
-    }
-
-    message.unlockedBy.push(user._id);
-    await message.save({ session });
-
-    await session.commitTransaction();
-    res.json({ success: true, mediaUrl: message.mediaUrl });
-  } catch (err: any) {
-    await session.abortTransaction();
-    res.status(500).json({ success: false, error: err.message });
-  } finally {
-    session.endSession();
-  }
-};
-
+// PUT /api/v1/adult/sext/conversations/:conversationId/read
 export const markAsRead = async (req: Request, res: Response) => {
   try {
     const user = req.adultUser;
@@ -263,13 +455,906 @@ export const markAsRead = async (req: Request, res: Response) => {
     }
 
     const { conversationId } = req.params;
+    const conversation = await AdultConversation.findById(conversationId);
 
-    await AdultMessage.updateMany(
+    if (!conversation) {
+      return res.status(404).json({ success: false, error: 'Conversation not found' });
+    }
+
+    const updateResult = await AdultMessage.updateMany(
       { conversationId, receiverId: user._id, isRead: false },
       { $set: { isRead: true, readAt: new Date() } }
     );
 
-    return res.json({ success: true, message: 'Messages marked as read' });
+    conversation.unreadCounts.set(user._id.toString(), 0);
+    await conversation.save();
+
+    const otherParticipantId = conversation.participants.find(id => id.toString() !== user._id.toString());
+    const ns = req.app.get('adultNamespace');
+    if (ns && otherParticipantId) {
+      ns.to(`user:${otherParticipantId.toString()}`).emit('sext:messages_read', {
+        conversationId,
+        readAt: new Date()
+      });
+    }
+
+    return res.json({ success: true, messagesRead: updateResult.modifiedCount });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// DELETE /api/v1/adult/sext/messages/:messageId
+export const deleteMessage = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const { messageId } = req.params;
+    const message = await AdultMessage.findById(messageId);
+
+    if (!message) {
+      return res.status(404).json({ success: false, error: 'Message not found' });
+    }
+
+    if (message.senderId.toString() !== user._id.toString()) {
+      return res.status(403).json({ success: false, error: 'Cannot delete another user\'s message' });
+    }
+
+    message.isDeleted = true;
+    message.deletedAt = new Date();
+    await message.save();
+
+    const ns = req.app.get('adultNamespace');
+    if (ns) {
+      ns.to(`conv:${message.conversationId}`).emit('sext:message_deleted', { messageId });
+    }
+
+    return res.json({ success: true, message: 'Message soft-deleted successfully' });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// POST /api/v1/adult/sext/messages/:messageId/react
+export const reactMessage = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const { messageId } = req.params;
+    const { emoji } = req.body;
+
+    if (!emoji) {
+      return res.status(400).json({ success: false, error: 'Emoji is required' });
+    }
+
+    const message = await AdultMessage.findById(messageId);
+    if (!message) {
+      return res.status(404).json({ success: false, error: 'Message not found' });
+    }
+
+    // Toggle reaction
+    const existingIndex = message.reactions.findIndex(
+      r => r.userId.toString() === user._id.toString() && r.emoji === emoji
+    );
+
+    if (existingIndex > -1) {
+      message.reactions.splice(existingIndex, 1);
+    } else {
+      message.reactions.push({
+        userId: user._id,
+        emoji,
+        reactedAt: new Date()
+      });
+    }
+
+    await message.save();
+
+    const ns = req.app.get('adultNamespace');
+    if (ns) {
+      ns.to(`conv:${message.conversationId}`).emit('sext:message_reacted', {
+        messageId,
+        reactions: message.reactions
+      });
+    }
+
+    return res.json(message.reactions);
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// POST /api/v1/adult/sext/messages/:messageId/unlock
+export const unlockMedia = async (req: Request, res: Response) => {
+  try {
+    const { messageId } = req.params;
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const message = await AdultMessage.findById(messageId);
+    if (!message) {
+      return res.status(404).json({ success: false, error: 'Message not found' });
+    }
+
+    if (message.senderId.toString() === user._id.toString()) {
+      return res.status(403).json({ success: false, error: 'Cannot unlock your own content' });
+    }
+
+    if (message.unlockedBy.some(id => id.toString() === user._id.toString())) {
+      return res.status(409).json({ success: false, error: 'Already unlocked' });
+    }
+
+    const cost = message.creditCost || message.unlockCost || 0;
+    const clientCost = getClientPrice(cost);
+
+    if (user.credits < clientCost) {
+      return res.status(402).json({
+        success: false,
+        error: 'Not enough credits',
+        required: clientCost,
+        current: user.credits
+      });
+    }
+
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+    const dbUser = await AdultUser.findById(user._id).session(session);
+    if (!dbUser) {
+      throw new Error('User not found');
+    }
+    if (dbUser.credits < clientCost) {
+      return res.status(402).json({ success: false, error: 'Insufficient credits' });
+    }
+    dbUser.credits -= clientCost;
+    await dbUser.save({ session });
+
+      const provider = await AdultUser.findById(message.senderId).session(session);
+      if (provider) {
+        provider.credits += cost;
+        if (provider.providerProfile) {
+          provider.providerProfile.totalEarnings += cost;
+        }
+        await provider.save({ session });
+      }
+
+      await CreditTransaction.create([{
+        userId: user._id,
+        type: 'tip',
+        amount: -clientCost,
+        usdAmount: 0,
+        description: `Unlock media from ${provider?.username || 'provider'}`,
+        relatedUserId: provider?._id,
+        status: 'completed',
+      }], { session });
+
+      if (provider) {
+        await CreditTransaction.create([{
+          userId: provider._id,
+          type: 'tip',
+          amount: cost,
+          usdAmount: 0,
+          description: `Media unlock by ${user.username}`,
+          relatedUserId: user._id,
+          status: 'completed',
+        }], { session });
+      }
+
+      message.unlockedBy.push(user._id);
+      await message.save({ session });
+
+      await session.commitTransaction();
+
+      // Emit balance socket updates and media unlock
+      const ns = req.app.get('adultNamespace');
+      if (ns) {
+      ns.to(`user:${user._id.toString()}`).emit('wallet:updated', { balance: dbUser.credits });
+        if (provider) {
+          ns.to(`user:${provider._id.toString()}`).emit('wallet:updated', { balance: provider.credits });
+        }
+        ns.to(`conv:${message.conversationId}`).emit('sext:media_unlocked', {
+          messageId: message._id,
+          mediaUrl: message.mediaUrl
+        });
+      }
+
+      return res.json({
+        success: true,
+        mediaUrl: message.mediaUrl,
+        mediaThumbnailUrl: message.mediaThumbnailUrl,
+        mediaMimeType: message.mediaMimeType
+      });
+    } catch (err: any) {
+      console.error("UNLOCK_MEDIA_ERROR:", err);
+      await session.abortTransaction();
+      return res.status(500).json({ success: false, error: err.message });
+    } finally {
+      session.endSession();
+    }
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// POST /api/v1/adult/sext/conversations/:conversationId/request-photo
+export const requestPhoto = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const { conversationId } = req.params;
+    const { note = '' } = req.body;
+
+    const conversation = await AdultConversation.findById(conversationId);
+    if (!conversation) {
+      return res.status(404).json({ success: false, error: 'Conversation not found' });
+    }
+
+    const otherParticipantId = conversation.participants.find(id => id.toString() !== user._id.toString());
+    if (!otherParticipantId) {
+      return res.status(400).json({ success: false, error: 'Recipient not found' });
+    }
+
+    const message = new AdultMessage({
+      conversationId,
+      senderId: user._id,
+      receiverId: otherParticipantId,
+      content: encrypt(`📷 Requested a photo`),
+      messageType: 'request_photo',
+      photoRequest: {
+        status: 'pending',
+        note,
+        fulfilledMessageId: null
+      }
+    });
+
+    await message.save();
+
+    conversation.lastMessage = {
+      content: encrypt(`📷 Requested a photo`),
+      mediaType: 'request_photo',
+      senderId: user._id,
+      sentAt: new Date()
+    };
+    await conversation.save();
+
+    const responsePayload = {
+      id: message._id,
+      senderId: message.senderId,
+      receiverId: message.receiverId,
+      content: `Requested a photo`,
+      mediaType: 'request_photo',
+      isUnlocked: true,
+      photoRequest: message.photoRequest,
+      createdAt: message.createdAt
+    };
+
+    const ns = req.app.get('adultNamespace');
+    if (ns) {
+      ns.to(`conv:${conversationId}`).emit('sext:new_message', { message: responsePayload });
+    }
+
+    return res.status(201).json(responsePayload);
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// PUT /api/v1/adult/sext/photo-requests/:messageId/fulfill
+export const fulfillPhotoRequest = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const { messageId } = req.params;
+    const { mediaUrl, mediaThumbnailUrl = '', creditCost = 0, isLocked = false } = req.body;
+
+    const requestMsg = await AdultMessage.findById(messageId);
+    if (!requestMsg || requestMsg.messageType !== 'request_photo') {
+      return res.status(404).json({ success: false, error: 'Photo request not found' });
+    }
+
+    if (requestMsg.receiverId?.toString() !== user._id.toString()) {
+      return res.status(403).json({ success: false, error: 'Only the recipient of the request can fulfill it' });
+    }
+
+    if (requestMsg.photoRequest?.status === 'fulfilled') {
+      return res.status(409).json({ success: false, error: 'Already fulfilled' });
+    }
+
+    // Create the image message first
+    const imageMsg = new AdultMessage({
+      conversationId: requestMsg.conversationId,
+      senderId: user._id,
+      receiverId: requestMsg.senderId,
+      content: encrypt(isLocked ? '[Locked Photo]' : 'Fulfilled Photo Request'),
+      messageType: isLocked ? 'locked_image' : 'image',
+      mediaUrl,
+      mediaThumbnailUrl,
+      isLocked,
+      creditCost,
+      unlockCost: creditCost,
+      mediaBlurred: isLocked
+    });
+    await imageMsg.save();
+
+    // Update request state
+    requestMsg.photoRequest!.status = 'fulfilled';
+    requestMsg.photoRequest!.fulfilledMessageId = imageMsg._id;
+    await requestMsg.save();
+
+    const ns = req.app.get('adultNamespace');
+    if (ns) {
+      ns.to(`conv:${requestMsg.conversationId}`).emit('sext:photo_request_updated', {
+        messageId,
+        status: 'fulfilled',
+        fulfilledMessageId: imageMsg._id
+      });
+      ns.to(`conv:${requestMsg.conversationId}`).emit('sext:new_message', {
+        message: {
+          id: imageMsg._id,
+          senderId: imageMsg.senderId,
+          receiverId: imageMsg.receiverId,
+          content: isLocked ? '[Locked Photo]' : 'Fulfilled Photo Request',
+          mediaUrl: isLocked ? '' : mediaUrl,
+          mediaThumbnailUrl,
+          mediaType: isLocked ? 'locked_image' : 'image',
+          creditCost,
+          isUnlocked: !isLocked,
+          createdAt: imageMsg.createdAt
+        }
+      });
+    }
+
+    return res.json({ requestMessage: requestMsg, imageMessage: imageMsg });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// PUT /api/v1/adult/sext/photo-requests/:messageId/decline
+export const declinePhotoRequest = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const { messageId } = req.params;
+    const requestMsg = await AdultMessage.findById(messageId);
+
+    if (!requestMsg || requestMsg.messageType !== 'request_photo') {
+      return res.status(404).json({ success: false, error: 'Photo request not found' });
+    }
+
+    // Sender of the request can cancel, receiver of request can decline
+    const isReceiver = requestMsg.receiverId?.toString() === user._id.toString();
+    const isSender = requestMsg.senderId.toString() === user._id.toString();
+
+    if (!isReceiver && !isSender) {
+      return res.status(403).json({ success: false, error: 'Not authorized' });
+    }
+
+    requestMsg.photoRequest!.status = 'declined';
+    await requestMsg.save();
+
+    const ns = req.app.get('adultNamespace');
+    if (ns) {
+      ns.to(`conv:${requestMsg.conversationId}`).emit('sext:photo_request_updated', {
+        messageId,
+        status: 'declined'
+      });
+    }
+
+    return res.json(requestMsg);
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// GET /api/v1/adult/gifts/catalogue
+export const getGiftsCatalogue = async (req: Request, res: Response) => {
+  try {
+    let gifts = await AdultGift.find({ isActive: true }).sort({ sortOrder: 1 });
+
+    // Seed default catalogue if empty
+    if (gifts.length === 0) {
+      const defaults = [
+        { name: 'Red Rose', iconUrl: 'rose', creditCost: 10, category: 'romantic', sortOrder: 1 },
+        { name: 'Fun Balloon', iconUrl: 'balloon', creditCost: 20, category: 'fun', sortOrder: 2 },
+        { name: 'Teddy Bear', iconUrl: 'teddy', creditCost: 50, category: 'romantic', sortOrder: 3 },
+        { name: 'Spicy Lingerie', iconUrl: 'lingerie', creditCost: 100, category: 'spicy', sortOrder: 4 },
+        { name: 'Champagne', iconUrl: 'champagne', creditCost: 250, category: 'luxury', sortOrder: 5 },
+        { name: 'Diamond Ring', iconUrl: 'ring', creditCost: 500, category: 'luxury', sortOrder: 6 }
+      ];
+      gifts = await AdultGift.create(defaults);
+    }
+
+    return res.json(gifts);
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// POST /api/v1/adult/sext/conversations/:conversationId/send-gift
+export const sendGift = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const { conversationId } = req.params;
+    const { giftId, message = '' } = req.body;
+
+    const gift = await AdultGift.findById(giftId);
+    if (!gift || !gift.isActive) {
+      return res.status(404).json({ success: false, error: 'Gift not found' });
+    }
+
+    if (user.credits < gift.creditCost) {
+      return res.status(402).json({ success: false, error: 'Insufficient credits' });
+    }
+
+    const conversation = await AdultConversation.findById(conversationId);
+    if (!conversation) {
+      return res.status(404).json({ success: false, error: 'Conversation not found' });
+    }
+
+    const otherParticipantId = conversation.participants.find(id => id.toString() !== user._id.toString());
+    if (!otherParticipantId) {
+      return res.status(400).json({ success: false, error: 'Recipient not found' });
+    }
+
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      const dbUser = await AdultUser.findById(user._id).session(session);
+      if (!dbUser) {
+        throw new Error('User not found');
+      }
+      if (dbUser.credits < gift.creditCost) {
+        return res.status(402).json({ success: false, error: 'Insufficient credits' });
+      }
+      dbUser.credits -= gift.creditCost;
+      await dbUser.save({ session });
+
+      const receiver = await AdultUser.findById(otherParticipantId).session(session);
+      if (receiver) {
+        receiver.credits += gift.creditCost;
+        if (receiver.providerProfile) {
+          receiver.providerProfile.totalEarnings += gift.creditCost;
+        }
+        await receiver.save({ session });
+      }
+
+      await CreditTransaction.create([{
+        userId: user._id,
+        type: 'tip',
+        amount: -gift.creditCost,
+        usdAmount: 0,
+        description: `Sent gift: ${gift.name}`,
+        relatedUserId: receiver?._id,
+        status: 'completed',
+      }], { session });
+
+      if (receiver) {
+        await CreditTransaction.create([{
+          userId: receiver._id,
+          type: 'tip',
+          amount: gift.creditCost,
+          usdAmount: 0,
+          description: `Received gift: ${gift.name} from ${user.username}`,
+          relatedUserId: user._id,
+          status: 'completed',
+        }], { session });
+      }
+
+      const msg = new AdultMessage({
+        conversationId,
+        senderId: user._id,
+        receiverId: otherParticipantId,
+        content: encrypt(`🎁 Sent you a ${gift.name}`),
+        messageType: 'gift',
+        gift: {
+          giftId: gift._id.toString(),
+          giftName: gift.name,
+          giftIconUrl: gift.iconUrl,
+          giftValue: gift.creditCost,
+          message
+        }
+      });
+      await msg.save({ session });
+
+      // Update conversation lastMessage
+      conversation.lastMessage = {
+        content: encrypt(`🎁 Sent you a ${gift.name}`),
+        mediaType: 'gift',
+        senderId: user._id,
+        sentAt: new Date()
+      };
+      await conversation.save({ session });
+
+      await session.commitTransaction();
+
+      // Emit socket alerts
+      const ns = req.app.get('adultNamespace');
+      if (ns) {
+        ns.to(`user:${user._id.toString()}`).emit('wallet:updated', { balance: dbUser.credits });
+        if (receiver) {
+          ns.to(`user:${receiver._id.toString()}`).emit('wallet:updated', { balance: receiver.credits });
+        }
+        ns.to(`conv:${conversationId}`).emit('sext:new_message', {
+          message: {
+            id: msg._id,
+            senderId: msg.senderId,
+            receiverId: msg.receiverId,
+            content: `Sent you a ${gift.name}`,
+            mediaType: 'gift',
+            gift: msg.gift,
+            isUnlocked: true,
+            createdAt: msg.createdAt
+          }
+        });
+      }
+
+      return res.json({
+        message: msg,
+        senderNewBalance: dbUser.credits,
+        giftDetails: gift
+      });
+    } catch (err: any) {
+      await session.abortTransaction();
+      return res.status(500).json({ success: false, error: err.message });
+    } finally {
+      session.endSession();
+    }
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// POST /api/v1/adult/sext/calls/initiate
+export const initiateCall = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const { conversationId, type } = req.body;
+    if (!conversationId || !type) {
+      return res.status(400).json({ success: false, error: 'conversationId and type (video/audio) are required' });
+    }
+
+    const conversation = await AdultConversation.findById(conversationId);
+    if (!conversation) {
+      return res.status(404).json({ success: false, error: 'Conversation not found' });
+    }
+
+    const otherParticipantId = conversation.participants.find(id => id.toString() !== user._id.toString());
+    if (!otherParticipantId) {
+      return res.status(400).json({ success: false, error: 'Receiver not found' });
+    }
+
+    const receiver = await AdultUser.findById(otherParticipantId);
+    if (!receiver) {
+      return res.status(404).json({ success: false, error: 'Receiver not found' });
+    }
+
+    // Determine cost rate
+    const rate = type === 'video'
+      ? (receiver.providerProfile?.videoCallPrice || 5)
+      : (receiver.providerProfile?.audioCallPrice || 2);
+
+    const userPrice = getClientPrice(rate);
+
+    if (user.credits < userPrice) {
+      return res.status(402).json({ success: false, error: 'Insufficient credits to start call' });
+    }
+
+    const webrtcRoomId = `room_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+    const call = new AdultCall({
+      conversationId,
+      callerId: user._id,
+      receiverId: receiver._id,
+      type,
+      status: 'ringing',
+      perMinuteRate: rate,
+      webrtcRoomId
+    });
+    await call.save();
+
+    // Emit socket alert to receiver
+    const ns = req.app.get('adultNamespace');
+    if (ns) {
+      ns.to(`user:${receiver._id.toString()}`).emit('call:incoming', {
+        callId: call._id,
+        callerId: user._id,
+        callerName: user.displayName || user.username,
+        callerAvatar: user.profilePhoto || '/placeholder.svg',
+        type,
+        webrtcRoomId,
+        rate: userPrice
+      });
+    }
+
+    // Setup 60s timeout in background
+    setTimeout(async () => {
+      const liveCall = await AdultCall.findById(call._id);
+      if (liveCall && liveCall.status === 'ringing') {
+        liveCall.status = 'missed';
+        liveCall.endReason = 'no_answer';
+        await liveCall.save();
+
+        if (ns) {
+          ns.to(`user:${user._id.toString()}`).emit('call:missed', { callId: call._id });
+          ns.to(`user:${receiver._id.toString()}`).emit('call:missed', { callId: call._id });
+        }
+      }
+    }, 60000);
+
+    return res.json({
+      callId: call._id,
+      webrtcRoomId,
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// PUT /api/v1/adult/sext/calls/:callId/accept
+export const acceptCall = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const { callId } = req.params;
+    const call = await AdultCall.findById(callId);
+
+    if (!call) {
+      return res.status(404).json({ success: false, error: 'Call session not found' });
+    }
+
+    if (call.receiverId.toString() !== user._id.toString()) {
+      return res.status(403).json({ success: false, error: 'Unauthorized to accept' });
+    }
+
+    call.status = 'active';
+    call.startedAt = new Date();
+    await call.save();
+
+    const ns = req.app.get('adultNamespace');
+    if (ns) {
+      ns.to(`user:${call.callerId.toString()}`).emit('call:accepted', {
+        callId,
+        webrtcRoomId: call.webrtcRoomId,
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      });
+    }
+
+    return res.json({
+      webrtcRoomId: call.webrtcRoomId,
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+      perMinuteRate: call.perMinuteRate
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// PUT /api/v1/adult/sext/calls/:callId/decline
+export const declineCall = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const { callId } = req.params;
+    const call = await AdultCall.findById(callId);
+
+    if (!call) {
+      return res.status(404).json({ success: false, error: 'Call session not found' });
+    }
+
+    call.status = 'declined';
+    call.endReason = 'declined';
+    call.endedAt = new Date();
+    await call.save();
+
+    // Insert system message
+    const declinerName = user.displayName || user.username;
+    const systemMsg = new AdultMessage({
+      conversationId: call.conversationId,
+      senderId: call.receiverId,
+      receiverId: call.callerId,
+      content: encrypt(`${declinerName} declined the call`),
+      messageType: 'system',
+      systemText: `${declinerName} declined the call`
+    });
+    await systemMsg.save();
+
+    const ns = req.app.get('adultNamespace');
+    if (ns) {
+      ns.to(`user:${call.callerId.toString()}`).emit('call:declined', { callId });
+    }
+
+    return res.json({ callId });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// PUT /api/v1/adult/sext/calls/:callId/end
+export const endCall = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const { callId } = req.params;
+    const { reason = 'hung_up' } = req.body;
+
+    const call = await AdultCall.findById(callId);
+    if (!call) {
+      return res.status(404).json({ success: false, error: 'Call session not found' });
+    }
+
+    if (call.status === 'ended') {
+      return res.json({ durationSeconds: call.durationSeconds, creditsDeducted: call.creditsDeducted, callId });
+    }
+
+    call.status = 'ended';
+    call.endedAt = new Date();
+    call.endedBy = user._id;
+    call.endReason = reason;
+
+    let durationSeconds = 0;
+    if (call.startedAt) {
+      durationSeconds = Math.max(1, Math.floor((call.endedAt.getTime() - call.startedAt.getTime()) / 1000));
+    }
+    call.durationSeconds = durationSeconds;
+
+    // Billing Logic
+    const minutes = Math.max(1, Math.ceil(durationSeconds / 60));
+    const finalRate = call.perMinuteRate;
+    const clientPrice = getClientPrice(finalRate);
+    const creditsDeducted = minutes * clientPrice;
+    const providerPayout = minutes * finalRate;
+
+    call.creditsDeducted = creditsDeducted;
+
+    const dbSession = await mongoose.startSession();
+    dbSession.startTransaction();
+
+    try {
+      const callerUser = await AdultUser.findById(call.callerId).session(dbSession);
+      const providerUser = await AdultUser.findById(call.receiverId).session(dbSession);
+
+      if (callerUser && providerUser) {
+        const actualDeduct = Math.min(callerUser.credits, creditsDeducted);
+        callerUser.credits -= actualDeduct;
+        await callerUser.save({ session: dbSession });
+
+        providerUser.credits += providerPayout;
+        if (providerUser.providerProfile) {
+          providerUser.providerProfile.totalEarnings += providerPayout;
+        }
+        await providerUser.save({ session: dbSession });
+
+        // Transactions
+        await CreditTransaction.create([{
+          userId: callerUser._id,
+          type: 'tip',
+          amount: -actualDeduct,
+          usdAmount: 0,
+          description: `${call.type.charAt(0).toUpperCase() + call.type.slice(1)} call for ${minutes} min`,
+          relatedUserId: providerUser._id,
+          status: 'completed',
+        }], { session: dbSession });
+
+        await CreditTransaction.create([{
+          userId: providerUser._id,
+          type: 'tip',
+          amount: providerPayout,
+          usdAmount: 0,
+          description: `${call.type.charAt(0).toUpperCase() + call.type.slice(1)} call payout from ${callerUser.username}`,
+          relatedUserId: callerUser._id,
+          status: 'completed',
+        }], { session: dbSession });
+      }
+
+      await call.save({ session: dbSession });
+
+      const durationStr = `${Math.floor(durationSeconds / 60)} min ${durationSeconds % 60} sec`;
+      const systemMsg = new AdultMessage({
+        conversationId: call.conversationId,
+        senderId: call.callerId,
+        receiverId: call.receiverId,
+        content: encrypt(`Call ended · ${durationStr}`),
+        messageType: 'system',
+        systemText: `Call ended · ${durationStr}`
+      });
+      await systemMsg.save({ session: dbSession });
+
+      await dbSession.commitTransaction();
+
+      // Emit sockets
+      const ns = req.app.get('adultNamespace');
+      if (ns) {
+        ns.to(`user:${call.callerId.toString()}`).emit('call:ended', { callId, durationSeconds, creditsDeducted });
+        ns.to(`user:${call.receiverId.toString()}`).emit('call:ended', { callId, durationSeconds, creditsDeducted });
+      }
+
+      return res.json({ durationSeconds, creditsDeducted, callId });
+    } catch (err: any) {
+      await dbSession.abortTransaction();
+      return res.status(500).json({ success: false, error: err.message });
+    } finally {
+      dbSession.endSession();
+    }
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// GET /api/v1/adult/sext/calls/history
+export const getCallHistory = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+
+    const calls = await AdultCall.find({
+      $or: [{ callerId: user._id }, { receiverId: user._id }]
+    })
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
+
+    const results = [];
+    for (const c of calls) {
+      const otherUserId = c.callerId.toString() === user._id.toString() ? c.receiverId : c.callerId;
+      const otherUser = await AdultUser.findById(otherUserId);
+
+      results.push({
+        callId: c._id,
+        type: c.type,
+        otherParticipant: otherUser ? {
+          displayName: otherUser.providerProfile?.stageName || otherUser.displayName || otherUser.username,
+          avatarUrl: otherUser.profilePhoto || '/placeholder.svg'
+        } : null,
+        durationSeconds: c.durationSeconds,
+        creditsDeducted: c.creditsDeducted,
+        status: c.status,
+        createdAt: c.createdAt
+      });
+    }
+
+    return res.json(results);
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
   }

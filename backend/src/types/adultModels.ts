@@ -205,19 +205,41 @@ export interface IMessage extends Document {
   senderId: Types.ObjectId;
   receiverId?: Types.ObjectId;
   content: string;
-  messageType: 'text' | 'image' | 'voice' | 'gift' | 'system';
+  messageType: string; // support expanded types: text, image, video, audio, voice_note, gift, locked_image, locked_video, request_photo, system
   mediaUrl?: string;
+  mediaThumbnailUrl?: string;
+  mediaDurationSeconds?: number;
+  mediaFileSizeBytes?: number;
+  mediaMimeType?: string;
+  isLocked?: boolean;
+  creditCost?: number;
   mediaBlurred: boolean;
   unlockCost: number;
   unlockedBy: Types.ObjectId[];
+  gift?: {
+    giftId: string;
+    giftName: string;
+    giftIconUrl: string;
+    giftValue: number;
+    message?: string;
+  };
+  photoRequest?: {
+    status: 'pending' | 'fulfilled' | 'declined';
+    note?: string;
+    fulfilledMessageId?: Types.ObjectId | null;
+  };
+  systemText?: string;
   reactions: {
     userId: Types.ObjectId;
     emoji: string;
+    reactedAt?: Date;
   }[];
   isRead: boolean;
   readAt?: Date;
   isDeleted: boolean;
   deletedAt?: Date;
+  deletedBy?: Types.ObjectId[];
+  reportedBy?: Types.ObjectId[];
   createdAt: Date;
 }
 
