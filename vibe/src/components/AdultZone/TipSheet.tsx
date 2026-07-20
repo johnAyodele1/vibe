@@ -118,6 +118,9 @@ export const TipSheet: React.FC = () => {
     }
   }, [step, result]);
 
+  // Swipe gesture for mobile swipe down dismiss
+  const touchStartY = useRef<number | null>(null);
+
   // Escape key close on desktop
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -133,9 +136,6 @@ export const TipSheet: React.FC = () => {
 
   // Amount computation
   const finalAmount = selectedAmount !== null ? selectedAmount : (parseInt(customAmount) || 0);
-
-  // Swipe gesture for mobile swipe down dismiss
-  const touchStartY = useRef<number | null>(null);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartY.current = e.touches[0].clientY;

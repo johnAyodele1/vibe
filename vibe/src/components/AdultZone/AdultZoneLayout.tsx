@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation, Outlet } from 'react-router-dom';
 import AgeGate from './AgeGate';
 import AdultAuthModal from './AdultAuthModal';
@@ -23,6 +23,14 @@ const AdultZoneLayout: React.FC = () => {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const { isAuthenticated, logout, user, loading } = useAdultAuth();
   const location = useLocation();
+
+  useEffect(() => {
+    const handleOpenAuth = () => {
+      setIsAuthModalOpen(true);
+    };
+    window.addEventListener('open-adult-auth-modal', handleOpenAuth);
+    return () => window.removeEventListener('open-adult-auth-modal', handleOpenAuth);
+  }, []);
 
   if (loading) {
     return <LoadingScreen />;

@@ -115,6 +115,10 @@ const AdultHome: React.FC = () => {
   }, []);
 
   const handleMessageClick = async (providerId: string) => {
+    if (!localStorage.getItem('adultAccessToken')) {
+      window.dispatchEvent(new CustomEvent('open-adult-auth-modal'));
+      return;
+    }
     setMessageLoading(providerId);
     try {
       const response = await fetch(`${API_BASE_URL}/v1/adult/sext/conversations`, {
@@ -144,6 +148,10 @@ const AdultHome: React.FC = () => {
   };
 
   const handleTipClick = (p: any) => {
+    if (!localStorage.getItem('adultAccessToken')) {
+      window.dispatchEvent(new CustomEvent('open-adult-auth-modal'));
+      return;
+    }
     const photoUrl = p.profilePhoto || p.photos?.[0]?.url || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=600&auto=format&fit=crop";
     const displayName = p.displayName || p.providerProfile?.stageName || p.firstName;
     const userId = p.userId || p._id;
