@@ -3,8 +3,9 @@ const getApiBaseUrl = () => {
     const override = localStorage.getItem('API_BASE_URL_OVERRIDE');
     if (override) return override;
   }
-  // Return relative path /api so it always resolves to the hosting server (local or deployed)
-  return "/api";
+  return import.meta.env.PROD
+    ? "https://zippo-r8hk.onrender.com/api"
+    : "/api";
 };
 
 const getSocketUrl = () => {
