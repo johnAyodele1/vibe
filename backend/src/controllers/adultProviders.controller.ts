@@ -7,7 +7,9 @@ export const getProviders = async (req: Request, res: Response) => {
 
   const query: any = {
     role: 'provider',
-    'providerProfile.verificationStatus': 'approved'
+    status: 'active',
+    'providerProfile.onboarding.isComplete': true,
+    isVerified: true
   };
 
   if (category) query['providerProfile.categories'] = category;

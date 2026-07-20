@@ -4,19 +4,51 @@ import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { API_BASE_URL } from '../../config';
 import LocationSelect from './LocationSelect';
 import { toast } from 'sonner';
+import { useOnboardingStore } from './useOnboardingStore';
 
 const ProviderOnboarding: React.FC = () => {
   const navigate = useNavigate();
   const { user, logout } = useAdultAuth();
   const token = localStorage.getItem('adultAccessToken');
 
-  const [step, setStep] = useState(1);
-  const [userId, setUserId] = useState<string>('');
+  const {
+    currentStep: step,
+    completedSteps,
+    setCurrentStep: setStep,
+    setCompletedSteps,
+    setIsComplete,
+    setStepData,
+  } = useOnboardingStore();
+
   const [profileData, setProfileData] = useState({
     bio: '',
     gender: 'female',
     dateOfBirth: '',
   });
+
+  // DOB Dropdowns State
+  const days = Array.from({ length: 31 }, (_, i) => i + 1);
+  const months = [
+    { value: 1, label: 'January' },
+    { value: 2, label: 'February' },
+    { value: 3, label: 'March' },
+    { value: 4, label: 'April' },
+    { value: 5, label: 'May' },
+    { value: 6, label: 'June' },
+    { value: 7, label: 'July' },
+    { value: 8, label: 'August' },
+    { value: 9, label: 'September' },
+    { value: 10, label: 'October' },
+    { value: 11, label: 'November' },
+    { value: 12, label: 'December' },
+  ];
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: 100 }, (_, i) => currentYear - i);
+
+  const [dobDay, setDobDay] = useState<number>(1);
+  const [dobMonth, setDobMonth] = useState<number>(1);
+  const [dobYear, setDobYear] = useState<number>(currentYear - 18);
+  const [dobError, setDobError] = useState<string | null>(null);
 
   const [photos, setPhotos] = useState<string[]>([]);
   const [videoPreview, setVideoPreview] = useState<string>('');
@@ -56,7 +88,26 @@ const ProviderOnboarding: React.FC = () => {
   // Suggested values for calculation
   const [calcMinutes, setCalcMinutes] = useState(30);
 
-  // Fetch full provider profile on mount to pre-populate form
+  // DOB validation effect
+  useEffect(() => {
+    if (dobDay && dobMonth && dobYear) {
+      const dobStr = `${dobYear}-${String(dobMonth).padStart(2, '0')}-${String(dobDay).padStart(2, '0')}`;
+      const dob = new Date(dobStr);
+      const ageDiff = Date.now() - dob.getTime();
+      const ageDate = new Date(ageDiff);
+      const age = Math.abs(ageDate.getUTCFullYear() - 1970);
+      if (dob.getTime() > Date.now()) {
+        setDobError('Date of birth cannot be in the future');
+      } else if (age < 18) {
+        setDobError('Must be 18 years or older');
+      } else {
+        setDobError(null);
+      }
+      setProfileData(prev => ({ ...prev, dateOfBirth: dobStr }));
+    }
+  }, [dobDay, dobMonth, dobYear]);
+
+  // Fetch onboarding progress on mount to pre-populate form
   useEffect(() => {
     if (!token) {
       navigate('/');
@@ -67,102 +118,104 @@ const ProviderOnboarding: React.FC = () => {
       return;
     }
 
-    const fetchProfile = async () => {
+    const fetchOnboardingProgress = async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me`, {
+        const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/onboarding`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
-        const data = await res.json();
-        if (data.success && data.data?.user) {
-          const u = data.data.user;
-          const profile = u.providerProfile || {};
-          const curUserId = u._id || u.id;
-          setUserId(curUserId);
+        const resJson = await res.json();
+        if (resJson.success) {
+          const data = resJson.data || resJson;
+          setStep(data.currentStep);
+          setCompletedSteps(data.completedSteps);
+          setIsComplete(data.isComplete);
 
-          // Pre-populate profile basic info
-          let formattedDob = '';
-          if (u.dateOfBirth) {
-            formattedDob = new Date(u.dateOfBirth).toISOString().split('T')[0];
-          }
-
-          setProfileData({
-            bio: u.bio || '',
-            gender: profile.gender || 'female',
-            dateOfBirth: formattedDob,
-          });
-
-          if (profile.photos && Array.isArray(profile.photos)) {
-            setPhotos(profile.photos);
-          }
-          if (profile.videoPreview) {
-            setVideoPreview(profile.videoPreview);
-          }
-          if (profile.servicesOffered && Array.isArray(profile.servicesOffered) && profile.servicesOffered.length > 0) {
-            setServices(profile.servicesOffered);
-          }
-          setPricing({
-            pricePerMinute: profile.pricePerMinute || 3.99,
-            tonightRate: profile.tonightRate || 150,
-            chargeForMedia: profile.chargeForMedia || false,
-            pricePerPhoto: profile.pricePerPhoto || 10,
-            pricePerVideo: profile.pricePerVideo || 25,
-          });
-
-          if (profile.tipMenu && Array.isArray(profile.tipMenu) && profile.tipMenu.length > 0) {
-            setTipMenu(profile.tipMenu);
-          }
-          if (profile.location) {
-            setLocationValue(profile.location);
-          }
-          if (profile.payoutInfo) {
-            setPayoutMethod(profile.payoutInfo.method || 'bank');
-            if (profile.payoutInfo.details) {
-              setPayoutDetails(prev => ({
-                ...prev,
-                ...profile.payoutInfo.details
-              }));
+          // Populate local states
+          if (data.stepData[1]) {
+            const s1 = data.stepData[1];
+            setProfileData(s1);
+            if (s1.dateOfBirth) {
+              const parts = s1.dateOfBirth.split('-');
+              if (parts.length === 3) {
+                setDobYear(parseInt(parts[0]));
+                setDobMonth(parseInt(parts[1]));
+                setDobDay(parseInt(parts[2]));
+              }
             }
           }
-
-          // Determine current step
-          const savedStep = localStorage.getItem(`provider_onboarding_step_${curUserId}`);
-          if (savedStep) {
-            setStep(parseInt(savedStep));
-          } else {
-            // Auto-detect step based on completeness
-            if (!u.bio || !formattedDob) {
-              setStep(1);
-            } else if (!profile.photos || profile.photos.length === 0) {
-              setStep(2);
-            } else if (!profile.servicesOffered || profile.servicesOffered.length === 0) {
-              setStep(3);
-            } else if (!profile.pricePerMinute) {
-              setStep(4);
-            } else if (!profile.location || !profile.location.city) {
-              setStep(5);
-            } else if (!profile.payoutInfo || !profile.payoutInfo.method) {
-              setStep(6);
-            } else {
-              setStep(7);
-            }
+          if (data.stepData[2]) {
+            setPhotos(data.stepData[2].photos || []);
+            setVideoPreview(data.stepData[2].videoPreview || '');
           }
+          if (data.stepData[3]) {
+            setServices(data.stepData[3].servicesOffered || []);
+          }
+          if (data.stepData[4]) {
+            const s4 = data.stepData[4];
+            setPricing(prev => ({
+              ...prev,
+              pricePerMinute: s4.pricing?.perMinuteRate || 3.99,
+              tonightRate: s4.pricing?.tonightRate || 150,
+            }));
+            setTipMenu(s4.tipMenu || []);
+          }
+          if (data.stepData[5]) {
+            setLocationValue(data.stepData[5].location || {});
+            const dbArea = data.stepData[5].coverageArea || 'city';
+            setCoverageArea(dbArea === 'city' ? 'My city only' : dbArea === 'state' ? 'My state/region' : 'Anywhere');
+          }
+          if (data.stepData[6]) {
+            setPayoutMethod(data.stepData[6].payoutMethod || 'bank');
+            const details = data.stepData[6].payoutDetails || {};
+            setPayoutDetails({
+              bankName: details.bankName || '',
+              accountHolderName: details.accountHolder || details.accountHolderName || '',
+              accountNumber: details.accountNumber || '',
+              routingCode: details.routingNumber || details.routingCode || '',
+              accountType: details.accountType ? (details.accountType.charAt(0).toUpperCase() + details.accountType.slice(1)) : 'Checking',
+              paypalEmail: details.paypalEmail || '',
+              cryptoCurrency: details.currency || 'USDT',
+              cryptoAddress: details.address || '',
+            });
+          }
+
+          if (data.isComplete && window.location.pathname.includes('onboarding')) {
+            setStep(7);
+          }
+        } else {
+          throw new Error();
         }
       } catch (err) {
-        console.error('Error fetching provider profile:', err);
+        console.error('Error fetching onboarding progress, trying local storage:', err);
+        const backupStr = localStorage.getItem('az_provider_onboarding');
+        if (backupStr) {
+          try {
+            const backup = JSON.parse(backupStr);
+            const ageInMs = Date.now() - backup.savedAt;
+            const sevenDaysInMs = 7 * 24 * 60 * 60 * 1000;
+            if (ageInMs < sevenDaysInMs) {
+              setStep(backup.currentStep);
+              setCompletedSteps(backup.completedSteps);
+              toast.warning("Restored from local backup — some data may not be up to date.");
+            } else {
+              setStep(1);
+              setCompletedSteps([]);
+            }
+          } catch {
+            setStep(1);
+            setCompletedSteps([]);
+          }
+        } else {
+          setStep(1);
+          setCompletedSteps([]);
+        }
       } finally {
         setLoadingProfile(false);
       }
     };
 
-    fetchProfile();
-  }, [user, token, navigate]);
-
-  const handleSetStep = (nextStep: number) => {
-    setStep(nextStep);
-    if (userId) {
-      localStorage.setItem(`provider_onboarding_step_${userId}`, nextStep.toString());
-    }
-  };
+    fetchOnboardingProgress();
+  }, [user?.role, token, navigate, setStep, setCompletedSteps, setIsComplete]);
 
   const handleProfilePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -181,14 +234,12 @@ const ProviderOnboarding: React.FC = () => {
       const data = await res.json();
       if (!res.ok || !data.uploadUrl) throw new Error(data.error || 'Failed pre-signed URL fetch');
 
-      // Direct upload simulation or mock binary put
       await fetch(data.uploadUrl, {
         method: 'PUT',
         body: file,
         headers: { 'Content-Type': file.type }
       });
 
-      // Save public URL to profile
       const photoUrl = data.publicUrl;
       setPhotos(prev => [...prev, photoUrl]);
       toast.success('Photo uploaded successfully');
@@ -252,150 +303,140 @@ const ProviderOnboarding: React.FC = () => {
     setTipMenu(prev => prev.map((item, i) => i === idx ? { ...item, [field]: value } : item));
   };
 
-  const saveStep = async (nextStep: number) => {
+  const saveStep = async (setUpLater: boolean = false) => {
     setSaving(true);
     try {
+      let stepPayload: any = {};
+
       if (step === 1) {
         if (!profileData.bio || !profileData.dateOfBirth) {
           toast.error('Please fill in bio and Date of Birth');
+          setSaving(false);
           return;
         }
-        try {
-          const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/profile`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({
-              bio: profileData.bio,
-              dateOfBirth: profileData.dateOfBirth,
-              gender: profileData.gender
-            })
-          });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error || 'Failed to update profile basic details');
-        } catch (xhrErr) {
-          console.warn('Onboarding XHR fallback active:', xhrErr);
-          localStorage.setItem('provider_profile_details', JSON.stringify(profileData));
+        if (dobError) {
+          toast.error(dobError);
+          setSaving(false);
+          return;
         }
+        stepPayload = {
+          bio: profileData.bio,
+          dateOfBirth: profileData.dateOfBirth,
+          gender: profileData.gender
+        };
       }
 
-      if (step === 2) {
-        // Save photos & video preview
-        try {
-          const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/photos`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ photos, videoPreview })
-          });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error || 'Failed to update media gallery');
-        } catch (xhrErr) {
-          console.warn('Onboarding XHR fallback active:', xhrErr);
-          localStorage.setItem('provider_media_details', JSON.stringify({ photos, videoPreview }));
-        }
+      else if (step === 2) {
+        stepPayload = { photos, videoPreview };
       }
 
-      if (step === 3) {
-        // Services offered update
-        try {
-          const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/services`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ servicesOffered: services })
-          });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error || 'Failed to update services');
-        } catch (xhrErr) {
-          console.warn('Onboarding XHR fallback active:', xhrErr);
-          localStorage.setItem('provider_services_details', JSON.stringify(services));
+      else if (step === 3) {
+        if (!services || services.length === 0) {
+          toast.error('Please select at least one service');
+          setSaving(false);
+          return;
         }
+        stepPayload = { servicesOffered: services };
       }
 
-      if (step === 4) {
+      else if (step === 4) {
         if (services.includes('private_call') && pricing.pricePerMinute < 1.99) {
           toast.error('Minimum rate per minute is $1.99');
+          setSaving(false);
           return;
         }
-        try {
-          const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/pricing`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({
-              perMinuteRate: pricing.pricePerMinute,
-              tonightRate: pricing.tonightRate,
-              tipMenu
-            })
-          });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error || 'Failed to update rates/pricing details');
-        } catch (xhrErr) {
-          console.warn('Onboarding XHR fallback active:', xhrErr);
-          localStorage.setItem('provider_pricing_details', JSON.stringify({ pricing, tipMenu }));
+        if (services.includes('hookup') && pricing.tonightRate < 1) {
+          toast.error('Minimum rate for tonight is $1');
+          setSaving(false);
+          return;
         }
+        stepPayload = {
+          perMinuteRate: pricing.pricePerMinute,
+          tonightRate: pricing.tonightRate,
+          tipMenu
+        };
       }
 
-      if (step === 5) {
+      else if (step === 5) {
         if (!locationValue.country || !locationValue.state || !locationValue.city) {
           toast.error('Please specify country, state, and city.');
+          setSaving(false);
           return;
         }
-        try {
-          const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/location`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({
-              country: locationValue.country,
-              state: locationValue.state,
-              city: locationValue.city
-            })
-          });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error || 'Failed to save location details');
-        } catch (xhrErr) {
-          console.warn('Onboarding XHR fallback active:', xhrErr);
-          localStorage.setItem('provider_location_details', JSON.stringify(locationValue));
+        stepPayload = {
+          country: locationValue.country,
+          state: locationValue.state,
+          city: locationValue.city,
+          coverageArea: coverageArea === 'My city only' ? 'city' : coverageArea === 'My state/region' ? 'state' : 'anywhere'
+        };
+      }
+
+      else if (step === 6) {
+        if (setUpLater) {
+          stepPayload = {
+            payoutMethod: 'pending'
+          };
+        } else {
+          let pDetails: any = {};
+          if (payoutMethod === 'bank') {
+            pDetails = {
+              bankName: payoutDetails.bankName,
+              accountHolder: payoutDetails.accountHolderName,
+              accountNumber: payoutDetails.accountNumber,
+              routingNumber: payoutDetails.routingCode,
+              accountType: payoutDetails.accountType.toLowerCase(),
+            };
+          } else if (payoutMethod === 'paypal') {
+            pDetails = { paypalEmail: payoutDetails.paypalEmail };
+          } else if (payoutMethod === 'crypto') {
+            pDetails = { currency: payoutDetails.cryptoCurrency, address: payoutDetails.cryptoAddress };
+          }
+
+          stepPayload = {
+            payoutMethod,
+            bankDetails: payoutMethod === 'bank' ? pDetails : undefined,
+            paypalEmail: payoutMethod === 'paypal' ? payoutDetails.paypalEmail : undefined,
+            crypto: payoutMethod === 'crypto' ? pDetails : undefined
+          };
         }
       }
 
-      if (step === 6) {
-        // Save payout method details
-        try {
-          const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/payout`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({
-              payoutInfo: {
-                method: payoutMethod,
-                details: payoutDetails
-              }
-            })
-          });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error || 'Failed to save payout info');
-        } catch (xhrErr) {
-          console.warn('Onboarding XHR fallback active:', xhrErr);
-          localStorage.setItem('provider_payout_details', JSON.stringify({ payoutMethod, payoutDetails }));
+      const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/onboarding/step/${step}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(stepPayload)
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 400 && data.errors) {
+          const firstErr = Object.values(data.errors)[0] as string;
+          toast.error(firstErr || 'Validation error');
+          return;
         }
+        throw new Error(data.error?.message || data.error || 'Failed to save progress');
       }
 
-      handleSetStep(nextStep);
+      // Update store
+      setStepData(step, stepPayload);
+      setStep(data.currentStep);
+      setCompletedSteps(data.completedSteps);
+
+      // Save to localStorage mirror
+      localStorage.setItem('az_provider_onboarding', JSON.stringify({
+        currentStep: data.currentStep,
+        completedSteps: data.completedSteps,
+        savedAt: Date.now(),
+      }));
+
+      if (data.currentStep === 7) {
+        setIsComplete(true);
+        localStorage.removeItem('az_provider_onboarding');
+      }
+
+      toast.success(`Step ${step} saved successfully!`);
     } catch (err: any) {
       toast.error(err.message || 'Operation failed');
     } finally {
@@ -405,14 +446,27 @@ const ProviderOnboarding: React.FC = () => {
 
   const stepsList = ['Profile', 'Photos', 'Services', 'Pricing', 'Location', 'Payout', 'Done'];
 
+  // Skeleton Loader while initial progress is fetching
   if (loadingProfile) {
     return (
-      <div className="min-h-screen bg-[var(--az-bg-primary)] text-white font-sans az-grain flex flex-col items-center justify-center p-4">
-        <div className="flex flex-col items-center space-y-4">
-          <div className="w-12 h-12 border-4 border-[var(--az-accent-rose)] border-t-transparent rounded-full animate-spin shadow-[0_0_15px_rgba(244,63,94,0.3)]"></div>
-          <p className="text-sm font-serif italic text-[var(--az-text-secondary)] uppercase tracking-widest animate-pulse">
-            Curating your exclusive profile...
-          </p>
+      <div className="min-h-screen bg-[var(--az-bg-primary)] text-white font-sans az-grain flex flex-col py-24 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-3xl mx-auto w-full mb-12 animate-pulse">
+          {/* Full-width progress bar skeleton */}
+          <div className="h-2 w-full bg-[var(--az-bg-secondary)] rounded-full mb-4" />
+          {/* Step indicator skeleton */}
+          <div className="flex justify-between mt-2">
+            {Array.from({ length: 7 }).map((_, idx) => (
+              <div key={idx} className="h-3 w-16 bg-[var(--az-bg-secondary)] rounded" />
+            ))}
+          </div>
+        </div>
+
+        {/* Card skeleton */}
+        <div className="max-w-2xl mx-auto w-full bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-3xl p-8 shadow-2xl space-y-6 animate-pulse">
+          <div className="h-8 w-2/3 bg-[var(--az-bg-tertiary)] rounded mb-8" />
+          <div className="h-12 w-full bg-[var(--az-bg-tertiary)] rounded" />
+          <div className="h-12 w-full bg-[var(--az-bg-tertiary)] rounded" />
+          <div className="h-12 w-full bg-[var(--az-bg-tertiary)] rounded" />
         </div>
       </div>
     );
@@ -435,18 +489,46 @@ const ProviderOnboarding: React.FC = () => {
           />
         </div>
 
-        {/* Breadcrumbs */}
-        <div className="hidden sm:flex justify-between mt-4">
-          {stepsList.map((st, i) => (
-            <button
-              key={st}
-              disabled={saving}
-              onClick={() => handleSetStep(i + 1)}
-              className={`text-[10px] font-bold uppercase tracking-wider transition-colors outline-none cursor-pointer ${step === i + 1 ? 'text-[var(--az-accent-rose)] border-b border-[var(--az-accent-rose)] pb-0.5' : step > i + 1 ? 'text-green-400 hover:text-green-300' : 'text-[var(--az-text-muted)] hover:text-white'}`}
-            >
-              {st}
-            </button>
-          ))}
+        {/* Breadcrumbs / Tabs */}
+        <div className="hidden sm:flex justify-between mt-4 border-b border-[var(--az-border)]/50 pb-2">
+          {stepsList.map((st, i) => {
+            const stepNumber = i + 1;
+            const isCompleted = completedSteps.includes(stepNumber);
+            const isActive    = step === stepNumber;
+            const isLocked    = !isCompleted && !isActive;
+
+            // DONE tab (step 7) is special and NEVER clickable
+            if (stepNumber === 7) {
+              const isFinished = completedSteps.includes(6);
+              return (
+                <span
+                  key={st}
+                  className={[
+                    'text-[10px] font-bold uppercase tracking-wider transition-colors pb-0.5',
+                    isFinished ? 'tab--completed' : 'tab--locked',
+                  ].join(' ')}
+                >
+                  {st}
+                </span>
+              );
+            }
+
+            return (
+              <button
+                key={st}
+                disabled={isLocked || saving}
+                onClick={isCompleted ? () => setStep(stepNumber) : undefined}
+                className={[
+                  'text-[10px] font-bold uppercase tracking-wider transition-colors pb-0.5 outline-none',
+                  isCompleted ? 'tab--completed' : '',
+                  isActive    ? 'tab--active'    : '',
+                  isLocked    ? 'tab--locked'    : '',
+                ].join(' ')}
+              >
+                {st}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -490,29 +572,41 @@ const ProviderOnboarding: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">Date of Birth</label>
-                  <input
-                    type="text"
-                    placeholder="YYYY-MM-DD"
-                    className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white outline-none focus:border-[var(--az-accent-rose)] transition-colors"
-                    value={profileData.dateOfBirth}
-                    onChange={e => {
-                      const val = e.target.value;
-                      // Restrict characters to digits, construct YYYY-MM-DD cleanly
-                      const digits = val.replace(/\D/g, '');
-                      let formatted = '';
-                      if (digits.length > 0) {
-                        formatted += digits.substring(0, 4);
-                      }
-                      if (digits.length > 4) {
-                        formatted += '-' + digits.substring(4, 6);
-                      }
-                      if (digits.length > 6) {
-                        formatted += '-' + digits.substring(6, 8);
-                      }
-                      setProfileData({ ...profileData, dateOfBirth: formatted });
-                    }}
-                  />
-                  <span className="text-[10px] text-[var(--az-text-muted)] mt-1 block">Format: YYYY-MM-DD (e.g. 1995-05-15)</span>
+                  <div className="grid grid-cols-3 gap-2">
+                    <select
+                      className="bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-2 py-3 text-white outline-none focus:border-[var(--az-accent-rose)] text-sm"
+                      value={dobDay}
+                      onChange={e => setDobDay(parseInt(e.target.value))}
+                    >
+                      {days.map(d => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </select>
+
+                    <select
+                      className="bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-2 py-3 text-white outline-none focus:border-[var(--az-accent-rose)] text-sm"
+                      value={dobMonth}
+                      onChange={e => setDobMonth(parseInt(e.target.value))}
+                    >
+                      {months.map(m => (
+                        <option key={m.value} value={m.value}>{m.label}</option>
+                      ))}
+                    </select>
+
+                    <select
+                      className="bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-2 py-3 text-white outline-none focus:border-[var(--az-accent-rose)] text-sm"
+                      value={dobYear}
+                      onChange={e => setDobYear(parseInt(e.target.value))}
+                    >
+                      {years.map(y => (
+                        <option key={y} value={y}>{y}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {dobError && (
+                    <span className="text-xs text-red-500 mt-2 block font-semibold">{dobError}</span>
+                  )}
+                  <span className="text-[10px] text-[var(--az-text-muted)] mt-1 block">Specify your verified day, month, and year of birth.</span>
                 </div>
               </div>
             </div>
@@ -526,9 +620,9 @@ const ProviderOnboarding: React.FC = () => {
                 Cancel
               </button>
               <button
-                onClick={() => saveStep(2)}
-                disabled={saving}
-                className="w-full sm:w-auto px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg flex items-center justify-center"
+                onClick={() => saveStep()}
+                disabled={saving || !!dobError}
+                className="w-full sm:w-auto px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {saving ? (
                   <span className="flex items-center gap-2">
@@ -614,7 +708,7 @@ const ProviderOnboarding: React.FC = () => {
 
             <div className="pt-6 flex flex-col-reverse gap-4 sm:flex-row sm:justify-between sm:items-center">
               <button
-                onClick={() => handleSetStep(1)}
+                onClick={() => setStep(1)}
                 disabled={saving}
                 className="w-full sm:w-auto px-6 py-3 bg-[var(--az-bg-tertiary)] hover:bg-[var(--az-bg-primary)] border border-[var(--az-border)] text-[var(--az-text-secondary)] font-bold text-xs uppercase tracking-widest rounded-xl transition-all"
               >
@@ -622,14 +716,14 @@ const ProviderOnboarding: React.FC = () => {
               </button>
               <div className="flex flex-col-reverse gap-2 w-full sm:w-auto sm:flex-row sm:gap-4 sm:items-center">
                 <button
-                  onClick={() => handleSetStep(3)}
+                  onClick={() => saveStep()}
                   disabled={saving}
-                  className="w-full sm:w-auto text-center py-2 text-xs font-bold text-[var(--az-text-secondary)] hover:text-white uppercase tracking-widest"
+                  className="w-full sm:w-auto text-center py-2 text-xs font-bold text-[var(--az-text-secondary)] hover:text-white uppercase tracking-widest cursor-pointer"
                 >
                   Skip
                 </button>
                 <button
-                  onClick={() => saveStep(3)}
+                  onClick={() => saveStep()}
                   disabled={saving}
                   className="w-full sm:w-auto px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg flex items-center justify-center"
                 >
@@ -667,13 +761,16 @@ const ProviderOnboarding: React.FC = () => {
                   <div
                     key={srv.id}
                     onClick={() => toggleService(srv.id)}
-                    className={`p-5 rounded-2xl border cursor-pointer transition-all flex items-start gap-4 ${isSelected ? 'bg-red-950/20 border-[var(--az-accent-primary)] shadow-[0_0_15px_var(--az-glow)]' : 'bg-[var(--az-bg-tertiary)] border-[var(--az-border)] opacity-70 hover:opacity-100'}`}
+                    className={`relative p-5 rounded-2xl border cursor-pointer transition-all flex items-start gap-4 ${isSelected ? 'bg-red-950/40 border-[var(--az-accent-primary)] ring-1 ring-[var(--az-accent-primary)] shadow-[0_0_15px_var(--az-glow)] opacity-100' : 'bg-[var(--az-bg-tertiary)] border-[var(--az-border)] opacity-60 hover:opacity-100'}`}
                   >
                     <span className="text-3xl filter drop-shadow-[0_0_8px_rgba(0,0,0,0.5)]">{srv.icon}</span>
                     <div>
                       <h4 className="text-lg font-serif italic text-white mb-1">{srv.title}</h4>
                       <p className="text-xs text-[var(--az-text-secondary)]">{srv.desc}</p>
                     </div>
+                    {isSelected && (
+                      <span className="absolute top-3 right-4 text-green-400 font-bold text-lg">✓</span>
+                    )}
                   </div>
                 );
               })}
@@ -681,16 +778,16 @@ const ProviderOnboarding: React.FC = () => {
 
             <div className="pt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between sm:items-center">
               <button
-                onClick={() => handleSetStep(2)}
+                onClick={() => setStep(2)}
                 disabled={saving}
                 className="w-full sm:w-auto px-6 py-3 bg-[var(--az-bg-tertiary)] hover:bg-[var(--az-bg-primary)] border border-[var(--az-border)] text-[var(--az-text-secondary)] font-bold text-xs uppercase tracking-widest rounded-xl transition-all"
               >
                 ← Back
               </button>
               <button
-                onClick={() => saveStep(4)}
-                disabled={saving}
-                className="w-full sm:w-auto px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg flex items-center justify-center"
+                onClick={() => saveStep()}
+                disabled={saving || services.length === 0}
+                className="w-full sm:w-auto px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {saving ? (
                   <span className="flex items-center gap-2">
@@ -713,6 +810,13 @@ const ProviderOnboarding: React.FC = () => {
             </div>
 
             <div className="space-y-6">
+              {/* Conditional pricing message if no paid services selected */}
+              {!services.includes('private_call') && !services.includes('hookup') && (
+                <div className="p-4 bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl text-center text-xs text-[var(--az-text-secondary)]">
+                  You haven't selected any paid services. You can still add a tip menu for your free interactions.
+                </div>
+              )}
+
               {services.includes('private_call') && (
                 <div className="p-5 bg-[var(--az-bg-tertiary)] rounded-2xl border border-[var(--az-border)]">
                   <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">Per-minute Video Call Rate</label>
@@ -751,7 +855,7 @@ const ProviderOnboarding: React.FC = () => {
               <div className="p-5 bg-[var(--az-bg-tertiary)] rounded-2xl border border-[var(--az-border)] space-y-4">
                 <div className="flex justify-between items-center">
                   <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)]">Tip Menu Actions</label>
-                  <button onClick={addTipItem} className="text-[10px] uppercase font-bold text-[var(--az-accent-gold)] hover:underline">
+                  <button onClick={addTipItem} className="text-[10px] uppercase font-bold text-[var(--az-accent-gold)] hover:underline cursor-pointer">
                     + Add Item
                   </button>
                 </div>
@@ -784,7 +888,7 @@ const ProviderOnboarding: React.FC = () => {
                           value={item.action}
                           onChange={e => updateTipItem(idx, 'action', e.target.value)}
                         />
-                        <button onClick={() => removeTipItem(idx)} className="hidden sm:block text-[var(--az-accent-primary)] hover:text-white text-xs px-2">
+                        <button onClick={() => removeTipItem(idx)} className="hidden sm:block text-[var(--az-accent-primary)] hover:text-white text-xs px-2 cursor-pointer">
                           ✕
                         </button>
                       </div>
@@ -807,7 +911,7 @@ const ProviderOnboarding: React.FC = () => {
                       min="10"
                       max="500"
                       step="10"
-                      className="w-full accent-[var(--az-accent-rose)]"
+                      className="w-full accent-[var(--az-accent-rose)] cursor-pointer"
                       value={calcMinutes}
                       onChange={e => setCalcMinutes(parseInt(e.target.value))}
                     />
@@ -825,14 +929,14 @@ const ProviderOnboarding: React.FC = () => {
 
             <div className="pt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between sm:items-center">
               <button
-                onClick={() => handleSetStep(3)}
+                onClick={() => setStep(3)}
                 disabled={saving}
                 className="w-full sm:w-auto px-6 py-3 bg-[var(--az-bg-tertiary)] hover:bg-[var(--az-bg-primary)] border border-[var(--az-border)] text-[var(--az-text-secondary)] font-bold text-xs uppercase tracking-widest rounded-xl transition-all"
               >
                 ← Back
               </button>
               <button
-                onClick={() => saveStep(5)}
+                onClick={() => saveStep()}
                 disabled={saving}
                 className="w-full sm:w-auto px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg flex items-center justify-center"
               >
@@ -866,7 +970,7 @@ const ProviderOnboarding: React.FC = () => {
                     <button
                       key={area}
                       onClick={() => setCoverageArea(area)}
-                      className={`py-2 px-1 rounded-xl text-[8px] min-[360px]:text-[9px] sm:text-[10px] font-bold uppercase tracking-wider min-[360px]:tracking-widest border transition-all ${coverageArea === area ? 'bg-[var(--az-accent-primary)] text-white border-transparent' : 'bg-[var(--az-bg-tertiary)] text-[var(--az-text-secondary)] border-[var(--az-border)]'}`}
+                      className={`py-2 px-1 rounded-xl text-[8px] min-[360px]:text-[9px] sm:text-[10px] font-bold uppercase tracking-wider min-[360px]:tracking-widest border transition-all cursor-pointer ${coverageArea === area ? 'bg-[var(--az-accent-primary)] text-white border-transparent' : 'bg-[var(--az-bg-tertiary)] text-[var(--az-text-secondary)] border-[var(--az-border)]'}`}
                     >
                       {area}
                     </button>
@@ -887,14 +991,14 @@ const ProviderOnboarding: React.FC = () => {
 
             <div className="pt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between sm:items-center">
               <button
-                onClick={() => handleSetStep(4)}
+                onClick={() => setStep(4)}
                 disabled={saving}
                 className="w-full sm:w-auto px-6 py-3 bg-[var(--az-bg-tertiary)] hover:bg-[var(--az-bg-primary)] border border-[var(--az-border)] text-[var(--az-text-secondary)] font-bold text-xs uppercase tracking-widest rounded-xl transition-all"
               >
                 ← Back
               </button>
               <button
-                onClick={() => saveStep(6)}
+                onClick={() => saveStep()}
                 disabled={saving}
                 className="w-full sm:w-auto px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg flex items-center justify-center"
               >
@@ -928,7 +1032,7 @@ const ProviderOnboarding: React.FC = () => {
                   <button
                     key={opt.id}
                     onClick={() => setPayoutMethod(opt.id)}
-                    className={`py-2 px-1 rounded-xl text-[8px] min-[360px]:text-[9px] sm:text-[10px] font-bold uppercase tracking-wider min-[360px]:tracking-widest border transition-all ${payoutMethod === opt.id ? 'bg-[var(--az-accent-primary)] text-white border-transparent' : 'bg-[var(--az-bg-tertiary)] text-[var(--az-text-secondary)] border-[var(--az-border)]'}`}
+                    className={`py-2 px-1 rounded-xl text-[8px] min-[360px]:text-[9px] sm:text-[10px] font-bold uppercase tracking-wider min-[360px]:tracking-widest border transition-all cursor-pointer ${payoutMethod === opt.id ? 'bg-[var(--az-accent-primary)] text-white border-transparent' : 'bg-[var(--az-bg-tertiary)] text-[var(--az-text-secondary)] border-[var(--az-border)]'}`}
                   >
                     {opt.name}
                   </button>
@@ -1010,7 +1114,7 @@ const ProviderOnboarding: React.FC = () => {
 
             <div className="pt-6 flex flex-col-reverse gap-4 sm:flex-row sm:justify-between sm:items-center">
               <button
-                onClick={() => handleSetStep(5)}
+                onClick={() => setStep(5)}
                 disabled={saving}
                 className="w-full sm:w-auto px-6 py-3 bg-[var(--az-bg-tertiary)] hover:bg-[var(--az-bg-primary)] border border-[var(--az-border)] text-[var(--az-text-secondary)] font-bold text-xs uppercase tracking-widest rounded-xl transition-all"
               >
@@ -1018,14 +1122,14 @@ const ProviderOnboarding: React.FC = () => {
               </button>
               <div className="flex flex-col-reverse gap-2 w-full sm:w-auto sm:flex-row sm:gap-4 sm:items-center">
                 <button
-                  onClick={() => handleSetStep(7)}
+                  onClick={() => saveStep(true)}
                   disabled={saving}
-                  className="w-full sm:w-auto text-center py-2 text-xs font-bold text-[var(--az-text-secondary)] hover:text-white uppercase tracking-widest"
+                  className="w-full sm:w-auto text-center py-2 text-xs font-bold text-[var(--az-text-secondary)] hover:text-white uppercase tracking-widest cursor-pointer"
                 >
                   Set Up Later
                 </button>
                 <button
-                  onClick={() => saveStep(7)}
+                  onClick={() => saveStep()}
                   disabled={saving}
                   className="w-full sm:w-auto px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg flex items-center justify-center"
                 >
@@ -1072,7 +1176,7 @@ const ProviderOnboarding: React.FC = () => {
             <div className="pt-8 flex flex-col sm:flex-row gap-4 justify-center">
               <button
                 onClick={() => navigate('/adult/provider/dashboard')}
-                className="px-8 py-4 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-full shadow-[0_0_15px_var(--az-glow)] transition-all"
+                className="px-8 py-4 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-full shadow-[0_0_15px_var(--az-glow)] transition-all cursor-pointer"
               >
                 Go to My Dashboard →
               </button>

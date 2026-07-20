@@ -101,6 +101,26 @@ button {
   cursor: pointer;
 }
 
+/* Onboarding Tab Locking & Completed/Locked classes */
+.tab--completed {
+  color: #22c55e !important;           /* green */
+  cursor: pointer !important;
+}
+.tab--completed::before {
+  content: '✓ ';
+}
+.tab--active {
+  color: var(--az-text-primary) !important;
+  border-bottom: 2px solid var(--az-accent-rose, var(--az-accent-primary)) !important;
+  cursor: default !important;
+}
+.tab--locked {
+  color: var(--az-text-muted) !important;
+  cursor: default !important;
+  pointer-events: none !important;     /* belt and braces — no click events fire */
+  opacity: 0.45 !important;
+}
+
 @media (prefers-color-scheme: light) {
   :root {
     color: #213547;
