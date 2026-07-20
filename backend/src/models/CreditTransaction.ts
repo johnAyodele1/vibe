@@ -12,7 +12,18 @@ const creditTransactionSchema = new Schema<ICreditTransaction>(
     type: {
       type: String,
       required: true,
-      enum: ['purchase', 'tip', 'refund', 'subscription', 'payout', 'bonus'],
+      enum: [
+        'purchase',
+        'spend',
+        'refund',
+        'tip_sent',
+        'tip_received',
+        'cam_tip',
+        'payout',
+        'bonus',
+        'tip',
+        'subscription'
+      ],
     },
     amount: {
       type: Number,

@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation, Outlet } from 'react-router-dom';
 import AgeGate from './AgeGate';
 import AdultAuthModal from './AdultAuthModal';
 import LoadingScreen from '../LoadingScreen/LoadingScreen';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
+import { TipSheet } from './TipSheet';
 
 const AdultZoneLayout: React.FC = () => {
   const [isVerified, setIsVerified] = useState(() => {
@@ -22,6 +23,14 @@ const AdultZoneLayout: React.FC = () => {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const { isAuthenticated, logout, user, loading } = useAdultAuth();
   const location = useLocation();
+
+  useEffect(() => {
+    const handleOpenAuth = () => {
+      setIsAuthModalOpen(true);
+    };
+    window.addEventListener('open-adult-auth-modal', handleOpenAuth);
+    return () => window.removeEventListener('open-adult-auth-modal', handleOpenAuth);
+  }, []);
 
   if (loading) {
     return <LoadingScreen />;
@@ -119,6 +128,8 @@ const AdultZoneLayout: React.FC = () => {
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
       />
+
+      <TipSheet />
 
       {/* Mobile Bottom Navigation */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 az-glass border-t border-[var(--az-border)] pb-safe">

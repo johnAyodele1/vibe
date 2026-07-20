@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
+import mongoose from 'mongoose';
 import AdultUser from '../models/AdultUser';
 import CreditTransaction from '../models/CreditTransaction';
+import { socketService } from '../services/socketService';
 
 export const getWallet = async (req: Request, res: Response) => {
   try {
@@ -15,8 +17,8 @@ export const getWallet = async (req: Request, res: Response) => {
       .filter(tx => tx.type === 'purchase' && tx.status === 'completed')
       .reduce((sum, tx) => sum + tx.amount, 0);
     const spent = transactions
-      .filter(tx => tx.type === 'tip' && tx.status === 'completed')
-      .reduce((sum, tx) => sum + tx.amount, 0);
+      .filter(tx => (tx.type === 'tip' || tx.type === 'tip_sent') && tx.status === 'completed')
+      .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
 
     return res.json({
       creditBalance: user.credits,
@@ -187,4 +189,173 @@ export const getSubscriptionPlans = async (req: Request, res: Response) => {
     }
   ];
   return res.json(plans);
+};
+
+export const directTip = async (req: Request, res: Response) => {
+  const sender = req.adultUser;
+  if (!sender) {
+    return res.status(401).json({ success: false, error: 'Auth required' });
+  }
+
+  // Ensure member only can tip
+  if (sender.role !== 'user') {
+    return res.status(403).json({ success: false, error: 'Only members can send tips' });
+  }
+
+  const { recipientId, amount, message, context } = req.body;
+
+  // Validation
+  if (amount === undefined || amount === null) {
+    return res.status(400).json({ success: false, error: 'Amount is required' });
+  }
+  if (!Number.isInteger(amount) || amount < 1 || amount > 50000) {
+    return res.status(400).json({ success: false, error: 'Amount must be an integer between 1 and 50000' });
+  }
+  if (!recipientId) {
+    return res.status(400).json({ success: false, error: 'Recipient is required' });
+  }
+  if (sender._id.toString() === recipientId.toString()) {
+    return res.status(403).json({ success: false, error: 'Cannot tip yourself' });
+  }
+  if (message && message.length > 150) {
+    return res.status(400).json({ success: false, error: 'Message cannot exceed 150 characters' });
+  }
+
+  // Rate limiting check (max 20 tips per hour per user)
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  const recentTipsCount = await CreditTransaction.countDocuments({
+    userId: sender._id,
+    type: 'tip_sent',
+    createdAt: { $gte: oneHourAgo }
+  });
+  if (recentTipsCount >= 20) {
+    return res.status(429).json({ success: false, error: 'Rate limit exceeded: maximum 20 tips per hour.' });
+  }
+
+  const maxRetries = 10;
+  let attempt = 0;
+
+  while (attempt < maxRetries) {
+    attempt++;
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      // Check recipient eligibility
+      const recipient = await AdultUser.findById(recipientId).session(session);
+      if (!recipient) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(403).json({ success: false, error: 'Provider not found' });
+      }
+      if (recipient.role !== 'provider') {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(403).json({ success: false, error: 'Recipient must be a service provider' });
+      }
+      if (recipient.isActive === false || recipient.isBanned === true || recipient.status === 'inactive') {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(403).json({ success: false, error: 'Cannot tip a suspended or inactive provider' });
+      }
+
+      // Fetch fresh sender document inside session to get most accurate balance
+      const freshSender = await AdultUser.findById(sender._id).session(session);
+      const senderCredits = freshSender ? freshSender.credits : 0;
+
+      // Atomic deduction and balance check using findOneAndUpdate with $gte
+      const updatedSender = await AdultUser.findOneAndUpdate(
+        { _id: sender._id, credits: { $gte: amount } },
+        { $inc: { credits: -amount } },
+        { session, new: true }
+      );
+
+      if (!updatedSender) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(402).json({
+          error: 'Insufficient credits',
+          required: amount,
+          current: senderCredits
+        });
+      }
+
+      // Credit recipient
+      const updatedRecipient = await AdultUser.findByIdAndUpdate(
+        recipientId,
+        {
+          $inc: {
+            credits: amount,
+            'providerProfile.totalEarnings': amount
+          }
+        },
+        { session, new: true }
+      );
+
+      const recipientName = updatedRecipient?.providerProfile?.stageName || updatedRecipient?.displayName || updatedRecipient?.username || 'Provider';
+
+      // Create sender transaction
+      const senderTx = await CreditTransaction.create([{
+        userId: sender._id,
+        type: 'tip_sent',
+        amount: -amount,
+        usdAmount: 0,
+        description: `Tip to ${recipientName}` + (message ? `: ${message}` : ''),
+        relatedUserId: recipient._id,
+        status: 'completed',
+      }], { session });
+
+      // Create recipient transaction
+      await CreditTransaction.create([{
+        userId: recipient._id,
+        type: 'tip_received',
+        amount: amount,
+        usdAmount: 0,
+        description: `Tip from member` + (message ? `: ${message}` : ''),
+        relatedUserId: sender._id,
+        status: 'completed',
+      }], { session });
+
+      await session.commitTransaction();
+      session.endSession();
+
+      // Sockets emission
+      const senderNewBalance = updatedSender.credits;
+      const recipientNewBalance = updatedRecipient?.credits || 0;
+
+      socketService.emitToUser(sender._id.toString(), 'wallet:updated', { balance: senderNewBalance });
+      socketService.emitToUser(recipientId.toString(), 'wallet:updated', { balance: recipientNewBalance });
+      socketService.emitToUser(recipientId.toString(), 'tip:received', {
+        amount,
+        fromUserId: sender._id.toString(),
+        fromDisplayName: sender.displayName || sender.username,
+        message,
+        context
+      });
+
+      return res.status(200).json({
+        success: true,
+        tipId: senderTx[0]._id.toString(),
+        amount,
+        recipientName,
+        senderNewBalance,
+        message
+      });
+
+    } catch (err: any) {
+      await session.abortTransaction();
+      session.endSession();
+
+      const isTransient = err.message?.includes('WriteConflict') || err.code === 112 || err.hasErrorLabel?.('TransientTransactionError');
+      if (isTransient && attempt < maxRetries) {
+        // Wait a tiny random time (backoff) before retrying
+        await new Promise(resolve => setTimeout(resolve, Math.random() * 50 + 10));
+        continue;
+      }
+
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  return res.status(500).json({ success: false, error: 'Transaction failed due to high concurrency. Please try again.' });
 };
