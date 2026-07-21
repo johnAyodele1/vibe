@@ -1421,9 +1421,7 @@ const PrivateSext: React.FC = () => {
                       amplitudeData.map((h, i) => (
                         <span
                           key={i}
-                          className={`w-0.5 rounded transition-all duration-75 ${
-                            recState === 'cancelling' ? 'bg-gray-600' : 'bg-[var(--az-accent-primary)]'
-                          }`}
+                          className="w-0.5 rounded transition-all duration-75 bg-[var(--az-accent-primary)]"
                           style={{ height: `${h}px` }}
                         />
                       ))
@@ -1498,6 +1496,7 @@ const PrivateSext: React.FC = () => {
                     data-testid="mic-button"
                     onMouseDown={handleMouseDown}
                     onTouchStart={handleTouchStart}
+                    onTouchMove={handleTouchMove}
                     onMouseUp={handleMouseUp}
                     onTouchEnd={handleTouchEnd}
                     className={`mic-button p-1 rounded-full transition-all ${
