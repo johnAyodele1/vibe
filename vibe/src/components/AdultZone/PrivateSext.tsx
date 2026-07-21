@@ -101,21 +101,19 @@ const PrivateSext: React.FC = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
 
-  // Voice recording states (hold to record)
+  // Voice recording states (TAP-TO-START / TAP-TO-SEND)
   const { setHideGlobalHeader, setHideFooter } = useUIStore();
-  const [recState, setRecState] = useState<'idle' | 'recording' | 'cancelling' | 'locked'>('idle');
+  const [recState, setRecState] = useState<'idle' | 'recording' | 'sending'>('idle');
   const [recDuration, setRecDuration] = useState(0);
-  const [showTooltip, setShowTooltip] = useState(false);
-  const [shakeMic, setShakeMic] = useState(false);
-  const [amplitudeData, setAmplitudeData] = useState<number[]>(Array(15).fill(4));
+  const [amplitudeData, setAmplitudeData] = useState<number[]>(Array(30).fill(4));
 
-  const startX = useRef<number>(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
   const recordingIntervalRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
   const recDurationRef = useRef<number>(0);
 
   // Calling states
@@ -143,6 +141,15 @@ const PrivateSext: React.FC = () => {
   // Socket setup
   const socketRef = useRef<Socket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const feedRef = useRef<HTMLDivElement | null>(null);
+
+  const scrollToBottom = (behavior: 'smooth' | 'instant' = 'instant') => {
+    if (behavior === 'instant') {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+    } else {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
 
   // Outside click refs for context menus/emoji picker
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -365,9 +372,29 @@ const PrivateSext: React.FC = () => {
     };
   }, [token, selectedConv?.conversationId]);
 
-  // Auto-scroll messages to bottom
+  // On initial load — scroll to bottom instantly
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messages.length > 0) {
+      scrollToBottom('instant');
+    }
+  }, [selectedConv?.conversationId]);
+
+  // On new message — scroll to bottom smoothly but only if near bottom
+  const prevMessagesLengthRef = useRef(messages.length);
+  useEffect(() => {
+    if (messages.length === 0) return;
+    if (messages.length > prevMessagesLengthRef.current) {
+      const feed = feedRef.current;
+      if (feed) {
+        const distanceFromBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight;
+        if (distanceFromBottom < 150) {
+          scrollToBottom('smooth');
+        }
+      } else {
+        scrollToBottom('smooth');
+      }
+    }
+    prevMessagesLengthRef.current = messages.length;
   }, [messages]);
 
   // Duration timer for calls
@@ -564,9 +591,9 @@ const PrivateSext: React.FC = () => {
       const animate = () => {
         if (!analyserRef.current) return;
         analyserRef.current.getByteFrequencyData(dataArray);
-        // Normalize values to range 4px to 32px height
-        const heights = Array.from(dataArray).slice(0, 15).map(val => {
-          return Math.max(4, Math.min(32, (val / 255) * 32));
+        // Normalize values to range 4px to 32px height for 30 bars
+        const heights = Array.from(dataArray).slice(0, 30).map(val => {
+          return Math.max(4, (val / 255) * 32);
         });
         setAmplitudeData(heights);
         animationFrameRef.current = requestAnimationFrame(animate);
@@ -577,7 +604,7 @@ const PrivateSext: React.FC = () => {
       // Fallback random generation
       if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
       recordingIntervalRef.current = setInterval(() => {
-        setAmplitudeData(Array.from({ length: 15 }, () => Math.max(4, Math.min(32, Math.random() * 28 + 4))));
+        setAmplitudeData(Array.from({ length: 30 }, () => Math.max(4, Math.random() * 28 + 4)));
       }, 100);
     }
   };
@@ -594,154 +621,130 @@ const PrivateSext: React.FC = () => {
     analyserRef.current = null;
   };
 
-  // Start holding mic to record
-  const triggerStartRecording = async () => {
+  const handleStartRecording = async () => {
+    let stream: MediaStream;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
-
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          audioChunksRef.current.push(e.data);
-        }
-      };
-
-      mediaRecorder.onstop = async () => {
-        const duration = recDurationRef.current;
-        stopAudioVisualizer();
-
-        if (duration < 1) {
-          // Too short
-          toast.dismiss();
-          setShakeMic(true);
-          setTimeout(() => setShakeMic(false), 400);
-          setShowTooltip(true);
-          setTimeout(() => setShowTooltip(false), 2000);
-          return;
-        }
-
-        // Upload and send voice note
-        setIsUploading(true);
-        try {
-          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-          const file = new File([audioBlob], `voice_note_${Date.now()}.webm`, { type: 'audio/webm' });
-
-          const pData = await (await fetch(`${API_BASE_URL}/v1/adult/media/presigned-url?type=audio&filename=${file.name}`, { headers: getHeaders() })).json();
-
-          await fetch(pData.uploadUrl, {
-            method: 'PUT',
-            body: file,
-            headers: { 'Content-Type': file.type }
-          });
-
-          const amplitudeWaveform = Array.from({ length: 25 }, () => Math.random());
-
-          const res = await fetch(`${API_BASE_URL}/v1/adult/sext/messages/${selectedConv!.conversationId}`, {
-            method: 'POST',
-            headers: getHeaders(),
-            body: JSON.stringify({
-              type: 'voice_note',
-              mediaUrl: pData.publicUrl,
-              mediaDurationSeconds: duration,
-              mediaMimeType: 'audio/webm',
-              content: amplitudeWaveform.join(',')
-            })
-          });
-          const msg = await res.json();
-          if (msg.id) {
-            setMessages(prev => [...prev, msg]);
-          }
-        } catch (err) {
-          toast.error('Failed to send voice note');
-        } finally {
-          setIsUploading(false);
-        }
-      };
-
-      mediaRecorder.start();
-      setRecState('recording');
-      setRecDuration(0);
-      recDurationRef.current = 0;
-      startAudioVisualizer(stream);
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (err) {
-      toast.error('Microphone access denied or not available');
+      toast.error('Please allow microphone access to send voice messages.');
+      return;
     }
+
+    streamRef.current = stream;
+    audioChunksRef.current = [];
+
+    // Start MediaRecorder
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : MediaRecorder.isTypeSupported('audio/mp4')
+      ? 'audio/mp4'
+      : 'audio/webm';
+
+    const recorder = new MediaRecorder(stream, { mimeType });
+    mediaRecorderRef.current = recorder;
+
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) {
+        audioChunksRef.current.push(e.data);
+      }
+    };
+
+    recorder.onstop = async () => {
+      stopAudioVisualizer();
+      const duration = recDurationRef.current;
+
+      if (duration < 1) {
+        toast.error('Recording too short!');
+        handleCancelRecording();
+        return;
+      }
+
+      setRecState('sending');
+      try {
+        const audioBlob = new Blob(audioChunksRef.current, { type: recorder.mimeType });
+        const file = new File([audioBlob], `voice_note_${Date.now()}.webm`, { type: recorder.mimeType });
+
+        const pData = await (await fetch(`${API_BASE_URL}/v1/adult/media/presigned-url?type=audio&filename=${file.name}`, { headers: getHeaders() })).json();
+
+        await fetch(pData.uploadUrl, {
+          method: 'PUT',
+          body: file,
+          headers: { 'Content-Type': file.type }
+        });
+
+        const amplitudeWaveform = Array.from({ length: 25 }, () => Math.random());
+
+        const res = await fetch(`${API_BASE_URL}/v1/adult/sext/messages/${selectedConv!.conversationId}`, {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({
+            type: 'voice_note',
+            mediaUrl: pData.publicUrl,
+            mediaDurationSeconds: duration,
+            mediaMimeType: recorder.mimeType,
+            content: amplitudeWaveform.join(',')
+          })
+        });
+        const msg = await res.json();
+        if (msg.id) {
+          setMessages(prev => [...prev, msg]);
+        }
+      } catch (err) {
+        toast.error('Failed to send voice note');
+      } finally {
+        setRecState('idle');
+        setRecDuration(0);
+        recDurationRef.current = 0;
+      }
+    };
+
+    recorder.start(); // NO TIMESLICE ARGUMENT!
+
+    setRecState('recording');
+    setRecDuration(0);
+    recDurationRef.current = 0;
+
+    startAudioVisualizer(stream);
   };
 
-  // Timer effect for voice recording
+  // Timer effect for voice recording (Counts up, NO auto-stop until 5 minutes)
   useEffect(() => {
     let interval: any = null;
-    if (recState === 'recording' || recState === 'cancelling' || recState === 'locked') {
+    let maxTimeout: any = null;
+
+    if (recState === 'recording') {
       interval = setInterval(() => {
         setRecDuration(prev => {
           const next = prev + 1;
           recDurationRef.current = next;
-          // Lock to record after 3 seconds
-          if (next >= 3 && recState === 'recording') {
-            setRecState('locked');
-          }
           return next;
         });
       }, 1000);
+
+      // Auto-stop at 5 minutes maximum
+      maxTimeout = setTimeout(() => {
+        if (mediaRecorderRef.current?.state === 'recording') {
+          handleStopAndSend();
+        }
+      }, 5 * 60 * 1000);
     } else {
       setRecDuration(0);
       recDurationRef.current = 0;
     }
+
     return () => {
       if (interval) clearInterval(interval);
+      if (maxTimeout) clearTimeout(maxTimeout);
     };
   }, [recState]);
-
-  // Touch handlers
-  const handleTouchStart = (e: React.TouchEvent) => {
-    e.preventDefault();
-    startX.current = e.touches[0].clientX;
-    triggerStartRecording();
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (recState !== 'recording' && recState !== 'cancelling') return;
-    const currentX = e.touches[0].clientX;
-    const deltaX = startX.current - currentX;
-
-    if (deltaX > 80) {
-      setRecState('cancelling');
-    } else {
-      setRecState('recording');
-    }
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    e.preventDefault();
-    if (recState === 'cancelling') {
-      handleCancelRecording();
-    } else if (recState === 'recording') {
-      handleStopAndSend();
-    }
-  };
-
-  // Mouse handlers
-  const handleMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault();
-    triggerStartRecording();
-  };
-
-  const handleMouseUp = (e: React.MouseEvent) => {
-    e.preventDefault();
-    if (recState === 'recording') {
-      handleStopAndSend();
-    } else if (recState === 'cancelling') {
-      handleCancelRecording();
-    }
-  };
 
   const handleStopAndSend = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
-    setRecState('idle');
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+    }
   };
 
   const handleCancelRecording = () => {
@@ -751,15 +754,15 @@ const PrivateSext: React.FC = () => {
       try {
         mediaRecorderRef.current.stop();
       } catch (err) {}
-      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
     }
     stopAudioVisualizer();
     setRecState('idle');
+    setRecDuration(0);
+    recDurationRef.current = 0;
     toast.info('Recording cancelled');
-  };
-
-  const handleSendRecording = () => {
-    handleStopAndSend();
   };
 
   // Media Unlock Flow
@@ -1008,6 +1011,23 @@ const PrivateSext: React.FC = () => {
     return nameMatch || previewMatch;
   });
 
+  const handleScroll = () => {
+    const feed = feedRef.current;
+    if (!feed) return;
+
+    // When user scrolls to within 60px of the top, load more
+    if (feed.scrollTop < 60 && hasMoreMessages) {
+      const previousScrollHeight = feed.scrollHeight;
+      loadMoreMessages().then(() => {
+        // After loading, restore scroll position so the view doesn't jump
+        requestAnimationFrame(() => {
+          const newScrollHeight = feed.scrollHeight;
+          feed.scrollTop = newScrollHeight - previousScrollHeight;
+        });
+      });
+    }
+  };
+
   return (
     <div className="h-[100dvh] md:h-[calc(100vh-64px)] w-full flex overflow-hidden bg-[#0a0508] text-[var(--az-text-primary)] font-sans chat-page-mobile">
 
@@ -1148,7 +1168,7 @@ const PrivateSext: React.FC = () => {
             </div>
 
             {/* MESSAGES SCROLL area */}
-            <div data-testid="message-feed" className="flex-grow overflow-y-auto p-6 space-y-6 flex flex-col no-scrollbar message-feed message-feed-container">
+            <div ref={feedRef} onScroll={handleScroll} data-testid="message-feed" className="flex-grow overflow-y-auto p-6 space-y-6 flex flex-col no-scrollbar message-feed message-feed-container">
               {hasMoreMessages && (
                 <button
                   onClick={loadMoreMessages}
@@ -1347,7 +1367,7 @@ const PrivateSext: React.FC = () => {
                 );
               })}
 
-              <div ref={messagesEndRef} />
+              <div ref={messagesEndRef} style={{ height: 1 }} />
             </div>
 
             {/* QUICK ACTIONS BAR ABOVE INPUT */}
@@ -1399,79 +1419,66 @@ const PrivateSext: React.FC = () => {
 
             {/* BOTTOM INPUT BAR */}
             <div data-testid="chat-input-bar" className="chat-input-bar p-4 border-t border-[var(--az-border)] bg-[#10070e] flex flex-col gap-2 flex-shrink-0 relative">
-              {recState !== 'idle' ? (
+              {recState === 'sending' ? (
+                /* SENDING / UPLOADING LOADER BAR */
+                <div className="recording-bar flex items-center justify-center gap-3 h-14 bg-[#150a12] rounded-full px-4 border border-[var(--az-border)] w-full">
+                  <span className="animate-spin text-sm">⏳</span>
+                  <span className="text-xs font-mono text-pink-300">Sending voice note...</span>
+                </div>
+              ) : recState === 'recording' ? (
                 /* RECORDING BAR LAYOUT */
                 <div data-testid="recording-bar" className="recording-bar flex items-center justify-between h-14 bg-[#150a12] rounded-full px-4 border border-[var(--az-border)] transition-all duration-200 w-full">
-                  {/* Left: cancel button */}
+                  {/* Left: cancel button (bin) */}
                   <button
                     data-testid="recording-cancel-btn"
                     onClick={handleCancelRecording}
-                    className={`flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider transition-colors ${
-                      recState === 'cancelling' ? 'text-red-500' : 'text-[var(--az-text-muted)] hover:text-white'
-                    }`}
+                    className="recording-bar__cancel flex items-center justify-center p-1 text-gray-400 hover:text-red-500 transition-colors flex-shrink-0"
+                    aria-label="Cancel recording"
                   >
-                    🗑️ <span className="hidden xs:inline">{recState === 'cancelling' ? 'Release' : 'Cancel'}</span>
+                    🗑️
                   </button>
 
-                  {/* Center: Live waveform animation */}
-                  <div data-testid="recording-waveform" className="recording-waveform flex-grow flex items-center justify-center gap-1 px-4 max-w-xs h-8">
-                    {recState === 'cancelling' ? (
-                      <span className="text-[10px] text-red-500 animate-pulse">← Release to cancel</span>
-                    ) : (
-                      amplitudeData.map((h, i) => (
-                        <span
+                  {/* Center: Live waveform animation + Timer */}
+                  <div className="recording-bar__center flex-grow flex items-center gap-3 px-2 min-w-0">
+                    <span data-testid="recording-dot" className="recording-dot w-2 h-2 rounded-full bg-red-500 flex-shrink-0 animate-ping" aria-hidden="true" />
+
+                    <div data-testid="recording-waveform" className="recording-waveform flex-grow flex items-center gap-0.5 h-8 overflow-hidden">
+                      {amplitudeData.map((h, i) => (
+                        <div
                           key={i}
-                          className="w-0.5 rounded transition-all duration-75 bg-[var(--az-accent-primary)]"
+                          className="recording-waveform__bar w-[3px] rounded-full bg-[var(--az-accent-rose)] transition-all duration-75 flex-shrink-0"
                           style={{ height: `${h}px` }}
                         />
-                      ))
-                    )}
-                  </div>
+                      ))}
+                    </div>
 
-                  {/* Right: duration counter + mic/send button */}
-                  <div className="flex items-center gap-3">
-                    <span data-testid="recording-timer" className="recording-timer text-sm font-mono text-[var(--az-text-primary)]">
+                    <span data-testid="recording-timer" className="recording-timer text-xs font-mono text-[var(--az-text-primary)] flex-shrink-0">
                       {Math.floor(recDuration / 60)}:{(recDuration % 60).toString().padStart(2, '0')}
                     </span>
-
-                    {recState === 'locked' ? (
-                      <button
-                        onClick={handleSendRecording}
-                        className="w-10 h-10 bg-[var(--az-accent-primary)] text-white rounded-full flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-all"
-                      >
-                        ✓
-                      </button>
-                    ) : (
-                      <div className="relative">
-                        {recDuration >= 3 && recState === 'recording' && (
-                          <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-[#1a0a11] border border-[var(--az-accent-gold)] rounded px-1.5 py-0.5 text-[8px] text-[var(--az-accent-gold)] uppercase tracking-widest font-bold flex items-center gap-1 animate-bounce">
-                            🔒 Locked
-                          </div>
-                        )}
-                        <button
-                          onMouseUp={handleMouseUp}
-                          onTouchEnd={handleTouchEnd}
-                          className="w-12 h-12 bg-[var(--az-accent-primary)] text-white rounded-full flex items-center justify-center shadow-lg shadow-red-500/20 animate-pulse"
-                          style={{ transform: 'scale(1.2)' }}
-                        >
-                          🔴
-                        </button>
-                      </div>
-                    )}
                   </div>
+
+                  {/* Right: Send button (stops and sends) */}
+                  <button
+                    data-testid="recording-send-btn"
+                    onClick={handleStopAndSend}
+                    className="recording-bar__send w-10 h-10 bg-[var(--az-accent-primary)] hover:scale-105 active:scale-95 text-white rounded-full flex items-center justify-center shadow-lg shadow-red-500/20 flex-shrink-0"
+                    aria-label="Send voice message"
+                  >
+                    →
+                  </button>
                 </div>
               ) : (
                 /* IDLE normal layout */
-                <div className="flex items-center gap-3 bg-[#150a12] rounded-full px-4 py-1.5 border border-[var(--az-border)] w-full">
+                <div className="chat-input-row flex items-center gap-3 bg-[#150a12] rounded-full px-4 py-1.5 border border-[var(--az-border)] w-full">
                   <button
                     onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                    className="text-lg opacity-70 hover:opacity-100 transition-opacity p-1"
+                    className="chat-input__emoji text-lg opacity-70 hover:opacity-100 transition-opacity p-1 flex-shrink-0"
                   >
                     😀
                   </button>
 
                   {/* Image upload trigger */}
-                  <label className="text-lg opacity-70 hover:opacity-100 transition-opacity cursor-pointer p-1">
+                  <label className="chat-input__media text-lg opacity-70 hover:opacity-100 transition-opacity cursor-pointer p-1 flex-shrink-0">
                     📸
                     <input
                       type="file"
@@ -1488,33 +1495,22 @@ const PrivateSext: React.FC = () => {
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSendText()}
-                    className="flex-grow bg-transparent border-none outline-none text-sm text-[var(--az-text-primary)] py-2"
+                    className="chat-input__field flex-grow bg-transparent border-none outline-none text-sm text-[var(--az-text-primary)] py-2 min-w-0"
                   />
 
-                  {/* Hold to record or release */}
+                  {/* Tap to start recording */}
                   <button
                     data-testid="mic-button"
-                    onMouseDown={handleMouseDown}
-                    onTouchStart={handleTouchStart}
-                    onTouchMove={handleTouchMove}
-                    onMouseUp={handleMouseUp}
-                    onTouchEnd={handleTouchEnd}
-                    className={`mic-button p-1 rounded-full transition-all ${
-                      shakeMic ? 'animate-shake-mic' : ''
-                    } opacity-70 hover:opacity-100 relative`}
-                    title="Hold to record voice note"
+                    onClick={handleStartRecording}
+                    className="chat-input__mic p-1 rounded-full transition-all opacity-70 hover:opacity-100 relative flex-shrink-0"
+                    title="Tap to record voice note"
                   >
                     🎙️
-                    {showTooltip && (
-                      <div className="absolute -top-10 right-0 bg-red-600 text-white text-[10px] font-bold rounded py-1 px-2 whitespace-nowrap animate-fadeIn shadow-lg z-50">
-                        Hold to record
-                      </div>
-                    )}
                   </button>
 
                   <button
                     onClick={handleSendText}
-                    className="w-8 h-8 bg-pink-600 hover:bg-pink-700 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-lg shadow-pink-500/20 active:scale-95 transition-all"
+                    className="chat-input__send w-8 h-8 bg-pink-600 hover:bg-pink-700 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-lg shadow-pink-500/20 active:scale-95 transition-all flex-shrink-0"
                   >
                     →
                   </button>

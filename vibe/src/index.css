@@ -280,3 +280,171 @@ button {
 .animate-shake-mic {
   animation: shake-mic 0.4s ease-in-out;
 }
+
+/* THE MESSAGE FEED and VOICE RECORDING UI UPDATES */
+.message-feed {
+  flex: 1 !important;
+  min-height: 0 !important;          /* CRITICAL — allows overflow-y to work */
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: contain !important;
+}
+
+/* Recording bar — same height and position as the idle input bar */
+.recording-bar {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding: 12px 16px !important;
+  background: var(--az-bg-secondary) !important;
+  border-top: 1px solid var(--az-border) !important;
+  min-height: 56px !important;
+}
+
+/* Cancel (bin) button */
+.recording-bar__cancel {
+  width: 44px !important;
+  height: 44px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 50% !important;
+  background: transparent !important;
+  border: none !important;
+  color: var(--az-text-muted) !important;
+  cursor: pointer !important;
+  flex-shrink: 0 !important;
+  transition: color 0.15s, background 0.15s !important;
+}
+.recording-bar__cancel:hover,
+.recording-bar__cancel:active {
+  color: #ef4444 !important;
+  background: rgba(239, 68, 68, 0.1) !important;
+}
+
+/* Center section — pulsing dot + waveform + timer */
+.recording-bar__center {
+  flex: 1 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  min-width: 0 !important;
+}
+
+/* Pulsing red recording dot */
+.recording-dot {
+  width: 10px !important;
+  height: 10px !important;
+  border-radius: 50% !important;
+  background: #ef4444 !important;
+  flex-shrink: 0 !important;
+  animation: recordingPulse 1.2s ease-in-out infinite !important;
+}
+@keyframes recordingPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.85); }
+}
+
+/* Live waveform */
+.recording-waveform {
+  display: flex !important;
+  align-items: center !important;
+  gap: 3px !important;
+  flex: 1 !important;
+  height: 32px !important;
+  overflow: hidden !important;
+}
+.recording-waveform__bar {
+  width: 3px !important;
+  border-radius: 2px !important;
+  background: var(--az-accent-rose) !important;
+  transition: height 0.08s ease !important;
+  flex-shrink: 0 !important;
+}
+
+/* Duration timer */
+.recording-timer {
+  font: 500 14px/1 'JetBrains Mono', monospace !important;
+  color: var(--az-text-primary) !important;
+  flex-shrink: 0 !important;
+  min-width: 36px !important;
+  text-align: right !important;
+}
+
+/* Send button */
+.recording-bar__send {
+  width: 44px !important;
+  height: 44px !important;
+  border-radius: 50% !important;
+  background: var(--az-accent-primary) !important;
+  border: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: white !important;
+  cursor: pointer !important;
+  flex-shrink: 0 !important;
+  box-shadow: 0 2px 12px rgba(200, 16, 46, 0.4) !important;
+  transition: transform 0.1s, box-shadow 0.1s !important;
+}
+.recording-bar__send:active {
+  transform: scale(0.93) !important;
+  box-shadow: 0 1px 6px rgba(200, 16, 46, 0.3) !important;
+}
+
+/* Mic button in idle input bar */
+.chat-input__mic {
+  width: 44px !important;
+  height: 44px !important;
+  border-radius: 50% !important;
+  background: transparent !important;
+  border: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: var(--az-text-secondary) !important;
+  cursor: pointer !important;
+  flex-shrink: 0 !important;
+  transition: color 0.15s, background 0.15s !important;
+}
+.chat-input__mic:hover,
+.chat-input__mic:active {
+  color: var(--az-accent-rose) !important;
+  background: rgba(200, 16, 46, 0.08) !important;
+}
+
+/* Send button */
+.chat-input__send {
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 50% !important;
+  background: var(--az-accent-primary) !important;
+  border: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: white !important;
+  cursor: pointer !important;
+  flex-shrink: 0 !important;               /* ← NEVER let this be squeezed off screen */
+  transition: opacity 0.15s, transform 0.1s !important;
+}
+
+/* Idle input bar layout */
+.chat-input-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 8px 12px !important;
+}
+.chat-input-row .chat-input__field {
+  flex: 1 !important;
+  min-width: 0 !important;       /* allows the text field to shrink */
+}
+/* Icons are flex-shrink: 0 — they NEVER shrink */
+.chat-input-row .chat-input__emoji,
+.chat-input-row .chat-input__media,
+.chat-input-row .chat-input__mic,
+.chat-input-row .chat-input__send {
+  flex-shrink: 0 !important;
+}

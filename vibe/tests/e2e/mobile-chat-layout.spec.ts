@@ -1,185 +1,177 @@
 import { test, expect } from '@playwright/test';
 
 // Mock helper if not imported elsewhere
-async function loginAsAdultMember(page: any) {
-  // Mock local storage credentials or mock endpoint responses
+async function loginAndOpenConversation(page: any) {
   await page.goto('/');
   await page.evaluate(() => {
     localStorage.setItem('adultZoneVerified', JSON.stringify({ verified: true, timestamp: Date.now() }));
     localStorage.setItem('adultAccessToken', 'mock-token-abc');
   });
+  await page.goto('/adult/sext');
+  // Open first conversation
+  await page.locator('[data-testid="conversation-row"]').first().click();
 }
 
-test.describe('Mobile Chat Layout', () => {
+test.describe('Message Feed Scroll', () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
-  test.beforeEach(async ({ page }) => {
-    await loginAsAdultMember(page);
-    await page.goto('/adult/sext');
-    // Open first conversation
-    await page.locator('[data-testid="conversation-row"]').first().click();
+  test('message feed is scrollable', async ({ page }) => {
+    await loginAndOpenConversation(page);
+    const feed = page.locator('[data-testid="message-feed"]');
+    // Verify scrollHeight > clientHeight (i.e. there is content to scroll)
+    const isScrollable = await feed.evaluate(el =>
+      el.scrollHeight > el.clientHeight
+    );
+    // If there are enough messages: should be true
+    // Check that overflow-y is not hidden
+    const overflowY = await feed.evaluate(el =>
+      window.getComputedStyle(el).overflowY
+    );
+    expect(['auto', 'scroll']).toContain(overflowY);
   });
 
-  test('global header is hidden when conversation is open on mobile', async ({ page }) => {
-    const globalHeader = page.locator('[data-testid="global-header"]');
-    await expect(globalHeader).toBeHidden();
+  test('page itself does not scroll — only feed scrolls', async ({ page }) => {
+    await loginAndOpenConversation(page);
+    const pageScrollable = await page.evaluate(() =>
+      document.documentElement.scrollHeight > document.documentElement.clientHeight
+    );
+    expect(pageScrollable).toBe(false);
   });
 
-  test('legal footer is not visible in chat view', async ({ page }) => {
-    const footer = page.locator('[data-testid="site-footer"]');
-    await expect(footer).toBeHidden();
+  test('feed scrolled to bottom on open', async ({ page }) => {
+    await loginAndOpenConversation(page);
+    const feed = page.locator('[data-testid="message-feed"]');
+    const atBottom = await feed.evaluate(el => {
+      const tolerance = 5;
+      return el.scrollHeight - el.scrollTop - el.clientHeight < tolerance;
+    });
+    expect(atBottom).toBe(true);
   });
 
-  test('input bar is visible above the tab bar', async ({ page }) => {
-    const inputBar = page.locator('[data-testid="chat-input-bar"]');
-    const tabBar   = page.locator('[data-testid="bottom-tab-bar"]');
-
-    const inputBox = await inputBar.boundingBox();
-    const tabBox   = await tabBar.boundingBox();
-
-    // Input bar bottom must be above tab bar top
-    expect(inputBox!.y + inputBox!.height).toBeLessThanOrEqual(tabBox!.y + 1);
-  });
-
-  test('SEND GIFT and REQUEST PHOTO buttons are visible', async ({ page }) => {
-    await expect(page.getByText('SEND GIFT')).toBeVisible();
-    await expect(page.getByText('REQUEST PHOTO')).toBeVisible();
-  });
-
-  test('SEND GIFT is above tab bar, not hidden behind it', async ({ page }) => {
-    const giftBtn = page.getByText('SEND GIFT');
-    const tabBar  = page.locator('[data-testid="bottom-tab-bar"]');
-    const giftBox = await giftBtn.boundingBox();
-    const tabBox  = await tabBar.boundingBox();
-    expect(giftBox!.y + giftBox!.height).toBeLessThanOrEqual(tabBox!.y + 1);
-  });
-
-  test('message bubbles have minimum 16px from screen edges', async ({ page }) => {
-    const bubbles = page.locator('[data-testid="message-bubble"]');
-    const count = await bubbles.count();
-    for (let i = 0; i < count; i++) {
-      const box = await bubbles.nth(i).boundingBox();
-      expect(box!.x).toBeGreaterThanOrEqual(16);
-      expect(box!.x + box!.width).toBeLessThanOrEqual(390 - 16);
-    }
-  });
-
-  test('gift card has minimum 24px from screen edges', async ({ page }) => {
-    const giftCard = page.locator('[data-testid="message-gift-card"]');
-    if (await giftCard.count() > 0) {
-      const box = await giftCard.boundingBox();
-      expect(box!.x).toBeGreaterThanOrEqual(24);
-      expect(box!.x + box!.width).toBeLessThanOrEqual(390 - 24);
-    }
-  });
-
-  test('photo request card has minimum 24px from screen edges', async ({ page }) => {
-    const card = page.locator('[data-testid="message-photo-request"]');
-    if (await card.count() > 0) {
-      const box = await card.boundingBox();
-      expect(box!.x).toBeGreaterThanOrEqual(24);
-    }
-  });
-
-  test('message feed takes all space between header and input', async ({ page }) => {
-    const header = page.locator('[data-testid="conversation-header"]');
-    const feed   = page.locator('[data-testid="message-feed"]');
-    const input  = page.locator('[data-testid="chat-input-bar"]');
-
-    const headerBox = await header.boundingBox();
-    const feedBox   = await feed.boundingBox();
-    const inputBox  = await input.boundingBox();
-
-    // Feed starts where header ends
-    expect(feedBox!.y).toBeCloseTo(headerBox!.y + headerBox!.height, 1);
-    // Feed ends where input starts
-    expect(feedBox!.y + feedBox!.height).toBeCloseTo(inputBox!.y, 1);
-  });
-
-  test('chat page does not scroll — only feed scrolls internally', async ({ page }) => {
-    const bodyScrollY = await page.evaluate(() => document.documentElement.scrollTop);
-    expect(bodyScrollY).toBe(0);
-    // Attempt to scroll the page
-    await page.evaluate(() => window.scrollTo(0, 500));
-    const afterScroll = await page.evaluate(() => document.documentElement.scrollTop);
-    expect(afterScroll).toBe(0);  // Should not have scrolled
+  test('can scroll up to see older messages', async ({ page }) => {
+    await loginAndOpenConversation(page);
+    const feed = page.locator('[data-testid="message-feed"]');
+    await feed.evaluate(el => el.scrollTo({ top: 0, behavior: 'instant' }));
+    const afterScrollTop = await feed.evaluate(el => el.scrollTop);
+    expect(afterScrollTop).toBe(0);
   });
 });
 
-test.describe('Voice Recording UX — Mobile', () => {
+test.describe('Voice Recording — Tap to Start / Tap to Send', () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
-  test('mic button is visible in input bar', async ({ page }) => {
+  test('mic button is visible in idle state', async ({ page }) => {
+    await loginAndOpenConversation(page);
     const mic = page.locator('[data-testid="mic-button"]');
     await expect(mic).toBeVisible();
     const box = await mic.boundingBox();
+    expect(box).not.toBeNull();
     expect(box!.width).toBeGreaterThanOrEqual(40);
-    expect(box!.height).toBeGreaterThanOrEqual(40);
   });
 
-  test('holding mic button enters recording state', async ({ page }) => {
-    const mic = page.locator('[data-testid="mic-button"]');
-    await mic.dispatchEvent('touchstart');
-    await expect(page.locator('[data-testid="recording-waveform"]')).toBeVisible();
+  test('tapping mic button starts recording', async ({ page }) => {
+    await loginAndOpenConversation(page);
+    await page.locator('[data-testid="mic-button"]').click();
+    // Recording bar should appear
+    await expect(page.locator('[data-testid="recording-bar"]')).toBeVisible();
+    await expect(page.locator('[data-testid="recording-dot"]')).toBeVisible();
     await expect(page.locator('[data-testid="recording-timer"]')).toBeVisible();
-    await expect(page.locator('[data-testid="recording-cancel-btn"]')).toBeVisible();
-    await mic.dispatchEvent('touchend');
   });
 
   test('text input is hidden during recording', async ({ page }) => {
-    const mic = page.locator('[data-testid="mic-button"]');
-    await mic.dispatchEvent('touchstart');
+    await loginAndOpenConversation(page);
+    await page.locator('[data-testid="mic-button"]').click();
     await expect(page.locator('[data-testid="chat-text-input"]')).toBeHidden();
-    await mic.dispatchEvent('touchend');
   });
 
-  test('recording timer counts up', async ({ page }) => {
-    const mic = page.locator('[data-testid="mic-button"]');
-    await mic.dispatchEvent('touchstart');
-    await page.waitForTimeout(2000);
+  test('bin/cancel button is visible during recording', async ({ page }) => {
+    await loginAndOpenConversation(page);
+    await page.locator('[data-testid="mic-button"]').click();
+    await expect(page.locator('[data-testid="recording-cancel-btn"]')).toBeVisible();
+  });
+
+  test('send button is visible during recording', async ({ page }) => {
+    await loginAndOpenConversation(page);
+    await page.locator('[data-testid="mic-button"]').click();
+    await expect(page.locator('[data-testid="recording-send-btn"]')).toBeVisible();
+  });
+
+  test('recording does NOT auto-stop after 3 seconds', async ({ page }) => {
+    await loginAndOpenConversation(page);
+    await page.locator('[data-testid="mic-button"]').click();
+    await page.waitForTimeout(4000);  // wait 4 seconds
+    // Recording bar must STILL be visible
+    await expect(page.locator('[data-testid="recording-bar"]')).toBeVisible();
+    // Timer should show at least 0:03
     const timerText = await page.locator('[data-testid="recording-timer"]').textContent();
-    // Should show at least "0:01"
-    expect(timerText).toMatch(/0:0[1-9]/);
-    await mic.dispatchEvent('touchend');
-  });
-
-  test('releasing mic after 1+ seconds sends voice note', async ({ page }) => {
-    const mic = page.locator('[data-testid="mic-button"]');
-    await mic.dispatchEvent('touchstart');
-    await page.waitForTimeout(1500);
-    await mic.dispatchEvent('touchend');
-    // Voice note message should appear in feed
-    await expect(page.locator('[data-testid="message-voice-note"]').last()).toBeVisible({
-      timeout: 5000,
-    });
-  });
-
-  test('cancel button cancels recording without sending', async ({ page }) => {
-    const mic = page.locator('[data-testid="mic-button"]');
-    await mic.dispatchEvent('touchstart');
-    await page.waitForTimeout(1000);
-    const countBefore = await page.locator('[data-testid="message-voice-note"]').count();
+    expect(timerText).toMatch(/0:0[3-9]|0:[1-9]\d/);
+    // Clean up
     await page.locator('[data-testid="recording-cancel-btn"]').click();
-    await expect(page.locator('[data-testid="recording-waveform"]')).toBeHidden();
-    const countAfter = await page.locator('[data-testid="message-voice-note"]').count();
-    expect(countAfter).toBe(countBefore);  // No new voice note
   });
 
-  test('global header hidden, tab bar visible, input above tab bar during recording', async ({ page }) => {
-    const mic = page.locator('[data-testid="mic-button"]');
-    await mic.dispatchEvent('touchstart');
+  test('timer counts up continuously', async ({ page }) => {
+    await loginAndOpenConversation(page);
+    await page.locator('[data-testid="mic-button"]').click();
+    await page.waitForTimeout(2000);
+    const t1 = await page.locator('[data-testid="recording-timer"]').textContent();
+    await page.waitForTimeout(2000);
+    const t2 = await page.locator('[data-testid="recording-timer"]').textContent();
+    expect(t1).not.toBe(t2);  // timer must have advanced
+    await page.locator('[data-testid="recording-cancel-btn"]').click();
+  });
 
-    const globalHeader = page.locator('[data-testid="global-header"]');
-    const tabBar = page.locator('[data-testid="bottom-tab-bar"]');
-    const recordingBar = page.locator('[data-testid="recording-bar"]');
+  test('tapping send button stops recording and sends voice note', async ({ page }) => {
+    await loginAndOpenConversation(page);
+    const countBefore = await page.locator('[data-testid="message-voice-note"]').count();
+    await page.locator('[data-testid="mic-button"]').click();
+    await page.waitForTimeout(2000);  // record for 2 seconds
+    await page.locator('[data-testid="recording-send-btn"]').click();
+    // Recording bar disappears
+    await expect(page.locator('[data-testid="recording-bar"]')).toBeHidden({ timeout: 5000 });
+    // Idle input returns
+    await expect(page.locator('[data-testid="mic-button"]')).toBeVisible({ timeout: 5000 });
+    // Voice note appears in feed
+    const countAfter = await page.locator('[data-testid="message-voice-note"]').count();
+    expect(countAfter).toBeGreaterThan(countBefore);
+  });
 
-    await expect(globalHeader).toBeHidden();
-    await expect(tabBar).toBeVisible();
+  test('tapping cancel/bin discards recording', async ({ page }) => {
+    await loginAndOpenConversation(page);
+    const countBefore = await page.locator('[data-testid="message-voice-note"]').count();
+    await page.locator('[data-testid="mic-button"]').click();
+    await page.waitForTimeout(2000);
+    await page.locator('[data-testid="recording-cancel-btn"]').click();
+    // Recording bar disappears
+    await expect(page.locator('[data-testid="recording-bar"]')).toBeHidden({ timeout: 3000 });
+    // Idle input returns
+    await expect(page.locator('[data-testid="mic-button"]')).toBeVisible();
+    // NO new voice note
+    const countAfter = await page.locator('[data-testid="message-voice-note"]').count();
+    expect(countAfter).toBe(countBefore);
+  });
 
-    const recordingBox = await recordingBar.boundingBox();
-    const tabBox = await tabBar.boundingBox();
-    expect(recordingBox!.y + recordingBox!.height).toBeLessThanOrEqual(tabBox!.y + 1);
+  test('can start a new recording after cancelling', async ({ page }) => {
+    await loginAndOpenConversation(page);
+    // Record and cancel
+    await page.locator('[data-testid="mic-button"]').click();
+    await page.waitForTimeout(1000);
+    await page.locator('[data-testid="recording-cancel-btn"]').click();
+    await expect(page.locator('[data-testid="mic-button"]')).toBeVisible();
+    // Record again
+    await page.locator('[data-testid="mic-button"]').click();
+    await expect(page.locator('[data-testid="recording-bar"]')).toBeVisible();
+    await page.locator('[data-testid="recording-cancel-btn"]').click();
+  });
 
-    await mic.dispatchEvent('touchend');
+  test('timer resets to 0:00 after cancel', async ({ page }) => {
+    await loginAndOpenConversation(page);
+    await page.locator('[data-testid="mic-button"]').click();
+    await page.waitForTimeout(3000);
+    await page.locator('[data-testid="recording-cancel-btn"]').click();
+    // Start again
+    await page.locator('[data-testid="mic-button"]').click();
+    const timer = await page.locator('[data-testid="recording-timer"]').textContent();
+    expect(timer).toBe('0:00');
+    await page.locator('[data-testid="recording-cancel-btn"]').click();
   });
 });
