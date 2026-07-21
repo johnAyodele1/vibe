@@ -127,3 +127,324 @@ button {
     background-color: #ffffff;
   }
 }
+
+/* Mobile Chat UI Fixes & Layout Styles */
+@media (max-width: 767px) {
+  .chat-page-mobile {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh !important;
+    overflow: hidden !important;
+    background: var(--az-bg-primary);
+    padding-bottom: calc(64px + env(safe-area-inset-bottom)) !important;
+  }
+
+  .chat-input-bar {
+    position: sticky !important;
+    bottom: 0 !important;
+    background: var(--az-bg-secondary) !important;
+    border-top: 1px solid var(--az-border) !important;
+    z-index: 10 !important;
+  }
+
+  .chat-quick-actions {
+    display: flex;
+    justify-content: center;
+    gap: 32px;
+    padding: 8px 16px;
+    background: var(--az-bg-secondary);
+  }
+
+  .message-feed-container {
+    padding: 16px 16px 8px 16px !important;
+  }
+
+  /* Standard text/image message bubble */
+  .message-bubble {
+    max-width: calc(100% - 64px) !important;
+  }
+
+  /* Gift card */
+  .message-gift-card {
+    max-width: calc(100% - 48px) !important;
+  }
+
+  /* Photo request */
+  .message-photo-request {
+    max-width: calc(100% - 48px) !important;
+  }
+
+  /* Locked media card */
+  .message-locked-media {
+    max-width: calc(100% - 48px) !important;
+  }
+
+  /* Voice note */
+  .message-voice-note {
+    max-width: calc(100% - 32px) !important;
+  }
+
+  /* Compact Conversation Header */
+  .conversation-header {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    height: 56px !important;
+    display: flex;
+    align-items: center;
+    padding: 0 12px 0 4px !important;
+    gap: 8px !important;
+    background: var(--az-bg-secondary);
+    border-bottom: 1px solid var(--az-border);
+  }
+
+  .conversation-header__back {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    color: var(--az-text-secondary);
+    flex-shrink: 0;
+  }
+
+  .conversation-header__avatar {
+    width: 36px !important;
+    height: 36px !important;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+
+  .conversation-header__info {
+    flex: 1;
+    overflow: hidden;
+    min-width: 0;
+  }
+
+  .conversation-header__name {
+    font: 600 15px/1 'DM Sans', sans-serif !important;
+    color: var(--az-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .conversation-header__status {
+    font: 400 11px/1 'DM Sans', sans-serif !important;
+    color: #22c55e; /* green for online */
+    margin-top: 3px;
+  }
+
+  .conversation-header__status--offline {
+    color: var(--az-text-muted) !important;
+  }
+
+  .conversation-header__actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .conversation-header__action-btn {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    color: var(--az-text-secondary);
+  }
+
+  .conversation-header__credits {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(201, 168, 76, 0.1);
+    border: 1px solid rgba(201, 168, 76, 0.3);
+    border-radius: 100px;
+    padding: 4px 10px !important;
+    font: 600 13px/1 'JetBrains Mono', monospace;
+    color: #c9a84c;
+  }
+}
+
+/* Animations for Voice Notes & Shake */
+@keyframes shake-mic {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-4px); }
+  40%, 80% { transform: translateX(4px); }
+}
+.animate-shake-mic {
+  animation: shake-mic 0.4s ease-in-out;
+}
+
+/* THE MESSAGE FEED and VOICE RECORDING UI UPDATES */
+.message-feed {
+  flex: 1 !important;
+  min-height: 0 !important;          /* CRITICAL — allows overflow-y to work */
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: contain !important;
+}
+
+/* Recording bar — same height and position as the idle input bar */
+.recording-bar {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding: 12px 16px !important;
+  background: var(--az-bg-secondary) !important;
+  border-top: 1px solid var(--az-border) !important;
+  min-height: 56px !important;
+}
+
+/* Cancel (bin) button */
+.recording-bar__cancel {
+  width: 44px !important;
+  height: 44px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 50% !important;
+  background: transparent !important;
+  border: none !important;
+  color: var(--az-text-muted) !important;
+  cursor: pointer !important;
+  flex-shrink: 0 !important;
+  transition: color 0.15s, background 0.15s !important;
+}
+.recording-bar__cancel:hover,
+.recording-bar__cancel:active {
+  color: #ef4444 !important;
+  background: rgba(239, 68, 68, 0.1) !important;
+}
+
+/* Center section — pulsing dot + waveform + timer */
+.recording-bar__center {
+  flex: 1 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  min-width: 0 !important;
+}
+
+/* Pulsing red recording dot */
+.recording-dot {
+  width: 10px !important;
+  height: 10px !important;
+  border-radius: 50% !important;
+  background: #ef4444 !important;
+  flex-shrink: 0 !important;
+  animation: recordingPulse 1.2s ease-in-out infinite !important;
+}
+@keyframes recordingPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.85); }
+}
+
+/* Live waveform */
+.recording-waveform {
+  display: flex !important;
+  align-items: center !important;
+  gap: 3px !important;
+  flex: 1 !important;
+  height: 32px !important;
+  overflow: hidden !important;
+}
+.recording-waveform__bar {
+  width: 3px !important;
+  border-radius: 2px !important;
+  background: var(--az-accent-rose) !important;
+  transition: height 0.08s ease !important;
+  flex-shrink: 0 !important;
+}
+
+/* Duration timer */
+.recording-timer {
+  font: 500 14px/1 'JetBrains Mono', monospace !important;
+  color: var(--az-text-primary) !important;
+  flex-shrink: 0 !important;
+  min-width: 36px !important;
+  text-align: right !important;
+}
+
+/* Send button */
+.recording-bar__send {
+  width: 44px !important;
+  height: 44px !important;
+  border-radius: 50% !important;
+  background: var(--az-accent-primary) !important;
+  border: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: white !important;
+  cursor: pointer !important;
+  flex-shrink: 0 !important;
+  box-shadow: 0 2px 12px rgba(200, 16, 46, 0.4) !important;
+  transition: transform 0.1s, box-shadow 0.1s !important;
+}
+.recording-bar__send:active {
+  transform: scale(0.93) !important;
+  box-shadow: 0 1px 6px rgba(200, 16, 46, 0.3) !important;
+}
+
+/* Mic button in idle input bar */
+.chat-input__mic {
+  width: 44px !important;
+  height: 44px !important;
+  border-radius: 50% !important;
+  background: transparent !important;
+  border: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: var(--az-text-secondary) !important;
+  cursor: pointer !important;
+  flex-shrink: 0 !important;
+  transition: color 0.15s, background 0.15s !important;
+}
+.chat-input__mic:hover,
+.chat-input__mic:active {
+  color: var(--az-accent-rose) !important;
+  background: rgba(200, 16, 46, 0.08) !important;
+}
+
+/* Send button */
+.chat-input__send {
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 50% !important;
+  background: var(--az-accent-primary) !important;
+  border: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: white !important;
+  cursor: pointer !important;
+  flex-shrink: 0 !important;               /* ← NEVER let this be squeezed off screen */
+  transition: opacity 0.15s, transform 0.1s !important;
+}
+
+/* Idle input bar layout */
+.chat-input-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 8px 12px !important;
+}
+.chat-input-row .chat-input__field {
+  flex: 1 !important;
+  min-width: 0 !important;       /* allows the text field to shrink */
+}
+/* Icons are flex-shrink: 0 — they NEVER shrink */
+.chat-input-row .chat-input__emoji,
+.chat-input-row .chat-input__media,
+.chat-input-row .chat-input__mic,
+.chat-input-row .chat-input__send {
+  flex-shrink: 0 !important;
+}
