@@ -642,7 +642,7 @@ const Settings: React.FC = () => {
                 alt="Logo"
                 className={styles.logo}
               />
-              <p className={styles.versionText}>Version 4.2.0 (1832)</p>
+              <p className={styles.versionText}>Version 4.2.0 (1833)</p>
             </div>
           </div>
 
