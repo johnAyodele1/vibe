@@ -1032,7 +1032,7 @@ const PrivateSext: React.FC = () => {
     <div className="h-[100dvh] md:h-[calc(100vh-64px)] w-full flex overflow-hidden bg-[#0a0508] text-[var(--az-text-primary)] font-sans chat-page-mobile">
 
       {/* 1. LEFT PANEL: CONVERSATION LIST */}
-      <div className={`w-full md:w-80 flex-shrink-0 flex-col border-r border-[var(--az-border)] bg-[#070406] ${mobileView === 'chat' ? 'hidden md:flex' : 'flex'}`}>
+      <div className={`w-full md:w-80 flex-shrink-0 flex-col border-r border-[var(--az-border)] bg-[#070406] h-full min-h-0 overflow-hidden ${mobileView === 'chat' ? 'hidden md:flex' : 'flex'}`}>
         <div className="p-6 border-b border-[var(--az-border)] flex items-center justify-between">
           <h2 className="text-xl font-serif italic text-pink-500">Messages</h2>
           <div className="flex gap-2">
@@ -1114,7 +1114,7 @@ const PrivateSext: React.FC = () => {
       </div>
 
       {/* 2. CHAT FEED & HEADER WINDOW */}
-      <div className={`flex-grow flex flex-col bg-[#0e070c] ${mobileView === 'list' ? 'hidden md:flex' : 'flex'}`}>
+      <div className={`flex-grow flex flex-col bg-[#0e070c] h-full min-h-0 overflow-hidden ${mobileView === 'list' ? 'hidden md:flex' : 'flex'}`}>
         {selectedConv ? (
           <>
             {/* HEADER */}
