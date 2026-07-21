@@ -3,6 +3,7 @@ import { io, Socket } from 'socket.io-client';
 import { API_BASE_URL, SOCKET_URL } from '../../config';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { toast } from 'sonner';
+import { useUIStore } from './useUIStore';
 
 // Default avatars/placeholders
 const FALLBACK_AVATAR = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=150&auto=format&fit=crop";
@@ -100,12 +101,22 @@ const PrivateSext: React.FC = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
 
-  // Voice recording states
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingDuration, setRecordingDuration] = useState(0);
+  // Voice recording states (hold to record)
+  const { setHideGlobalHeader, setHideFooter } = useUIStore();
+  const [recState, setRecState] = useState<'idle' | 'recording' | 'cancelling' | 'locked'>('idle');
+  const [recDuration, setRecDuration] = useState(0);
+  const [showTooltip, setShowTooltip] = useState(false);
+  const [shakeMic, setShakeMic] = useState(false);
+  const [amplitudeData, setAmplitudeData] = useState<number[]>(Array(15).fill(4));
+
+  const startX = useRef<number>(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingIntervalRef = useRef<any>(null);
-  const [audioChunks, setAudioChunks] = useState<Blob[]>([]);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recDurationRef = useRef<number>(0);
 
   // Calling states
   const [callState, setCallState] = useState<'incoming' | 'outgoing' | 'active' | 'summary' | null>(null);
@@ -142,16 +153,38 @@ const PrivateSext: React.FC = () => {
     fetchConversations();
   }, [user?.id]);
 
-  // Handle window resizing for responsive navigation
+  // Handle window resizing for responsive navigation and layout adjustments
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth >= 768) {
         setMobileView('chat');
       }
+      // On resize (e.g. keyboard open/close), scroll messages to bottom
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
+
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    window.visualViewport?.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.visualViewport?.removeEventListener('resize', handleResize);
+    };
   }, []);
+
+  // Sync Global Header and Footer hide states based on selected conversation and view mode
+  useEffect(() => {
+    const isMobileChat = window.innerWidth < 768 && selectedConv !== null && mobileView === 'chat';
+    setHideGlobalHeader(isMobileChat);
+    setHideFooter(selectedConv !== null && mobileView === 'chat');
+  }, [selectedConv, mobileView, setHideGlobalHeader, setHideFooter]);
+
+  // Ensure header and footer are restored on component unmount
+  useEffect(() => {
+    return () => {
+      setHideGlobalHeader(false);
+      setHideFooter(false);
+    };
+  }, [setHideGlobalHeader, setHideFooter]);
 
   const getHeaders = () => ({
     'Authorization': `Bearer ${token}`,
@@ -513,28 +546,88 @@ const PrivateSext: React.FC = () => {
     }
   };
 
-  // Voice note recorder
-  const startRecording = async () => {
+  // Audio Visualizer loop using Web Audio API AnalyserNode
+  const startAudioVisualizer = (stream: MediaStream) => {
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      const audioContext = new AudioContextClass();
+      const analyser = audioContext.createAnalyser();
+      const source = audioContext.createMediaStreamSource(stream);
+      source.connect(analyser);
+      analyser.fftSize = 64; // Small fft size for visual simplicity
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+
+      audioContextRef.current = audioContext;
+      analyserRef.current = analyser;
+
+      const animate = () => {
+        if (!analyserRef.current) return;
+        analyserRef.current.getByteFrequencyData(dataArray);
+        // Normalize values to range 4px to 32px height
+        const heights = Array.from(dataArray).slice(0, 15).map(val => {
+          return Math.max(4, Math.min(32, (val / 255) * 32));
+        });
+        setAmplitudeData(heights);
+        animationFrameRef.current = requestAnimationFrame(animate);
+      };
+      animate();
+    } catch (e) {
+      console.error('AudioContext visualizer failed:', e);
+      // Fallback random generation
+      if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
+      recordingIntervalRef.current = setInterval(() => {
+        setAmplitudeData(Array.from({ length: 15 }, () => Math.max(4, Math.min(32, Math.random() * 28 + 4))));
+      }, 100);
+    }
+  };
+
+  const stopAudioVisualizer = () => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
+    analyserRef.current = null;
+  };
+
+  // Start holding mic to record
+  const triggerStartRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
-      setAudioChunks([]);
+      audioChunksRef.current = [];
 
       mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) {
-          setAudioChunks(prev => [...prev, e.data]);
+          audioChunksRef.current.push(e.data);
         }
       };
 
       mediaRecorder.onstop = async () => {
-        // Create audio file blob
-        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-        const file = new File([audioBlob], `voice_note_${Date.now()}.webm`, { type: 'audio/webm' });
+        const duration = recDurationRef.current;
+        stopAudioVisualizer();
+
+        if (duration < 1) {
+          // Too short
+          toast.dismiss();
+          setShakeMic(true);
+          setTimeout(() => setShakeMic(false), 400);
+          setShowTooltip(true);
+          setTimeout(() => setShowTooltip(false), 2000);
+          return;
+        }
 
         // Upload and send voice note
         setIsUploading(true);
         try {
+          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+          const file = new File([audioBlob], `voice_note_${Date.now()}.webm`, { type: 'audio/webm' });
+
           const pData = await (await fetch(`${API_BASE_URL}/v1/adult/media/presigned-url?type=audio&filename=${file.name}`, { headers: getHeaders() })).json();
 
           await fetch(pData.uploadUrl, {
@@ -543,7 +636,6 @@ const PrivateSext: React.FC = () => {
             headers: { 'Content-Type': file.type }
           });
 
-          // Generate randomized nice-looking waveforms
           const amplitudeWaveform = Array.from({ length: 25 }, () => Math.random());
 
           const res = await fetch(`${API_BASE_URL}/v1/adult/sext/messages/${selectedConv!.conversationId}`, {
@@ -552,9 +644,9 @@ const PrivateSext: React.FC = () => {
             body: JSON.stringify({
               type: 'voice_note',
               mediaUrl: pData.publicUrl,
-              mediaDurationSeconds: recordingDuration || 5,
+              mediaDurationSeconds: duration,
               mediaMimeType: 'audio/webm',
-              content: amplitudeWaveform.join(',') // Save as string
+              content: amplitudeWaveform.join(',')
             })
           });
           const msg = await res.json();
@@ -569,31 +661,105 @@ const PrivateSext: React.FC = () => {
       };
 
       mediaRecorder.start();
-      setIsRecording(true);
-      setRecordingDuration(0);
-      recordingIntervalRef.current = setInterval(() => {
-        setRecordingDuration(prev => prev + 1);
-      }, 1000);
+      setRecState('recording');
+      setRecDuration(0);
+      recDurationRef.current = 0;
+      startAudioVisualizer(stream);
     } catch (err) {
-      toast.error('Microphone access denied');
+      toast.error('Microphone access denied or not available');
     }
   };
 
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
+  // Timer effect for voice recording
+  useEffect(() => {
+    let interval: any = null;
+    if (recState === 'recording' || recState === 'cancelling' || recState === 'locked') {
+      interval = setInterval(() => {
+        setRecDuration(prev => {
+          const next = prev + 1;
+          recDurationRef.current = next;
+          // Lock to record after 3 seconds
+          if (next >= 3 && recState === 'recording') {
+            setRecState('locked');
+          }
+          return next;
+        });
+      }, 1000);
+    } else {
+      setRecDuration(0);
+      recDurationRef.current = 0;
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [recState]);
+
+  // Touch handlers
+  const handleTouchStart = (e: React.TouchEvent) => {
+    e.preventDefault();
+    startX.current = e.touches[0].clientX;
+    triggerStartRecording();
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (recState !== 'recording' && recState !== 'cancelling') return;
+    const currentX = e.touches[0].clientX;
+    const deltaX = startX.current - currentX;
+
+    if (deltaX > 80) {
+      setRecState('cancelling');
+    } else {
+      setRecState('recording');
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    e.preventDefault();
+    if (recState === 'cancelling') {
+      handleCancelRecording();
+    } else if (recState === 'recording') {
+      handleStopAndSend();
+    }
+  };
+
+  // Mouse handlers
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    triggerStartRecording();
+  };
+
+  const handleMouseUp = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (recState === 'recording') {
+      handleStopAndSend();
+    } else if (recState === 'cancelling') {
+      handleCancelRecording();
+    }
+  };
+
+  const handleStopAndSend = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      if (recordingIntervalRef.current) {
-        clearInterval(recordingIntervalRef.current);
-      }
     }
+    setRecState('idle');
   };
 
-  const cancelRecording = () => {
-    setIsRecording(false);
-    if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
-    mediaRecorderRef.current = null;
+  const handleCancelRecording = () => {
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.ondataavailable = null;
+      mediaRecorderRef.current.onstop = null;
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (err) {}
+      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+    }
+    stopAudioVisualizer();
+    setRecState('idle');
     toast.info('Recording cancelled');
+  };
+
+  const handleSendRecording = () => {
+    handleStopAndSend();
   };
 
   // Media Unlock Flow
@@ -843,7 +1009,7 @@ const PrivateSext: React.FC = () => {
   });
 
   return (
-    <div className="h-[calc(100vh-64px)] flex overflow-hidden bg-[#0a0508] text-[var(--az-text-primary)] font-sans">
+    <div className="h-[100dvh] md:h-[calc(100vh-64px)] w-full flex overflow-hidden bg-[#0a0508] text-[var(--az-text-primary)] font-sans chat-page-mobile">
 
       {/* 1. LEFT PANEL: CONVERSATION LIST */}
       <div className={`w-full md:w-80 flex-shrink-0 flex-col border-r border-[var(--az-border)] bg-[#070406] ${mobileView === 'chat' ? 'hidden md:flex' : 'flex'}`}>
@@ -932,55 +1098,57 @@ const PrivateSext: React.FC = () => {
         {selectedConv ? (
           <>
             {/* HEADER */}
-            <div className="p-4 bg-[#140b13] border-b border-[var(--az-border)] flex items-center justify-between">
-              <div className="flex items-center gap-3">
+            <div data-testid="conversation-header" className="conversation-header p-4 bg-[#140b13] border-b border-[var(--az-border)] flex items-center justify-between flex-shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
                 <button
                   onClick={() => setMobileView('list')}
-                  className="md:hidden text-lg text-pink-400 p-1"
+                  className="md:hidden text-lg text-pink-400 p-1 conversation-header__back"
                 >
                   ←
                 </button>
-                <div className="relative">
+                <div className="relative flex-shrink-0">
                   <img
                     src={selectedConv.otherUser?.avatarUrl || FALLBACK_AVATAR}
-                    className="w-10 h-10 rounded-full object-cover border border-pink-500/50"
+                    className="w-9 h-9 rounded-full object-cover border border-pink-500/50 conversation-header__avatar"
                     alt={selectedConv.otherUser?.displayName}
                   />
                   {selectedConv.otherUser?.isOnline && (
                     <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full border border-[#140b13]" />
                   )}
                 </div>
-                <div>
-                  <h3 className="font-bold text-sm">{selectedConv.otherUser?.displayName}</h3>
-                  <span className="text-[9px] text-pink-400 uppercase tracking-widest font-bold">
-                    {selectedConv.otherUser?.isOnline ? '● Online Now' : 'Offline'}
+                <div className="conversation-header__info min-w-0">
+                  <h3 className="font-bold text-sm conversation-header__name truncate">{selectedConv.otherUser?.displayName}</h3>
+                  <span className={`text-[9px] uppercase tracking-widest font-bold conversation-header__status ${
+                    selectedConv.otherUser?.isOnline ? '' : 'conversation-header__status--offline'
+                  }`}>
+                    {selectedConv.otherUser?.isOnline ? 'Online Now' : 'Offline'}
                   </span>
                 </div>
               </div>
 
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 conversation-header__actions flex-shrink-0">
                 <button
                   onClick={() => handleInitiateCall('audio')}
-                  className="text-lg hover:scale-110 transition-transform p-1.5"
+                  className="text-lg hover:scale-110 transition-transform p-1.5 conversation-header__action-btn"
                   title="Audio Call"
                 >
                   📞
                 </button>
                 <button
                   onClick={() => handleInitiateCall('video')}
-                  className="text-lg hover:scale-110 transition-transform p-1.5"
+                  className="text-lg hover:scale-110 transition-transform p-1.5 conversation-header__action-btn"
                   title="Video Call"
                 >
                   📹
                 </button>
-                <span className="text-yellow-400 font-bold text-xs flex items-center gap-1">
+                <span className="text-yellow-400 font-bold text-xs flex items-center gap-1 conversation-header__credits">
                   💎 {creditsRemaining}
                 </span>
               </div>
             </div>
 
             {/* MESSAGES SCROLL area */}
-            <div className="flex-grow overflow-y-auto p-6 space-y-6 flex flex-col no-scrollbar">
+            <div data-testid="message-feed" className="flex-grow overflow-y-auto p-6 space-y-6 flex flex-col no-scrollbar message-feed message-feed-container">
               {hasMoreMessages && (
                 <button
                   onClick={loadMoreMessages}
@@ -1001,7 +1169,11 @@ const PrivateSext: React.FC = () => {
                 return (
                   <div
                     key={m.id}
-                    className={`flex flex-col group ${isMe ? 'items-end' : 'items-start'} ${insufficientCreditsMsgId === m.id ? 'animate-shake' : ''}`}
+                    className={`flex flex-col group w-full ${
+                      m.mediaType === 'gift' || m.mediaType === 'request_photo' || m.mediaType === 'locked_image' || m.mediaType === 'locked_video'
+                        ? 'items-center'
+                        : isMe ? 'items-end' : 'items-start'
+                    } ${insufficientCreditsMsgId === m.id ? 'animate-shake' : ''}`}
                   >
 
                     {/* Render different bubbles according to messageType */}
@@ -1010,7 +1182,7 @@ const PrivateSext: React.FC = () => {
                         ── {m.systemText || m.content} ──
                       </div>
                     ) : m.mediaType === 'locked_image' || m.mediaType === 'locked_video' ? (
-                      <div className="relative w-64 h-80 rounded-2xl overflow-hidden border border-pink-500/30 bg-[#160c14] flex flex-col items-center justify-center p-4 shadow-xl">
+                      <div data-testid="message-locked-media" className="relative w-64 h-80 rounded-2xl overflow-hidden border border-pink-500/30 bg-[#160c14] flex flex-col items-center justify-center p-4 shadow-xl message-locked-media">
                         {/* Blurred media background */}
                         <div
                           className="absolute inset-0 bg-cover bg-center filter blur-xl opacity-30 scale-110"
@@ -1043,7 +1215,7 @@ const PrivateSext: React.FC = () => {
                         )}
                       </div>
                     ) : m.mediaType === 'gift' ? (
-                      <div className="w-72 bg-gradient-to-br from-pink-900/60 to-purple-900/40 border border-pink-500/50 rounded-2xl p-4 shadow-lg text-center relative overflow-hidden flex flex-col items-center">
+                      <div data-testid="message-gift-card" className="w-72 bg-gradient-to-br from-pink-900/60 to-purple-900/40 border border-pink-500/50 rounded-2xl p-4 shadow-lg text-center relative overflow-hidden flex flex-col items-center message-gift-card">
                         <div className="absolute top-1 right-2 text-[8px] text-yellow-400 font-bold uppercase tracking-widest">GIFT SENT</div>
                         <span className="text-5xl my-2">🎁</span>
                         <h5 className="font-serif italic text-pink-300 text-base">{m.gift?.giftName}</h5>
@@ -1053,7 +1225,7 @@ const PrivateSext: React.FC = () => {
                         )}
                       </div>
                     ) : m.mediaType === 'request_photo' ? (
-                      <div className="w-64 bg-[#1b0d19] border-2 border-dashed border-pink-500/40 rounded-xl p-4 flex flex-col gap-3">
+                      <div data-testid="message-photo-request" className="w-64 bg-[#1b0d19] border-2 border-dashed border-pink-500/40 rounded-xl p-4 flex flex-col gap-3 message-photo-request">
                         <div className="flex items-center gap-2">
                           <span className="text-xl">📷</span>
                           <span className="font-bold text-xs tracking-wider text-pink-400 uppercase">Photo Request</span>
@@ -1097,16 +1269,16 @@ const PrivateSext: React.FC = () => {
                           </div>
                         )}
                       </div>
-                    ) : m.mediaType === 'image' || m.mediaType === 'locked_image' ? (
-                      <div className="max-w-xs rounded-xl overflow-hidden border border-pink-500/20">
+                    ) : m.mediaType === 'image' ? (
+                      <div data-testid="message-bubble" className="max-w-xs rounded-xl overflow-hidden border border-pink-500/20 message-bubble">
                         <img src={m.mediaUrl} className="max-h-72 object-cover" alt="attachment" />
                       </div>
-                    ) : m.mediaType === 'video' || m.mediaType === 'locked_video' ? (
-                      <div className="max-w-xs rounded-xl overflow-hidden border border-pink-500/20 bg-black">
+                    ) : m.mediaType === 'video' ? (
+                      <div data-testid="message-bubble" className="max-w-xs rounded-xl overflow-hidden border border-pink-500/20 bg-black message-bubble">
                         <video src={m.mediaUrl} controls className="max-h-72 object-cover" />
                       </div>
                     ) : m.mediaType === 'voice_note' || m.mediaType === 'voice' ? (
-                      <div className={`p-3.5 rounded-2xl flex items-center gap-3 w-64 ${isMe ? 'bg-pink-700 text-white' : 'bg-[#1e101a] text-gray-200 border border-pink-500/20'}`}>
+                      <div data-testid="message-voice-note" className={`p-3.5 rounded-2xl flex items-center gap-3 w-64 message-voice-note ${isMe ? 'bg-pink-700 text-white' : 'bg-[#1e101a] text-gray-200 border border-pink-500/20'}`}>
                         <button className="w-8 h-8 rounded-full bg-white text-black flex items-center justify-center font-bold text-xs">
                           ▶
                         </button>
@@ -1126,7 +1298,7 @@ const PrivateSext: React.FC = () => {
                       </div>
                     ) : (
                       // STANDARD TEXT MESSAGE
-                      <div className={`p-3.5 max-w-xs text-sm rounded-2xl shadow-md leading-relaxed ${isMe ? 'bg-pink-600 text-white rounded-tr-none' : 'bg-[#1b0d19] border border-pink-500/20 text-gray-200 rounded-tl-none'}`}>
+                      <div data-testid="message-bubble" className={`p-3.5 max-w-xs text-sm rounded-2xl shadow-md leading-relaxed message-bubble ${isMe ? 'bg-pink-600 text-white rounded-tr-none' : 'bg-[#1b0d19] border border-pink-500/20 text-gray-200 rounded-tl-none'}`}>
                         {m.content}
                       </div>
                     )}
@@ -1226,59 +1398,127 @@ const PrivateSext: React.FC = () => {
             )}
 
             {/* BOTTOM INPUT BAR */}
-            <div className="p-4 border-t border-[var(--az-border)] bg-[#10070e]">
-              <div className="flex items-center gap-3 bg-[#150a12] rounded-full px-4 py-1.5 border border-[var(--az-border)]">
-                <button
-                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                  className="text-lg opacity-70 hover:opacity-100 transition-opacity p-1"
-                >
-                  😀
-                </button>
+            <div data-testid="chat-input-bar" className="chat-input-bar p-4 border-t border-[var(--az-border)] bg-[#10070e] flex flex-col gap-2 flex-shrink-0 relative">
+              {recState !== 'idle' ? (
+                /* RECORDING BAR LAYOUT */
+                <div data-testid="recording-bar" className="recording-bar flex items-center justify-between h-14 bg-[#150a12] rounded-full px-4 border border-[var(--az-border)] transition-all duration-200 w-full">
+                  {/* Left: cancel button */}
+                  <button
+                    data-testid="recording-cancel-btn"
+                    onClick={handleCancelRecording}
+                    className={`flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider transition-colors ${
+                      recState === 'cancelling' ? 'text-red-500' : 'text-[var(--az-text-muted)] hover:text-white'
+                    }`}
+                  >
+                    🗑️ <span className="hidden xs:inline">{recState === 'cancelling' ? 'Release' : 'Cancel'}</span>
+                  </button>
 
-                {/* Image upload trigger */}
-                <label className="text-lg opacity-70 hover:opacity-100 transition-opacity cursor-pointer p-1">
-                  📸
+                  {/* Center: Live waveform animation */}
+                  <div data-testid="recording-waveform" className="recording-waveform flex-grow flex items-center justify-center gap-1 px-4 max-w-xs h-8">
+                    {recState === 'cancelling' ? (
+                      <span className="text-[10px] text-red-500 animate-pulse">← Release to cancel</span>
+                    ) : (
+                      amplitudeData.map((h, i) => (
+                        <span
+                          key={i}
+                          className={`w-0.5 rounded transition-all duration-75 ${
+                            recState === 'cancelling' ? 'bg-gray-600' : 'bg-[var(--az-accent-primary)]'
+                          }`}
+                          style={{ height: `${h}px` }}
+                        />
+                      ))
+                    )}
+                  </div>
+
+                  {/* Right: duration counter + mic/send button */}
+                  <div className="flex items-center gap-3">
+                    <span data-testid="recording-timer" className="recording-timer text-sm font-mono text-[var(--az-text-primary)]">
+                      {Math.floor(recDuration / 60)}:{(recDuration % 60).toString().padStart(2, '0')}
+                    </span>
+
+                    {recState === 'locked' ? (
+                      <button
+                        onClick={handleSendRecording}
+                        className="w-10 h-10 bg-[var(--az-accent-primary)] text-white rounded-full flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-all"
+                      >
+                        ✓
+                      </button>
+                    ) : (
+                      <div className="relative">
+                        {recDuration >= 3 && recState === 'recording' && (
+                          <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-[#1a0a11] border border-[var(--az-accent-gold)] rounded px-1.5 py-0.5 text-[8px] text-[var(--az-accent-gold)] uppercase tracking-widest font-bold flex items-center gap-1 animate-bounce">
+                            🔒 Locked
+                          </div>
+                        )}
+                        <button
+                          onMouseUp={handleMouseUp}
+                          onTouchEnd={handleTouchEnd}
+                          className="w-12 h-12 bg-[var(--az-accent-primary)] text-white rounded-full flex items-center justify-center shadow-lg shadow-red-500/20 animate-pulse"
+                          style={{ transform: 'scale(1.2)' }}
+                        >
+                          🔴
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                /* IDLE normal layout */
+                <div className="flex items-center gap-3 bg-[#150a12] rounded-full px-4 py-1.5 border border-[var(--az-border)] w-full">
+                  <button
+                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                    className="text-lg opacity-70 hover:opacity-100 transition-opacity p-1"
+                  >
+                    😀
+                  </button>
+
+                  {/* Image upload trigger */}
+                  <label className="text-lg opacity-70 hover:opacity-100 transition-opacity cursor-pointer p-1">
+                    📸
+                    <input
+                      type="file"
+                      accept="image/*,video/*"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                  </label>
+
                   <input
-                    type="file"
-                    accept="image/*,video/*"
-                    onChange={handleFileChange}
-                    className="hidden"
+                    data-testid="chat-text-input"
+                    type="text"
+                    placeholder="Send a naughty message..."
+                    value={inputText}
+                    onChange={(e) => setInputText(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSendText()}
+                    className="flex-grow bg-transparent border-none outline-none text-sm text-[var(--az-text-primary)] py-2"
                   />
-                </label>
 
-                <input
-                  type="text"
-                  placeholder="Send a naughty message..."
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSendText()}
-                  className="flex-grow bg-transparent border-none outline-none text-sm text-[var(--az-text-primary)] py-2"
-                />
+                  {/* Hold to record or release */}
+                  <button
+                    data-testid="mic-button"
+                    onMouseDown={handleMouseDown}
+                    onTouchStart={handleTouchStart}
+                    onMouseUp={handleMouseUp}
+                    onTouchEnd={handleTouchEnd}
+                    className={`mic-button p-1 rounded-full transition-all ${
+                      shakeMic ? 'animate-shake-mic' : ''
+                    } opacity-70 hover:opacity-100 relative`}
+                    title="Hold to record voice note"
+                  >
+                    🎙️
+                    {showTooltip && (
+                      <div className="absolute -top-10 right-0 bg-red-600 text-white text-[10px] font-bold rounded py-1 px-2 whitespace-nowrap animate-fadeIn shadow-lg z-50">
+                        Hold to record
+                      </div>
+                    )}
+                  </button>
 
-                {/* Hold to record or release */}
-                <button
-                  onMouseDown={startRecording}
-                  onMouseUp={stopRecording}
-                  onTouchStart={startRecording}
-                  onTouchEnd={stopRecording}
-                  className={`text-lg p-1 rounded-full transition-all ${isRecording ? 'bg-red-600 text-white scale-125 animate-pulse' : 'opacity-70 hover:opacity-100'}`}
-                  title="Hold to record voice note"
-                >
-                  🎙️
-                </button>
-
-                <button
-                  onClick={handleSendText}
-                  className="w-8 h-8 bg-pink-600 hover:bg-pink-700 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-lg shadow-pink-500/20 active:scale-95 transition-all"
-                >
-                  →
-                </button>
-              </div>
-
-              {isRecording && (
-                <div className="flex items-center justify-between px-6 mt-3 text-red-500 text-xs font-bold animate-pulse">
-                  <span>🔴 Recording Live... {recordingDuration}s</span>
-                  <button onClick={cancelRecording} className="text-gray-400 hover:text-white uppercase text-[10px]">Swipe left to cancel</button>
+                  <button
+                    onClick={handleSendText}
+                    className="w-8 h-8 bg-pink-600 hover:bg-pink-700 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-lg shadow-pink-500/20 active:scale-95 transition-all"
+                  >
+                    →
+                  </button>
                 </div>
               )}
 
@@ -1306,7 +1546,7 @@ const PrivateSext: React.FC = () => {
                 </div>
               )}
 
-              <div className="flex justify-center gap-8 mt-4 border-t border-[var(--az-border)]/20 pt-3">
+              <div className="flex justify-center gap-8 mt-2 border-t border-[var(--az-border)]/20 pt-2 chat-quick-actions">
                 <button
                   onClick={openGiftPicker}
                   className="text-[10px] font-bold uppercase tracking-widest text-amber-400 hover:text-amber-500 flex items-center gap-1.5 transition-colors"

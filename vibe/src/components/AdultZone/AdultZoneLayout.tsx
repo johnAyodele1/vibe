@@ -5,8 +5,10 @@ import AdultAuthModal from './AdultAuthModal';
 import LoadingScreen from '../LoadingScreen/LoadingScreen';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { TipSheet } from './TipSheet';
+import { useUIStore } from './useUIStore';
 
 const AdultZoneLayout: React.FC = () => {
+  const { hideGlobalHeader, hideFooter } = useUIStore();
   const [isVerified, setIsVerified] = useState(() => {
     const stored = localStorage.getItem('adultZoneVerified');
     if (stored) {
@@ -57,9 +59,13 @@ const AdultZoneLayout: React.FC = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-[var(--az-bg-primary)] text-[var(--az-text-primary)] font-sans az-grain flex flex-col">
+    <div className={`bg-[var(--az-bg-primary)] text-[var(--az-text-primary)] font-sans az-grain flex flex-col ${
+      hideGlobalHeader ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'
+    }`}>
       {/* Top Navigation */}
-      <nav className="sticky top-0 z-50 az-glass border-b border-[var(--az-border)] px-4 py-3 md:px-8">
+      <nav data-testid="global-header" className={`sticky top-0 z-50 az-glass border-b border-[var(--az-border)] px-4 py-3 md:px-8 ${
+        hideGlobalHeader ? 'hidden md:block' : 'block'
+      }`}>
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2 group">
             <div className="w-8 h-8 bg-[var(--az-accent-primary)] rounded flex items-center justify-center text-white font-bold text-lg shadow-[0_0_10px_var(--az-glow)] group-hover:scale-110 transition-transform">
@@ -120,7 +126,7 @@ const AdultZoneLayout: React.FC = () => {
       </nav>
 
       {/* Main Content */}
-      <main className="flex-grow">
+      <main className={`flex-grow ${hideGlobalHeader ? 'h-full overflow-hidden' : ''}`}>
         <Outlet />
       </main>
 
@@ -132,7 +138,7 @@ const AdultZoneLayout: React.FC = () => {
       <TipSheet />
 
       {/* Mobile Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 az-glass border-t border-[var(--az-border)] pb-safe">
+      <nav data-testid="bottom-tab-bar" className="md:hidden fixed bottom-0 left-0 right-0 z-50 az-glass border-t border-[var(--az-border)] pb-safe">
         <div className="flex justify-around items-center h-16">
           {isProvider ? [
             { icon: '📊', path: '/adult/provider/dashboard', label: 'Studio' },
@@ -177,7 +183,9 @@ const AdultZoneLayout: React.FC = () => {
       </nav>
 
       {/* Footer */}
-      <footer className="bg-[#050304] border-t border-[var(--az-border)] px-4 py-12 pb-24 md:pb-12 mt-auto">
+      <footer data-testid="site-footer" className={`bg-[#050304] border-t border-[var(--az-border)] px-4 py-12 pb-24 md:pb-12 mt-auto ${
+        hideFooter ? 'hidden md:block' : 'block'
+      }`}>
         <div className="max-w-7xl mx-auto flex flex-col items-center text-center">
           <p className="text-[10px] text-[var(--az-text-muted)] max-w-2xl mb-6 leading-relaxed">
             All performers are 18+ years of age. Age verification records are maintained in compliance with applicable law.
