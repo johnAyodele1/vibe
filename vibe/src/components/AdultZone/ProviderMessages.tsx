@@ -130,7 +130,7 @@ const ProviderMessages: React.FC = () => {
   const [showServiceRequestDialog, setShowServiceRequestDialog] = useState(false);
   const [serviceExtras, setServiceExtras] = useState<Array<{ label: string; amount: number }>>([]);
   const [serviceRequestNote, setServiceRequestNote] = useState('');
-  const tonightRate = user?.providerProfile?.tonightRate || 100;
+  const tonightRate = (user as any)?.providerProfile?.tonightRate || 100;
 
   // S3 general upload states for regular attachments
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -443,6 +443,7 @@ const ProviderMessages: React.FC = () => {
 
   // WebRTC helpers
   const initializeWebRTC = async (webrtcRoomId: string) => {
+    console.log("Initializing WebRTC feed with room ID:", webrtcRoomId);
     try {
       const pc = new RTCPeerConnection({
         iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
@@ -1251,7 +1252,7 @@ const ProviderMessages: React.FC = () => {
               )}
 
               {messages.map((m) => {
-                const isMe = m.senderId === user?.id || m.senderId === user?._id;
+                const isMe = m.senderId === user?.id || m.senderId === (user as any)?._id;
 
                 const toggleReaction = (emoji: string) => {
                   handleReactToMessage(m.id, emoji);
