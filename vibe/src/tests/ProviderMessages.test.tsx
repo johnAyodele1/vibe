@@ -191,7 +191,7 @@ describe('ProviderMessages Frontend Component', () => {
     });
 
     expect(screen.getByTestId('gift-request-btn')).toBeInTheDocument();
-    expect(screen.getByText('💰 SEND PAID MEDIA')).toBeInTheDocument();
+    expect(screen.getByText('SEND PAID MEDIA', { selector: '.provider-quick-action-btn--media' })).toBeInTheDocument();
     expect(screen.getByTestId('service-request-btn')).toBeInTheDocument();
   });
 

@@ -1534,6 +1534,10 @@ const ProviderMessages: React.FC = () => {
                   <button
                     data-testid="recording-cancel-btn"
                     onClick={handleCancelRecording}
+                    onTouchStart={(e) => {
+                      e.preventDefault();
+                      handleCancelRecording();
+                    }}
                     className="recording-bar__cancel flex items-center justify-center p-1 text-gray-400 hover:text-red-500 transition-colors flex-shrink-0"
                     aria-label="Cancel recording"
                   >
@@ -1561,6 +1565,10 @@ const ProviderMessages: React.FC = () => {
                   <button
                     data-testid="recording-send-btn"
                     onClick={handleStopAndSend}
+                    onTouchStart={(e) => {
+                      e.preventDefault();
+                      handleStopAndSend();
+                    }}
                     className="recording-bar__send w-10 h-10 bg-[var(--az-accent-primary)] hover:scale-105 active:scale-95 text-white rounded-full flex items-center justify-center shadow-lg shadow-red-500/20 flex-shrink-0"
                     aria-label="Send voice message"
                   >
@@ -1598,7 +1606,24 @@ const ProviderMessages: React.FC = () => {
 
                   <button
                     data-testid="mic-button"
-                    onClick={handleStartRecording}
+                    onClick={() => {
+                      if (recState === 'idle') {
+                        handleStartRecording();
+                      } else if (recState === 'recording') {
+                        handleStopAndSend();
+                      }
+                    }}
+                    onTouchStart={(e) => {
+                      e.preventDefault();
+                      if (recState === 'idle') {
+                        handleStartRecording();
+                      } else if (recState === 'recording') {
+                        handleStopAndSend();
+                      }
+                    }}
+                    onTouchEnd={(e) => {
+                      e.preventDefault();
+                    }}
                     className="chat-input__mic p-1 rounded-full transition-all opacity-70 hover:opacity-100 relative flex-shrink-0"
                     title="Tap to record voice note"
                   >
@@ -1643,22 +1668,28 @@ const ProviderMessages: React.FC = () => {
                 <button
                   data-testid="gift-request-btn"
                   onClick={openGiftRequestPicker}
-                  className="quick-action-btn quick-action-btn--crimson"
+                  onTouchStart={(e) => { e.preventDefault(); openGiftRequestPicker(); }}
+                  className="provider-quick-action-btn provider-quick-action-btn--gift"
                 >
-                  🎁 SEND GIFT REQUEST
+                  <span className="btn-icon">🎁</span>
+                  SEND GIFT REQUEST
                 </button>
                 <button
                   onClick={() => setShowPaidMediaDialog(true)}
-                  className="quick-action-btn quick-action-btn--gold"
+                  onTouchStart={(e) => { e.preventDefault(); setShowPaidMediaDialog(true); }}
+                  className="provider-quick-action-btn provider-quick-action-btn--media"
                 >
-                  💰 SEND PAID MEDIA
+                  <span className="btn-icon">💰</span>
+                  SEND PAID MEDIA
                 </button>
                 <button
                   data-testid="service-request-btn"
                   onClick={() => setShowServiceRequestDialog(true)}
-                  className="quick-action-btn quick-action-btn--moon"
+                  onTouchStart={(e) => { e.preventDefault(); setShowServiceRequestDialog(true); }}
+                  className="provider-quick-action-btn provider-quick-action-btn--service"
                 >
-                  🌙 SEND SERVICE CHARGE
+                  <span className="btn-icon">🌙</span>
+                  SEND SERVICE CHARGE
                 </button>
               </div>
             </div>
