@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import React from 'react';
 import HookUpTonight from '../components/AdultZone/HookUpTonight';
 
 // Mock react-router-dom
@@ -68,7 +67,7 @@ describe('Hook Up Tonight Frontend View', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.setItem('adultAccessToken', 'mock_token');
-    global.fetch = vi.fn().mockImplementation((url: string) => {
+    globalThis.fetch = vi.fn().mockImplementation((url: string) => {
       if (url.includes('/adult/profiles/me')) {
         return Promise.resolve({
           ok: true,
@@ -132,7 +131,7 @@ describe('Hook Up Tonight Frontend View', () => {
   it('loads and pre-populates location filter from user profile', async () => {
     render(<HookUpTonight />);
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('/adult/profiles/me'), expect.any(Object));
+      expect(globalThis.fetch).toHaveBeenCalledWith(expect.stringContaining('/adult/profiles/me'), expect.any(Object));
     });
   });
 
@@ -155,7 +154,7 @@ describe('Hook Up Tonight Frontend View', () => {
     const resetBtn = screen.getByRole('button', { name: /Reset All Filters/i });
     fireEvent.click(resetBtn);
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('/adult/hookup/nearby'), expect.any(Object));
+      expect(globalThis.fetch).toHaveBeenCalledWith(expect.stringContaining('/adult/hookup/nearby'), expect.any(Object));
     });
   });
 });
