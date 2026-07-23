@@ -25,6 +25,12 @@ export interface IAdultUser extends Document {
   ageVerifiedAt?: Date;
   dateOfBirth: Date;
   country: string;
+  location?: {
+    country?: { code: string; name: string };
+    state?: { code: string; name: string };
+    city?: { name: string; lat: number; lng: number };
+    coordinates?: { type: string; coordinates: number[] };
+  };
   profilePhoto?: string;
   bio?: string;
   credits: number;
@@ -72,6 +78,7 @@ export interface IAdultUser extends Document {
       country?: { code: string; name: string };
       state?: { code: string; name: string };
       city?: { name: string; lat: number; lng: number };
+      coordinates?: { type: string; coordinates: number[] };
     };
     profileViews?: number;
     activeSubs?: number;
