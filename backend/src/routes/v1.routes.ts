@@ -52,7 +52,6 @@ import {
   getCallHistory
 } from '../controllers/adultSext.controller';
 import * as roomsController from '../controllers/adultRooms.controller';
-import { getAdultProfileMe, getHookupProviders } from '../controllers/adultProviders.controller';
 
 const router = express.Router();
 
@@ -60,10 +59,6 @@ const router = express.Router();
 router.get('/shared/countries', getCountries);
 router.get('/shared/countries/:code/states', getStatesByCountry);
 router.get('/shared/cities', getCities);
-
-// Profiles and Hook up
-router.get('/adult/profiles/me', verifyAdultJWT, getAdultProfileMe);
-router.get('/adult/hookup/nearby', verifyAdultJWT, getHookupProviders);
 
 // Media uploads simulation
 router.get('/adult/media/presigned-url', verifyAdultJWT, getPresignedUrl);
