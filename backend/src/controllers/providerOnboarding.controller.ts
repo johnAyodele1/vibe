@@ -82,7 +82,7 @@ export const getPresignedUrl = async (req: Request, res: Response) => {
 
 export const getHookupNearbyProviders = async (req: Request, res: Response) => {
   try {
-    const { country, state, city, intention, isOnline, page = 1, limit = 20, view } = req.query;
+    const { country, state, city, isOnline, page = 1, limit = 20, view } = req.query;
 
     const baseProviderFilter: any = {
       role: 'provider',
@@ -100,9 +100,6 @@ export const getHookupNearbyProviders = async (req: Request, res: Response) => {
     }
     if (city) {
       baseProviderFilter['providerProfile.location.city.name'] = { $regex: new RegExp(`^${city}$`, 'i') };
-    }
-    if (intention) {
-      baseProviderFilter['providerProfile.servicesOffered'] = intention;
     }
     if (isOnline === 'true') {
       baseProviderFilter['providerProfile.isLive'] = true;
@@ -130,7 +127,6 @@ export const getHookupNearbyProviders = async (req: Request, res: Response) => {
             coordinates: [lat, lng],
             isOnline: p.providerProfile?.isLive || false,
             tonightRate: p.providerProfile?.tonightRate,
-            intention: p.providerProfile?.servicesOffered?.[0] || 'Hookup',
           };
         });
 
@@ -174,7 +170,6 @@ export const getHookupNearbyProviders = async (req: Request, res: Response) => {
         isOnline: p.providerProfile?.isLive || false,
         isVerified: p.isVerified,
         photoUrl: p.profilePhoto || p.providerProfile?.photos?.[0] || '/placeholder.svg',
-        intention: p.providerProfile?.servicesOffered?.[0] || 'Hookup',
         tonightRate: p.providerProfile?.tonightRate,
       };
     });
