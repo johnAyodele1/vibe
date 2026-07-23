@@ -99,8 +99,8 @@ describe('NaughtyRooms Component', () => {
       expect(screen.getByText('Explicit Fire')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('24 ONLINE')).toBeInTheDocument();
-    expect(screen.getByText('154 ONLINE')).toBeInTheDocument();
+    expect(screen.getByText('24 MEMBERS ONLINE')).toBeInTheDocument();
+    expect(screen.getByText('154 MEMBERS ONLINE')).toBeInTheDocument();
   });
 
   it('handles category filter pills click triggers correctly', async () => {
@@ -190,7 +190,7 @@ describe('NaughtyRooms Component', () => {
       expect(screen.getByText('Chill Castle')).toBeInTheDocument();
     });
 
-    const enterButtons = screen.getAllByRole('button', { name: /Enter Room/i });
+    const enterButtons = screen.getAllByRole('button', { name: /Join Room/i });
     fireEvent.click(enterButtons[0]);
 
     // Triggers join successfully
