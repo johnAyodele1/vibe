@@ -5,6 +5,30 @@ import AdultMessage from '../models/AdultMessage';
 import CamSession from '../models/CamSession';
 import { decrypt } from '../services/encryptionService';
 
+const geocodeLocation = async (city: string, state: string, country: string) => {
+  try {
+    const queryStr = `${city}, ${state}, ${country}`;
+    const geoUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(queryStr)}&format=json&limit=1`;
+    const geoRes = await fetch(geoUrl, {
+      headers: { 'User-Agent': 'VibeApp/1.0' }
+    });
+    const geoData = await geoRes.json() as any;
+    if (geoData[0]) {
+      const lat = parseFloat(geoData[0].lat);
+      const lon = parseFloat(geoData[0].lon);
+      return {
+        type: 'Point',
+        coordinates: [lon, lat],
+        lat,
+        lng: lon
+      };
+    }
+  } catch (err) {
+    console.error('Geocoding helper failed:', err);
+  }
+  return null;
+};
+
 const getDefaultProviderProfile = (overrides: any = {}) => {
   return {
     stageName: '',
@@ -51,6 +75,144 @@ export const getPresignedUrl = async (req: Request, res: Response) => {
     const publicUrl = `https://vibe-media-s3.s3.amazonaws.com/adult-zone/${mockFileId}.${extension}`;
 
     return res.json({ uploadUrl, publicUrl });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const getHookupNearbyProviders = async (req: Request, res: Response) => {
+  try {
+    const { country, state, city, intention, isOnline, page = 1, limit = 20, view } = req.query;
+
+    const baseProviderFilter: any = {
+      role: 'provider',
+      status: 'active',
+      'providerProfile.onboarding.isComplete': true,
+      isVerified: true,
+      'providerProfile.servicesOffered': 'hookup'
+    };
+
+    if (country) {
+      baseProviderFilter['providerProfile.location.country.code'] = country;
+    }
+    if (state) {
+      baseProviderFilter['providerProfile.location.state.code'] = state;
+    }
+    if (city) {
+      baseProviderFilter['providerProfile.location.city.name'] = { $regex: new RegExp(`^${city}$`, 'i') };
+    }
+    if (intention) {
+      baseProviderFilter['providerProfile.servicesOffered'] = intention;
+    }
+    if (isOnline === 'true') {
+      baseProviderFilter['providerProfile.isLive'] = true;
+    }
+
+    if (view === 'map') {
+      const providers = await AdultUser.find(baseProviderFilter)
+        .select('providerProfile displayName profilePhoto country createdAt dateOfBirth isVerified')
+        .limit(200)
+        .lean();
+
+      const mapped = providers
+        .filter((p: any) => p.providerProfile?.location?.coordinates?.coordinates?.length === 2 || p.providerProfile?.location?.city?.lat)
+        .map((p: any) => {
+          let lat = p.providerProfile?.location?.city?.lat || 0;
+          let lng = p.providerProfile?.location?.city?.lng || 0;
+          if (p.providerProfile?.location?.coordinates?.coordinates?.length === 2) {
+            lng = p.providerProfile.location.coordinates.coordinates[0];
+            lat = p.providerProfile.location.coordinates.coordinates[1];
+          }
+          return {
+            id: p._id,
+            stageName: p.providerProfile?.stageName || p.displayName,
+            avatarUrl: p.profilePhoto || p.providerProfile?.photos?.[0] || '/placeholder.svg',
+            coordinates: [lat, lng],
+            isOnline: p.providerProfile?.isLive || false,
+            tonightRate: p.providerProfile?.tonightRate,
+            intention: p.providerProfile?.servicesOffered?.[0] || 'Hookup',
+          };
+        });
+
+      return res.json({
+        success: true,
+        providers: mapped
+      });
+    }
+
+    // Grid view (paginated)
+    const sort: any = {
+      'providerProfile.isLive': -1,
+      'providerProfile.rating.average': -1,
+      'createdAt': -1
+    };
+
+    const providers = await AdultUser.find(baseProviderFilter)
+      .sort(sort)
+      .skip((Number(page) - 1) * Number(limit))
+      .limit(Number(limit));
+
+    const total = await AdultUser.countDocuments(baseProviderFilter);
+
+    const formattedProviders = providers.map((p: any) => {
+      let age = 18;
+      if (p.dateOfBirth) {
+        const today = new Date();
+        const birth = new Date(p.dateOfBirth);
+        age = today.getFullYear() - birth.getFullYear();
+        const m = today.getMonth() - birth.getMonth();
+        if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+          age--;
+        }
+      }
+
+      return {
+        id: p._id,
+        stageName: p.providerProfile?.stageName || p.displayName,
+        age,
+        location: p.providerProfile?.location,
+        isOnline: p.providerProfile?.isLive || false,
+        isVerified: p.isVerified,
+        photoUrl: p.profilePhoto || p.providerProfile?.photos?.[0] || '/placeholder.svg',
+        intention: p.providerProfile?.servicesOffered?.[0] || 'Hookup',
+        tonightRate: p.providerProfile?.tonightRate,
+      };
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        providers: formattedProviders,
+        total,
+        page: Number(page),
+        pages: Math.ceil(total / Number(limit))
+      }
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const getAdultMemberProfile = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
+    }
+
+    const location = user.location?.country?.code ? user.location : user.providerProfile?.location;
+
+    return res.json({
+      success: true,
+      data: {
+        id: user._id,
+        email: user.email,
+        username: user.username,
+        role: user.role,
+        displayName: user.displayName,
+        location: location || null
+      }
+    });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
   }
@@ -324,10 +486,29 @@ export const saveOnboardingStep = async (req: Request, res: Response) => {
         return res.status(400).json({ success: false, errors });
       }
 
-      profile.location = { country, state, city };
+      profile.location = {
+        country,
+        state,
+        city: {
+          name: city.name,
+          lat: city.lat || 0,
+          lng: city.lng || 0
+        }
+      };
       profile.coverageArea = coverageArea || 'city';
       if (country && country.name) {
         user.country = country.name;
+      }
+
+      // Geocode and save coordinates
+      const geo = await geocodeLocation(city.name, state.name, country.name);
+      if (geo) {
+        profile.location.coordinates = {
+          type: 'Point',
+          coordinates: geo.coordinates
+        };
+        profile.location.city.lat = geo.lat;
+        profile.location.city.lng = geo.lng;
       }
     }
 
@@ -959,10 +1140,29 @@ export const updateLocation = async (req: Request, res: Response) => {
       user.providerProfile = getDefaultProviderProfile();
     }
 
-    user.providerProfile!.location = { country, state, city };
+    user.providerProfile!.location = {
+      country,
+      state,
+      city: {
+        name: city.name,
+        lat: city.lat || 0,
+        lng: city.lng || 0
+      }
+    };
     // Also sync to main user country field if necessary as a string
     if (country && country.name) {
       user.country = country.name;
+    }
+
+    // Geocode and save coordinates
+    const geo = await geocodeLocation(city.name, state.name, country.name);
+    if (geo) {
+      user.providerProfile!.location!.coordinates = {
+        type: 'Point',
+        coordinates: geo.coordinates
+      };
+      user.providerProfile!.location!.city!.lat = geo.lat;
+      user.providerProfile!.location!.city!.lng = geo.lng;
     }
 
     await user.save();
