@@ -354,18 +354,6 @@ export const setupAdultSocket = (io: Server) => {
       socket.join(`call:${data.callId}`);
     });
 
-    socket.on('call:offer', (data: { callId: string, offer: any }) => {
-      socket.to(`call:${data.callId}`).emit('call:offer', data);
-    });
-
-    socket.on('call:answer', (data: { callId: string, answer: any }) => {
-      socket.to(`call:${data.callId}`).emit('call:answer', data);
-    });
-
-    socket.on('call:ice-candidate', (data: { callId: string, candidate: any }) => {
-      socket.to(`call:${data.callId}`).emit('call:ice-candidate', data);
-    });
-
     // Individual user room for notifications
     socket.join(`user:${socket.data.user._id}`);
 

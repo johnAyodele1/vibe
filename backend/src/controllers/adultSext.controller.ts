@@ -1110,7 +1110,9 @@ export const initiateCall = async (req: Request, res: Response) => {
 
     return res.json({
       callId: call._id,
+      roomId: webrtcRoomId,
       webrtcRoomId,
+      perMinuteRate: rate,
       iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
     });
   } catch (error: any) {
@@ -1151,6 +1153,7 @@ export const acceptCall = async (req: Request, res: Response) => {
     }
 
     return res.json({
+      roomId: call.webrtcRoomId,
       webrtcRoomId: call.webrtcRoomId,
       iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
       perMinuteRate: call.perMinuteRate

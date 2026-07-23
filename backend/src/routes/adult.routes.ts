@@ -21,7 +21,7 @@ import { authLimiter, loginLimiter } from '../middleware/rateLimiter';
 import { verifyAdultJWT, requireAdultRole, requireAdultAge } from '../middleware/adultAuth';
 import * as providerController from '../controllers/adultProviders.controller';
 import * as creditsController from '../controllers/adultCredits.controller';
-import * as roomsController from '../controllers/adultRooms.controller';
+import { getRooms, createRoom, joinRoom } from '../controllers/adultRooms.controller';
 import * as messagesController from '../controllers/adultMessages.controller';
 import * as camsController from '../controllers/adultCams.controller';
 
@@ -49,9 +49,9 @@ router.post('/credits/tip', verifyAdultJWT, requireAdultAge, validateRequest(tip
 router.post('/credits/subscribe', verifyAdultJWT, validateRequest(subscribeSchema), creditsController.subscribeToTier);
 
 // Rooms
-router.get('/rooms', verifyAdultJWT, roomsController.getRooms);
-router.post('/rooms', verifyAdultJWT, requireAdultAge, validateRequest(createRoomSchema), roomsController.createRoom);
-router.post('/rooms/:id/join', verifyAdultJWT, requireAdultAge, roomsController.joinRoom);
+router.get('/rooms', verifyAdultJWT, getRooms);
+router.post('/rooms', verifyAdultJWT, requireAdultAge, validateRequest(createRoomSchema), createRoom);
+router.post('/rooms/:id/join', verifyAdultJWT, requireAdultAge, joinRoom);
 
 // Messages
 router.get('/messages/conversations', verifyAdultJWT, requireAdultAge, messagesController.getConversations);
@@ -83,6 +83,7 @@ router.get('/cams', camsController.getCams);
 router.post('/cams/stream/start', verifyAdultJWT, requireAdultRole('provider'), validateRequest(startStreamSchema), camsController.startStream);
 router.patch('/cams/stream/:sessionId/end', verifyAdultJWT, camsController.endStream);
 router.post('/cams/:sessionId/join', verifyAdultJWT, requireAdultAge, camsController.joinStream);
+router.get('/cams/:sessionId/token', verifyAdultJWT, camsController.getCamViewerToken);
 
 // Uploads
 router.post('/upload/photo', verifyAdultJWT, upload.single('photo'), uploadController.uploadAdultPhoto);

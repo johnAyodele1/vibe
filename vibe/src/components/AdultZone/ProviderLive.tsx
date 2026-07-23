@@ -1,15 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { API_BASE_URL } from '../../config';
+import { useAdultAuth } from '../../contexts/AdultAuthContext';
+import ProviderStreamRoom from './ProviderStreamRoom';
 
 const ProviderLive: React.FC = () => {
   const navigate = useNavigate();
   const token = localStorage.getItem('adultAccessToken');
+  const { user } = useAdultAuth();
 
   const [isLive, setIsLive] = useState(false);
   const [duration, setDuration] = useState(0);
   const [viewerCount] = useState(142);
   const [sessionTips] = useState(1250);
+
+  // Zego States
+  const [zegoToken, setZegoToken] = useState<string | null>(null);
+  const [zegoAppId, setZegoAppId] = useState<number | null>(null);
+  const [zegoRoomId, setZegoRoomId] = useState<string | null>(null);
+  const [zegoSessionId, setZegoSessionId] = useState<string | null>(null);
 
   const [chatMessages, setChatMessages] = useState<any[]>([
     { id: '1', user: 'Member_882', text: 'Hey there beauty! Gorgeous room!' },
@@ -18,6 +28,11 @@ const ProviderLive: React.FC = () => {
   ]);
 
   const [inputText, setInputText] = useState('');
+
+  const getHeaders = () => ({
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  });
 
   useEffect(() => {
     if (!token) {
@@ -44,14 +59,51 @@ const ProviderLive: React.FC = () => {
     return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleStartStream = () => {
-    setIsLive(true);
-    toast.success('Successfully started live streaming session!');
+  const handleStartStream = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/adult/cams/stream/start`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          title: 'Live Cam Session',
+          sessionType: 'public',
+        })
+      });
+      const resData = await res.json();
+      if (resData.success && resData.data) {
+        const { sessionId, roomId, token: zToken, appId } = resData.data;
+        setZegoToken(zToken);
+        setZegoAppId(appId);
+        setZegoRoomId(roomId);
+        setZegoSessionId(sessionId);
+        setIsLive(true);
+        toast.success('Successfully started live streaming session!');
+      } else {
+        toast.error(resData.error?.message || 'Failed to start stream');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to connect to stream server');
+    }
   };
 
-  const handleEndStream = () => {
-    if (window.confirm('Are you sure you want to end this webcam session?')) {
+  const handleEndStream = async () => {
+    if (!window.confirm('Are you sure you want to end this webcam session?')) return;
+    try {
+      if (zegoSessionId) {
+        await fetch(`${API_BASE_URL}/adult/cams/stream/${zegoSessionId}/end`, {
+          method: 'PATCH',
+          headers: getHeaders()
+        });
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
       setIsLive(false);
+      setZegoToken(null);
+      setZegoAppId(null);
+      setZegoRoomId(null);
+      setZegoSessionId(null);
       toast.info(`Session ended. Tips accumulated: 💎 ${sessionTips}`);
     }
   };
@@ -91,21 +143,30 @@ const ProviderLive: React.FC = () => {
               </div>
             </div>
 
-            {/* Video preview dummy */}
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="text-center space-y-2">
-                <span className="text-5xl opacity-40">📹</span>
-                <p className="text-xs text-[var(--az-text-muted)] font-serif italic">WebRTC Camera Preview ( navigator.getUserMedia )</p>
-              </div>
+            {/* Video preview / Zego host container */}
+            <div className="absolute inset-0 flex items-center justify-center">
+              {isLive && zegoToken && zegoAppId && zegoRoomId && zegoSessionId ? (
+                <div className="w-full h-full">
+                  <ProviderStreamRoom
+                    appId={zegoAppId}
+                    token={zegoToken}
+                    roomId={zegoRoomId}
+                    userId={user?.id || ''}
+                    userName={user?.firstName || 'Provider'}
+                    sessionId={zegoSessionId}
+                    onEnd={handleEndStream}
+                  />
+                </div>
+              ) : (
+                <div className="text-center space-y-2 pointer-events-none">
+                  <span className="text-5xl opacity-40">📹</span>
+                  <p className="text-xs text-[var(--az-text-muted)] font-serif italic">Camera Offline</p>
+                </div>
+              )}
             </div>
 
             {/* Bottom Stream Control Bar */}
-            <div className="flex justify-between items-center z-10 border-t border-[var(--az-border)]/20 pt-4 mt-auto bg-black/35 backdrop-blur-sm -mx-6 -mb-6 p-6">
-              <div className="flex gap-2">
-                <button className="w-10 h-10 rounded-xl bg-black/60 border border-[var(--az-border)] flex items-center justify-center hover:bg-[var(--az-bg-tertiary)] text-lg">🎙️</button>
-                <button className="w-10 h-10 rounded-xl bg-black/60 border border-[var(--az-border)] flex items-center justify-center hover:bg-[var(--az-bg-tertiary)] text-lg">📷</button>
-              </div>
-
+            <div className="flex justify-end items-center z-10 border-t border-[var(--az-border)]/20 pt-4 mt-auto bg-black/35 backdrop-blur-sm -mx-6 -mb-6 p-6">
               {!isLive ? (
                 <button
                   onClick={handleStartStream}

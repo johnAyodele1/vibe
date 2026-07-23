@@ -33,15 +33,15 @@ import {
 import {
   startConversation,
   getConversations,
-  getMessages,
-  sendMessage,
+  getMessages as getSextMessages,
+  sendMessage as sendSextMessage,
   unlockMedia,
   markAsRead,
   getConversationById,
   deleteConversation,
   muteConversation,
-  deleteMessage,
-  reactMessage,
+  deleteMessage as deleteSextMessage,
+  reactMessage as reactSextMessage,
   requestPhoto,
   fulfillPhotoRequest,
   declinePhotoRequest,
@@ -53,9 +53,21 @@ import {
   endCall,
   getCallHistory
 } from '../controllers/adultSext.controller';
-import * as roomsController from '../controllers/adultRooms.controller';
+import { getRooms, createRoom as createAdultRoom, getRoom as getAdultRoom, joinRoom as joinAdultRoom, leaveRoom as leaveAdultRoom, getRoomMembers, getRoomLeaderboard, getThreads, createThread, getThread, reactThread, pinThread, lockThread, getMessages as getAdultRoomMessages, sendMessage as sendAdultRoomMessage, reactMessage as reactAdultRoomMessage, deleteMessage as deleteAdultRoomMessage, getReplies, postReply, reactReply, getActivePolls, createPoll, votePoll, reportRoom, muteUser, kickUser } from '../controllers/adultRooms.controller';
+
+import { getZegoToken } from '../controllers/zego.controller';
+import { joinMatchQueue, leaveMatchQueue, endMatchSession, nextStranger } from '../controllers/randomMatch.controller';
 
 const router = express.Router();
+
+// Zego Token Route
+router.get('/adult/zego/token', verifyAdultJWT, getZegoToken);
+
+// Random Stranger Matching Routes
+router.post('/adult/random/queue', verifyAdultJWT, joinMatchQueue);
+router.delete('/adult/random/queue', verifyAdultJWT, leaveMatchQueue);
+router.post('/adult/random/:matchId/next', verifyAdultJWT, nextStranger);
+router.post('/adult/random/:matchId/end', verifyAdultJWT, endMatchSession);
 
 // Shared location routes (unprotected)
 router.get('/shared/countries', getCountries);
@@ -82,10 +94,10 @@ router.post('/adult/sext/conversations/:userId/start', verifyAdultJWT, startConv
 router.get('/adult/sext/conversations/:conversationId', verifyAdultJWT, getConversationById);
 router.delete('/adult/sext/conversations/:conversationId', verifyAdultJWT, deleteConversation);
 router.put('/adult/sext/conversations/:conversationId/mute', verifyAdultJWT, muteConversation);
-router.get('/adult/sext/conversations/:conversationId/messages', verifyAdultJWT, getMessages);
-router.post('/adult/sext/messages/:conversationId', verifyAdultJWT, sendMessage);
-router.delete('/adult/sext/messages/:messageId', verifyAdultJWT, deleteMessage);
-router.post('/adult/sext/messages/:messageId/react', verifyAdultJWT, reactMessage);
+router.get('/adult/sext/conversations/:conversationId/messages', verifyAdultJWT, getSextMessages);
+router.post('/adult/sext/messages/:conversationId', verifyAdultJWT, sendSextMessage);
+router.delete('/adult/sext/messages/:messageId', verifyAdultJWT, deleteSextMessage);
+router.post('/adult/sext/messages/:messageId/react', verifyAdultJWT, reactSextMessage);
 router.post('/adult/sext/messages/:messageId/unlock', verifyAdultJWT, unlockMedia);
 router.put('/adult/sext/conversations/:conversationId/read', verifyAdultJWT, markAsRead);
 
@@ -124,41 +136,41 @@ router.put('/adult/providers/me/photos', verifyAdultJWT, updatePhotos);
 router.put('/adult/providers/me/schedule', verifyAdultJWT, updateSchedule);
 
 // Naughty Rooms API
-router.get('/adult/rooms', verifyAdultJWT, roomsController.getRooms);
-router.post('/adult/rooms', verifyAdultJWT, roomsController.createRoom);
-router.get('/adult/rooms/:roomId', verifyAdultJWT, roomsController.getRoom);
-router.post('/adult/rooms/:roomId/join', verifyAdultJWT, roomsController.joinRoom);
-router.post('/adult/rooms/:roomId/leave', verifyAdultJWT, roomsController.leaveRoom);
-router.get('/adult/rooms/:roomId/members', verifyAdultJWT, roomsController.getRoomMembers);
-router.get('/adult/rooms/:roomId/leaderboard', verifyAdultJWT, roomsController.getRoomLeaderboard);
+router.get('/adult/rooms', verifyAdultJWT, getRooms);
+router.post('/adult/rooms', verifyAdultJWT, createAdultRoom);
+router.get('/adult/rooms/:roomId', verifyAdultJWT, getAdultRoom);
+router.post('/adult/rooms/:roomId/join', verifyAdultJWT, joinAdultRoom);
+router.post('/adult/rooms/:roomId/leave', verifyAdultJWT, leaveAdultRoom);
+router.get('/adult/rooms/:roomId/members', verifyAdultJWT, getRoomMembers);
+router.get('/adult/rooms/:roomId/leaderboard', verifyAdultJWT, getRoomLeaderboard);
 
 // Threads
-router.get('/adult/rooms/:roomId/threads', verifyAdultJWT, roomsController.getThreads);
-router.post('/adult/rooms/:roomId/threads', verifyAdultJWT, roomsController.createThread);
-router.get('/adult/rooms/:roomId/threads/:threadId', verifyAdultJWT, roomsController.getThread);
-router.post('/adult/rooms/:roomId/threads/:threadId/react', verifyAdultJWT, roomsController.reactThread);
-router.put('/adult/rooms/:roomId/threads/:threadId/pin', verifyAdultJWT, roomsController.pinThread);
-router.put('/adult/rooms/:roomId/threads/:threadId/lock', verifyAdultJWT, roomsController.lockThread);
+router.get('/adult/rooms/:roomId/threads', verifyAdultJWT, getThreads);
+router.post('/adult/rooms/:roomId/threads', verifyAdultJWT, createThread);
+router.get('/adult/rooms/:roomId/threads/:threadId', verifyAdultJWT, getThread);
+router.post('/adult/rooms/:roomId/threads/:threadId/react', verifyAdultJWT, reactThread);
+router.put('/adult/rooms/:roomId/threads/:threadId/pin', verifyAdultJWT, pinThread);
+router.put('/adult/rooms/:roomId/threads/:threadId/lock', verifyAdultJWT, lockThread);
 
 // Messages (main feed)
-router.get('/adult/rooms/:roomId/messages', verifyAdultJWT, roomsController.getMessages);
-router.post('/adult/rooms/:roomId/messages', verifyAdultJWT, roomsController.sendMessage);
-router.post('/adult/rooms/:roomId/messages/:messageId/react', verifyAdultJWT, roomsController.reactMessage);
-router.delete('/adult/rooms/:roomId/messages/:messageId', verifyAdultJWT, roomsController.deleteMessage);
+router.get('/adult/rooms/:roomId/messages', verifyAdultJWT, getAdultRoomMessages);
+router.post('/adult/rooms/:roomId/messages', verifyAdultJWT, sendAdultRoomMessage);
+router.post('/adult/rooms/:roomId/messages/:messageId/react', verifyAdultJWT, reactAdultRoomMessage);
+router.delete('/adult/rooms/:roomId/messages/:messageId', verifyAdultJWT, deleteAdultRoomMessage);
 
 // Thread replies
-router.get('/adult/rooms/:roomId/threads/:threadId/replies', verifyAdultJWT, roomsController.getReplies);
-router.post('/adult/rooms/:roomId/threads/:threadId/replies', verifyAdultJWT, roomsController.postReply);
-router.post('/adult/rooms/:roomId/threads/:threadId/replies/:replyId/react', verifyAdultJWT, roomsController.reactReply);
+router.get('/adult/rooms/:roomId/threads/:threadId/replies', verifyAdultJWT, getReplies);
+router.post('/adult/rooms/:roomId/threads/:threadId/replies', verifyAdultJWT, postReply);
+router.post('/adult/rooms/:roomId/threads/:threadId/replies/:replyId/react', verifyAdultJWT, reactReply);
 
 // Polls
-router.get('/adult/rooms/:roomId/polls/active', verifyAdultJWT, roomsController.getActivePolls);
-router.post('/adult/rooms/:roomId/polls', verifyAdultJWT, roomsController.createPoll);
-router.post('/adult/rooms/:roomId/polls/:pollId/vote', verifyAdultJWT, roomsController.votePoll);
+router.get('/adult/rooms/:roomId/polls/active', verifyAdultJWT, getActivePolls);
+router.post('/adult/rooms/:roomId/polls', verifyAdultJWT, createPoll);
+router.post('/adult/rooms/:roomId/polls/:pollId/vote', verifyAdultJWT, votePoll);
 
 // Moderation
-router.post('/adult/rooms/:roomId/report', verifyAdultJWT, roomsController.reportRoom);
-router.post('/adult/rooms/:roomId/members/:userId/mute', verifyAdultJWT, roomsController.muteUser);
-router.delete('/adult/rooms/:roomId/members/:userId', verifyAdultJWT, roomsController.kickUser);
+router.post('/adult/rooms/:roomId/report', verifyAdultJWT, reportRoom);
+router.post('/adult/rooms/:roomId/members/:userId/mute', verifyAdultJWT, muteUser);
+router.delete('/adult/rooms/:roomId/members/:userId', verifyAdultJWT, kickUser);
 
 export default router;
