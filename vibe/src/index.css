@@ -448,3 +448,95 @@ button {
 .chat-input-row .chat-input__send {
   flex-shrink: 0 !important;
 }
+
+/* Fix 1: Provider Quick Actions styling */
+.provider-quick-actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 28px;                        /* same gap as member row */
+  padding: 10px 16px 12px;
+  background: var(--az-bg-secondary);
+  border-top: 1px solid var(--az-border);
+}
+
+/* Each button — same base as member */
+.provider-quick-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px 0;
+  font: 700 11px/1 'DM Sans', sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: opacity 0.15s;
+}
+.provider-quick-action-btn:active {
+  opacity: 0.7;
+}
+
+/* SEND GIFT REQUEST — gold, matching the gift theme */
+.provider-quick-action-btn--gift {
+  color: var(--az-accent-gold);    /* #c9a84c */
+}
+.provider-quick-action-btn--gift .btn-icon {
+  font-size: 16px;
+}
+
+/* SEND PAID MEDIA — rose/crimson, matching locked media theme */
+.provider-quick-action-btn--media {
+  color: var(--az-accent-rose);    /* #e8496a */
+}
+.provider-quick-action-btn--media .btn-icon {
+  font-size: 16px;
+}
+
+/* SEND SERVICE CHARGE — soft purple/lavender for the night/moon theme */
+.provider-quick-action-btn--service {
+  color: #a78bfa;
+}
+.provider-quick-action-btn--service .btn-icon {
+  font-size: 16px;
+}
+
+@media (max-width: 479px) {
+  .provider-quick-actions {
+    gap: 16px;
+  }
+  .provider-quick-action-btn {
+    font-size: 10px;
+    letter-spacing: 0.05em;
+  }
+}
+
+@media (max-width: 360px) {
+  .provider-quick-actions {
+    flex-wrap: wrap;
+    gap: 12px 20px;
+  }
+}
+
+/* Fix 2: Mobile tap response & highlights */
+.chat-input__mic {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;  /* removes grey flash on iOS */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.recording-bar__send {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.recording-bar__cancel {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}

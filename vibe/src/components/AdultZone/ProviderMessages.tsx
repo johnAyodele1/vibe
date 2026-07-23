@@ -120,19 +120,48 @@ const ProviderMessages: React.FC = () => {
                 })}
               </div>
 
-              {/* Bottom input */}
-              <div className="p-4 bg-[var(--az-bg-secondary)] border-t border-[var(--az-border)]/50 flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Type message here..."
-                  className="flex-grow bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-xs text-white focus:outline-none"
-                  value={textInput}
-                  onChange={e => setTextInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleSend()}
-                />
-                <button onClick={handleSend} className="px-6 py-3 bg-[var(--az-accent-rose)] hover:bg-pink-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all">
-                  Send
-                </button>
+              {/* Bottom input area with the Quick Action Buttons */}
+              <div className="bg-[var(--az-bg-secondary)] border-t border-[var(--az-border)]/50 flex flex-col">
+                <div className="p-4 flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Type message here..."
+                    className="flex-grow bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-xs text-white focus:outline-none"
+                    value={textInput}
+                    onChange={e => setTextInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleSend()}
+                  />
+                  <button onClick={handleSend} className="px-6 py-3 bg-[var(--az-accent-rose)] hover:bg-pink-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all">
+                    Send
+                  </button>
+                </div>
+
+                {/* THE PROVIDER ROW — matches the member row pattern exactly */}
+                <div className="provider-quick-actions">
+                  <button
+                    onClick={() => toast.success('Gift request sent successfully!')}
+                    className="provider-quick-action-btn provider-quick-action-btn--gift"
+                  >
+                    <span className="btn-icon">🎁</span>
+                    SEND GIFT REQUEST
+                  </button>
+
+                  <button
+                    onClick={() => setPremiumModalOpen(true)}
+                    className="provider-quick-action-btn provider-quick-action-btn--media"
+                  >
+                    <span className="btn-icon">💰</span>
+                    SEND PAID MEDIA
+                  </button>
+
+                  <button
+                    onClick={() => toast.success('Service charge initiated!')}
+                    className="provider-quick-action-btn provider-quick-action-btn--service"
+                  >
+                    <span className="btn-icon">🌙</span>
+                    SEND SERVICE CHARGE
+                  </button>
+                </div>
               </div>
             </>
           ) : (

@@ -1431,6 +1431,10 @@ const PrivateSext: React.FC = () => {
                   {/* Left: cancel button (bin) */}
                   <button
                     data-testid="recording-cancel-btn"
+                    onTouchStart={(e) => {
+                      e.preventDefault();
+                      handleCancelRecording();
+                    }}
                     onClick={handleCancelRecording}
                     className="recording-bar__cancel flex items-center justify-center p-1 text-gray-400 hover:text-red-500 transition-colors flex-shrink-0"
                     aria-label="Cancel recording"
@@ -1460,6 +1464,10 @@ const PrivateSext: React.FC = () => {
                   {/* Right: Send button (stops and sends) */}
                   <button
                     data-testid="recording-send-btn"
+                    onTouchStart={(e) => {
+                      e.preventDefault();
+                      handleStopAndSend();
+                    }}
                     onClick={handleStopAndSend}
                     className="recording-bar__send w-10 h-10 bg-[var(--az-accent-primary)] hover:scale-105 active:scale-95 text-white rounded-full flex items-center justify-center shadow-lg shadow-red-500/20 flex-shrink-0"
                     aria-label="Send voice message"
@@ -1501,7 +1509,24 @@ const PrivateSext: React.FC = () => {
                   {/* Tap to start recording */}
                   <button
                     data-testid="mic-button"
-                    onClick={handleStartRecording}
+                    onTouchStart={(e) => {
+                      e.preventDefault();
+                      if (recState === 'idle') {
+                        handleStartRecording();
+                      } else if (recState === 'recording') {
+                        handleStopAndSend();
+                      }
+                    }}
+                    onTouchEnd={(e) => {
+                      e.preventDefault();
+                    }}
+                    onClick={() => {
+                      if (recState === 'idle') {
+                        handleStartRecording();
+                      } else if (recState === 'recording') {
+                        handleStopAndSend();
+                      }
+                    }}
                     className="chat-input__mic p-1 rounded-full transition-all opacity-70 hover:opacity-100 relative flex-shrink-0"
                     title="Tap to record voice note"
                   >
