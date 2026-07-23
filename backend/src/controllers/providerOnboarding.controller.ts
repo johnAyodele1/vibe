@@ -324,10 +324,58 @@ export const saveOnboardingStep = async (req: Request, res: Response) => {
         return res.status(400).json({ success: false, errors });
       }
 
-      profile.location = { country, state, city };
+      const initialLat = city?.lat !== undefined ? Number(city.lat) : 0;
+      const initialLng = city?.lng !== undefined ? Number(city.lng) : 0;
+
+      profile.location = {
+        country,
+        state,
+        city: {
+          name: city.name,
+          lat: initialLat,
+          lng: initialLng,
+        },
+        coordinates: {
+          type: 'Point',
+          coordinates: [initialLng, initialLat]
+        }
+      };
+
       profile.coverageArea = coverageArea || 'city';
       if (country && country.name) {
         user.country = country.name;
+      }
+
+      try {
+        const queryParts = [];
+        if (city?.name) queryParts.push(`city=${encodeURIComponent(city.name)}`);
+        if (state?.name) queryParts.push(`state=${encodeURIComponent(state.name)}`);
+        if (country?.name) queryParts.push(`country=${encodeURIComponent(country.name)}`);
+        const geoUrl = `https://nominatim.openstreetmap.org/search?${queryParts.join('&')}&format=json&limit=1`;
+
+        const geoRes = await fetch(geoUrl, {
+          headers: { 'User-Agent': 'VibeApp/1.0' }
+        });
+        if (geoRes.ok) {
+          const geoData = (await geoRes.json()) as any;
+          if (geoData && geoData[0]) {
+            const lon = parseFloat(geoData[0].lon);
+            const lat = parseFloat(geoData[0].lat);
+            if (!isNaN(lon) && !isNaN(lat)) {
+              profile.location.coordinates = {
+                type: 'Point',
+                coordinates: [lon, lat]
+              };
+              profile.location.city = {
+                name: city.name,
+                lat: lat,
+                lng: lon
+              };
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Geocoding failed inside onboarding step 5:", e);
       }
     }
 
