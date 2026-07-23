@@ -49,25 +49,6 @@ const adultUserSchema = new Schema<IAdultUser, IAdultUserModel>(
       type: String,
       required: true,
     },
-    location: {
-      country: {
-        code: String,
-        name: String,
-      },
-      state: {
-        code: String,
-        name: String,
-      },
-      city: {
-        name: String,
-        lat: Number,
-        lng: Number,
-      },
-      coordinates: {
-        type: { type: String, default: 'Point' },
-        coordinates: { type: [Number], default: [0, 0] }
-      }
-    },
     profilePhoto: String,
     bio: {
       type: String,
@@ -173,10 +154,6 @@ const adultUserSchema = new Schema<IAdultUser, IAdultUserModel>(
           lat: Number,
           lng: Number,
         },
-        coordinates: {
-          type: { type: String, default: 'Point' },
-          coordinates: { type: [Number], default: [0, 0] }
-        }
       },
       profileViews: { type: Number, default: 0 },
       activeSubs: { type: Number, default: 0 },
