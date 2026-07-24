@@ -1986,7 +1986,7 @@ const ProviderMessages: React.FC = () => {
       )}
 
       {/* FULL CALL TAKE-OVER OVERLAY */}
-      {callState && (
+      {callState !== 'idle' && (
         <div className="fixed inset-0 bg-black z-[10000] flex flex-col items-center justify-between p-8 text-center text-white">
 
           {/* Incoming Call Layout */}
