@@ -43,7 +43,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
 
     // Check the container actually has dimensions before proceeding
     const rect = containerRef.current.getBoundingClientRect();
-    const isTest = typeof process !== 'undefined' && process.env.NODE_ENV === 'test';
+    const isTest = typeof (globalThis as any).process !== 'undefined' && (globalThis as any).process.env?.NODE_ENV === 'test';
     if (!isTest && (rect.width === 0 || rect.height === 0)) {
       console.error('[CallRoom] Container has zero dimensions. ZegoCloud cannot render video.');
       // Retry after next paint
