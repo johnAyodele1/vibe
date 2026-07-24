@@ -1,6 +1,6 @@
 import Redis from 'ioredis';
 import { RandomMatch } from '../models/RandomMatch';
-import { generateZegoToken } from './zego.service';
+import { generateAgoraToken } from './agora.service';
 import mongoose from 'mongoose';
 import { getIO } from '../socket';
 
@@ -90,13 +90,12 @@ export const tryMatch = async (userId: string, mode: string = 'video'): Promise<
   const roomId = `random_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
   const matchId = new mongoose.Types.ObjectId().toString();
 
-  const appIdStr = process.env.ZEGO_APP_ID || '123456';
-  const appId = parseInt(appIdStr, 10);
-  const serverSecret = process.env.ZEGO_SERVER_SECRET || '12345678901234567890123456789012';
+  const appId = process.env.AGORA_APP_ID || '123456';
+  const appCertificate = process.env.AGORA_APP_CERTIFICATE || '12345678901234567890123456789012';
 
   // Generate tokens for both
-  const tokenA = generateZegoToken(appId, userId, serverSecret, 1800, JSON.stringify({ room_id: roomId }));
-  const tokenB = generateZegoToken(appId, partner.userId, serverSecret, 1800, JSON.stringify({ room_id: roomId }));
+  const tokenA = generateAgoraToken(appId, appCertificate, roomId, userId, 'publisher', 1800);
+  const tokenB = generateAgoraToken(appId, appCertificate, roomId, partner.userId, 'publisher', 1800);
 
   // Save match to DB
   await RandomMatch.create({

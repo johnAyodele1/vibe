@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import CamSession from '../models/CamSession';
 import CamViewer from '../models/CamViewer';
-import { generateZegoToken } from '../services/zego.service';
+import { generateAgoraToken } from '../services/agora.service';
 
 export const getCams = async (req: Request, res: Response) => {
   const { page = 1, limit = 20, status = 'live' } = req.query;
@@ -43,11 +43,10 @@ export const startStream = async (req: Request, res: Response) => {
   const { title, tags, sessionType, privateShowRate, resolution, chatEnabled, recordingEnabled } = req.body;
   const roomId = `cam_${provider._id.toString()}_${Date.now()}`;
 
-  const appIdStr = process.env.ZEGO_APP_ID || '123456';
-  const appId = parseInt(appIdStr, 10);
-  const serverSecret = process.env.ZEGO_SERVER_SECRET || '12345678901234567890123456789012';
+  const appId = process.env.AGORA_APP_ID || '123456';
+  const appCertificate = process.env.AGORA_APP_CERTIFICATE || '12345678901234567890123456789012';
 
-  const token = generateZegoToken(appId, provider._id.toString(), serverSecret, 7200, JSON.stringify({ room_id: roomId }));
+  const token = generateAgoraToken(appId, appCertificate, roomId, provider._id.toString(), 'publisher', 7200);
 
   const session = new CamSession({
     providerId: provider._id,
@@ -121,12 +120,11 @@ export const getCamViewerToken = async (req: Request, res: Response) => {
     return res.status(404).json({ error: 'Stream not found or has ended' });
   }
 
-  const appIdStr = process.env.ZEGO_APP_ID || '123456';
-  const appId = parseInt(appIdStr, 10);
-  const serverSecret = process.env.ZEGO_SERVER_SECRET || '12345678901234567890123456789012';
+  const appId = process.env.AGORA_APP_ID || '123456';
+  const appCertificate = process.env.AGORA_APP_CERTIFICATE || '12345678901234567890123456789012';
 
   const roomId = session.streamKey;
-  const token = generateZegoToken(appId, userId, serverSecret, 3600, JSON.stringify({ room_id: roomId }));
+  const token = generateAgoraToken(appId, appCertificate, roomId, userId, 'subscriber', 3600);
 
   return res.json({
     token,
