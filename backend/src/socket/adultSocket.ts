@@ -304,34 +304,6 @@ export const setupAdultSocket = (io: Server) => {
         });
 
         socket.join(`call:${callId}`);
-
-        const ticker = setInterval(async () => {
-          const currentUser = await AdultUser.findById(data.callerId);
-          const currentProvider = await AdultUser.findById(provider._id);
-
-          if (!currentUser || !currentProvider || currentUser.credits < userPrice) {
-            clearInterval(ticker);
-            activeCallTickers.delete(callId);
-            adultNamespace.to(`call:${callId}`).emit('call:ended', { reason: 'insufficient_credits' });
-            return;
-          }
-
-          const mongoSession = await mongoose.startSession();
-          try {
-            mongoSession.startTransaction();
-            await AdultUser.findByIdAndUpdate(currentUser._id, { $inc: { credits: -userPrice } }, { session: mongoSession });
-            await AdultUser.findByIdAndUpdate(currentProvider._id, { $inc: { credits: rate, 'providerProfile.totalEarnings': rate } }, { session: mongoSession });
-            await mongoSession.commitTransaction();
-
-            adultNamespace.to(`user:${currentUser._id}`).emit('credits:updated', currentUser.credits - userPrice);
-          } catch (e) {
-            await mongoSession.abortTransaction();
-          } finally {
-            mongoSession.endSession();
-          }
-        }, 60000);
-
-        activeCallTickers.set(callId, ticker);
       } catch (err) {
         console.error('Call accept error:', err);
       }

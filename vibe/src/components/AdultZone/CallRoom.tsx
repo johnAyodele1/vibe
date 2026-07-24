@@ -39,6 +39,12 @@ const CallRoom: React.FC<CallRoomProps> = ({
 
     zp.joinRoom({
       container: containerRef.current,
+      showPreJoinView: false,
+      preJoinViewConfig: {
+        title: '',
+        isVideoEntryDisabled: true,
+      } as any,
+      autoLeaveAfterLeft: true,
       scenario: {
         mode: ZegoUIKitPrebuilt.OneONoneCall,
       },
@@ -60,7 +66,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
         const durationSeconds = Math.floor((Date.now() - startTime) / 1000);
         onCallEnd(durationSeconds);
       },
-    });
+    } as any);
 
     return () => {
       zp.destroy();

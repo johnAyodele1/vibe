@@ -4,7 +4,8 @@ import { API_BASE_URL, SOCKET_URL } from '../../config';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { toast } from 'sonner';
 import { useUIStore } from './useUIStore';
-import CallRoom from './CallRoom';
+
+const CallRoom = React.lazy(() => import('./CallRoom'));
 
 // Default avatars/placeholders
 const FALLBACK_AVATAR = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=150&auto=format&fit=crop";
@@ -118,13 +119,15 @@ const PrivateSext: React.FC = () => {
   const recDurationRef = useRef<number>(0);
 
   // Calling states
-  const [callState, setCallState] = useState<'incoming' | 'outgoing' | 'active' | 'summary' | null>(null);
+  const [callState, setCallState] = useState<'idle' | 'calling' | 'ringing' | 'active' | 'summary'>('idle');
   const [activeCallId, setActiveCallId] = useState<string | null>(null);
   const [callType, setCallType] = useState<'video' | 'audio'>('video');
   const [callDuration, setCallDuration] = useState(0);
   const [creditsRemaining, setCreditsRemaining] = useState<number>(user?.credits || 0);
   const [callRate, setCallRate] = useState<number>(0);
-  const [callSummary, setCallSummary] = useState<{ duration: string; cost: number } | null>(null);
+  const [callSummary, setCallSummary] = useState<{ duration: string; cost: number; wasBilled: boolean; status?: string } | null>(null);
+  const [acceptLoading, setAcceptLoading] = useState(false);
+  const [callData, setCallData] = useState<any>(null);
 
   // Zego states
   const [zegoToken, setZegoToken] = useState<string | null>(null);
@@ -316,16 +319,29 @@ const PrivateSext: React.FC = () => {
       setCallType(payload.type);
       setActiveCallId(payload.callId);
       setCallRate(payload.rate);
-      setCallState('incoming');
+      setCallData({
+        callId: payload.callId,
+        roomId: payload.webrtcRoomId,
+        perMinuteRate: payload.rate,
+        callerName: payload.callerName
+      });
+      setCallState('ringing');
     });
 
-    s.on('call:accepted', async (payload: { callId: string; webrtcRoomId: string }) => {
+    s.on('call:accepted', async () => {
       setCallDuration(0);
-      await fetchZegoCallToken(payload.webrtcRoomId);
+      setCallState('active');
     });
 
     s.on('call:declined', () => {
-      setCallState(null);
+      cleanupWebRTC();
+      setCallSummary({
+        duration: '0 sec',
+        cost: 0,
+        wasBilled: false,
+        status: 'declined'
+      });
+      setCallState('summary');
       toast.error('Call declined');
     });
 
@@ -333,13 +349,21 @@ const PrivateSext: React.FC = () => {
       cleanupWebRTC();
       setCallSummary({
         duration: `${Math.floor(payload.durationSeconds / 60)} min ${payload.durationSeconds % 60} sec`,
-        cost: payload.creditsDeducted
+        cost: payload.creditsDeducted,
+        wasBilled: payload.creditsDeducted > 0
       });
       setCallState('summary');
     });
 
     s.on('call:missed', () => {
-      setCallState(null);
+      cleanupWebRTC();
+      setCallSummary({
+        duration: '0 sec',
+        cost: 0,
+        wasBilled: false,
+        status: 'missed'
+      });
+      setCallState('summary');
       toast.info('Call missed');
     });
 
@@ -392,31 +416,11 @@ const PrivateSext: React.FC = () => {
     };
   }, [callState]);
 
-  // Zego Token & Signaling Helpers
-  const fetchZegoCallToken = async (roomId: string) => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/v1/adult/zego/token?roomId=${roomId}&type=call`, {
-        headers: getHeaders()
-      });
-      const data = await res.json();
-      if (data.token) {
-        setZegoToken(data.token);
-        setZegoAppId(data.appId);
-        setZegoRoomId(roomId);
-        setCallState('active');
-      } else {
-        toast.error('Failed to get call token');
-      }
-    } catch (err) {
-      console.error("Failed to fetch Zego token", err);
-      toast.error("Failed to connect to call server");
-    }
-  };
-
   const cleanupWebRTC = () => {
     setZegoToken(null);
     setZegoAppId(null);
     setZegoRoomId(null);
+    setAcceptLoading(false);
   };
 
   // Send Text Message
@@ -884,7 +888,7 @@ const PrivateSext: React.FC = () => {
   const handleInitiateCall = async (type: 'video' | 'audio') => {
     if (!selectedConv) return;
     setCallType(type);
-    setCallState('outgoing');
+    setCallState('calling');
 
     try {
       const res = await fetch(`${API_BASE_URL}/v1/adult/sext/calls/initiate`, {
@@ -898,29 +902,57 @@ const PrivateSext: React.FC = () => {
       const data = await res.json();
       if (data.callId) {
         setActiveCallId(data.callId);
-        // Under ZegoCloud, caller waits for receiver to accept before joining ZegoRoom
+        setCallData(data);
+        setCallRate(data.perMinuteRate);
+
+        // Fetch token right away so we are ready when they accept
+        const tokenRes = await fetch(`${API_BASE_URL}/v1/adult/zego/token?roomId=${data.roomId}&type=call`, {
+          headers: getHeaders()
+        });
+        const tokenData = await tokenRes.json();
+        if (tokenData.token) {
+          setZegoToken(tokenData.token);
+          setZegoAppId(tokenData.appId);
+          setZegoRoomId(data.roomId);
+        } else {
+          setCallState('idle');
+          toast.error('Failed to get call token');
+        }
       } else {
-        setCallState(null);
+        setCallState('idle');
         toast.error('Call initialization failed');
       }
     } catch (err) {
-      setCallState(null);
+      setCallState('idle');
       toast.error('Insufficient balance to place call');
     }
   };
 
   const handleAcceptCall = async () => {
-    if (!activeCallId) return;
+    if (!activeCallId || !callData) return;
+    setAcceptLoading(true);
     try {
       const res = await fetch(`${API_BASE_URL}/v1/adult/sext/calls/${activeCallId}/accept`, {
         method: 'PUT',
         headers: getHeaders()
       });
       const data = await res.json();
-      if (data.webrtcRoomId) {
-        await fetchZegoCallToken(data.webrtcRoomId);
+
+      const tokenRes = await fetch(`${API_BASE_URL}/v1/adult/zego/token?roomId=${data.roomId || callData.roomId}&type=call`, {
+        headers: getHeaders()
+      });
+      const tokenData = await tokenRes.json();
+      if (tokenData.token) {
+        setZegoToken(tokenData.token);
+        setZegoAppId(tokenData.appId);
+        setZegoRoomId(data.roomId || callData.roomId);
+        setCallState('active');
+      } else {
+        setAcceptLoading(false);
+        toast.error('Failed to get call token');
       }
     } catch (err) {
+      setAcceptLoading(false);
       console.error(err);
     }
   };
@@ -932,24 +964,32 @@ const PrivateSext: React.FC = () => {
         method: 'PUT',
         headers: getHeaders()
       });
-      setCallState(null);
+      setCallState('idle');
     } catch (err) {
       console.error(err);
+      setCallState('idle');
     }
   };
 
   const handleEndCall = async () => {
     if (!activeCallId) return;
     try {
-      await fetch(`${API_BASE_URL}/v1/adult/sext/calls/${activeCallId}/end`, {
+      const res = await fetch(`${API_BASE_URL}/v1/adult/sext/calls/${activeCallId}/end`, {
         method: 'PUT',
         headers: getHeaders(),
         body: JSON.stringify({ reason: 'hung_up' })
       });
+      const data = await res.json();
       cleanupWebRTC();
+      setCallSummary({
+        duration: `${Math.floor((data.durationSeconds || 0) / 60)} min ${(data.durationSeconds || 0) % 60} sec`,
+        cost: data.creditsDeducted || 0,
+        wasBilled: (data.creditsDeducted || 0) > 0
+      });
+      setCallState('summary');
     } catch (err) {
       cleanupWebRTC();
-      setCallState(null);
+      setCallState('idle');
     }
   };
 
@@ -1652,7 +1692,7 @@ const PrivateSext: React.FC = () => {
         <div className="fixed inset-0 bg-black z-[10000] flex flex-col items-center justify-between p-8 text-center text-white">
 
           {/* Incoming Call Layout */}
-          {callState === 'incoming' && (
+          {callState === 'ringing' && (
             <div className="flex-grow flex flex-col items-center justify-center">
               <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-pink-500 animate-pulse mb-6">
                 <img src={selectedConv?.otherUser?.avatarUrl || FALLBACK_AVATAR} className="w-full h-full object-cover" />
@@ -1670,16 +1710,21 @@ const PrivateSext: React.FC = () => {
                 </button>
                 <button
                   onClick={handleAcceptCall}
-                  className="w-16 h-16 bg-green-600 hover:bg-green-700 text-white text-2xl rounded-full flex items-center justify-center hover:scale-105 transition-transform animate-bounce"
+                  disabled={acceptLoading}
+                  className="incoming-call-accept w-16 h-16 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-2xl rounded-full flex items-center justify-center hover:scale-105 transition-transform animate-bounce"
                 >
-                  ✓
+                  {acceptLoading ? (
+                    <span className="animate-spin text-xl">⏳</span>
+                  ) : (
+                    '✓'
+                  )}
                 </button>
               </div>
             </div>
           )}
 
           {/* Outgoing Call Layout */}
-          {callState === 'outgoing' && (
+          {callState === 'calling' && (
             <div className="flex-grow flex flex-col items-center justify-center">
               <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-pink-500 mb-6">
                 <img src={selectedConv?.otherUser?.avatarUrl || FALLBACK_AVATAR} className="w-full h-full object-cover animate-pulse" />
@@ -1703,15 +1748,17 @@ const PrivateSext: React.FC = () => {
               {/* Fullscreen Zego room */}
               <div className="absolute inset-0 bg-[#0a0608] z-0">
                 {zegoToken && zegoAppId && zegoRoomId && (
-                  <CallRoom
-                    appId={zegoAppId}
-                    token={zegoToken}
-                    roomId={zegoRoomId}
-                    userId={user?.id || ''}
-                    userName={user?.firstName || 'User'}
-                    callType={callType}
-                    onCallEnd={handleEndCall}
-                  />
+                  <React.Suspense fallback={<div className="flex items-center justify-center h-full text-pink-500">Loading call...</div>}>
+                    <CallRoom
+                      appId={zegoAppId}
+                      token={zegoToken}
+                      roomId={zegoRoomId}
+                      userId={user?.id || ''}
+                      userName={user?.firstName || 'User'}
+                      callType={callType}
+                      onCallEnd={handleEndCall}
+                    />
+                  </React.Suspense>
                 )}
               </div>
 
@@ -1745,28 +1792,87 @@ const PrivateSext: React.FC = () => {
 
           {/* Call Ending Summary */}
           {callState === 'summary' && callSummary && (
-            <div className="flex-grow flex flex-col items-center justify-center max-w-sm">
-              <span className="text-5xl mb-4">⭐</span>
-              <h2 className="text-2xl font-serif italic text-pink-300 mb-2">Call Summary</h2>
-              <p className="text-xs text-gray-400 mb-6">Your private call has ended successfully.</p>
+            <div className="flex-grow flex flex-col items-center justify-center max-w-sm flex">
+              <span className="text-5xl mb-4">
+                {callSummary.status === 'declined' || callSummary.status === 'missed' ? '📵' : callType === 'video' ? '📹' : '📞'}
+              </span>
+              <h2 className="text-2xl font-serif italic text-pink-300 mb-2">
+                {callSummary.status === 'declined'
+                  ? 'Call Declined'
+                  : callSummary.status === 'missed'
+                  ? 'No Answer'
+                  : 'Call Ended'}
+              </h2>
 
-              <div className="w-full bg-[#160b13] border border-pink-500/20 rounded-xl p-4 space-y-3 mb-8">
-                <div className="flex justify-between text-xs">
-                  <span className="text-gray-400">Duration:</span>
-                  <span className="font-bold">{callSummary.duration}</span>
-                </div>
-                <div className="flex justify-between text-xs border-t border-pink-500/10 pt-3">
-                  <span className="text-gray-400">Credits Charged:</span>
-                  <span className="font-bold text-yellow-400">💎 {callSummary.cost}</span>
-                </div>
+              <div className="w-full bg-[#160b13] border border-pink-500/20 rounded-xl p-6 space-y-4 mb-8 text-left">
+                {callSummary.status === 'declined' || callSummary.status === 'missed' ? (
+                  <div className="text-center space-y-1">
+                    <p className="text-sm font-bold text-red-400">
+                      {callSummary.status === 'declined' ? 'Call was declined' : 'No answer from provider'}
+                    </p>
+                    <p className="text-xs text-gray-400">No charge</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-400">Duration:</span>
+                      <span className="font-bold">{callSummary.duration}</span>
+                    </div>
+                    <div className="flex justify-between text-xs border-t border-pink-500/10 pt-3">
+                      {user?.role === 'provider' ? (
+                        <>
+                          <span className="text-gray-400">Credits Earned:</span>
+                          <span className="font-bold text-yellow-400">💎 {callSummary.cost}</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-gray-400">Credits Charged:</span>
+                          <span className="font-bold text-yellow-400">💎 {callSummary.cost}  ≈  ${(callSummary.cost * 0.1).toFixed(2)}</span>
+                        </>
+                      )}
+                    </div>
+                    {callSummary.cost === 0 && (
+                      <p className="text-[10px] text-gray-400 text-center mt-2 font-mono uppercase tracking-wider">
+                        No charge — calls under 10 seconds are free
+                      </p>
+                    )}
+                  </>
+                )}
               </div>
 
-              <button
-                onClick={() => setCallState(null)}
-                className="w-full py-2.5 bg-pink-600 hover:bg-pink-700 text-white font-bold text-xs uppercase tracking-widest rounded-full transition-colors"
-              >
-                Close Summary
-              </button>
+              {/* Action Buttons */}
+              <div className="flex flex-col gap-3 w-full">
+                {user?.role !== 'provider' && callSummary.cost > 0 && (
+                  <div className="flex flex-col items-center mb-2">
+                    <span className="text-xs text-pink-300 mb-1">Rate this call:</span>
+                    <div className="flex gap-1 text-lg">
+                      {['⭐', '⭐', '⭐', '⭐', '⭐'].map((star, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => {
+                            toast.success('Thank you for your rating!');
+                          }}
+                          className="hover:scale-125 transition-transform"
+                        >
+                          {star}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex gap-3 w-full">
+                  <button
+                    onClick={() => {
+                      setCallState('idle');
+                      setCallSummary(null);
+                    }}
+                    className="flex-grow py-2.5 bg-pink-600 hover:bg-pink-700 text-white font-bold text-xs uppercase tracking-widest rounded-full transition-colors"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 

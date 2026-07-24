@@ -414,4 +414,136 @@ describe('Private Messaging (Sext) Integration Tests', () => {
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body.length).toBeGreaterThan(0);
   });
+
+  describe('Zego Call Billing and Connection Rules', () => {
+    let testCallId: string;
+
+    beforeEach(async () => {
+      // Create a fresh call for each test
+      const callRes = await request(app)
+        .post('/api/v1/adult/sext/calls/initiate')
+        .set('Authorization', `Bearer ${memberToken}`)
+        .send({ conversationId, type: 'video' });
+      testCallId = callRes.body.callId;
+    });
+
+    it('charges 0 credits when call was never accepted (status: ringing)', async () => {
+      const res = await request(app)
+        .put(`/api/v1/adult/sext/calls/${testCallId}/end`)
+        .set('Authorization', `Bearer ${memberToken}`)
+        .expect(200);
+
+      expect(res.body.creditsDeducted).toBe(0);
+      expect(res.body.wasBilled).toBe(false);
+    });
+
+    it('charges 0 credits when call was declined', async () => {
+      await request(app)
+        .put(`/api/v1/adult/sext/calls/${testCallId}/decline`)
+        .set('Authorization', `Bearer ${providerToken}`)
+        .expect(200);
+
+      const res = await request(app)
+        .put(`/api/v1/adult/sext/calls/${testCallId}/end`)
+        .set('Authorization', `Bearer ${memberToken}`)
+        .expect(200);
+
+      expect(res.body.creditsDeducted).toBe(0);
+      expect(res.body.wasBilled).toBe(false);
+    });
+
+    it('charges 0 credits when call was missed', async () => {
+      await request(app)
+        .put(`/api/v1/adult/sext/calls/${testCallId}/missed`)
+        .set('Authorization', `Bearer ${memberToken}`)
+        .expect(200);
+
+      const res = await request(app)
+        .put(`/api/v1/adult/sext/calls/${testCallId}/end`)
+        .set('Authorization', `Bearer ${memberToken}`)
+        .expect(200);
+
+      expect(res.body.creditsDeducted).toBe(0);
+      expect(res.body.wasBilled).toBe(false);
+    });
+
+    it('charges 0 credits when connected duration is under 10 seconds', async () => {
+      // Accept call
+      await request(app)
+        .put(`/api/v1/adult/sext/calls/${testCallId}/accept`)
+        .set('Authorization', `Bearer ${providerToken}`)
+        .expect(200);
+
+      // Modify startedAt to be 5 seconds ago
+      await AdultCall.findByIdAndUpdate(testCallId, { startedAt: new Date(Date.now() - 5000) });
+
+      const res = await request(app)
+        .put(`/api/v1/adult/sext/calls/${testCallId}/end`)
+        .set('Authorization', `Bearer ${memberToken}`)
+        .expect(200);
+
+      expect(res.body.creditsDeducted).toBe(0);
+      expect(res.body.wasBilled).toBe(false);
+    });
+
+    it('charges 0 credits when connected duration is exactly 9 seconds', async () => {
+      await request(app)
+        .put(`/api/v1/adult/sext/calls/${testCallId}/accept`)
+        .set('Authorization', `Bearer ${providerToken}`)
+        .expect(200);
+
+      await AdultCall.findByIdAndUpdate(testCallId, { startedAt: new Date(Date.now() - 9000) });
+
+      const res = await request(app)
+        .put(`/api/v1/adult/sext/calls/${testCallId}/end`)
+        .set('Authorization', `Bearer ${memberToken}`)
+        .expect(200);
+
+      expect(res.body.creditsDeducted).toBe(0);
+      expect(res.body.wasBilled).toBe(false);
+    });
+
+    it('charges for 1 minute when connected duration is 11 seconds', async () => {
+      // Reset member credits to 200 for exact calculations
+      await AdultUser.findByIdAndUpdate(memberId, { credits: 200 });
+
+      await request(app)
+        .put(`/api/v1/adult/sext/calls/${testCallId}/accept`)
+        .set('Authorization', `Bearer ${providerToken}`)
+        .expect(200);
+
+      await AdultCall.findByIdAndUpdate(testCallId, { startedAt: new Date(Date.now() - 11000) });
+
+      const res = await request(app)
+        .put(`/api/v1/adult/sext/calls/${testCallId}/end`)
+        .set('Authorization', `Bearer ${memberToken}`)
+        .expect(200);
+
+      // perMinuteRate is 5, client price with markup is Math.ceil(5 * 1.15) = 6
+      expect(res.body.creditsDeducted).toBe(6);
+      expect(res.body.wasBilled).toBe(true);
+
+      const member = await AdultUser.findById(memberId);
+      expect(member?.credits).toBe(194); // 200 - 6
+    });
+
+    it('charges for 2 minutes when connected duration is 61 seconds', async () => {
+      await AdultUser.findByIdAndUpdate(memberId, { credits: 200 });
+
+      await request(app)
+        .put(`/api/v1/adult/sext/calls/${testCallId}/accept`)
+        .set('Authorization', `Bearer ${providerToken}`)
+        .expect(200);
+
+      await AdultCall.findByIdAndUpdate(testCallId, { startedAt: new Date(Date.now() - 61000) });
+
+      const res = await request(app)
+        .put(`/api/v1/adult/sext/calls/${testCallId}/end`)
+        .set('Authorization', `Bearer ${memberToken}`)
+        .expect(200);
+
+      expect(res.body.creditsDeducted).toBe(12); // 2 minutes * 6 = 12
+      expect(res.body.wasBilled).toBe(true);
+    });
+  });
 });
