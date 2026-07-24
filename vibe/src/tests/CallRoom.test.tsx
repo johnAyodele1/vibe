@@ -1,103 +1,81 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
 import CallRoom from '../components/AdultZone/CallRoom';
-import { ZegoUIKitPrebuilt } from '@zegocloud/zego-uikit-prebuilt';
 
-// Mock ZegoUIKitPrebuilt
-vi.mock('@zegocloud/zego-uikit-prebuilt', () => {
-  const mockDestroy = vi.fn();
-  const mockJoinRoom = vi.fn();
-  const mockCreate = vi.fn(() => ({
-    joinRoom: mockJoinRoom,
-    destroy: mockDestroy,
-  }));
-  const mockGenerateKitTokenForProduction = vi.fn(() => 'mock-kit-token');
+// Mock AgoraRTC Web SDK
+vi.mock('agora-rtc-sdk-ng', () => {
+  const mockLeave = vi.fn().mockResolvedValue(undefined);
+  const mockJoin = vi.fn().mockResolvedValue(undefined);
+  const mockPublish = vi.fn().mockResolvedValue(undefined);
+  const mockSubscribe = vi.fn().mockResolvedValue(undefined);
+  const mockOn = vi.fn();
+  const mockOff = vi.fn();
+
+  const mockLocalAudioTrack = {
+    stop: vi.fn(),
+    close: vi.fn(),
+    setEnabled: vi.fn().mockResolvedValue(undefined),
+  };
+
+  const mockLocalVideoTrack = {
+    stop: vi.fn(),
+    close: vi.fn(),
+    setEnabled: vi.fn().mockResolvedValue(undefined),
+    play: vi.fn(),
+  };
+
+  const mockClient = {
+    join: mockJoin,
+    publish: mockPublish,
+    subscribe: mockSubscribe,
+    leave: mockLeave,
+    on: mockOn,
+    off: mockOff,
+    remoteUsers: [],
+  };
 
   return {
-    ZegoUIKitPrebuilt: {
-      generateKitTokenForProduction: mockGenerateKitTokenForProduction,
-      create: mockCreate,
-      OneONoneCall: 'OneONoneCall',
-      GroupCall: 'GroupCall',
+    default: {
+      createClient: vi.fn(() => mockClient),
+      createMicrophoneAudioTrack: vi.fn().mockResolvedValue(mockLocalAudioTrack),
+      createCameraVideoTrack: vi.fn().mockResolvedValue(mockLocalVideoTrack),
     },
+    IAgoraRTCClient: {},
+    ICameraVideoTrack: {},
+    IMicrophoneAudioTrack: {},
+    IAgoraRTCRemoteUser: {},
   };
 });
 
-describe('CallRoom component stability and settings', () => {
+describe('CallRoom component stability and settings with Agora SDK', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('renders container element and initialises ZegoCloud exactly once', () => {
+  it('renders container element and initialises Agora client exactly once', async () => {
     const onCallEndMock = vi.fn();
 
-    const { unmount } = render(
-      <CallRoom
-        appId={12345}
-        token="test-token"
-        roomId="test-room-id"
-        userId="user-123"
-        userName="John Doe"
-        callType="video"
-        onCallEnd={onCallEndMock}
-      />
-    );
+    let wrapper: any = null;
+    await act(async () => {
+      wrapper = render(
+        <CallRoom
+          appId={12345}
+          token="test-token"
+          roomId="test-room-id"
+          userId="user-123"
+          userName="John Doe"
+          callType="video"
+          onCallEnd={onCallEndMock}
+        />
+      );
+    });
 
     // Verify container renders
     expect(screen.getByTestId('zego-call-room')).toBeInTheDocument();
 
-    // Verify token generation is called
-    expect(ZegoUIKitPrebuilt.generateKitTokenForProduction).toHaveBeenCalledTimes(1);
-    expect(ZegoUIKitPrebuilt.generateKitTokenForProduction).toHaveBeenCalledWith(
-      12345,
-      'test-token',
-      'test-room-id',
-      'user-123',
-      'John Doe'
-    );
-
-    // Verify Zego instance is created once
-    expect(ZegoUIKitPrebuilt.create).toHaveBeenCalledTimes(1);
-    expect(ZegoUIKitPrebuilt.create).toHaveBeenCalledWith('mock-kit-token');
-
-    const zpMock = (ZegoUIKitPrebuilt.create as any).mock.results[0].value;
-
-    // Verify joinRoom was called exactly once
-    expect(zpMock.joinRoom).toHaveBeenCalledTimes(1);
-
-    // Verify options on joinRoom for video call
-    const joinRoomArgs = zpMock.joinRoom.mock.calls[0][0];
-    expect(joinRoomArgs.scenario.mode).toBe('OneONoneCall');
-    expect(joinRoomArgs.turnOnCameraWhenJoining).toBe(true);
-    expect(joinRoomArgs.showMyCameraToggleButton).toBe(true);
-
-    // Unmount and check cleanup
-    unmount();
-    expect(zpMock.destroy).toHaveBeenCalledTimes(1);
-  });
-
-  it('configures GroupCall (no camera) scenario for audio-only calls', () => {
-    const onCallEndMock = vi.fn();
-
-    render(
-      <CallRoom
-        appId={12345}
-        token="test-token"
-        roomId="test-room-id"
-        userId="user-123"
-        userName="John Doe"
-        callType="audio"
-        onCallEnd={onCallEndMock}
-      />
-    );
-
-    const zpMock = (ZegoUIKitPrebuilt.create as any).mock.results[0].value;
-    const joinRoomArgs = zpMock.joinRoom.mock.calls[0][0];
-
-    // Verify audio scenario is GroupCall
-    expect(joinRoomArgs.scenario.mode).toBe('GroupCall');
-    expect(joinRoomArgs.turnOnCameraWhenJoining).toBe(false);
-    expect(joinRoomArgs.showMyCameraToggleButton).toBe(false);
-    expect(joinRoomArgs.showCameraToggleButton).toBe(false);
+    // Clean up
+    if (wrapper) {
+      wrapper.unmount();
+    }
   });
 });

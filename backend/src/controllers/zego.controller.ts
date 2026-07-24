@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { generateZegoToken } from '../services/zego.service';
+import { generateAgoraToken } from '../services/agora.service';
 
 export const getZegoToken = async (req: Request, res: Response) => {
   try {
@@ -20,11 +20,11 @@ export const getZegoToken = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'type must be call, stream, or random' });
     }
 
-    const appIdStr = process.env.ZEGO_APP_ID || '123456';
-    const appId = parseInt(appIdStr, 10);
-    const serverSecret = process.env.ZEGO_SERVER_SECRET || '12345678901234567890123456789012'; // fallback 32 bytes
+    const appId = process.env.AGORA_APP_ID || '123456';
+    const appCertificate = process.env.AGORA_APP_CERTIFICATE || '12345678901234567890123456789012';
 
-    const token = generateZegoToken(appId, userId, serverSecret, 3600, JSON.stringify({ room_id: roomId }));
+    // In Agora, channelName is roomId. Let's use uidOrAccount as the userId string.
+    const token = generateAgoraToken(appId, appCertificate, roomId as string, userId, 'publisher', 3600);
 
     return res.json({
       token,
