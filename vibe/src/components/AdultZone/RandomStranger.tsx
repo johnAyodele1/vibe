@@ -3,7 +3,8 @@ import { io, Socket } from 'socket.io-client';
 import { API_BASE_URL, SOCKET_URL } from '../../config';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { toast } from 'sonner';
-import RandomMatchRoom from './RandomMatchRoom';
+
+const RandomMatchRoom = React.lazy(() => import('./RandomMatchRoom'));
 
 type RandomState = 'idle' | 'queued' | 'matched' | 'ended';
 
@@ -197,15 +198,17 @@ const RandomStranger: React.FC = () => {
 
       {state === 'matched' && matchData && (
         <div className="w-full max-w-4xl bg-black rounded-3xl overflow-hidden shadow-2xl border border-[var(--az-border)] relative">
-          <RandomMatchRoom
-            appId={matchData.appId}
-            token={matchData.token}
-            roomId={matchData.roomId}
-            matchId={matchData.matchId}
-            userId={user?.id || ''}
-            onNext={handleNext}
-            onEnd={handleEnd}
-          />
+          <React.Suspense fallback={<div className="flex items-center justify-center h-96 text-pink-500">Loading stream...</div>}>
+            <RandomMatchRoom
+              appId={matchData.appId}
+              token={matchData.token}
+              roomId={matchData.roomId}
+              matchId={matchData.matchId}
+              userId={user?.id || ''}
+              onNext={handleNext}
+              onEnd={handleEnd}
+            />
+          </React.Suspense>
         </div>
       )}
 

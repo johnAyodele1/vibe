@@ -39,6 +39,12 @@ const CallRoom: React.FC<CallRoomProps> = ({
 
     zp.joinRoom({
       container: containerRef.current,
+      showPreJoinView: false,
+      preJoinViewConfig: {
+        title: '',
+        isVideoEntryDisabled: true,
+      },
+      autoLeaveAfterLeft: true,
       scenario: {
         mode: ZegoUIKitPrebuilt.OneONoneCall,
       },

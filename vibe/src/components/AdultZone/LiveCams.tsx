@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { API_BASE_URL } from '../../config';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { toast } from 'sonner';
-import CamViewerRoom from './CamViewerRoom';
+
+const CamViewerRoom = React.lazy(() => import('./CamViewerRoom'));
 
 const LiveCams: React.FC = () => {
   const { user } = useAdultAuth();
@@ -158,14 +159,16 @@ const LiveCams: React.FC = () => {
       {activeSession && zegoToken && zegoAppId && zegoRoomId && (
         <div className="fixed inset-0 bg-black z-[10000] flex flex-col items-center justify-between text-white">
           <div className="absolute inset-0 bg-[#0a0608] z-0">
-            <CamViewerRoom
-              appId={zegoAppId}
-              token={zegoToken}
-              roomId={zegoRoomId}
-              userId={user?.id || ''}
-              userName={user?.firstName || 'Viewer'}
-              onUserCountUpdate={setViewerCount}
-            />
+            <React.Suspense fallback={<div className="flex items-center justify-center h-full text-pink-500">Loading stream viewer...</div>}>
+              <CamViewerRoom
+                appId={zegoAppId}
+                token={zegoToken}
+                roomId={zegoRoomId}
+                userId={user?.id || ''}
+                userName={user?.firstName || 'Viewer'}
+                onUserCountUpdate={setViewerCount}
+              />
+            </React.Suspense>
           </div>
 
           {/* Floating Close Header & Tips Controls */}

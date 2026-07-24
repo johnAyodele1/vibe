@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { API_BASE_URL } from '../../config';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
-import ProviderStreamRoom from './ProviderStreamRoom';
+
+const ProviderStreamRoom = React.lazy(() => import('./ProviderStreamRoom'));
 
 const ProviderLive: React.FC = () => {
   const navigate = useNavigate();
@@ -147,15 +148,17 @@ const ProviderLive: React.FC = () => {
             <div className="absolute inset-0 flex items-center justify-center">
               {isLive && zegoToken && zegoAppId && zegoRoomId && zegoSessionId ? (
                 <div className="w-full h-full">
-                  <ProviderStreamRoom
-                    appId={zegoAppId}
-                    token={zegoToken}
-                    roomId={zegoRoomId}
-                    userId={user?.id || ''}
-                    userName={user?.firstName || 'Provider'}
-                    sessionId={zegoSessionId}
-                    onEnd={handleEndStream}
-                  />
+                  <React.Suspense fallback={<div className="flex items-center justify-center h-full text-pink-500">Loading stream host...</div>}>
+                    <ProviderStreamRoom
+                      appId={zegoAppId}
+                      token={zegoToken}
+                      roomId={zegoRoomId}
+                      userId={user?.id || ''}
+                      userName={user?.firstName || 'Provider'}
+                      sessionId={zegoSessionId}
+                      onEnd={handleEndStream}
+                    />
+                  </React.Suspense>
                 </div>
               ) : (
                 <div className="text-center space-y-2 pointer-events-none">

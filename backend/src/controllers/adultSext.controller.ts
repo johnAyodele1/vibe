@@ -1093,20 +1093,32 @@ export const initiateCall = async (req: Request, res: Response) => {
       });
     }
 
-    // Setup 60s timeout in background
+    // Setup 45s timeout in background
     setTimeout(async () => {
       const liveCall = await AdultCall.findById(call._id);
       if (liveCall && liveCall.status === 'ringing') {
         liveCall.status = 'missed';
         liveCall.endReason = 'no_answer';
+        liveCall.endedAt = new Date();
+        liveCall.creditsDeducted = 0;
         await liveCall.save();
+
+        const systemMsg = new AdultMessage({
+          conversationId: liveCall.conversationId,
+          senderId: liveCall.callerId,
+          receiverId: liveCall.receiverId,
+          content: encrypt("No answer"),
+          messageType: 'system',
+          systemText: "No answer"
+        });
+        await systemMsg.save();
 
         if (ns) {
           ns.to(`user:${user._id.toString()}`).emit('call:missed', { callId: call._id });
           ns.to(`user:${receiver._id.toString()}`).emit('call:missed', { callId: call._id });
         }
       }
-    }, 60000);
+    }, 45000);
 
     return res.json({
       callId: call._id,
@@ -1181,23 +1193,64 @@ export const declineCall = async (req: Request, res: Response) => {
     call.status = 'declined';
     call.endReason = 'declined';
     call.endedAt = new Date();
+    call.creditsDeducted = 0;
     await call.save();
 
     // Insert system message
-    const declinerName = user.displayName || user.username;
     const systemMsg = new AdultMessage({
       conversationId: call.conversationId,
       senderId: call.receiverId,
       receiverId: call.callerId,
-      content: encrypt(`${declinerName} declined the call`),
+      content: encrypt("Call declined"),
       messageType: 'system',
-      systemText: `${declinerName} declined the call`
+      systemText: "Call declined"
     });
     await systemMsg.save();
 
     const ns = req.app.get('adultNamespace');
     if (ns) {
       ns.to(`user:${call.callerId.toString()}`).emit('call:declined', { callId });
+    }
+
+    return res.json({ callId });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// PUT /api/v1/adult/sext/calls/:callId/missed
+export const missedCall = async (req: Request, res: Response) => {
+  try {
+    const { callId } = req.params;
+    const call = await AdultCall.findById(callId);
+
+    if (!call) {
+      return res.status(404).json({ success: false, error: 'Call session not found' });
+    }
+
+    if (call.status === 'ringing') {
+      call.status = 'missed';
+      call.endReason = 'no_answer';
+      call.endedAt = new Date();
+      call.creditsDeducted = 0;
+      await call.save();
+
+      // Insert system message
+      const systemMsg = new AdultMessage({
+        conversationId: call.conversationId,
+        senderId: call.callerId,
+        receiverId: call.receiverId,
+        content: encrypt("No answer"),
+        messageType: 'system',
+        systemText: "No answer"
+      });
+      await systemMsg.save();
+
+      const ns = req.app.get('adultNamespace');
+      if (ns) {
+        ns.to(`user:${call.callerId.toString()}`).emit('call:missed', { callId });
+        ns.to(`user:${call.receiverId.toString()}`).emit('call:missed', { callId });
+      }
     }
 
     return res.json({ callId });
@@ -1223,28 +1276,36 @@ export const endCall = async (req: Request, res: Response) => {
     }
 
     if (call.status === 'ended') {
-      return res.json({ durationSeconds: call.durationSeconds, creditsDeducted: call.creditsDeducted, callId });
+      return res.json({ durationSeconds: call.durationSeconds, creditsDeducted: call.creditsDeducted, callId, wasBilled: call.creditsDeducted > 0 });
+    }
+
+    const now = new Date();
+    let durationSeconds = 0;
+    if (call.startedAt) {
+      durationSeconds = Math.max(1, Math.floor((now.getTime() - call.startedAt.getTime()) / 1000));
+    }
+
+    const MINIMUM_BILLING_SECONDS = 10;
+    let creditsToDeduct = 0;
+    let providerPayout = 0;
+
+    const finalRate = call.perMinuteRate;
+    const clientPrice = getClientPrice(finalRate);
+
+    const isBilled = call.status === 'active' && call.startedAt && durationSeconds >= MINIMUM_BILLING_SECONDS;
+
+    if (isBilled) {
+      const minutes = Math.max(1, Math.ceil(durationSeconds / 60));
+      creditsToDeduct = minutes * clientPrice;
+      providerPayout = minutes * finalRate;
     }
 
     call.status = 'ended';
-    call.endedAt = new Date();
+    call.endedAt = now;
     call.endedBy = user._id;
     call.endReason = reason;
-
-    let durationSeconds = 0;
-    if (call.startedAt) {
-      durationSeconds = Math.max(1, Math.floor((call.endedAt.getTime() - call.startedAt.getTime()) / 1000));
-    }
     call.durationSeconds = durationSeconds;
-
-    // Billing Logic
-    const minutes = Math.max(1, Math.ceil(durationSeconds / 60));
-    const finalRate = call.perMinuteRate;
-    const clientPrice = getClientPrice(finalRate);
-    const creditsDeducted = minutes * clientPrice;
-    const providerPayout = minutes * finalRate;
-
-    call.creditsDeducted = creditsDeducted;
+    call.creditsDeducted = 0; // Will be set to actual deducted value below
 
     const dbSession = await mongoose.startSession();
     dbSession.startTransaction();
@@ -1253,8 +1314,8 @@ export const endCall = async (req: Request, res: Response) => {
       const callerUser = await AdultUser.findById(call.callerId).session(dbSession);
       const providerUser = await AdultUser.findById(call.receiverId).session(dbSession);
 
-      if (callerUser && providerUser) {
-        const actualDeduct = Math.min(callerUser.credits, creditsDeducted);
+      if (isBilled && callerUser && providerUser) {
+        const actualDeduct = Math.min(callerUser.credits, creditsToDeduct);
         callerUser.credits -= actualDeduct;
         await callerUser.save({ session: dbSession });
 
@@ -1264,13 +1325,15 @@ export const endCall = async (req: Request, res: Response) => {
         }
         await providerUser.save({ session: dbSession });
 
+        call.creditsDeducted = actualDeduct;
+
         // Transactions
         await CreditTransaction.create([{
           userId: callerUser._id,
           type: 'tip',
           amount: -actualDeduct,
           usdAmount: 0,
-          description: `${call.type.charAt(0).toUpperCase() + call.type.slice(1)} call for ${minutes} min`,
+          description: `${call.type.charAt(0).toUpperCase() + call.type.slice(1)} call — ${durationSeconds}s`,
           relatedUserId: providerUser._id,
           status: 'completed',
         }], { session: dbSession });
@@ -1288,14 +1351,19 @@ export const endCall = async (req: Request, res: Response) => {
 
       await call.save({ session: dbSession });
 
-      const durationStr = `${Math.floor(durationSeconds / 60)} min ${durationSeconds % 60} sec`;
+      const durationLabel = durationSeconds >= 60
+        ? `${Math.floor(durationSeconds / 60)} min ${durationSeconds % 60} sec`
+        : `${durationSeconds} sec`;
+
+      const systemText = isBilled ? `Call ended · ${durationLabel}` : `Call not connected`;
+
       const systemMsg = new AdultMessage({
         conversationId: call.conversationId,
         senderId: call.callerId,
         receiverId: call.receiverId,
-        content: encrypt(`Call ended · ${durationStr}`),
+        content: encrypt(systemText),
         messageType: 'system',
-        systemText: `Call ended · ${durationStr}`
+        systemText
       });
       await systemMsg.save({ session: dbSession });
 
@@ -1304,11 +1372,20 @@ export const endCall = async (req: Request, res: Response) => {
       // Emit sockets
       const ns = req.app.get('adultNamespace');
       if (ns) {
-        ns.to(`user:${call.callerId.toString()}`).emit('call:ended', { callId, durationSeconds, creditsDeducted });
-        ns.to(`user:${call.receiverId.toString()}`).emit('call:ended', { callId, durationSeconds, creditsDeducted });
+        if (isBilled && callerUser && providerUser) {
+          ns.to(`user:${call.callerId.toString()}`).emit('wallet:updated', { balance: callerUser.credits });
+          ns.to(`user:${call.receiverId.toString()}`).emit('wallet:updated', { balance: providerUser.credits });
+        }
+        ns.to(`user:${call.callerId.toString()}`).emit('call:ended', { callId, durationSeconds, creditsDeducted: call.creditsDeducted });
+        ns.to(`user:${call.receiverId.toString()}`).emit('call:ended', { callId, durationSeconds, creditsDeducted: call.creditsDeducted });
       }
 
-      return res.json({ durationSeconds, creditsDeducted, callId });
+      return res.json({
+        callId: call._id,
+        durationSeconds,
+        creditsDeducted: call.creditsDeducted,
+        wasBilled: call.creditsDeducted > 0
+      });
     } catch (err: any) {
       await dbSession.abortTransaction();
       return res.status(500).json({ success: false, error: err.message });

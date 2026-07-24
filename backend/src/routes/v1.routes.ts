@@ -51,7 +51,8 @@ import {
   acceptCall,
   declineCall,
   endCall,
-  getCallHistory
+  getCallHistory,
+  missedCall
 } from '../controllers/adultSext.controller';
 import { getRooms, createRoom as createAdultRoom, getRoom as getAdultRoom, joinRoom as joinAdultRoom, leaveRoom as leaveAdultRoom, getRoomMembers, getRoomLeaderboard, getThreads, createThread, getThread, reactThread, pinThread, lockThread, getMessages as getAdultRoomMessages, sendMessage as sendAdultRoomMessage, reactMessage as reactAdultRoomMessage, deleteMessage as deleteAdultRoomMessage, getReplies, postReply, reactReply, getActivePolls, createPoll, votePoll, reportRoom, muteUser, kickUser } from '../controllers/adultRooms.controller';
 
@@ -114,6 +115,7 @@ router.post('/adult/sext/conversations/:conversationId/send-gift', verifyAdultJW
 router.post('/adult/sext/calls/initiate', verifyAdultJWT, initiateCall);
 router.put('/adult/sext/calls/:callId/accept', verifyAdultJWT, acceptCall);
 router.put('/adult/sext/calls/:callId/decline', verifyAdultJWT, declineCall);
+router.put('/adult/sext/calls/:callId/missed', verifyAdultJWT, missedCall);
 router.put('/adult/sext/calls/:callId/end', verifyAdultJWT, endCall);
 router.get('/adult/sext/calls/history', verifyAdultJWT, getCallHistory);
 
