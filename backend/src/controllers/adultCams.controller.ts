@@ -1,9 +1,7 @@
 import { Request, Response } from 'express';
 import CamSession from '../models/CamSession';
 import CamViewer from '../models/CamViewer';
-import CamGoal from '../models/CamGoal';
-import PrivateShowRequest from '../models/PrivateShowRequest';
-import { generateStreamKey, buildIngestUrl, buildPlaybackUrl } from '../services/mediaServerService';
+import { generateZegoToken } from '../services/zego.service';
 
 export const getCams = async (req: Request, res: Response) => {
   const { page = 1, limit = 20, status = 'live' } = req.query;
@@ -43,19 +41,25 @@ export const startStream = async (req: Request, res: Response) => {
   if (active) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Already live' } });
 
   const { title, tags, sessionType, privateShowRate, resolution, chatEnabled, recordingEnabled } = req.body;
-  const streamKey = generateStreamKey(provider._id.toString());
+  const roomId = `cam_${provider._id.toString()}_${Date.now()}`;
+
+  const appIdStr = process.env.ZEGO_APP_ID || '123456';
+  const appId = parseInt(appIdStr, 10);
+  const serverSecret = process.env.ZEGO_SERVER_SECRET || '12345678901234567890123456789012';
+
+  const token = generateZegoToken(appId, provider._id.toString(), serverSecret, 7200, JSON.stringify({ room_id: roomId }));
 
   const session = new CamSession({
     providerId: provider._id,
-    title,
+    title: title || 'Live Cam',
     tags,
     sessionType,
     privateShowRate,
     resolution,
     chatEnabled,
     recordingEnabled,
-    streamKey,
-    streamPlaybackUrl: buildPlaybackUrl(streamKey),
+    streamKey: roomId, // roomId is stored in streamKey
+    streamPlaybackUrl: roomId,
     status: 'live',
     startedAt: new Date(),
   });
@@ -66,9 +70,10 @@ export const startStream = async (req: Request, res: Response) => {
     success: true,
     data: {
       sessionId: session._id,
-      streamKey,
-      streamIngestUrl: buildIngestUrl(streamKey),
-      streamPlaybackUrl: session.streamPlaybackUrl,
+      roomId,
+      streamKey: roomId,
+      token,
+      appId,
     },
   });
 };
@@ -94,8 +99,6 @@ export const joinStream = async (req: Request, res: Response) => {
     const session = await CamSession.findById(sessionId);
     if (!session || session.status !== 'live') return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Session not live' } });
 
-    // Check access control (VIP/Premium) here...
-
     await CamViewer.findOneAndUpdate(
         { sessionId, userId: req.adultUser?._id },
         { joinedAt: new Date() },
@@ -105,4 +108,29 @@ export const joinStream = async (req: Request, res: Response) => {
     await CamSession.findByIdAndUpdate(sessionId, { $inc: { totalViewerCount: 1 } });
 
     res.json({ success: true, data: { playbackUrl: session.streamPlaybackUrl } });
+};
+
+export const getCamViewerToken = async (req: Request, res: Response) => {
+  const { sessionId } = req.params;
+  const user = req.adultUser;
+  if (!user) return res.status(401).json({ error: 'Auth required' });
+  const userId = user._id.toString();
+
+  const session = await CamSession.findById(sessionId);
+  if (!session || session.status !== 'live') {
+    return res.status(404).json({ error: 'Stream not found or has ended' });
+  }
+
+  const appIdStr = process.env.ZEGO_APP_ID || '123456';
+  const appId = parseInt(appIdStr, 10);
+  const serverSecret = process.env.ZEGO_SERVER_SECRET || '12345678901234567890123456789012';
+
+  const roomId = session.streamKey;
+  const token = generateZegoToken(appId, userId, serverSecret, 3600, JSON.stringify({ room_id: roomId }));
+
+  return res.json({
+    token,
+    appId,
+    roomId,
+  });
 };

@@ -1,19 +1,140 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { io, Socket } from 'socket.io-client';
+import { API_BASE_URL, SOCKET_URL } from '../../config';
+import { useAdultAuth } from '../../contexts/AdultAuthContext';
+import { toast } from 'sonner';
+import RandomMatchRoom from './RandomMatchRoom';
+
+type RandomState = 'idle' | 'queued' | 'matched' | 'ended';
 
 const RandomStranger: React.FC = () => {
-  const [isMatching, setIsMatching] = useState(false);
+  const { user } = useAdultAuth();
+  const token = localStorage.getItem('adultAccessToken') || '';
 
-  const startMatching = () => {
-    setIsMatching(true);
-    // Simulate matching delay
-    setTimeout(() => {
-      // In a real app, this would redirect or show the chat
-    }, 3000);
+  const [state, setState] = useState<RandomState>('idle');
+  const [matchData, setMatchData] = useState<any>(null);
+
+  const socketRef = useRef<Socket | null>(null);
+
+  const getHeaders = () => ({
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  });
+
+  // Listen for socket match events
+  useEffect(() => {
+    if (!token) return;
+
+    const s = io(`${SOCKET_URL}/adult`, {
+      auth: { token }
+    });
+
+    s.on('connect', () => {
+      console.log('Random Match Socket connected:', s.id);
+    });
+
+    s.on('random:match_found', (data: any) => {
+      console.log('Random Match found:', data);
+      setMatchData(data);
+      setState('matched');
+      toast.success('Stranger matched! Connecting video...');
+    });
+
+    s.on('random:partner_left', () => {
+      toast.info('Stranger disconnected. Re-queuing...');
+      handleNext();
+    });
+
+    socketRef.current = s;
+
+    return () => {
+      s.disconnect();
+    };
+  }, [token]);
+
+  const handleStart = async () => {
+    if (!token) {
+      toast.error('Authentication required');
+      return;
+    }
+    setState('queued');
+    try {
+      const res = await fetch(`${API_BASE_URL}/v1/adult/random/queue`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ mode: 'video' })
+      });
+      const data = await res.json();
+      if (data.success && data.data && data.data.status === 'matched') {
+        // Matched immediately
+        setMatchData(data.data);
+        setState('matched');
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to join matching queue');
+      setState('idle');
+    }
+  };
+
+  const handleNext = async () => {
+    if (matchData) {
+      try {
+        await fetch(`${API_BASE_URL}/v1/adult/random/${matchData.matchId}/next`, {
+          method: 'POST',
+          headers: getHeaders()
+        });
+      } catch (err) {
+        console.error(err);
+      }
+    }
+    setMatchData(null);
+    setState('queued');
+    // Re-queue
+    try {
+      const res = await fetch(`${API_BASE_URL}/v1/adult/random/queue`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ mode: 'video' })
+      });
+      const data = await res.json();
+      if (data.success && data.data && data.data.status === 'matched') {
+        setMatchData(data.data);
+        setState('matched');
+      }
+    } catch (err) {
+      console.error(err);
+      setState('idle');
+    }
+  };
+
+  const handleEnd = async () => {
+    if (matchData) {
+      try {
+        await fetch(`${API_BASE_URL}/v1/adult/random/${matchData.matchId}/end`, {
+          method: 'POST',
+          headers: getHeaders()
+        });
+      } catch (err) {
+        console.error(err);
+      }
+    } else {
+      try {
+        await fetch(`${API_BASE_URL}/v1/adult/random/queue`, {
+          method: 'DELETE',
+          headers: getHeaders()
+        });
+      } catch (err) {
+        console.error(err);
+      }
+    }
+    setMatchData(null);
+    setState('idle');
   };
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[calc(100vh-160px)] px-4 py-20 text-center">
-      {!isMatching ? (
+      {state === 'idle' && (
         <div className="max-w-md w-full">
           <div className="w-24 h-24 bg-[var(--az-bg-secondary)] border-2 border-[var(--az-accent-primary)] rounded-full flex items-center justify-center text-4xl mb-8 mx-auto shadow-[0_0_30px_var(--az-glow)]">
             🎲
@@ -44,24 +165,18 @@ const RandomStranger: React.FC = () => {
                 ))}
               </div>
             </div>
-
-            <div>
-              <div className="flex justify-between items-center mb-3">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-muted)]">Age Range:</label>
-                <span className="text-[10px] font-mono text-[var(--az-accent-gold)]">18 — 45+</span>
-              </div>
-              <input type="range" className="w-full h-1 bg-[var(--az-bg-tertiary)] rounded-lg appearance-none cursor-pointer accent-[var(--az-accent-primary)]" />
-            </div>
           </div>
 
           <button
-            onClick={startMatching}
+            onClick={handleStart}
             className="w-full py-5 bg-[var(--az-accent-primary)] text-white font-bold uppercase tracking-[0.2em] rounded-full shadow-[0_0_25px_var(--az-glow)] hover:scale-105 active:scale-95 transition-all"
           >
             START MATCHING
           </button>
         </div>
-      ) : (
+      )}
+
+      {state === 'queued' && (
         <div className="flex flex-col items-center">
           <div className="relative w-32 h-32 mb-10">
             <div className="absolute inset-0 border-4 border-[var(--az-accent-primary)] border-t-transparent rounded-full animate-spin" />
@@ -72,11 +187,25 @@ const RandomStranger: React.FC = () => {
           <p className="text-sm text-[var(--az-text-secondary)] font-serif italic">The best things are worth the wait.</p>
 
           <button
-            onClick={() => setIsMatching(false)}
+            onClick={handleEnd}
             className="mt-12 text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-muted)] hover:text-[var(--az-text-secondary)] underline"
           >
             Cancel and Go Back
           </button>
+        </div>
+      )}
+
+      {state === 'matched' && matchData && (
+        <div className="w-full max-w-4xl bg-black rounded-3xl overflow-hidden shadow-2xl border border-[var(--az-border)] relative">
+          <RandomMatchRoom
+            appId={matchData.appId}
+            token={matchData.token}
+            roomId={matchData.roomId}
+            matchId={matchData.matchId}
+            userId={user?.id || ''}
+            onNext={handleNext}
+            onEnd={handleEnd}
+          />
         </div>
       )}
 

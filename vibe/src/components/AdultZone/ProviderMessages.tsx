@@ -4,6 +4,7 @@ import { API_BASE_URL, SOCKET_URL } from '../../config';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { toast } from 'sonner';
 import { useUIStore } from './useUIStore';
+import CallRoom from './CallRoom';
 
 const FALLBACK_AVATAR = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=150&auto=format&fit=crop";
 
@@ -161,11 +162,10 @@ const ProviderMessages: React.FC = () => {
   const [callRate, setCallRate] = useState<number>(0);
   const [callSummary, setCallSummary] = useState<{ duration: string; cost: number } | null>(null);
 
-  // WebRTC refs
-  const localVideoRef = useRef<HTMLVideoElement | null>(null);
-  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
-  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
-  const localStreamRef = useRef<MediaStream | null>(null);
+  // Zego states
+  const [zegoToken, setZegoToken] = useState<string | null>(null);
+  const [zegoAppId, setZegoAppId] = useState<number | null>(null);
+  const [zegoRoomId, setZegoRoomId] = useState<string | null>(null);
 
   // UI responsive states
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list');
@@ -361,9 +361,8 @@ const ProviderMessages: React.FC = () => {
     });
 
     s.on('call:accepted', async (payload: { callId: string; webrtcRoomId: string }) => {
-      setCallState('active');
       setCallDuration(0);
-      initializeWebRTC(payload.webrtcRoomId);
+      await fetchZegoCallToken(payload.webrtcRoomId);
     });
 
     s.on('call:ended', (payload: { callId: string; durationSeconds: number; creditsDeducted: number }) => {
@@ -380,20 +379,7 @@ const ProviderMessages: React.FC = () => {
       toast.info('Call missed');
     });
 
-    s.on('call:offer', async (data: { offer: any }) => {
-      if (peerConnectionRef.current) {
-        await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.offer));
-        const answer = await peerConnectionRef.current.createAnswer();
-        await peerConnectionRef.current.setLocalDescription(answer);
-        s.emit('call:answer', { callId: activeCallId, answer });
-      }
-    });
 
-    s.on('call:ice-candidate', async (data: { candidate: any }) => {
-      if (peerConnectionRef.current) {
-        await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(data.candidate));
-      }
-    });
 
     socketRef.current = s;
 
@@ -441,51 +427,31 @@ const ProviderMessages: React.FC = () => {
     };
   }, [callState]);
 
-  // WebRTC helpers
-  const initializeWebRTC = async (webrtcRoomId: string) => {
-    console.log("Initializing WebRTC feed with room ID:", webrtcRoomId);
+  // Zego Token & Signaling Helpers
+  const fetchZegoCallToken = async (roomId: string) => {
     try {
-      const pc = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      const res = await fetch(`${API_BASE_URL}/v1/adult/zego/token?roomId=${roomId}&type=call`, {
+        headers: getHeaders()
       });
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: callType === 'video',
-        audio: true
-      });
-
-      localStreamRef.current = stream;
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = stream;
+      const data = await res.json();
+      if (data.token) {
+        setZegoToken(data.token);
+        setZegoAppId(data.appId);
+        setZegoRoomId(roomId);
+        setCallState('active');
+      } else {
+        toast.error('Failed to get call token');
       }
-
-      stream.getTracks().forEach(track => pc.addTrack(track, stream));
-
-      pc.ontrack = (event) => {
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = event.streams[0];
-        }
-      };
-
-      pc.onicecandidate = (event) => {
-        if (event.candidate && socketRef.current) {
-          socketRef.current.emit('call:ice-candidate', { callId: activeCallId, candidate: event.candidate });
-        }
-      };
-
-      peerConnectionRef.current = pc;
-      socketRef.current?.emit('call:join', { callId: activeCallId });
-    } catch (err: any) {
-      console.error(err);
-      toast.error('Failed to establish media connection: ' + err.message);
+    } catch (err) {
+      console.error("Failed to fetch Zego token", err);
+      toast.error("Failed to connect to call server");
     }
   };
 
   const cleanupWebRTC = () => {
-    localStreamRef.current?.getTracks().forEach(track => track.stop());
-    peerConnectionRef.current?.close();
-    peerConnectionRef.current = null;
-    localStreamRef.current = null;
+    setZegoToken(null);
+    setZegoAppId(null);
+    setZegoRoomId(null);
   };
 
   const handleAcceptCall = async () => {
@@ -497,8 +463,7 @@ const ProviderMessages: React.FC = () => {
       });
       const data = await res.json();
       if (data.webrtcRoomId) {
-        setCallState('active');
-        initializeWebRTC(data.webrtcRoomId);
+        await fetchZegoCallToken(data.webrtcRoomId);
       }
     } catch (err) {
       console.error(err);
@@ -2033,35 +1998,22 @@ const ProviderMessages: React.FC = () => {
             </div>
           )}
 
-          {/* Active Call Layout */}
+          {/* Active Call Layout with ZegoCloud WebRTC */}
           {callState === 'active' && (
             <div className="relative w-full h-full flex flex-col justify-between">
-              <div className="absolute inset-0 bg-[#0f070c] flex items-center justify-center z-0">
-                {callType === 'video' ? (
-                  <video
-                    ref={remoteVideoRef}
-                    autoPlay
-                    playsInline
-                    className="w-full h-full object-cover"
+              <div className="absolute inset-0 bg-[#0a0608] z-0">
+                {zegoToken && zegoAppId && zegoRoomId && (
+                  <CallRoom
+                    appId={zegoAppId}
+                    token={zegoToken}
+                    roomId={zegoRoomId}
+                    userId={user?.id || ''}
+                    userName={user?.firstName || 'User'}
+                    callType={callType}
+                    onCallEnd={handleEndCall}
                   />
-                ) : (
-                  <div className="flex flex-col items-center">
-                    <img src={selectedConv?.otherUser?.avatarUrl || FALLBACK_AVATAR} className="w-36 h-36 rounded-full object-cover border-4 border-pink-500 animate-pulse" />
-                  </div>
                 )}
               </div>
-
-              {callType === 'video' && (
-                <div className="absolute top-4 right-4 w-28 h-36 bg-black border-2 border-pink-500 rounded-xl overflow-hidden z-20">
-                  <video
-                    ref={localVideoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-              )}
 
               <div className="z-10 flex justify-between items-center bg-black/40 backdrop-blur-md p-4 rounded-xl mt-4">
                 <div className="text-left">
