@@ -328,7 +328,7 @@ const PrivateSext: React.FC = () => {
       setCallState('ringing');
     });
 
-    s.on('call:accepted', async (payload: { callId: string; webrtcRoomId: string }) => {
+    s.on('call:accepted', async () => {
       setCallDuration(0);
       setCallState('active');
     });
@@ -415,27 +415,6 @@ const PrivateSext: React.FC = () => {
       if (interval) clearInterval(interval);
     };
   }, [callState]);
-
-  // Zego Token & Signaling Helpers
-  const fetchZegoCallToken = async (roomId: string) => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/v1/adult/zego/token?roomId=${roomId}&type=call`, {
-        headers: getHeaders()
-      });
-      const data = await res.json();
-      if (data.token) {
-        setZegoToken(data.token);
-        setZegoAppId(data.appId);
-        setZegoRoomId(roomId);
-        setCallState('active');
-      } else {
-        toast.error('Failed to get call token');
-      }
-    } catch (err) {
-      console.error("Failed to fetch Zego token", err);
-      toast.error("Failed to connect to call server");
-    }
-  };
 
   const cleanupWebRTC = () => {
     setZegoToken(null);
@@ -1713,7 +1692,7 @@ const PrivateSext: React.FC = () => {
         <div className="fixed inset-0 bg-black z-[10000] flex flex-col items-center justify-between p-8 text-center text-white">
 
           {/* Incoming Call Layout */}
-          {callState === 'incoming' && (
+          {callState === 'ringing' && (
             <div className="flex-grow flex flex-col items-center justify-center">
               <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-pink-500 animate-pulse mb-6">
                 <img src={selectedConv?.otherUser?.avatarUrl || FALLBACK_AVATAR} className="w-full h-full object-cover" />
@@ -1745,7 +1724,7 @@ const PrivateSext: React.FC = () => {
           )}
 
           {/* Outgoing Call Layout */}
-          {callState === 'outgoing' && (
+          {callState === 'calling' && (
             <div className="flex-grow flex flex-col items-center justify-center">
               <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-pink-500 mb-6">
                 <img src={selectedConv?.otherUser?.avatarUrl || FALLBACK_AVATAR} className="w-full h-full object-cover animate-pulse" />
