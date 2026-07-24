@@ -884,9 +884,38 @@ const PrivateSext: React.FC = () => {
     }
   };
 
+  const checkMediaPermissions = async (type: 'video' | 'audio') => {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      return true;
+    }
+    try {
+      const constraints = {
+        audio: true,
+        video: type === 'video',
+      };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      stream.getTracks().forEach(t => t.stop());
+      return true;
+    } catch (err) {
+      if ((err as DOMException).name === 'NotAllowedError') {
+        toast.error(
+          type === 'video'
+            ? 'Camera and microphone access denied. Please allow permissions and try again.'
+            : 'Microphone access denied. Please allow permissions and try again.'
+        );
+      } else {
+        toast.error('Could not access media devices. Please check your browser settings.');
+      }
+      return false;
+    }
+  };
+
   // Audio / Video call trigger
   const handleInitiateCall = async (type: 'video' | 'audio') => {
     if (!selectedConv) return;
+    const hasPermissions = await checkMediaPermissions(type);
+    if (!hasPermissions) return;
+
     setCallType(type);
     setCallState('calling');
 
@@ -930,6 +959,11 @@ const PrivateSext: React.FC = () => {
 
   const handleAcceptCall = async () => {
     if (!activeCallId || !callData) return;
+    const hasPermissions = await checkMediaPermissions(callType);
+    if (!hasPermissions) {
+      await handleDeclineCall();
+      return;
+    }
     setAcceptLoading(true);
     try {
       const res = await fetch(`${API_BASE_URL}/v1/adult/sext/calls/${activeCallId}/accept`, {
@@ -1692,7 +1726,9 @@ const PrivateSext: React.FC = () => {
 
       {/* FULL CALL TAKE-OVER OVERLAY */}
       {callState !== 'idle' && (
-        <div className="fixed inset-0 bg-black z-[10000] flex flex-col items-center justify-between p-8 text-center text-white">
+        <div className={`fixed inset-0 bg-black z-[10000] flex flex-col text-center text-white ${
+          callState === 'active' ? 'p-0 justify-stretch items-stretch' : 'items-center justify-between p-8'
+        }`}>
 
           {/* Incoming Call Layout */}
           {callState === 'ringing' && (
@@ -1746,7 +1782,7 @@ const PrivateSext: React.FC = () => {
 
           {/* Active Call Layout with ZegoCloud WebRTC */}
           {callState === 'active' && (
-            <div className="relative w-full h-full flex flex-col justify-between">
+            <div className="relative w-full h-full bg-[#0a0608]">
 
               {/* Fullscreen Zego room */}
               <div className="absolute inset-0 bg-[#0a0608] z-0">
@@ -1766,29 +1802,52 @@ const PrivateSext: React.FC = () => {
                 )}
               </div>
 
-              {/* Floating Top Info bar */}
-              <div className="z-10 flex justify-between items-center bg-black/40 backdrop-blur-md p-4 rounded-xl mt-4">
-                <div className="text-left">
-                  <h4 className="font-bold text-sm">{selectedConv?.otherUser?.displayName}</h4>
-                  <span className="text-[10px] text-yellow-400">💎 Live Credit Ticker</span>
-                </div>
-                <div className="text-right">
-                  <span className="text-lg font-mono block">
-                    {Math.floor(callDuration / 60).toString().padStart(2, '0')}:
-                    {(callDuration % 60).toString().padStart(2, '0')}
-                  </span>
-                  <span className="text-[10px] text-pink-300">Wallet balance: {creditsRemaining} 💎</span>
-                </div>
+              {/* Credit ticker — top-right corner, does not interfere with ZegoCloud */}
+              <div
+                className="call-credit-ticker"
+                style={{
+                  position: 'absolute',
+                  top: '16px',
+                  right: '16px',
+                  zIndex: 1001,             /* above ZegoCloud UI */
+                  pointerEvents: 'none',      /* clicks pass through to ZegoCloud */
+                  background: 'rgba(10, 6, 8, 0.75)',
+                  backdropFilter: 'blur(8px)',
+                  border: '1px solid rgba(201, 168, 76, 0.4)',
+                  borderRadius: '100px',
+                  padding: '6px 14px',
+                  font: "600 14px/1 'JetBrains Mono', monospace",
+                  color: '#c9a84c',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
+              >
+                <span>💎 {creditsRemaining.toLocaleString()}</span>
+                <span style={{ borderLeft: '1px solid rgba(201,168,76,0.3)', paddingLeft: '8px' }}>
+                  {Math.floor(callDuration / 60).toString().padStart(2, '0')}:
+                  {(callDuration % 60).toString().padStart(2, '0')}
+                </span>
               </div>
 
-              {/* Floating Bottom Control bar */}
-              <div className="z-10 flex justify-center gap-6 mb-4">
-                <button
-                  onClick={handleEndCall}
-                  className="w-16 h-16 bg-red-600 hover:bg-red-700 text-white text-2xl rounded-full flex items-center justify-center hover:scale-110 active:scale-95 transition-all shadow-lg shadow-red-500/20"
-                >
-                  🔴
-                </button>
+              {/* Caller name overlay — top-left corner */}
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '16px',
+                  left: '16px',
+                  zIndex: 1001,
+                  pointerEvents: 'none',
+                  background: 'rgba(10, 6, 8, 0.75)',
+                  backdropFilter: 'blur(8px)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '100px',
+                  padding: '6px 14px',
+                  fontSize: '12px',
+                  color: '#fff',
+                }}
+              >
+                {selectedConv?.otherUser?.displayName}
               </div>
 
             </div>
