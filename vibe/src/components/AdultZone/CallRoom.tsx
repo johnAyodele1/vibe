@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, memo } from 'react';
 import { ZegoUIKitPrebuilt } from '@zegocloud/zego-uikit-prebuilt';
 
 interface CallRoomProps {
@@ -21,9 +21,26 @@ const CallRoom: React.FC<CallRoomProps> = ({
   onCallEnd,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const zpRef = useRef<any>(null); // holds the ZegoCloud instance
+  const hasJoined = useRef(false); // prevents double-join
 
   useEffect(() => {
+    // GUARD: if already joined or container not ready, do nothing
+    if (hasJoined.current) return;
     if (!containerRef.current) return;
+
+    // GUARD: validate all required values before touching ZegoCloud
+    if (!appId || !token || !roomId || !userId) {
+      console.error('CallRoom: missing required props', {
+        appId: !!appId,
+        token: !!token,
+        roomId: !!roomId,
+        userId: !!userId,
+      });
+      return;
+    }
+
+    hasJoined.current = true;
 
     // Use ZegoCloud production kit token generation
     const kitToken = ZegoUIKitPrebuilt.generateKitTokenForProduction(
@@ -31,10 +48,12 @@ const CallRoom: React.FC<CallRoomProps> = ({
       token,
       roomId,
       userId,
-      userName
+      userName || 'User'
     );
 
     const zp = ZegoUIKitPrebuilt.create(kitToken);
+    zpRef.current = zp;
+
     const startTime = Date.now();
 
     zp.joinRoom({
@@ -46,11 +65,16 @@ const CallRoom: React.FC<CallRoomProps> = ({
       } as any,
       autoLeaveAfterLeft: true,
       scenario: {
-        mode: ZegoUIKitPrebuilt.OneONoneCall,
+        mode: callType === 'video'
+          ? ZegoUIKitPrebuilt.OneONoneCall
+          : ZegoUIKitPrebuilt.GroupCall,
       },
+      // CAMERA: only on for video calls
       turnOnCameraWhenJoining: callType === 'video',
-      turnOnMicrophoneWhenJoining: true,
       showMyCameraToggleButton: callType === 'video',
+      showCameraToggleButton: callType === 'video',
+
+      turnOnMicrophoneWhenJoining: true,
       showMyMicrophoneToggleButton: true,
       showAudioVideoSettingsButton: false,
       showScreenSharingButton: false,
@@ -69,9 +93,17 @@ const CallRoom: React.FC<CallRoomProps> = ({
     } as any);
 
     return () => {
-      zp.destroy();
+      if (zpRef.current) {
+        try {
+          zpRef.current.destroy();
+        } catch (e) {
+          // Ignore destroy errors
+        }
+        zpRef.current = null;
+        hasJoined.current = false;
+      }
     };
-  }, [appId, token, roomId, userId, userName, callType, onCallEnd]);
+  }, []); // Run ONCE on mount and cleanup on unmount
 
   return (
     <div
@@ -82,4 +114,4 @@ const CallRoom: React.FC<CallRoomProps> = ({
   );
 };
 
-export default CallRoom;
+export default memo(CallRoom);

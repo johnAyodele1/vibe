@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { API_BASE_URL, SOCKET_URL } from '../../config';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
@@ -494,12 +494,15 @@ const ProviderMessages: React.FC = () => {
     }
   };
 
-  const handleEndCall = async () => {
+  const handleEndCall = useCallback(async () => {
     if (!activeCallId) return;
     try {
       const res = await fetch(`${API_BASE_URL}/v1/adult/sext/calls/${activeCallId}/end`, {
         method: 'PUT',
-        headers: getHeaders(),
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify({ reason: 'hung_up' })
       });
       const data = await res.json();
@@ -514,7 +517,7 @@ const ProviderMessages: React.FC = () => {
       cleanupWebRTC();
       setCallState('idle');
     }
-  };
+  }, [activeCallId, token]);
 
   // Send Text Message
   const handleSendText = async () => {
@@ -2025,14 +2028,15 @@ const ProviderMessages: React.FC = () => {
           {callState === 'active' && (
             <div className="relative w-full h-full flex flex-col justify-between">
               <div className="absolute inset-0 bg-[#0a0608] z-0">
-                {zegoToken && zegoAppId && zegoRoomId && (
+                {callState === 'active' && zegoToken && zegoAppId && zegoRoomId && user?.id && (
                   <React.Suspense fallback={<div className="flex items-center justify-center h-full text-pink-500">Loading call...</div>}>
                     <CallRoom
+                      key={zegoRoomId}
                       appId={zegoAppId}
                       token={zegoToken}
                       roomId={zegoRoomId}
-                      userId={user?.id || ''}
-                      userName={user?.firstName || 'User'}
+                      userId={user.id}
+                      userName={user.firstName || 'User'}
                       callType={callType}
                       onCallEnd={handleEndCall}
                     />
