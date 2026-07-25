@@ -2072,6 +2072,8 @@ const ProviderMessages: React.FC = () => {
                       userName={user.firstName || 'User'}
                       callType={callType}
                       onCallEnd={handleEndCall}
+                      partnerName={selectedConv?.otherUser?.displayName}
+                      partnerAvatar={selectedConv?.otherUser?.avatarUrl}
                     />
                   </React.Suspense>
                 )}
