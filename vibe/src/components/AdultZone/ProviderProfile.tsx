@@ -9,6 +9,7 @@ const ProviderProfile: React.FC = () => {
   const token = localStorage.getItem('adultAccessToken');
 
   const [activeTab, setActiveTab] = useState('basic');
+  const [isLoading, setIsLoading] = useState(true);
   const [profileData, setProfileData] = useState({
     bio: '',
     gender: 'female',
@@ -55,6 +56,7 @@ const ProviderProfile: React.FC = () => {
     }
     const loadProfile = async () => {
       try {
+        setIsLoading(true);
         const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -92,10 +94,23 @@ const ProviderProfile: React.FC = () => {
         }
       } catch (err) {
         console.error('Failed to pre-populate profile editor:', err);
+      } finally {
+        setIsLoading(false);
       }
     };
     loadProfile();
   }, [token, navigate]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[var(--az-bg-primary)] text-white flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="w-12 h-12 border-4 border-[var(--az-accent-gold)] border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="text-sm font-bold uppercase tracking-widest text-[var(--az-text-secondary)]">Loading Profile Editor...</p>
+        </div>
+      </div>
+    );
+  }
 
   const toggleService = (id: string) => {
     setServices(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
