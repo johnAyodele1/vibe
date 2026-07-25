@@ -363,7 +363,8 @@ const HookUpTonight: React.FC = () => {
     </div>
   );
 
-  const hasLocationFilter = !!(location.country || location.state || location.city);
+  const isLoggedIn = !!localStorage.getItem('adultAccessToken');
+  const hasLocationFilter = !isLoggedIn || !!(location.country || location.state || location.city);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">

@@ -146,8 +146,7 @@ export const joinStream = async (req: Request, res: Response) => {
 export const getCamViewerToken = async (req: Request, res: Response) => {
   const { sessionId } = req.params;
   const user = req.adultUser;
-  if (!user) return res.status(401).json({ error: 'Auth required' });
-  const userId = user._id.toString();
+  const userId = user ? user._id.toString() : `guest_${Math.floor(Math.random() * 100000)}`;
 
   const session = await CamSession.findById(sessionId);
   if (!session || session.status !== 'live') {

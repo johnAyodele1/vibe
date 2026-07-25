@@ -18,7 +18,7 @@ import {
   startStreamSchema
 } from '../schemas/adult.schemas';
 import { authLimiter, loginLimiter } from '../middleware/rateLimiter';
-import { verifyAdultJWT, requireAdultRole, requireAdultAge } from '../middleware/adultAuth';
+import { verifyAdultJWT, optionalAdultJWT, requireAdultRole, requireAdultAge } from '../middleware/adultAuth';
 import * as providerController from '../controllers/adultProviders.controller';
 import * as creditsController from '../controllers/adultCredits.controller';
 import { getRooms, createRoom, joinRoom } from '../controllers/adultRooms.controller';
@@ -49,7 +49,7 @@ router.post('/credits/tip', verifyAdultJWT, requireAdultAge, validateRequest(tip
 router.post('/credits/subscribe', verifyAdultJWT, validateRequest(subscribeSchema), creditsController.subscribeToTier);
 
 // Rooms
-router.get('/rooms', verifyAdultJWT, getRooms);
+router.get('/rooms', optionalAdultJWT, getRooms);
 router.post('/rooms', verifyAdultJWT, requireAdultAge, validateRequest(createRoomSchema), createRoom);
 router.post('/rooms/:id/join', verifyAdultJWT, requireAdultAge, joinRoom);
 
@@ -83,7 +83,7 @@ router.get('/cams', camsController.getCams);
 router.post('/cams/stream/start', verifyAdultJWT, requireAdultRole('provider'), validateRequest(startStreamSchema), camsController.startStream);
 router.patch('/cams/stream/:sessionId/end', verifyAdultJWT, camsController.endStream);
 router.post('/cams/:sessionId/join', verifyAdultJWT, requireAdultAge, camsController.joinStream);
-router.get('/cams/:sessionId/token', verifyAdultJWT, camsController.getCamViewerToken);
+router.get('/cams/:sessionId/token', optionalAdultJWT, camsController.getCamViewerToken);
 
 // Uploads
 router.post('/upload/photo', verifyAdultJWT, upload.single('photo'), uploadController.uploadAdultPhoto);

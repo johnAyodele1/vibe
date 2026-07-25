@@ -49,6 +49,7 @@ const NaughtyRooms: React.FC = () => {
 
   const handleCreateRoomClick = () => {
     if (!currentUser) {
+      window.dispatchEvent(new CustomEvent('open-adult-auth-modal'));
       toast.error('You must be logged in to create a room');
       return;
     }
@@ -174,15 +175,21 @@ const NaughtyRooms: React.FC = () => {
   // Join Room Redirect / Trigger
   // --------------------------------------------------------------------------
   const handleJoinEnterRoom = async (room: any) => {
-    if (!currentUser) {
-      toast.error('You must be logged in to join Naughty Rooms');
-      return;
+    if (room.requiresSubscription) {
+      if (!currentUser) {
+        window.dispatchEvent(new CustomEvent('open-adult-auth-modal'));
+        toast.error('You must be logged in to access VIP rooms');
+        return;
+      }
+      if (currentUser.role === 'user' && (!currentUser.credits || currentUser.credits < 10)) {
+        toast.error('Gold+ subscription required to enter this VIP room! Please upgrade.');
+        return;
+      }
     }
 
-    // VIP upgrade trigger
-    if (room.requiresSubscription && currentUser.role === 'user' && (!currentUser.credits || currentUser.credits < 10)) {
-      // Mock validation / tier subscription check as per spec "lock icon 🔒 and Gold+ text instead"
-      toast.error('Gold+ subscription required to enter this VIP room! Please upgrade.');
+    if (!currentUser) {
+      // Non-logged-in guest can see and access the room in read-only mode!
+      navigate(`/rooms/${room._id}`);
       return;
     }
 
@@ -898,6 +905,11 @@ const MessageFeed: React.FC<FeedProps> = ({ roomId, socket, getHeaders, currentU
   // --------------------------------------------------------------------------
   const handleSendMessageSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!currentUser) {
+      window.dispatchEvent(new CustomEvent('open-adult-auth-modal'));
+      toast.error('Please log in to send messages');
+      return;
+    }
     if (!inputText.trim()) return;
 
     const bodyText = inputText;
@@ -955,6 +967,10 @@ const MessageFeed: React.FC<FeedProps> = ({ roomId, socket, getHeaders, currentU
 
   // Typing debounce emitter
   const handleInputTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!currentUser) {
+      window.dispatchEvent(new CustomEvent('open-adult-auth-modal'));
+      return;
+    }
     setInputText(e.target.value);
 
     if (!socket) return;
@@ -967,6 +983,11 @@ const MessageFeed: React.FC<FeedProps> = ({ roomId, socket, getHeaders, currentU
 
   // React to own or other message
   const handleReactToMessage = async (messageId: string, emoji: string) => {
+    if (!currentUser) {
+      window.dispatchEvent(new CustomEvent('open-adult-auth-modal'));
+      toast.error('Please log in to react');
+      return;
+    }
     setActiveReactionPickerId(null);
     try {
       const response = await fetch(`${API_BASE_URL}/v1/adult/rooms/${roomId}/messages/${messageId}/react`, {
@@ -1188,7 +1209,12 @@ const MessageFeed: React.FC<FeedProps> = ({ roomId, socket, getHeaders, currentU
             type="text"
             value={inputText}
             onChange={handleInputTextChange}
-            placeholder="Type your message..."
+            placeholder={currentUser ? "Type your message..." : "Log in to chat..."}
+            onFocus={() => {
+              if (!currentUser) {
+                window.dispatchEvent(new CustomEvent('open-adult-auth-modal'));
+              }
+            }}
             maxLength={500}
             className="flex-grow bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-xl px-4 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[var(--az-accent-rose)] focus:ring-1 focus:ring-[var(--az-accent-rose)]"
           />
@@ -1325,6 +1351,11 @@ const ThreadSection: React.FC<ThreadProps> = ({ roomId, socket, getHeaders, curr
 
   // Toggle react thread directly from card list
   const handleReactThreadCard = async (threadId: string, emoji: string) => {
+    if (!currentUser) {
+      window.dispatchEvent(new CustomEvent('open-adult-auth-modal'));
+      toast.error('Please log in to react');
+      return;
+    }
     try {
       const response = await fetch(`${API_BASE_URL}/v1/adult/rooms/${roomId}/threads/${threadId}/react`, {
         method: 'POST',
@@ -1372,7 +1403,14 @@ const ThreadSection: React.FC<ThreadProps> = ({ roomId, socket, getHeaders, curr
         </div>
 
         <button
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => {
+            if (!currentUser) {
+              window.dispatchEvent(new CustomEvent('open-adult-auth-modal'));
+              toast.error('Please log in to create threads');
+              return;
+            }
+            setIsModalOpen(true);
+          }}
           className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold uppercase rounded-lg shadow-md transition-all"
         >
           + New Thread
@@ -1387,7 +1425,14 @@ const ThreadSection: React.FC<ThreadProps> = ({ roomId, socket, getHeaders, curr
             <p className="text-sm font-serif italic text-gray-400 mb-1">No conversation threads here yet.</p>
             <p className="text-xs text-gray-500 mb-4">Start a roleplay scenario or casual prompt now!</p>
             <button
-              onClick={() => setIsModalOpen(true)}
+              onClick={() => {
+                if (!currentUser) {
+                  window.dispatchEvent(new CustomEvent('open-adult-auth-modal'));
+                  toast.error('Please log in to create threads');
+                  return;
+                }
+                setIsModalOpen(true);
+              }}
               className="px-4 py-2 bg-rose-600 text-white text-xs font-bold rounded-lg"
             >
               Start First Thread
@@ -1639,6 +1684,11 @@ const ThreadDetail: React.FC<DetailProps> = ({ threadId, roomId, onBack, getHead
   // Reply submit
   const handleReplySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!currentUser) {
+      window.dispatchEvent(new CustomEvent('open-adult-auth-modal'));
+      toast.error('Please log in to reply');
+      return;
+    }
     if (!replyInput.trim()) return;
 
     try {
@@ -1671,6 +1721,11 @@ const ThreadDetail: React.FC<DetailProps> = ({ threadId, roomId, onBack, getHead
 
   // React on opening post
   const handleReactOpeningPost = async (emoji: string) => {
+    if (!currentUser) {
+      window.dispatchEvent(new CustomEvent('open-adult-auth-modal'));
+      toast.error('Please log in to react');
+      return;
+    }
     if (!thread) return;
     try {
       const response = await fetch(`${API_BASE_URL}/v1/adult/rooms/${roomId}/threads/${threadId}/react`, {
@@ -1689,6 +1744,11 @@ const ThreadDetail: React.FC<DetailProps> = ({ threadId, roomId, onBack, getHead
 
   // React on replies
   const handleReactReply = async (replyId: string, emoji: string) => {
+    if (!currentUser) {
+      window.dispatchEvent(new CustomEvent('open-adult-auth-modal'));
+      toast.error('Please log in to react');
+      return;
+    }
     try {
       const response = await fetch(`${API_BASE_URL}/v1/adult/rooms/${roomId}/threads/${threadId}/replies/${replyId}/react`, {
         method: 'POST',
@@ -1745,6 +1805,10 @@ const ThreadDetail: React.FC<DetailProps> = ({ threadId, roomId, onBack, getHead
 
   // Emit thread typing activity
   const handleReplyInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!currentUser) {
+      window.dispatchEvent(new CustomEvent('open-adult-auth-modal'));
+      return;
+    }
     setReplyInput(e.target.value);
     if (socket) {
       socket.emit('thread:typing', { threadId });
@@ -1985,7 +2049,12 @@ const ThreadDetail: React.FC<DetailProps> = ({ threadId, roomId, onBack, getHead
               type="text"
               value={replyInput}
               onChange={handleReplyInputChange}
-              placeholder="Post a reply inside this narrative thread..."
+              placeholder={currentUser ? "Post a reply inside this narrative thread..." : "Log in to reply..."}
+              onFocus={() => {
+                if (!currentUser) {
+                  window.dispatchEvent(new CustomEvent('open-adult-auth-modal'));
+                }
+              }}
               maxLength={2000}
               className="flex-grow bg-black/40 border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[var(--az-accent-rose)]"
             />
@@ -2147,6 +2216,11 @@ const PollWidget: React.FC<PollProps> = ({ roomId, socket, getHeaders, currentUs
 
   // Handle vote submit
   const handleVoteAction = async (optionId: string) => {
+    if (!currentUser) {
+      window.dispatchEvent(new CustomEvent('open-adult-auth-modal'));
+      toast.error('Please log in to vote');
+      return;
+    }
     if (votedOptionId || submittingVote) return;
 
     try {

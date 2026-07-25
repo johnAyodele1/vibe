@@ -100,6 +100,7 @@ const PrivateSext: React.FC = () => {
 
   // Conversation list & messages state
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [isConversationsLoading, setIsConversationsLoading] = useState(true);
   const [selectedConv, setSelectedConv] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [searchText, setSearchText] = useState('');
@@ -232,6 +233,8 @@ const PrivateSext: React.FC = () => {
       }
     } catch (err) {
       console.error('Failed to load conversations:', err);
+    } finally {
+      setIsConversationsLoading(false);
     }
   };
 
@@ -1178,6 +1181,17 @@ const PrivateSext: React.FC = () => {
       });
     }
   };
+
+  if (isConversationsLoading) {
+    return (
+      <div className="min-h-screen bg-[var(--az-bg-primary)] text-white flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="w-12 h-12 border-4 border-[var(--az-accent-gold)] border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="text-sm font-bold uppercase tracking-widest text-[var(--az-text-secondary)]">Loading Inbox Messages...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-[100dvh] md:h-[calc(100vh-64px)] w-full flex overflow-hidden bg-[#0a0508] text-[var(--az-text-primary)] font-sans chat-page-mobile">
