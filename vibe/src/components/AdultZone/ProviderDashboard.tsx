@@ -9,6 +9,7 @@ const ProviderDashboard: React.FC = () => {
 
   const [isLive, setIsLive] = useState(false);
   const [stageName, setStageName] = useState('Stage Name');
+  const [isLoading, setIsLoading] = useState(true);
   const [stats, setStats] = useState<any>({
     todayEarnings: 0,
     weekEarnings: 0,
@@ -31,6 +32,7 @@ const ProviderDashboard: React.FC = () => {
     }
     const fetchDashboardData = async () => {
       try {
+        setIsLoading(true);
         const userRes = await fetch(`${API_BASE_URL}/v1/adult/providers/me`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -88,10 +90,23 @@ const ProviderDashboard: React.FC = () => {
         }
       } catch (err) {
         console.error('Failed to load real dashboard metrics:', err);
+      } finally {
+        setIsLoading(false);
       }
     };
     fetchDashboardData();
   }, [token, navigate]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[var(--az-bg-primary)] text-white flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="w-12 h-12 border-4 border-[var(--az-accent-gold)] border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="text-sm font-bold uppercase tracking-widest text-[var(--az-text-secondary)]">Loading Performer Studio...</p>
+        </div>
+      </div>
+    );
+  }
 
   const toggleStatus = async () => {
     const newLiveState = !isLive;

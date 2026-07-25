@@ -14,6 +14,8 @@ const ProviderEarnings: React.FC = () => {
   const [transactions, setTransactions] = useState<any[]>([]);
   const [timeline, setTimeline] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
 
   const fetchEarnings = async () => {
     if (!token) return;
@@ -32,6 +34,7 @@ const ProviderEarnings: React.FC = () => {
         setPending(json.data.pending);
         setTransactions(json.data.transactions);
         setTimeline(json.data.timeline || []);
+        setCurrentPage(1); // reset to first page on fetch / dateRange change
       } else {
         toast.error(json.error?.message || 'Failed to fetch earnings');
       }
@@ -197,34 +200,82 @@ const ProviderEarnings: React.FC = () => {
                       </td>
                     </tr>
                   ) : (
-                    transactions.map(tx => (
-                      <tr key={tx.id} className="hover:bg-[var(--az-bg-tertiary)]/20 transition-colors">
-                        <td className="p-4 text-xs font-mono text-white">{tx.date}</td>
-                        <td className="p-4 font-semibold text-white capitalize">{tx.type}</td>
-                        <td className="p-4 text-[var(--az-text-secondary)]">{tx.from}</td>
-                        <td className={`p-4 font-mono font-bold ${tx.amount > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                          {tx.amount > 0 ? `+${tx.amount}` : tx.amount}
-                        </td>
-                        <td className="p-4 font-mono text-white">
-                          {tx.usd < 0 ? `-$${Math.abs(tx.usd).toFixed(2)}` : `$${tx.usd.toFixed(2)}`}
-                        </td>
-                        <td className="p-4">
-                          <span className={`px-2.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest ${
-                            tx.status === 'Completed' || tx.status === 'Paid'
-                              ? 'bg-green-950/40 text-green-400 border border-green-500/30'
-                              : tx.status === 'Failed'
-                              ? 'bg-red-950/40 text-red-400 border border-red-500/30'
-                              : 'bg-yellow-950/40 text-yellow-400 border border-yellow-500/30'
-                          }`}>
-                            {tx.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))
+                    transactions
+                      .slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage)
+                      .map(tx => (
+                        <tr key={tx.id} className="hover:bg-[var(--az-bg-tertiary)]/20 transition-colors">
+                          <td className="p-4 text-xs font-mono text-white">{tx.date}</td>
+                          <td className="p-4 font-semibold text-white capitalize">{tx.type}</td>
+                          <td className="p-4 text-[var(--az-text-secondary)]">{tx.from}</td>
+                          <td className={`p-4 font-mono font-bold ${tx.amount > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {tx.amount > 0 ? `+${tx.amount}` : tx.amount}
+                          </td>
+                          <td className="p-4 font-mono text-white">
+                            {tx.usd < 0 ? `-$${Math.abs(tx.usd).toFixed(2)}` : `$${tx.usd.toFixed(2)}`}
+                          </td>
+                          <td className="p-4">
+                            <span className={`px-2.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest ${
+                              tx.status === 'Completed' || tx.status === 'Paid'
+                                ? 'bg-green-950/40 text-green-400 border border-green-500/30'
+                                : tx.status === 'Failed'
+                                ? 'bg-red-950/40 text-red-400 border border-red-500/30'
+                                : 'bg-yellow-950/40 text-yellow-400 border border-yellow-500/30'
+                            }`}>
+                              {tx.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
                   )}
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination Controls inside the same UI layer container */}
+            {transactions.length > 0 && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-[var(--az-bg-tertiary)]/50 border-t border-[var(--az-border)] text-xs">
+                <div className="flex items-center gap-3">
+                  <span className="text-[var(--az-text-secondary)] font-medium">Rows per page:</span>
+                  <select
+                    data-testid="rows-per-page-select"
+                    className="bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-lg px-2.5 py-1.5 font-bold text-white outline-none cursor-pointer"
+                    value={rowsPerPage}
+                    onChange={e => {
+                      setRowsPerPage(parseInt(e.target.value));
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <option value={10}>10</option>
+                    <option value={15}>15</option>
+                    <option value={20}>20</option>
+                    <option value={25}>25</option>
+                  </select>
+                  <span className="text-[var(--az-text-muted)] font-mono">
+                    Showing {Math.min(transactions.length, (currentPage - 1) * rowsPerPage + 1)} to {Math.min(transactions.length, currentPage * rowsPerPage)} of {transactions.length}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1.5 bg-[var(--az-bg-secondary)] hover:bg-[var(--az-bg-tertiary)] disabled:opacity-40 disabled:hover:bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-xl font-bold uppercase tracking-widest text-[10px] text-white transition-all"
+                  >
+                    Prev
+                  </button>
+                  <span className="text-[var(--az-text-secondary)] font-mono font-bold px-2">
+                    Page {currentPage} of {Math.ceil(transactions.length / rowsPerPage)}
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(Math.ceil(transactions.length / rowsPerPage), prev + 1))}
+                    disabled={currentPage >= Math.ceil(transactions.length / rowsPerPage)}
+                    className="px-3 py-1.5 bg-[var(--az-bg-secondary)] hover:bg-[var(--az-bg-tertiary)] disabled:opacity-40 disabled:hover:bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-xl font-bold uppercase tracking-widest text-[10px] text-white transition-all"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

@@ -62,6 +62,80 @@ describe('ProviderEarnings Component', () => {
     });
   });
 
+  it('supports beautiful client-side pagination', async () => {
+    // Override fetch to return 12 mock transactions
+    mockFetch.mockImplementation(async (input: any) => {
+      const url = typeof input === 'string' ? input : input.url;
+      if (url.includes('/v1/adult/providers/me/earnings')) {
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: {
+              totalEarned: 1000,
+              paidOut: 0,
+              pending: 0,
+              timeline: [],
+              transactions: Array.from({ length: 12 }, (_, idx) => ({
+                id: `tx-${idx}`,
+                date: 'Jul 15',
+                type: 'Tip',
+                from: `User_${idx}`,
+                amount: 100,
+                usd: 0.75,
+                status: 'Completed'
+              }))
+            }
+          })
+        };
+      }
+      return { ok: false, json: async () => ({ error: 'Not Found' }) };
+    });
+
+    render(
+      <MemoryRouter>
+        <ProviderEarnings />
+      </MemoryRouter>
+    );
+
+    // Page 1 should show User_0 to User_9 but not User_10
+    await waitFor(() => {
+      expect(screen.getByText('User_0')).toBeInTheDocument();
+      expect(screen.getByText('User_9')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('User_10')).not.toBeInTheDocument();
+
+    // Find the Next page button
+    const nextButton = screen.getByRole('button', { name: /Next/i });
+    expect(nextButton).toBeInTheDocument();
+    fireEvent.click(nextButton);
+
+    // Now User_10 and User_11 should be shown, User_0 and User_9 should be hidden
+    await waitFor(() => {
+      expect(screen.getByText('User_10')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('User_0')).not.toBeInTheDocument();
+
+    // Go back to Page 1
+    const prevButton = screen.getByRole('button', { name: /Prev/i });
+    fireEvent.click(prevButton);
+
+    await waitFor(() => {
+      expect(screen.getByText('User_0')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('User_10')).not.toBeInTheDocument();
+
+    // Change rows per page size to 15
+    const rowsSelect = screen.getByTestId('rows-per-page-select');
+    fireEvent.change(rowsSelect, { target: { value: '15' } });
+
+    // Now all 12 users should be visible since limit is 15
+    await waitFor(() => {
+      expect(screen.getByText('User_0')).toBeInTheDocument();
+      expect(screen.getByText('User_10')).toBeInTheDocument();
+    });
+  });
+
   it('allows requesting a payout which triggers the payout API and refreshes the component', async () => {
     render(
       <MemoryRouter>
