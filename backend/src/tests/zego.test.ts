@@ -122,5 +122,23 @@ describe('Agora Endpoints & Logic Integration', () => {
       expect(res.body.data).toHaveProperty('roomId');
       expect(res.body.data).toHaveProperty('token');
     });
+
+    it('POST /api/adult/cams/stream/start allows starting a stream with only title and sessionType', async () => {
+      // Clear active sessions for provider first to ensure a new one is created
+      await CamSession.deleteMany({});
+
+      const res = await request(app)
+        .post('/api/adult/cams/stream/start')
+        .set('Authorization', `Bearer ${providerToken}`)
+        .send({
+          title: 'My Simple Stream',
+          sessionType: 'public',
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data).toHaveProperty('roomId');
+      expect(res.body.data).toHaveProperty('token');
+    });
   });
 });

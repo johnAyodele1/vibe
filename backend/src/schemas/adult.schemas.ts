@@ -114,11 +114,11 @@ export const sendMessageSchema = z.object({
 export const startStreamSchema = z.object({
   body: z.object({
     title: z.string().min(1),
-    tags: z.array(z.string()),
-    sessionType: z.enum(['public', 'private', 'vip_only', 'premium_only']),
-    privateShowRate: z.number().nonnegative(),
-    resolution: z.enum(['720p', '1080p', '4K']),
-    chatEnabled: z.boolean(),
-    recordingEnabled: z.boolean(),
+    tags: z.array(z.string()).optional(),
+    sessionType: z.enum(['public', 'private', 'vip_only', 'premium_only']).optional(),
+    privateShowRate: z.number().nonnegative().optional(),
+    resolution: z.enum(['720p', '1080p', '4K']).optional(),
+    chatEnabled: z.boolean().optional(),
+    recordingEnabled: z.boolean().optional(),
   }),
 });
