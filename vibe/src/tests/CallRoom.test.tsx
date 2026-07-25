@@ -32,6 +32,7 @@ vi.mock('agora-rtc-sdk-ng', () => {
     on: mockOn,
     off: mockOff,
     remoteUsers: [],
+    enableAudioVolumeIndicator: vi.fn(),
   };
 
   return {
@@ -72,6 +73,48 @@ describe('CallRoom component stability and settings with Agora SDK', () => {
 
     // Verify container renders
     expect(screen.getByTestId('zego-call-room')).toBeInTheDocument();
+
+    // Clean up
+    if (wrapper) {
+      wrapper.unmount();
+    }
+  });
+
+  it('renders audio-only premium layout with partner name and avatar', async () => {
+    const onCallEndMock = vi.fn();
+    const partnerName = "Premium Partner";
+    const partnerAvatar = "https://images.unsplash.com/photo-1534528741775-53994a69daeb";
+
+    let wrapper: any = null;
+    await act(async () => {
+      wrapper = render(
+        <CallRoom
+          appId={12345}
+          token="test-token"
+          roomId="test-room-id"
+          userId="user-123"
+          userName="John Doe"
+          callType="audio"
+          onCallEnd={onCallEndMock}
+          partnerName={partnerName}
+          partnerAvatar={partnerAvatar}
+        />
+      );
+    });
+
+    // Verify container renders
+    expect(screen.getByTestId('zego-call-room')).toBeInTheDocument();
+
+    // Verify partner's name sits below the avatar and is displayed
+    expect(screen.getByRole('heading', { name: partnerName })).toBeInTheDocument();
+
+    // Verify partner's avatar image is displayed
+    const img = screen.getByAltText(partnerName);
+    expect(img).toBeInTheDocument();
+    expect(img).toHaveAttribute('src', partnerAvatar);
+
+    // Verify "In Call" status label is present
+    expect(screen.getByText('In Call')).toBeInTheDocument();
 
     // Clean up
     if (wrapper) {
