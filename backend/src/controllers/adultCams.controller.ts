@@ -37,14 +37,28 @@ export const startStream = async (req: Request, res: Response) => {
     return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Not an approved active provider' } });
   }
 
+  const appId = process.env.AGORA_APP_ID || '123456';
+  const appCertificate = process.env.AGORA_APP_CERTIFICATE || '12345678901234567890123456789012';
+
   const active = await CamSession.findOne({ providerId: provider._id, status: 'live' });
-  if (active) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Already live' } });
+  if (active) {
+    const roomId = active.streamKey;
+    const token = generateAgoraToken(appId, appCertificate, roomId, provider._id.toString(), 'publisher', 7200);
+    return res.json({
+      success: true,
+      data: {
+        sessionId: active._id,
+        roomId,
+        streamKey: roomId,
+        token,
+        appId,
+        isExisting: true
+      }
+    });
+  }
 
   const { title, tags, sessionType, privateShowRate, resolution, chatEnabled, recordingEnabled } = req.body;
   const roomId = `cam_${provider._id.toString()}_${Date.now()}`;
-
-  const appId = process.env.AGORA_APP_ID || '123456';
-  const appCertificate = process.env.AGORA_APP_CERTIFICATE || '12345678901234567890123456789012';
 
   const token = generateAgoraToken(appId, appCertificate, roomId, provider._id.toString(), 'publisher', 7200);
 
@@ -64,6 +78,21 @@ export const startStream = async (req: Request, res: Response) => {
   });
 
   await session.save();
+
+  const ns = req.app.get('adultNamespace');
+  if (ns) {
+    ns.emit('cam:session_started', {
+      sessionId: session._id,
+      providerId: provider._id,
+      roomId,
+      streamKey: roomId,
+      providerName: provider.providerProfile?.stageName || provider.displayName || provider.username,
+      avatarUrl: provider.profilePhoto || '/placeholder.svg',
+      viewerCount: 0,
+      title: session.title,
+      tags: tags || []
+    });
+  }
 
   res.status(201).json({
     success: true,
@@ -89,6 +118,11 @@ export const endStream = async (req: Request, res: Response) => {
   session.endedAt = new Date();
   session.durationSeconds = Math.floor((session.endedAt.getTime() - (session.startedAt?.getTime() || 0)) / 1000);
   await session.save();
+
+  const ns = req.app.get('adultNamespace');
+  if (ns) {
+    ns.emit('cam:session_ended', { sessionId: session._id });
+  }
 
   res.json({ success: true, data: { summary: { duration: session.durationSeconds, totalTips: session.totalTipsReceived } } });
 };

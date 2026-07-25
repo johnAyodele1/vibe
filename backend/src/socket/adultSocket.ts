@@ -135,8 +135,11 @@ export const setupAdultSocket = (io: Server) => {
     });
 
     // Cam Events
-    socket.on('cam:join', async (sessionId: string) => {
+    socket.on('cam:join', async (data: any) => {
       try {
+        const sessionId = typeof data === 'string' ? data : data?.sessionId;
+        if (!sessionId) return;
+
         const session = await CamSession.findById(sessionId);
         if (!session || session.status !== 'live') return;
 
@@ -153,20 +156,29 @@ export const setupAdultSocket = (io: Server) => {
 
         const viewerCount = adultNamespace.adapter.rooms.get(`cam:${sessionId}`)?.size || 0;
         adultNamespace.to(`cam:${sessionId}`).emit('cam:viewerCount', viewerCount);
+        adultNamespace.to(`cam:${sessionId}`).emit('cam:viewer_count', { count: viewerCount });
       } catch (err) {
         console.error('Cam join error:', err);
       }
     });
 
-    socket.on('cam:leave', async (sessionId: string) => {
-      socket.leave(`cam:${sessionId}`);
-      const viewerCount = adultNamespace.adapter.rooms.get(`cam:${sessionId}`)?.size || 0;
-      adultNamespace.to(`cam:${sessionId}`).emit('cam:viewerCount', viewerCount);
+    socket.on('cam:leave', async (data: any) => {
+      try {
+        const sessionId = typeof data === 'string' ? data : data?.sessionId;
+        if (!sessionId) return;
 
-      await CamViewer.findOneAndUpdate(
-        { sessionId, userId: socket.data.user._id },
-        { leftAt: new Date() }
-      );
+        socket.leave(`cam:${sessionId}`);
+        const viewerCount = adultNamespace.adapter.rooms.get(`cam:${sessionId}`)?.size || 0;
+        adultNamespace.to(`cam:${sessionId}`).emit('cam:viewerCount', viewerCount);
+        adultNamespace.to(`cam:${sessionId}`).emit('cam:viewer_count', { count: viewerCount });
+
+        await CamViewer.findOneAndUpdate(
+          { sessionId, userId: socket.data.user._id },
+          { leftAt: new Date() }
+        );
+      } catch (err) {
+        console.error('Cam leave error:', err);
+      }
     });
 
     socket.on('cam:privateRequest', async (data: { sessionId: string }) => {

@@ -245,6 +245,28 @@ export interface IMessage extends Document {
     giftValue: number;
     message?: string;
   };
+  giftRequest?: {
+    giftId: string;
+    giftName: string;
+    giftIconUrl: string;
+    giftValue: number;
+    message?: string;
+    status: 'pending' | 'fulfilled' | 'different_sent' | 'dismissed';
+    fulfilledGiftId?: string;
+    fulfilledGiftName?: string;
+    fulfilledAt?: string;
+  };
+  serviceRequest?: {
+    baseRate: number;
+    extras: { label: string; amount: number }[];
+    totalAmount: number;
+    note?: string;
+    status: 'pending' | 'paid' | 'completed' | 'auto_completed' | 'reported';
+    paidAt?: string;
+    completedAt?: string;
+    reportedAt?: string;
+    eligibleForPayout: boolean;
+  };
   photoRequest?: {
     status: 'pending' | 'fulfilled' | 'declined';
     note?: string;

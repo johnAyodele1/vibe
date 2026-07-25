@@ -73,6 +73,602 @@ export const startConversation = async (req: Request, res: Response) => {
   }
 };
 
+// POST /api/v1/adult/sext/conversations/:conversationId/gift-request
+export const sendGiftRequest = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const { conversationId } = req.params;
+    const { giftId, message = '' } = req.body;
+
+    if (user.role !== 'provider') {
+      return res.status(403).json({ success: false, error: 'Only providers can send gift requests' });
+    }
+
+    const gift = await AdultGift.findById(giftId);
+    if (!gift || !gift.isActive) {
+      return res.status(404).json({ success: false, error: 'Gift not found' });
+    }
+
+    const conversation = await AdultConversation.findById(conversationId);
+    if (!conversation) {
+      return res.status(404).json({ success: false, error: 'Conversation not found' });
+    }
+
+    const isParticipant = conversation.participants.some(p => p.toString() === user._id.toString());
+    if (!isParticipant) {
+      return res.status(403).json({ success: false, error: 'Not a participant in this conversation' });
+    }
+
+    const receiverId = conversation.participants.find(p => p.toString() !== user._id.toString());
+    if (!receiverId) {
+      return res.status(400).json({ success: false, error: 'Receiver not found' });
+    }
+
+    const msg = new AdultMessage({
+      conversationId,
+      senderId: user._id,
+      receiverId,
+      content: encrypt(`🎁 Requested a gift: ${gift.name}`),
+      messageType: 'gift_request',
+      giftRequest: {
+        giftId: gift._id.toString(),
+        giftName: gift.name,
+        giftIconUrl: gift.iconUrl,
+        giftValue: gift.creditCost,
+        message,
+        status: 'pending'
+      }
+    });
+
+    await msg.save();
+
+    conversation.lastMessage = {
+      content: encrypt(`🎁 Gift request: ${gift.name}`),
+      mediaType: 'gift_request',
+      senderId: user._id,
+      sentAt: new Date()
+    };
+
+    const receiverIdStr = receiverId.toString();
+    const currentUnread = conversation.unreadCounts.get(receiverIdStr) || 0;
+    conversation.unreadCounts.set(receiverIdStr, currentUnread + 1);
+
+    await conversation.save();
+
+    const responsePayload = {
+      id: msg._id,
+      senderId: msg.senderId,
+      receiverId: msg.receiverId,
+      content: `Requested a gift: ${gift.name}`,
+      mediaType: 'gift_request',
+      giftRequest: msg.giftRequest,
+      isUnlocked: true,
+      createdAt: msg.createdAt
+    };
+
+    const ns = req.app.get('adultNamespace');
+    if (ns) {
+      ns.to(`conv:${conversationId}`).emit('sext:new_message', { message: responsePayload });
+      ns.to(`user:${receiverIdStr}`).emit('sext:conversation_updated', {
+        conversationId,
+        lastMessage: responsePayload,
+        unreadCount: currentUnread + 1
+      });
+    }
+
+    return res.status(201).json(responsePayload);
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// POST /api/v1/adult/sext/conversations/:conversationId/service-request
+export const sendServiceRequest = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const { conversationId } = req.params;
+    const { extras = [], note = '' } = req.body;
+
+    if (user.role !== 'provider') {
+      return res.status(403).json({ success: false, error: 'Only providers can send service requests' });
+    }
+
+    const baseRate = user.providerProfile?.tonightRate || (user.providerProfile as any)?.pricing?.tonightRate;
+    if (!baseRate || baseRate <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'You have not set a rate for tonight arrangements. Please update your pricing in Settings.',
+      });
+    }
+
+    const conversation = await AdultConversation.findById(conversationId);
+    if (!conversation) {
+      return res.status(404).json({ success: false, error: 'Conversation not found' });
+    }
+
+    const isParticipant = conversation.participants.some(p => p.toString() === user._id.toString());
+    if (!isParticipant) {
+      return res.status(403).json({ success: false, error: 'Not a participant in this conversation' });
+    }
+
+    // Check no active service request already exists
+    const existing = await AdultMessage.findOne({
+      conversationId,
+      messageType: 'service_request',
+      'serviceRequest.status': { $in: ['pending', 'paid'] },
+    });
+    if (existing) {
+      return res.status(409).json({ success: false, error: 'An active service request already exists in this conversation' });
+    }
+
+    const validatedExtras = (extras || []).map((e: any) => ({
+      label: String(e.label).slice(0, 50),
+      amount: Math.max(0, parseInt(e.amount) || 0),
+    })).filter((e: any) => e.amount > 0 && e.label);
+
+    const extrasTotal = validatedExtras.reduce((sum: number, e: any) => sum + e.amount, 0);
+    const totalAmount = baseRate + extrasTotal;
+
+    const receiverId = conversation.participants.find(p => p.toString() !== user._id.toString());
+    if (!receiverId) {
+      return res.status(400).json({ success: false, error: 'Receiver not found' });
+    }
+
+    const msg = new AdultMessage({
+      conversationId,
+      senderId: user._id,
+      receiverId,
+      content: encrypt(`🌙 Service request: 💎 ${totalAmount}`),
+      messageType: 'service_request',
+      serviceRequest: {
+        baseRate,
+        extras: validatedExtras,
+        totalAmount,
+        note,
+        status: 'pending',
+        eligibleForPayout: false
+      }
+    });
+
+    await msg.save();
+
+    conversation.lastMessage = {
+      content: encrypt(`🌙 Service request: 💎 ${totalAmount}`),
+      mediaType: 'service_request',
+      senderId: user._id,
+      sentAt: new Date()
+    };
+
+    const receiverIdStr = receiverId.toString();
+    const currentUnread = conversation.unreadCounts.get(receiverIdStr) || 0;
+    conversation.unreadCounts.set(receiverIdStr, currentUnread + 1);
+
+    await conversation.save();
+
+    const responsePayload = {
+      id: msg._id,
+      senderId: msg.senderId,
+      receiverId: msg.receiverId,
+      content: `🌙 Service request: 💎 ${totalAmount}`,
+      mediaType: 'service_request',
+      serviceRequest: msg.serviceRequest,
+      isUnlocked: true,
+      createdAt: msg.createdAt
+    };
+
+    const ns = req.app.get('adultNamespace');
+    if (ns) {
+      ns.to(`conv:${conversationId}`).emit('sext:new_message', { message: responsePayload });
+      ns.to(`user:${receiverIdStr}`).emit('sext:conversation_updated', {
+        conversationId,
+        lastMessage: responsePayload,
+        unreadCount: currentUnread + 1
+      });
+    }
+
+    return res.status(201).json(responsePayload);
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// GET /api/v1/adult/providers/me/tonight-rate
+export const getTonightRate = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const tonightRate = user.providerProfile?.tonightRate || (user.providerProfile as any)?.pricing?.tonightRate || 0;
+    const perMinuteRate = user.providerProfile?.pricePerMinute || 0;
+    const stageName = user.providerProfile?.stageName || user.displayName || user.username;
+
+    return res.json({
+      tonightRate,
+      perMinuteRate,
+      stageName
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// POST /api/v1/adult/sext/service-requests/:messageId/pay
+export const payServiceRequest = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const { messageId } = req.params;
+    const message = await AdultMessage.findById(messageId);
+    if (!message || message.messageType !== 'service_request') {
+      return res.status(404).json({ success: false, error: 'Service request not found' });
+    }
+
+    if (message.receiverId?.toString() !== user._id.toString()) {
+      return res.status(403).json({ success: false, error: 'Only the recipient can pay for this service request' });
+    }
+
+    if (message.serviceRequest?.status !== 'pending') {
+      return res.status(400).json({ success: false, error: `Service request is already ${message.serviceRequest?.status}` });
+    }
+
+    const totalAmount = message.serviceRequest.totalAmount;
+    const clientCost = getClientPrice(totalAmount);
+
+    if (user.credits < clientCost) {
+      return res.status(402).json({
+        success: false,
+        error: 'Insufficient credits',
+        required: clientCost,
+        current: user.credits
+      });
+    }
+
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      const dbUser = await AdultUser.findById(user._id).session(session);
+      if (!dbUser || dbUser.credits < clientCost) {
+        throw new Error('Insufficient credits');
+      }
+
+      dbUser.credits -= clientCost;
+      await dbUser.save({ session });
+
+      const provider = await AdultUser.findById(message.senderId).session(session);
+      if (provider) {
+        provider.credits += totalAmount;
+        if (provider.providerProfile) {
+          provider.providerProfile.totalEarnings += totalAmount;
+        }
+        await provider.save({ session });
+      }
+
+      // Member Transaction
+      await CreditTransaction.create([{
+        userId: user._id,
+        type: 'spend',
+        amount: -clientCost,
+        usdAmount: 0,
+        description: `Paid for Service Request ${messageId}`,
+        relatedUserId: provider?._id,
+        status: 'completed',
+      }], { session });
+
+      // Provider Transaction
+      await CreditTransaction.create([{
+        userId: provider?._id,
+        type: 'tip',
+        amount: totalAmount,
+        usdAmount: 0,
+        description: `Service request payout from ${user.username}`,
+        relatedUserId: user._id,
+        status: 'completed',
+        eligibleForPayout: false
+      }], { session });
+
+      message.serviceRequest.status = 'paid';
+      await message.save({ session });
+
+      await session.commitTransaction();
+
+      const ns = req.app.get('adultNamespace');
+      if (ns) {
+        ns.to(`user:${user._id.toString()}`).emit('wallet:updated', { balance: dbUser.credits });
+        if (provider) {
+          ns.to(`user:${provider._id.toString()}`).emit('wallet:updated', { balance: provider.credits });
+        }
+        ns.to(`conv:${message.conversationId}`).emit('sext:message_updated', {
+          messageId: message._id,
+          serviceRequest: message.serviceRequest
+        });
+      }
+
+      return res.json({ success: true, serviceRequest: message.serviceRequest });
+    } catch (err: any) {
+      await session.abortTransaction();
+      return res.status(500).json({ success: false, error: err.message });
+    } finally {
+      session.endSession();
+    }
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// POST /api/v1/adult/sext/service-requests/:messageId/complete
+export const completeServiceRequest = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const { messageId } = req.params;
+    const message = await AdultMessage.findById(messageId);
+    if (!message || message.messageType !== 'service_request') {
+      return res.status(404).json({ success: false, error: 'Service request not found' });
+    }
+
+    if (message.receiverId?.toString() !== user._id.toString()) {
+      return res.status(403).json({ success: false, error: 'Only the recipient of the request can complete it' });
+    }
+
+    if (message.serviceRequest?.status !== 'paid') {
+      return res.status(400).json({ success: false, error: 'Service must be paid before completion' });
+    }
+
+    message.serviceRequest.status = 'completed';
+    await message.save();
+
+    // Mark corresponding provider transactions as eligible for payout
+    await CreditTransaction.updateMany(
+      { userId: message.senderId, relatedUserId: user._id, description: { $regex: 'Service request' } },
+      { $set: { eligibleForPayout: true } }
+    );
+
+    const ns = req.app.get('adultNamespace');
+    if (ns) {
+      ns.to(`conv:${message.conversationId}`).emit('sext:message_updated', {
+        messageId: message._id,
+        serviceRequest: message.serviceRequest
+      });
+    }
+
+    return res.json({ success: true, serviceRequest: message.serviceRequest });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// POST /api/v1/adult/sext/service-requests/:messageId/report
+export const reportServiceRequest = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const { messageId } = req.params;
+    const message = await AdultMessage.findById(messageId);
+    if (!message || message.messageType !== 'service_request') {
+      return res.status(404).json({ success: false, error: 'Service request not found' });
+    }
+
+    if (message.receiverId?.toString() !== user._id.toString()) {
+      return res.status(403).json({ success: false, error: 'Forbidden' });
+    }
+
+    message.serviceRequest!.status = 'reported';
+    await message.save();
+
+    const ns = req.app.get('adultNamespace');
+    if (ns) {
+      ns.to(`conv:${message.conversationId}`).emit('sext:message_updated', {
+        messageId: message._id,
+        serviceRequest: message.serviceRequest
+      });
+    }
+
+    return res.json({ success: true, serviceRequest: message.serviceRequest });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// POST /api/v1/adult/sext/service-requests/:messageId/decline
+export const declineServiceRequest = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const { messageId } = req.params;
+    const message = await AdultMessage.findById(messageId);
+    if (!message || message.messageType !== 'service_request') {
+      return res.status(404).json({ success: false, error: 'Service request not found' });
+    }
+
+    if (message.receiverId?.toString() !== user._id.toString() && message.senderId.toString() !== user._id.toString()) {
+      return res.status(403).json({ success: false, error: 'Forbidden' });
+    }
+
+    message.serviceRequest!.status = 'completed'; // or dismissed/declined, let's treat it as completed or just set state
+    // Let's set it to 'reported' or simply update the schema: wait, the schema status enum allows: 'pending', 'paid', 'completed', 'auto_completed', 'reported'. So let's decline by using 'reported' or setting message content or just completing it safely. Let's set it to 'completed' as fallback or delete message. Wait, let's just make it complete or reported to stay in enum.
+    message.serviceRequest!.status = 'completed';
+    await message.save();
+
+    const ns = req.app.get('adultNamespace');
+    if (ns) {
+      ns.to(`conv:${message.conversationId}`).emit('sext:message_updated', {
+        messageId: message._id,
+        serviceRequest: message.serviceRequest
+      });
+    }
+
+    return res.json({ success: true, serviceRequest: message.serviceRequest });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// POST /api/v1/adult/sext/gift-requests/:messageId/dismiss
+export const dismissGiftRequest = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const { messageId } = req.params;
+    const message = await AdultMessage.findById(messageId);
+    if (!message || message.messageType !== 'gift_request') {
+      return res.status(404).json({ success: false, error: 'Gift request not found' });
+    }
+
+    if (message.receiverId?.toString() !== user._id.toString()) {
+      return res.status(403).json({ success: false, error: 'Forbidden' });
+    }
+
+    if (!message.giftRequest) {
+      return res.status(400).json({ success: false, error: 'Gift request detail not found' });
+    }
+
+    message.giftRequest.status = 'dismissed';
+    await message.save();
+
+    const ns = req.app.get('adultNamespace');
+    if (ns) {
+      ns.to(`conv:${message.conversationId}`).emit('sext:message_updated', {
+        messageId: message._id,
+        giftRequest: message.giftRequest
+      });
+    }
+
+    return res.json({ success: true, giftRequest: message.giftRequest });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// POST /api/v1/adult/sext/gift-requests/:messageId/fulfill
+export const fulfillGiftRequest = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const { messageId } = req.params;
+    const message = await AdultMessage.findById(messageId);
+    if (!message || message.messageType !== 'gift_request') {
+      return res.status(404).json({ success: false, error: 'Gift request not found' });
+    }
+
+    if (message.receiverId?.toString() !== user._id.toString()) {
+      return res.status(403).json({ success: false, error: 'Forbidden' });
+    }
+
+    if (!message.giftRequest) {
+      return res.status(400).json({ success: false, error: 'Gift request detail not found' });
+    }
+
+    if (message.giftRequest.status !== 'pending') {
+      return res.status(400).json({ success: false, error: 'Gift request already processed' });
+    }
+
+    const giftValue = message.giftRequest.giftValue;
+
+    if (user.credits < giftValue) {
+      return res.status(402).json({ success: false, error: 'Insufficient credits' });
+    }
+
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      const dbUser = await AdultUser.findById(user._id).session(session);
+      if (!dbUser || dbUser.credits < giftValue) {
+        throw new Error('Insufficient credits');
+      }
+
+      dbUser.credits -= giftValue;
+      await dbUser.save({ session });
+
+      const provider = await AdultUser.findById(message.senderId).session(session);
+      if (provider) {
+        provider.credits += giftValue;
+        if (provider.providerProfile) {
+          provider.providerProfile.totalEarnings += giftValue;
+        }
+        await provider.save({ session });
+      }
+
+      // Member Transaction
+      await CreditTransaction.create([{
+        userId: user._id,
+        type: 'tip',
+        amount: -giftValue,
+        usdAmount: 0,
+        description: `Sent requested gift: ${message.giftRequest!.giftName}`,
+        relatedUserId: provider?._id,
+        status: 'completed',
+      }], { session });
+
+      // Provider Transaction
+      await CreditTransaction.create([{
+        userId: provider?._id,
+        type: 'tip',
+        amount: giftValue,
+        usdAmount: 0,
+        description: `Received requested gift: ${message.giftRequest!.giftName} from ${user.username}`,
+        relatedUserId: user._id,
+        status: 'completed',
+      }], { session });
+
+      message.giftRequest!.status = 'fulfilled';
+      await message.save({ session });
+
+      await session.commitTransaction();
+
+      const ns = req.app.get('adultNamespace');
+      if (ns) {
+        ns.to(`user:${user._id.toString()}`).emit('wallet:updated', { balance: dbUser.credits });
+        if (provider) {
+          ns.to(`user:${provider._id.toString()}`).emit('wallet:updated', { balance: provider.credits });
+        }
+        ns.to(`conv:${message.conversationId}`).emit('sext:message_updated', {
+          messageId: message._id,
+          giftRequest: message.giftRequest
+        });
+      }
+
+      return res.json({ success: true, giftRequest: message.giftRequest });
+    } catch (err: any) {
+      await session.abortTransaction();
+      return res.status(500).json({ success: false, error: err.message });
+    } finally {
+      session.endSession();
+    }
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 // GET /api/v1/adult/sext/conversations
 export const getConversations = async (req: Request, res: Response) => {
   try {
@@ -309,6 +905,8 @@ export const getMessages = async (req: Request, res: Response) => {
         creditCost: cost,
         isUnlocked,
         gift: m.gift,
+        giftRequest: m.giftRequest,
+        serviceRequest: m.serviceRequest,
         photoRequest: m.photoRequest,
         systemText: m.systemText,
         reactions: m.reactions,

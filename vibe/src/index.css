@@ -530,3 +530,181 @@ button {
   user-select: none;
   -webkit-user-select: none;
 }
+
+/* ── Agora Live Cam Mobile Responsive CSS ──────────────────────── */
+.provider-stream-dashboard {
+  display: grid;
+  grid-template-columns: 1fr 340px;   /* video | chat side panel */
+  gap: 20px;
+  height: calc(100vh - 120px);
+  padding: 20px;
+}
+
+@media (max-width: 1023px) {
+  .provider-stream-dashboard {
+    grid-template-columns: 1fr;       /* stack vertically on tablet */
+    height: auto;
+  }
+}
+
+/* Video area — must take real space */
+.stream-video-area {
+  position: relative;
+  background: #000;
+  border-radius: 16px;
+  overflow: hidden;
+  aspect-ratio: 16 / 9;              /* maintains aspect ratio */
+  width: 100%;
+  min-height: 240px;                 /* never collapse to 0 */
+}
+
+.stream-video-feed {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Live badge — top-left */
+.stream-live-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(200, 16, 46, 0.9);
+  color: white;
+  font: 700 11px/1 'DM Sans', sans-serif;
+  letter-spacing: 0.1em;
+  padding: 5px 10px;
+  border-radius: 100px;
+}
+.stream-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: white;
+  animation: livePulse 1.2s ease infinite;
+}
+
+/* Viewer count — top-right */
+.stream-viewer-count {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(8px);
+  color: white;
+  font: 500 13px/1 'DM Sans', sans-serif;
+  padding: 5px 10px;
+  border-radius: 100px;
+}
+
+/* Start / End buttons */
+.stream-start-btn {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  padding: 14px 32px;
+  background: var(--az-accent-crimson);
+  border: none;
+  border-radius: 100px;
+  color: white;
+  font: 700 14px/1 'DM Sans', sans-serif;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(200,16,46,0.4);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stream-end-btn {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  padding: 10px 20px;
+  background: rgba(200,16,46,0.85);
+  border: 1.5px solid var(--az-accent-crimson);
+  border-radius: 100px;
+  color: white;
+  font: 600 12px/1 'DM Sans', sans-serif;
+  cursor: pointer;
+}
+
+/* Tips card */
+.stream-tips-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--az-bg-secondary);
+  border: 1px solid var(--az-border);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-top: 12px;
+}
+.stream-tips-label {
+  font: 600 14px/1 'DM Sans', sans-serif;
+  color: var(--az-text-primary);
+}
+.stream-tips-hint {
+  font: 400 12px/1 'DM Sans', sans-serif;
+  color: var(--az-text-muted);
+  margin-top: 4px;
+}
+.stream-tips-amount {
+  font: 700 28px/1 'JetBrains Mono', monospace;
+  color: var(--az-accent-gold);
+}
+
+/* ── Member Cam Viewer ──────────────────────────────────────── */
+.cam-viewer-room {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: 12px;
+  overflow: hidden;
+  min-height: 200px;
+}
+.cam-viewer-video {
+  width: 100%;
+  height: 100%;
+}
+.cam-viewer-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--az-text-muted);
+}
+.cam-viewer-info {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Mobile specific */
+@media (max-width: 767px) {
+  .provider-stream-dashboard {
+    padding: 12px;
+    gap: 12px;
+  }
+  .stream-video-area {
+    border-radius: 12px;
+  }
+  .stream-start-btn {
+    padding: 12px 24px;
+    font-size: 13px;
+  }
+}
