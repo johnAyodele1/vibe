@@ -1,6 +1,6 @@
 import express from 'express';
 import { getCountries, getStatesByCountry, getCities } from '../controllers/sharedLocation.controller';
-import { verifyAdultJWT } from '../middleware/adultAuth';
+import { verifyAdultJWT, optionalAdultJWT } from '../middleware/adultAuth';
 import {
   getPresignedUrl,
   handleMockUpload,
@@ -140,7 +140,7 @@ router.put('/adult/sext/calls/:callId/end', verifyAdultJWT, endCall);
 router.get('/adult/sext/calls/history', verifyAdultJWT, getCallHistory);
 
 // Provider Onboarding & Profile update routes
-router.get('/adult/hookup/nearby', verifyAdultJWT, getHookupNearbyProviders);
+router.get('/adult/hookup/nearby', optionalAdultJWT, getHookupNearbyProviders);
 router.get('/adult/profiles/me', verifyAdultJWT, getAdultMemberProfile);
 router.get('/adult/providers/me/onboarding', verifyAdultJWT, getOnboardingProgress);
 router.put('/adult/providers/me/onboarding/step/:stepNumber', verifyAdultJWT, saveOnboardingStep);
@@ -158,35 +158,35 @@ router.put('/adult/providers/me/photos', verifyAdultJWT, updatePhotos);
 router.put('/adult/providers/me/schedule', verifyAdultJWT, updateSchedule);
 
 // Naughty Rooms API
-router.get('/adult/rooms', verifyAdultJWT, getRooms);
+router.get('/adult/rooms', optionalAdultJWT, getRooms);
 router.post('/adult/rooms', verifyAdultJWT, createAdultRoom);
-router.get('/adult/rooms/:roomId', verifyAdultJWT, getAdultRoom);
+router.get('/adult/rooms/:roomId', optionalAdultJWT, getAdultRoom);
 router.post('/adult/rooms/:roomId/join', verifyAdultJWT, joinAdultRoom);
 router.post('/adult/rooms/:roomId/leave', verifyAdultJWT, leaveAdultRoom);
-router.get('/adult/rooms/:roomId/members', verifyAdultJWT, getRoomMembers);
-router.get('/adult/rooms/:roomId/leaderboard', verifyAdultJWT, getRoomLeaderboard);
+router.get('/adult/rooms/:roomId/members', optionalAdultJWT, getRoomMembers);
+router.get('/adult/rooms/:roomId/leaderboard', optionalAdultJWT, getRoomLeaderboard);
 
 // Threads
-router.get('/adult/rooms/:roomId/threads', verifyAdultJWT, getThreads);
+router.get('/adult/rooms/:roomId/threads', optionalAdultJWT, getThreads);
 router.post('/adult/rooms/:roomId/threads', verifyAdultJWT, createThread);
-router.get('/adult/rooms/:roomId/threads/:threadId', verifyAdultJWT, getThread);
+router.get('/adult/rooms/:roomId/threads/:threadId', optionalAdultJWT, getThread);
 router.post('/adult/rooms/:roomId/threads/:threadId/react', verifyAdultJWT, reactThread);
 router.put('/adult/rooms/:roomId/threads/:threadId/pin', verifyAdultJWT, pinThread);
 router.put('/adult/rooms/:roomId/threads/:threadId/lock', verifyAdultJWT, lockThread);
 
 // Messages (main feed)
-router.get('/adult/rooms/:roomId/messages', verifyAdultJWT, getAdultRoomMessages);
+router.get('/adult/rooms/:roomId/messages', optionalAdultJWT, getAdultRoomMessages);
 router.post('/adult/rooms/:roomId/messages', verifyAdultJWT, sendAdultRoomMessage);
 router.post('/adult/rooms/:roomId/messages/:messageId/react', verifyAdultJWT, reactAdultRoomMessage);
 router.delete('/adult/rooms/:roomId/messages/:messageId', verifyAdultJWT, deleteAdultRoomMessage);
 
 // Thread replies
-router.get('/adult/rooms/:roomId/threads/:threadId/replies', verifyAdultJWT, getReplies);
+router.get('/adult/rooms/:roomId/threads/:threadId/replies', optionalAdultJWT, getReplies);
 router.post('/adult/rooms/:roomId/threads/:threadId/replies', verifyAdultJWT, postReply);
 router.post('/adult/rooms/:roomId/threads/:threadId/replies/:replyId/react', verifyAdultJWT, reactReply);
 
 // Polls
-router.get('/adult/rooms/:roomId/polls/active', verifyAdultJWT, getActivePolls);
+router.get('/adult/rooms/:roomId/polls/active', optionalAdultJWT, getActivePolls);
 router.post('/adult/rooms/:roomId/polls', verifyAdultJWT, createPoll);
 router.post('/adult/rooms/:roomId/polls/:pollId/vote', verifyAdultJWT, votePoll);
 

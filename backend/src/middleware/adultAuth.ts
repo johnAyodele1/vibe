@@ -11,6 +11,34 @@ declare global {
   }
 }
 
+export const optionalAdultJWT = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const authHeader = req.headers.authorization;
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token || token === 'undefined' || token === 'null' || token === '') {
+      return next();
+    }
+
+    try {
+      jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret');
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Dating token not allowed in Adult Zone' } });
+    } catch (e) {
+      // Not a dating token, proceed
+    }
+
+    const decoded = jwt.verify(token, process.env.ADULT_JWT_SECRET || 'adult_secret') as { sub: string };
+    const user = await AdultUser.findById(decoded.sub);
+
+    if (user && user.isActive && !user.isBanned) {
+      req.adultUser = user;
+    }
+    next();
+  } catch (err) {
+    next();
+  }
+};
+
 export const verifyAdultJWT = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const authHeader = req.headers.authorization;
