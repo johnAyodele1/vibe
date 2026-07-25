@@ -24,7 +24,7 @@ const adultMessageSchema = new Schema<IMessage>(
     messageType: {
       type: String,
       required: true,
-      enum: ['text', 'image', 'video', 'audio', 'voice_note', 'gift', 'locked_image', 'locked_video', 'request_photo', 'system', 'voice'],
+      enum: ['text', 'image', 'video', 'audio', 'voice_note', 'gift', 'locked_image', 'locked_video', 'request_photo', 'system', 'voice', 'gift_request', 'service_request'],
       default: 'text',
     },
     mediaUrl: String,
@@ -60,6 +60,30 @@ const adultMessageSchema = new Schema<IMessage>(
       giftIconUrl: String,
       giftValue: Number,
       message: String,
+    },
+    giftRequest: {
+      giftId: String,
+      giftName: String,
+      giftIconUrl: String,
+      giftValue: Number,
+      message: String,
+      status: {
+        type: String,
+        enum: ['pending', 'fulfilled', 'different_sent', 'dismissed'],
+        default: 'pending',
+      },
+    },
+    serviceRequest: {
+      baseRate: Number,
+      extras: [{ label: String, amount: Number }],
+      totalAmount: Number,
+      note: String,
+      status: {
+        type: String,
+        enum: ['pending', 'paid', 'completed', 'auto_completed', 'reported'],
+        default: 'pending',
+      },
+      eligibleForPayout: { type: Boolean, default: false }
     },
     photoRequest: {
       status: {

@@ -1,26 +1,29 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { API_BASE_URL } from '../../config';
+import { API_BASE_URL, SOCKET_URL } from '../../config';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
+import { io, Socket } from 'socket.io-client';
 
 const ProviderStreamRoom = React.lazy(() => import('./ProviderStreamRoom'));
 
 const ProviderLive: React.FC = () => {
   const navigate = useNavigate();
-  const token = localStorage.getItem('adultAccessToken');
+  const token = localStorage.getItem('adultAccessToken') || '';
   const { user } = useAdultAuth();
 
   const [isLive, setIsLive] = useState(false);
   const [duration, setDuration] = useState(0);
-  const [viewerCount] = useState(142);
-  const [sessionTips] = useState(1250);
+  const [viewerCount, setViewerCount] = useState(0);
+  const [sessionTips, setSessionTips] = useState(0);
 
-  // Zego States
-  const [zegoToken, setZegoToken] = useState<string | null>(null);
-  const [zegoAppId, setZegoAppId] = useState<number | null>(null);
-  const [zegoRoomId, setZegoRoomId] = useState<string | null>(null);
-  const [zegoSessionId, setZegoSessionId] = useState<string | null>(null);
+  // Agora States
+  const [agoraToken, setAgoraToken] = useState<string | null>(null);
+  const [agoraAppId, setAgoraAppId] = useState<number | null>(null);
+  const [agoraRoomId, setAgoraRoomId] = useState<string | null>(null);
+  const [agoraSessionId, setAgoraSessionId] = useState<string | null>(null);
+
+  const socketRef = useRef<Socket | null>(null);
 
   const [chatMessages, setChatMessages] = useState<any[]>([
     { id: '1', user: 'Member_882', text: 'Hey there beauty! Gorgeous room!' },
@@ -60,6 +63,42 @@ const ProviderLive: React.FC = () => {
     return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  useEffect(() => {
+    if (!token || !user) return;
+
+    const socketUrl = SOCKET_URL || window.location.origin;
+    const socket = io(`${socketUrl}/adult`, {
+      auth: { token },
+      transports: ['websocket', 'polling']
+    });
+
+    socketRef.current = socket;
+
+    socket.on('cam:tip_received', (data) => {
+      const myId = user.id || (user as any)._id;
+      if (data && data.recipientId === myId) {
+        const tipAmt = data.amount || 0;
+        const fromName = data.fromName || 'Someone';
+
+        setSessionTips(prev => prev + tipAmt);
+        setChatMessages(prev => [
+          ...prev,
+          {
+            id: 'tip-rec-' + Date.now(),
+            user: fromName,
+            text: `Tipped ${tipAmt} credits!`,
+            tip: tipAmt
+          }
+        ]);
+        toast.success(`🎉 Received a tip of 💎 ${tipAmt} from ${fromName}!`);
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [token, user]);
+
   const handleStartStream = async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/adult/cams/stream/start`, {
@@ -73,12 +112,25 @@ const ProviderLive: React.FC = () => {
       const resData = await res.json();
       if (resData.success && resData.data) {
         const { sessionId, roomId, token: zToken, appId } = resData.data;
-        setZegoToken(zToken);
-        setZegoAppId(appId);
-        setZegoRoomId(roomId);
-        setZegoSessionId(sessionId);
+        setAgoraToken(zToken);
+        setAgoraAppId(appId);
+        setAgoraRoomId(roomId);
+        setAgoraSessionId(sessionId);
         setIsLive(true);
         toast.success('Successfully started live streaming session!');
+
+        // Join live room on socket
+        if (socketRef.current) {
+          socketRef.current.emit('cam:join', sessionId);
+          socketRef.current.on('cam:viewerCount', (count) => {
+            setViewerCount(count);
+          });
+          socketRef.current.on('cam:viewer_count', (data) => {
+            if (data && typeof data.count === 'number') {
+              setViewerCount(data.count);
+            }
+          });
+        }
       } else {
         toast.error(resData.error?.message || 'Failed to start stream');
       }
@@ -91,8 +143,8 @@ const ProviderLive: React.FC = () => {
   const handleEndStream = async () => {
     if (!window.confirm('Are you sure you want to end this webcam session?')) return;
     try {
-      if (zegoSessionId) {
-        await fetch(`${API_BASE_URL}/adult/cams/stream/${zegoSessionId}/end`, {
+      if (agoraSessionId) {
+        await fetch(`${API_BASE_URL}/adult/cams/stream/${agoraSessionId}/end`, {
           method: 'PATCH',
           headers: getHeaders()
         });
@@ -100,11 +152,17 @@ const ProviderLive: React.FC = () => {
     } catch (err) {
       console.error(err);
     } finally {
+      if (agoraSessionId && socketRef.current) {
+        socketRef.current.emit('cam:leave', agoraSessionId);
+        socketRef.current.off('cam:viewerCount');
+        socketRef.current.off('cam:viewer_count');
+      }
       setIsLive(false);
-      setZegoToken(null);
-      setZegoAppId(null);
-      setZegoRoomId(null);
-      setZegoSessionId(null);
+      setAgoraToken(null);
+      setAgoraAppId(null);
+      setAgoraRoomId(null);
+      setAgoraSessionId(null);
+      setViewerCount(0);
       toast.info(`Session ended. Tips accumulated: 💎 ${sessionTips}`);
     }
   };
@@ -144,18 +202,18 @@ const ProviderLive: React.FC = () => {
               </div>
             </div>
 
-            {/* Video preview / Zego host container */}
+            {/* Video preview / Agora host container */}
             <div className="absolute inset-0 flex items-center justify-center">
-              {isLive && zegoToken && zegoAppId && zegoRoomId && zegoSessionId ? (
+              {isLive && agoraToken && agoraAppId && agoraRoomId && agoraSessionId ? (
                 <div className="w-full h-full">
                   <React.Suspense fallback={<div className="flex items-center justify-center h-full text-pink-500">Loading stream host...</div>}>
                     <ProviderStreamRoom
-                      appId={zegoAppId}
-                      token={zegoToken}
-                      roomId={zegoRoomId}
+                      appId={agoraAppId}
+                      token={agoraToken}
+                      roomId={agoraRoomId}
                       userId={user?.id || ''}
                       userName={user?.firstName || 'Provider'}
-                      sessionId={zegoSessionId}
+                      sessionId={agoraSessionId}
                       onEnd={handleEndStream}
                     />
                   </React.Suspense>

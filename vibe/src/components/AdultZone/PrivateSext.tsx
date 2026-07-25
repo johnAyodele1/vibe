@@ -52,6 +52,28 @@ interface Message {
     giftValue: number;
     message?: string;
   };
+  giftRequest?: {
+    giftId: string;
+    giftName: string;
+    giftIconUrl: string;
+    giftValue: number;
+    message?: string;
+    status: 'pending' | 'fulfilled' | 'different_sent' | 'dismissed';
+    fulfilledGiftId?: string;
+    fulfilledGiftName?: string;
+    fulfilledAt?: string;
+  };
+  serviceRequest?: {
+    baseRate: number;
+    extras: { label: string; amount: number }[];
+    totalAmount: number;
+    note?: string;
+    status: 'pending' | 'paid' | 'completed' | 'auto_completed' | 'reported';
+    paidAt?: string;
+    completedAt?: string;
+    reportedAt?: string;
+    eligibleForPayout: boolean;
+  };
   photoRequest?: {
     status: 'pending' | 'fulfilled' | 'declined';
     note?: string;
@@ -856,6 +878,108 @@ const PrivateSext: React.FC = () => {
     }
   };
 
+  const handleFulfillGiftRequest = async (msgId: string) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/v1/adult/sext/gift-requests/${msgId}/fulfill`, {
+        method: 'POST',
+        headers: getHeaders()
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, giftRequest: { ...m.giftRequest!, status: 'fulfilled' } } : m));
+        toast.success('Gift request fulfilled!');
+        fetchConversations();
+      } else {
+        toast.error(data.error || 'Failed to fulfill gift request');
+      }
+    } catch (err) {
+      toast.error('Failed to fulfill gift request');
+    }
+  };
+
+  const handleDismissGiftRequest = async (msgId: string) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/v1/adult/sext/gift-requests/${msgId}/dismiss`, {
+        method: 'POST',
+        headers: getHeaders()
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, giftRequest: { ...m.giftRequest!, status: 'dismissed' } } : m));
+        toast.info('Gift request dismissed');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handlePayServiceRequest = async (msgId: string) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/v1/adult/sext/service-requests/${msgId}/pay`, {
+        method: 'POST',
+        headers: getHeaders()
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, serviceRequest: { ...m.serviceRequest!, status: 'paid' } } : m));
+        toast.success('Service charge paid successfully!');
+        fetchConversations();
+      } else {
+        toast.error(data.error || 'Failed to pay service request');
+      }
+    } catch (err) {
+      toast.error('Failed to pay service request');
+    }
+  };
+
+  const handleCompleteServiceRequest = async (msgId: string) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/v1/adult/sext/service-requests/${msgId}/complete`, {
+        method: 'POST',
+        headers: getHeaders()
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, serviceRequest: { ...m.serviceRequest!, status: 'completed' } } : m));
+        toast.success('Service marked as completed!');
+      }
+    } catch (err) {
+      toast.error('Failed to complete service request');
+    }
+  };
+
+  const handleReportServiceRequest = async (msgId: string) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/v1/adult/sext/service-requests/${msgId}/report`, {
+        method: 'POST',
+        headers: getHeaders()
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, serviceRequest: { ...m.serviceRequest!, status: 'reported' } } : m));
+        toast.warning('Issue reported to support');
+      }
+    } catch (err) {
+      toast.error('Failed to report issue');
+    }
+  };
+
+  const handleDeclineServiceRequest = async (msgId: string) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/v1/adult/sext/service-requests/${msgId}/decline`, {
+        method: 'POST',
+        headers: getHeaders()
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, serviceRequest: { ...m.serviceRequest!, status: 'completed' } } : m));
+        toast.info('Service request declined');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   // Reaction picker
   const handleReactToMessage = async (msgId: string, emoji: string) => {
     try {
@@ -1270,6 +1394,134 @@ const PrivateSext: React.FC = () => {
                         {m.gift?.message && (
                           <p className="text-xs italic text-gray-300 mt-2 border-t border-pink-500/20 pt-2 w-full">"{m.gift.message}"</p>
                         )}
+                      </div>
+                    ) : m.mediaType === 'gift_request' ? (
+                      /* GIFT REQUEST (MEMBER / RECEIVER VIEW) */
+                      <div data-testid="gift-request-message" className="w-72 bg-gradient-to-br from-[#200e1b] to-[#120711] border border-amber-500/40 rounded-2xl p-5 shadow-2xl text-center relative overflow-hidden flex flex-col items-center">
+                        <div className="absolute top-1.5 right-2.5 text-[8px] text-amber-400 font-bold uppercase tracking-widest">WISH REQUEST</div>
+                        <span className="text-5xl my-3 animate-bounce">🎁</span>
+                        <h5 className="font-serif italic text-white text-base">is wishing for a gift</h5>
+                        <p className="text-pink-300 font-bold text-sm mt-1">{m.giftRequest?.giftName}</p>
+                        <p className="text-amber-400 font-bold font-mono text-xs mt-1">💎 {m.giftRequest?.giftValue} Credits</p>
+                        {m.giftRequest?.message && (
+                          <p className="text-xs italic text-gray-300 my-3 border-t border-pink-500/10 pt-3 w-full">"{m.giftRequest.message}"</p>
+                        )}
+                        <div className="w-full space-y-2 mt-4">
+                          {m.giftRequest?.status === 'pending' ? (
+                            <>
+                              <button
+                                onClick={() => handleFulfillGiftRequest(m.id)}
+                                className="w-full py-2 bg-gradient-to-r from-amber-500 to-yellow-600 text-black font-bold rounded-xl text-xs uppercase tracking-wider hover:scale-[1.02] active:scale-[0.98] transition-transform"
+                              >
+                                Send {m.giftRequest?.giftName}
+                              </button>
+                              <button
+                                onClick={openGiftPicker}
+                                className="w-full py-1.5 border border-pink-500/30 text-pink-300 rounded-xl text-[10px] uppercase font-bold"
+                              >
+                                Send a different gift
+                              </button>
+                              <button
+                                onClick={() => handleDismissGiftRequest(m.id)}
+                                className="text-[10px] text-gray-400 hover:text-white underline mt-2 block mx-auto bg-transparent border-none cursor-pointer"
+                              >
+                                Maybe later
+                              </button>
+                            </>
+                          ) : m.giftRequest?.status === 'fulfilled' ? (
+                            <div className="text-xs text-green-400 font-bold uppercase tracking-widest bg-green-950/20 py-2 border border-green-500/30 rounded-xl">
+                              ✅ Gift Sent
+                            </div>
+                          ) : (
+                            <div className="text-xs text-gray-400 font-bold uppercase tracking-widest bg-white/5 py-2 rounded-xl">
+                              Decline
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ) : m.mediaType === 'service_request' ? (
+                      /* SERVICE REQUEST (MEMBER / RECEIVER VIEW) */
+                      <div data-testid="service-request-message" className="w-72 bg-gradient-to-br from-[#1b0a14] to-[#0d040a] border-2 border-amber-500/50 rounded-2xl p-5 shadow-2xl relative overflow-hidden flex flex-col text-left">
+                        <div className="flex items-center gap-2 mb-3 border-b border-white/5 pb-2">
+                          <span className="text-lg">🌙</span>
+                          <span className="font-bold text-[10px] uppercase tracking-wider text-amber-400">Tonight Service Charge</span>
+                        </div>
+
+                        <div className="space-y-2 text-xs">
+                          <div className="flex justify-between text-gray-300">
+                            <span>Tonight rate:</span>
+                            <span className="font-mono font-bold text-white">💎 {m.serviceRequest?.baseRate}</span>
+                          </div>
+                          {m.serviceRequest?.extras?.map((ext: { label: string; amount: number }, idx: number) => (
+                            <div key={idx} className="flex justify-between text-gray-400">
+                              <span>{ext.label}:</span>
+                              <span className="font-mono text-white">💎 {ext.amount}</span>
+                            </div>
+                          ))}
+                          <div className="border-t border-white/5 my-2 pt-2 flex justify-between items-center text-sm font-bold">
+                            <span className="text-white">TOTAL:</span>
+                            <span className="font-mono text-amber-400">💎 {m.serviceRequest?.totalAmount}</span>
+                          </div>
+                          <span className="text-[10px] text-gray-500 block text-right">
+                            ≈ ${(m.serviceRequest?.totalAmount! * 0.1).toFixed(2)} USD
+                          </span>
+                        </div>
+
+                        {m.serviceRequest?.note && (
+                          <p className="text-[11px] text-gray-400 italic mt-3 bg-white/5 p-2 rounded-lg border-l-2 border-amber-400">
+                            "{m.serviceRequest.note}"
+                          </p>
+                        )}
+
+                        <div className="mt-4 space-y-2">
+                          {m.serviceRequest?.status === 'pending' ? (
+                            <>
+                              <button
+                                onClick={() => {
+                                  if (window.confirm(`Confirm payment of 💎 ${m.serviceRequest?.totalAmount} credits (≈ $${(m.serviceRequest?.totalAmount! * 0.1).toFixed(2)} USD)?`)) {
+                                    handlePayServiceRequest(m.id);
+                                  }
+                                }}
+                                className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-yellow-600 text-black font-bold rounded-xl text-xs uppercase tracking-wider hover:scale-[1.02] active:scale-[0.98] transition-transform"
+                              >
+                                Pay 💎 {m.serviceRequest?.totalAmount} Credits
+                              </button>
+                              <button
+                                onClick={() => handleDeclineServiceRequest(m.id)}
+                                className="w-full py-1.5 bg-white/5 hover:bg-white/10 text-gray-300 rounded-xl text-[10px] uppercase font-bold"
+                              >
+                                Decline
+                              </button>
+                            </>
+                          ) : m.serviceRequest?.status === 'paid' ? (
+                            <div className="space-y-2">
+                              <div className="text-xs text-green-400 font-bold uppercase tracking-widest text-center py-1 bg-green-950/20 border border-green-500/30 rounded-xl">
+                                ✅ Paid
+                              </div>
+                              <p className="text-[10px] text-gray-400 text-center italic">Confirm once the service is delivered:</p>
+                              <button
+                                onClick={() => handleCompleteServiceRequest(m.id)}
+                                className="w-full py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-[10px] font-bold uppercase"
+                              >
+                                Confirm Service Delivered
+                              </button>
+                              <button
+                                onClick={() => handleReportServiceRequest(m.id)}
+                                className="w-full py-1 bg-transparent border border-red-500/30 text-red-400 hover:bg-red-950/20 rounded-xl text-[10px] font-bold uppercase"
+                              >
+                                Report an Issue
+                              </button>
+                            </div>
+                          ) : m.serviceRequest?.status === 'completed' || m.serviceRequest?.status === 'auto_completed' ? (
+                            <div className="text-xs text-green-400 font-bold uppercase tracking-widest text-center py-2 bg-green-950/20 border border-green-500/30 rounded-xl">
+                              🌙 Service Completed
+                            </div>
+                          ) : (
+                            <div className="text-xs text-red-400 font-bold uppercase tracking-widest text-center py-2 bg-red-950/20 border border-red-500/30 rounded-xl">
+                              ⚠️ Issue Reported
+                            </div>
+                          )}
+                        </div>
                       </div>
                     ) : m.mediaType === 'request_photo' ? (
                       <div data-testid="message-photo-request" className="w-64 bg-[#1b0d19] border-2 border-dashed border-pink-500/40 rounded-xl p-4 flex flex-col gap-3 message-photo-request">

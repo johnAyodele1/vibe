@@ -52,7 +52,16 @@ import {
   declineCall,
   endCall,
   getCallHistory,
-  missedCall
+  missedCall,
+  sendGiftRequest,
+  sendServiceRequest,
+  getTonightRate,
+  payServiceRequest,
+  completeServiceRequest,
+  reportServiceRequest,
+  declineServiceRequest,
+  dismissGiftRequest,
+  fulfillGiftRequest
 } from '../controllers/adultSext.controller';
 import { getRooms, createRoom as createAdultRoom, getRoom as getAdultRoom, joinRoom as joinAdultRoom, leaveRoom as leaveAdultRoom, getRoomMembers, getRoomLeaderboard, getThreads, createThread, getThread, reactThread, pinThread, lockThread, getMessages as getAdultRoomMessages, sendMessage as sendAdultRoomMessage, reactMessage as reactAdultRoomMessage, deleteMessage as deleteAdultRoomMessage, getReplies, postReply, reactReply, getActivePolls, createPoll, votePoll, reportRoom, muteUser, kickUser } from '../controllers/adultRooms.controller';
 
@@ -110,6 +119,17 @@ router.put('/adult/sext/photo-requests/:messageId/decline', verifyAdultJWT, decl
 // Gifts
 router.get('/adult/gifts/catalogue', verifyAdultJWT, getGiftsCatalogue);
 router.post('/adult/sext/conversations/:conversationId/send-gift', verifyAdultJWT, sendGift);
+router.post('/adult/sext/conversations/:conversationId/gift-request', verifyAdultJWT, sendGiftRequest);
+router.post('/adult/sext/gift-requests/:messageId/dismiss', verifyAdultJWT, dismissGiftRequest);
+router.post('/adult/sext/gift-requests/:messageId/fulfill', verifyAdultJWT, fulfillGiftRequest);
+
+// Service Charges
+router.post('/adult/sext/conversations/:conversationId/service-request', verifyAdultJWT, sendServiceRequest);
+router.get('/adult/providers/me/tonight-rate', verifyAdultJWT, getTonightRate);
+router.post('/adult/sext/service-requests/:messageId/pay', verifyAdultJWT, payServiceRequest);
+router.post('/adult/sext/service-requests/:messageId/complete', verifyAdultJWT, completeServiceRequest);
+router.post('/adult/sext/service-requests/:messageId/report', verifyAdultJWT, reportServiceRequest);
+router.post('/adult/sext/service-requests/:messageId/decline', verifyAdultJWT, declineServiceRequest);
 
 // Calls
 router.post('/adult/sext/calls/initiate', verifyAdultJWT, initiateCall);

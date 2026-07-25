@@ -79,6 +79,14 @@ export const tip = async (req: Request, res: Response) => {
     }], { session });
 
     await session.commitTransaction();
+
+    const ns = req.app.get('adultNamespace');
+    if (ns) {
+      ns.to(`user:${recipientId}`).emit('wallet:updated', { balance: recipient.credits });
+      ns.to(`user:${sender._id.toString()}`).emit('wallet:updated', { balance: sender.credits });
+      ns.emit('cam:tip_received', { amount: amount, fromName: sender.username, recipientId });
+    }
+
     res.json({ success: true, data: { newBalance: sender.credits } });
   } catch (err) {
     await session.abortTransaction();

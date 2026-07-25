@@ -546,4 +546,107 @@ describe('Private Messaging (Sext) Integration Tests', () => {
       expect(res.body.wasBilled).toBe(true);
     });
   });
+
+  describe('Gift Request & Service Charge Request Integration', () => {
+    let serviceMsgId: string;
+    let giftReqMsgId: string;
+
+    it('provider can get their tonight rate', async () => {
+      // Setup tonight rate on provider
+      await AdultUser.findByIdAndUpdate(providerId, {
+        'providerProfile.tonightRate': 150
+      });
+
+      const res = await request(app)
+        .get('/api/v1/adult/providers/me/tonight-rate')
+        .set('Authorization', `Bearer ${providerToken}`)
+        .expect(200);
+
+      expect(res.body.tonightRate).toBe(150);
+      expect(res.body.stageName).toBe('Lucia Star');
+    });
+
+    it('provider can send a gift request', async () => {
+      const res = await request(app)
+        .post(`/api/v1/adult/sext/conversations/${conversationId}/gift-request`)
+        .set('Authorization', `Bearer ${providerToken}`)
+        .send({
+          giftId: testGiftId,
+          message: 'Can you send me this gift please?'
+        })
+        .expect(201);
+
+      expect(res.body.mediaType).toBe('gift_request');
+      expect(res.body.giftRequest).toBeDefined();
+      expect(res.body.giftRequest.status).toBe('pending');
+      expect(res.body.giftRequest.giftName).toBe('Test Rose');
+      giftReqMsgId = res.body.id;
+    });
+
+    it('member can fulfill a gift request', async () => {
+      await AdultUser.findByIdAndUpdate(memberId, { credits: 200 });
+
+      const res = await request(app)
+        .post(`/api/v1/adult/sext/gift-requests/${giftReqMsgId}/fulfill`)
+        .set('Authorization', `Bearer ${memberToken}`)
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.giftRequest.status).toBe('fulfilled');
+
+      const member = await AdultUser.findById(memberId);
+      expect(member?.credits).toBe(185); // 200 - 15 (gift cost)
+    });
+
+    it('provider can send a service request', async () => {
+      const res = await request(app)
+        .post(`/api/v1/adult/sext/conversations/${conversationId}/service-request`)
+        .set('Authorization', `Bearer ${providerToken}`)
+        .send({
+          extras: [{ label: 'Travel Cost', amount: 30 }],
+          note: 'Tonight booking'
+        })
+        .expect(201);
+
+      expect(res.body.mediaType).toBe('service_request');
+      expect(res.body.serviceRequest).toBeDefined();
+      expect(res.body.serviceRequest.status).toBe('pending');
+      expect(res.body.serviceRequest.totalAmount).toBe(180); // 150 base + 30 extra
+      serviceMsgId = res.body.id;
+    });
+
+    it('member can pay for the service request', async () => {
+      // Member balance before: 185. Total charge is 180 credits.
+      // Wait, is there markup/client price? Yes: getClientPrice(180) = Math.ceil(180 * 1.15) = 207.
+      // 185 is not enough for clientPrice 207! It should return 402 or 400.
+      await request(app)
+        .post(`/api/v1/adult/sext/service-requests/${serviceMsgId}/pay`)
+        .set('Authorization', `Bearer ${memberToken}`)
+        .expect(402);
+
+      // Increase credits to 300 to afford it
+      await AdultUser.findByIdAndUpdate(memberId, { credits: 300 });
+
+      const res = await request(app)
+        .post(`/api/v1/adult/sext/service-requests/${serviceMsgId}/pay`)
+        .set('Authorization', `Bearer ${memberToken}`)
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.serviceRequest.status).toBe('paid');
+
+      const member = await AdultUser.findById(memberId);
+      expect(member?.credits).toBe(93); // 300 - 207 = 93
+    });
+
+    it('member can confirm service completed', async () => {
+      const res = await request(app)
+        .post(`/api/v1/adult/sext/service-requests/${serviceMsgId}/complete`)
+        .set('Authorization', `Bearer ${memberToken}`)
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.serviceRequest.status).toBe('completed');
+    });
+  });
 });

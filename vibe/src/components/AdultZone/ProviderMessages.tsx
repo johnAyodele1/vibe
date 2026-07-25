@@ -133,6 +133,26 @@ const ProviderMessages: React.FC = () => {
   const [serviceExtras, setServiceExtras] = useState<Array<{ label: string; amount: number }>>([]);
   const [serviceRequestNote, setServiceRequestNote] = useState('');
   const tonightRate = (user as any)?.providerProfile?.tonightRate || 100;
+  const [dynTonightRate, setDynTonightRate] = useState<number>(0);
+
+  useEffect(() => {
+    if (showServiceRequestDialog) {
+      const fetchTonightRate = async () => {
+        try {
+          const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/tonight-rate`, {
+            headers: getHeaders()
+          });
+          const data = await res.json();
+          if (data && data.tonightRate !== undefined) {
+            setDynTonightRate(data.tonightRate);
+          }
+        } catch (err) {
+          console.error(err);
+        }
+      };
+      fetchTonightRate();
+    }
+  }, [showServiceRequestDialog]);
 
   // S3 general upload states for regular attachments
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -1104,7 +1124,7 @@ const ProviderMessages: React.FC = () => {
   };
 
   // Calculations
-  const totalServiceChargeAmount = tonightRate + serviceExtras.reduce((sum, item) => sum + item.amount, 0);
+  const totalServiceChargeAmount = (dynTonightRate || tonightRate) + serviceExtras.reduce((sum, item) => sum + item.amount, 0);
 
   // Filters
   const filteredConversations = conversations.filter(c => {
@@ -1926,7 +1946,7 @@ const ProviderMessages: React.FC = () => {
                 </label>
                 <div className="flex justify-between items-center p-3 bg-black/40 border border-white/5 rounded-xl">
                   <span className="text-xs text-gray-400">Your tonight rate (from profile):</span>
-                  <span className="text-xs font-mono font-bold text-amber-400">💎 {tonightRate} credits (≈ ${Math.round(tonightRate * 0.1 * 100) / 100})</span>
+                  <span className="text-xs font-mono font-bold text-amber-400">💎 {dynTonightRate || tonightRate} credits (≈ ${Math.round((dynTonightRate || tonightRate) * 0.1 * 100) / 100})</span>
                 </div>
               </div>
 

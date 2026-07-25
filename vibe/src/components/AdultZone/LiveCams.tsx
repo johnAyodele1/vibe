@@ -1,13 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { API_BASE_URL } from '../../config';
+import React, { useState, useEffect, useRef } from 'react';
+import { API_BASE_URL, SOCKET_URL } from '../../config';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { toast } from 'sonner';
+import { io, Socket } from 'socket.io-client';
 
 const CamViewerRoom = React.lazy(() => import('./CamViewerRoom'));
 
 const LiveCams: React.FC = () => {
   const { user } = useAdultAuth();
-  const token = localStorage.getItem('adultAccessToken');
+  const token = localStorage.getItem('adultAccessToken') || '';
 
   const filters = ['All', 'Girls', 'Guys', 'Couples', 'Trans', 'New', 'Top Rated', 'Free', 'HD'];
   const [sessions, setSessions] = useState<any[]>([]);
@@ -16,10 +17,12 @@ const LiveCams: React.FC = () => {
 
   // Watch State
   const [activeSession, setActiveSession] = useState<any | null>(null);
-  const [zegoToken, setZegoToken] = useState<string | null>(null);
-  const [zegoAppId, setZegoAppId] = useState<number | null>(null);
-  const [zegoRoomId, setZegoRoomId] = useState<string | null>(null);
+  const [agoraToken, setAgoraToken] = useState<string | null>(null);
+  const [agoraAppId, setAgoraAppId] = useState<number | null>(null);
+  const [agoraRoomId, setAgoraRoomId] = useState<string | null>(null);
   const [viewerCount, setViewerCount] = useState<number>(0);
+
+  const socketRef = useRef<Socket | null>(null);
 
   const getHeaders = () => ({
     'Authorization': `Bearer ${token}`,
@@ -47,6 +50,52 @@ const LiveCams: React.FC = () => {
     fetchSessions();
   }, [activeFilter]);
 
+  // Set up socket integration
+  useEffect(() => {
+    if (!token) return;
+
+    const socketUrl = SOCKET_URL || window.location.origin;
+    const socket = io(`${socketUrl}/adult`, {
+      auth: { token },
+      transports: ['websocket', 'polling']
+    });
+
+    socketRef.current = socket;
+
+    socket.on('cam:session_started', (newSession) => {
+      // Map to shape expected in card list
+      const formatted = {
+        _id: newSession.sessionId,
+        title: newSession.title || 'Live Cam',
+        totalViewerCount: newSession.viewerCount || 0,
+        streamKey: newSession.streamKey,
+        providerId: {
+          _id: newSession.providerId,
+          username: newSession.providerName,
+          profilePhoto: newSession.avatarUrl
+        }
+      };
+
+      setSessions(prev => {
+        // Prevent duplicate entries
+        if (prev.some(s => s._id === formatted._id)) return prev;
+        return [formatted, ...prev];
+      });
+    });
+
+    socket.on('cam:session_ended', (data) => {
+      setSessions(prev => prev.filter(s => s._id !== data.sessionId));
+      if (activeSession && activeSession._id === data.sessionId) {
+        toast.info('The stream session has ended');
+        handleCloseWatch();
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [token, activeSession?._id]);
+
   const handleWatchNow = async (session: any) => {
     if (!token) {
       toast.error('Authentication required to watch streams');
@@ -58,11 +107,24 @@ const LiveCams: React.FC = () => {
       });
       const resData = await res.json();
       if (resData.token) {
-        setZegoToken(resData.token);
-        setZegoAppId(resData.appId);
-        setZegoRoomId(resData.roomId);
+        setAgoraToken(resData.token);
+        setAgoraAppId(resData.appId);
+        setAgoraRoomId(resData.roomId);
         setActiveSession(session);
         setViewerCount(session.totalViewerCount || 0);
+
+        // Join live room on socket
+        if (socketRef.current) {
+          socketRef.current.emit('cam:join', session._id);
+          socketRef.current.on('cam:viewerCount', (count) => {
+            setViewerCount(count);
+          });
+          socketRef.current.on('cam:viewer_count', (data) => {
+            if (data && typeof data.count === 'number') {
+              setViewerCount(data.count);
+            }
+          });
+        }
       } else {
         toast.error(resData.error || 'Failed to fetch viewer token');
       }
@@ -73,10 +135,15 @@ const LiveCams: React.FC = () => {
   };
 
   const handleCloseWatch = () => {
+    if (activeSession && socketRef.current) {
+      socketRef.current.emit('cam:leave', activeSession._id);
+      socketRef.current.off('cam:viewerCount');
+      socketRef.current.off('cam:viewer_count');
+    }
     setActiveSession(null);
-    setZegoToken(null);
-    setZegoAppId(null);
-    setZegoRoomId(null);
+    setAgoraToken(null);
+    setAgoraAppId(null);
+    setAgoraRoomId(null);
   };
 
   return (
@@ -156,14 +223,14 @@ const LiveCams: React.FC = () => {
       </div>
 
       {/* WATCH STREAM FULL SCREEN MODAL */}
-      {activeSession && zegoToken && zegoAppId && zegoRoomId && (
+      {activeSession && agoraToken && agoraAppId && agoraRoomId && (
         <div className="fixed inset-0 bg-black z-[10000] flex flex-col items-center justify-between text-white">
           <div className="absolute inset-0 bg-[#0a0608] z-0">
             <React.Suspense fallback={<div className="flex items-center justify-center h-full text-pink-500">Loading stream viewer...</div>}>
               <CamViewerRoom
-                appId={zegoAppId}
-                token={zegoToken}
-                roomId={zegoRoomId}
+                appId={agoraAppId}
+                token={agoraToken}
+                roomId={agoraRoomId}
                 userId={user?.id || ''}
                 userName={user?.firstName || 'Viewer'}
                 onUserCountUpdate={setViewerCount}
