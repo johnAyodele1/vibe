@@ -65,12 +65,12 @@ export const startStream = async (req: Request, res: Response) => {
   const session = new CamSession({
     providerId: provider._id,
     title: title || 'Live Cam',
-    tags,
-    sessionType,
-    privateShowRate,
-    resolution,
-    chatEnabled,
-    recordingEnabled,
+    tags: tags || [],
+    sessionType: sessionType || 'public',
+    privateShowRate: privateShowRate !== undefined ? privateShowRate : 0,
+    resolution: resolution || '1080p',
+    chatEnabled: chatEnabled !== undefined ? chatEnabled : true,
+    recordingEnabled: recordingEnabled !== undefined ? recordingEnabled : false,
     streamKey: roomId, // roomId is stored in streamKey
     streamPlaybackUrl: roomId,
     status: 'live',
