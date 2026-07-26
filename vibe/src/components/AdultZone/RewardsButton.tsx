@@ -45,9 +45,9 @@ export const RewardsButton: React.FC = () => {
           className="rewards-btn__circle"
           onClick={() => setSheetOpen(true)}
         >
-          <svg className="rewards-btn__text-ring" viewBox="0 0 140 140" width="140" height="140">
+          <svg className="rewards-btn__text-ring" viewBox="0 0 90 90" width="90" height="90">
             <defs>
-              <path id="rewards-circle" d="M 70,70 m -50,0 a 50,50 0 1,1 100,0 a 50,50 0 1,1 -100,0"/>
+              <path id="rewards-circle" d="M 45,45 m -32,0 a 32,32 0 1,1 64,0 a 32,32 0 1,1 -64,0"/>
             </defs>
             <text className="rewards-btn__circular-text">
               <textPath href="#rewards-circle" startOffset="0%">
