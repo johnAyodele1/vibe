@@ -24,8 +24,23 @@ export const PublicProviderProfile: React.FC = () => {
   const [isStartingConversation, setIsStartingConversation] = useState(false);
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
 
+  // Automatically trigger the authentication modal if user is unauthenticated
+  useEffect(() => {
+    if (!isAuthenticated) {
+      // Small timeout ensures layout listener is registered and ready to capture the event on direct navigation!
+      const timer = setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('open-adult-auth-modal'));
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [isAuthenticated]);
+
   useEffect(() => {
     const fetchProviderProfile = async () => {
+      if (!isAuthenticated) {
+        setLoading(false);
+        return;
+      }
       try {
         setLoading(true);
         const token = localStorage.getItem('adultAccessToken');
@@ -55,7 +70,7 @@ export const PublicProviderProfile: React.FC = () => {
     if (providerId) {
       fetchProviderProfile();
     }
-  }, [providerId]);
+  }, [providerId, isAuthenticated]);
 
   const isSubscriber = isAuthenticated && user && user.subscriptionTier && user.subscriptionTier !== 'none';
 
@@ -117,6 +132,34 @@ export const PublicProviderProfile: React.FC = () => {
       isOnline: provider.isOnline
     }, amount);
   };
+
+  if (!isAuthenticated) {
+    return (
+      <div className="max-w-md mx-auto py-20 px-4 text-center">
+        <div className="w-16 h-16 bg-[var(--az-accent-primary)]/10 rounded-full flex items-center justify-center mx-auto mb-6">
+          <span className="text-3xl">🔒</span>
+        </div>
+        <h2 className="text-3xl font-serif italic mb-4 text-white">Login Required</h2>
+        <p className="text-sm text-[var(--az-text-secondary)] mb-8">
+          Please login or sign up to view this provider's profile and explore live streams, private messaging, and content.
+        </p>
+        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('open-adult-auth-modal'))}
+            className="px-8 py-3 bg-[var(--az-accent-primary)] text-white rounded-full text-xs font-bold uppercase tracking-widest shadow-[0_0_15px_var(--az-glow)] hover:scale-105 active:scale-95 transition-all"
+          >
+            Login or Sign Up
+          </button>
+          <Link
+            to="/"
+            className="px-8 py-3 border border-[var(--az-border)] text-[var(--az-text-secondary)] rounded-full text-xs font-bold uppercase tracking-widest hover:text-white transition-all"
+          >
+            Go Back Home
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
