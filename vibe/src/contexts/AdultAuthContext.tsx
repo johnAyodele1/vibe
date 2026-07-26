@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { API_BASE_URL } from '../config';
+import { toast } from 'sonner';
 
 export function extractErrorMessage(data: any): string {
   if (!data) return 'An unknown error occurred';
@@ -80,7 +81,12 @@ export const AdultAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await response.json();
-        if (data.success) {
+        if (response.status === 401 || !data.success) {
+          localStorage.removeItem('adultAccessToken');
+          setUser(null);
+          toast.error('Session expired. Kindly relogin.', { id: 'session-expired' });
+          window.dispatchEvent(new CustomEvent('open-adult-auth-modal'));
+        } else if (data.success) {
           setUser(data.data.user);
         } else {
           localStorage.removeItem('adultAccessToken');
@@ -94,6 +100,27 @@ export const AdultAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   useEffect(() => {
     checkAuth();
+  }, []);
+
+  // Global fetch interceptor to handle any unhandled 401 (Session Expired) errors
+  useEffect(() => {
+    const originalFetch = window.fetch;
+    window.fetch = async (...args) => {
+      const response = await originalFetch(...args);
+      if (response.status === 401) {
+        const token = localStorage.getItem('adultAccessToken');
+        if (token) {
+          localStorage.removeItem('adultAccessToken');
+          setUser(null);
+          toast.error('Session expired. Kindly relogin.', { id: 'session-expired' });
+          window.dispatchEvent(new CustomEvent('open-adult-auth-modal'));
+        }
+      }
+      return response;
+    };
+    return () => {
+      window.fetch = originalFetch;
+    };
   }, []);
 
   const updateCredits = (credits: number) => {

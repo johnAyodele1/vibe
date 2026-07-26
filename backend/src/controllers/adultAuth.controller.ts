@@ -5,7 +5,7 @@ import AdultUser from '../models/AdultUser';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../services/emailService';
 
 const generateTokens = (userId: string) => {
-  const accessToken = jwt.sign({ sub: userId }, process.env.ADULT_JWT_SECRET || 'adult_secret', { expiresIn: '15m' });
+  const accessToken = jwt.sign({ sub: userId }, process.env.ADULT_JWT_SECRET || 'adult_secret', { expiresIn: '1d' });
   const refreshToken = jwt.sign({ sub: userId }, process.env.ADULT_JWT_REFRESH_SECRET || 'adult_refresh', { expiresIn: '7d' });
   return { accessToken, refreshToken };
 };

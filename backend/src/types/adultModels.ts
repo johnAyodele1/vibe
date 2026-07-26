@@ -272,6 +272,11 @@ export interface IMessage extends Document {
     note?: string;
     fulfilledMessageId?: Types.ObjectId | null;
   };
+  serviceTonightRequest?: {
+    status: 'pending' | 'fulfilled' | 'declined';
+    note?: string;
+    fulfilledMessageId?: Types.ObjectId | null;
+  };
   systemText?: string;
   reactions: {
     userId: Types.ObjectId;

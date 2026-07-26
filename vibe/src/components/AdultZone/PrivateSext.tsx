@@ -79,6 +79,11 @@ interface Message {
     note?: string;
     fulfilledMessageId?: string | null;
   };
+  serviceTonightRequest?: {
+    status: 'pending' | 'fulfilled' | 'declined';
+    note?: string;
+    fulfilledMessageId?: string | null;
+  };
   systemText?: string;
   reactions?: { userId: string; emoji: string; reactedAt?: string }[];
   isDeleted: boolean;
@@ -117,6 +122,8 @@ const PrivateSext: React.FC = () => {
   const [activeGiftTab, setActiveGiftTab] = useState<string>('all');
   const [showPhotoRequestModal, setShowPhotoRequestModal] = useState(false);
   const [photoRequestNote, setPhotoRequestNote] = useState('');
+  const [showServiceRequestModal, setShowServiceRequestModal] = useState(false);
+  const [serviceRequestNote, setServiceRequestNote] = useState('');
 
   // S3 upload states
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -185,6 +192,76 @@ const PrivateSext: React.FC = () => {
   useEffect(() => {
     fetchConversations();
   }, [user?.id]);
+
+  // Global auto-accept call check on load/mount
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const autoAcceptCallId = searchParams.get('autoAcceptCallId');
+    const callerId = searchParams.get('callerId');
+    const type = searchParams.get('type') || 'video';
+
+    if (autoAcceptCallId && callerId && conversations.length > 0) {
+      const conv = conversations.find(c => c.otherUser?.id === callerId);
+      if (conv) {
+        // Clear search parameters from address bar immediately to prevent re-execution
+        window.history.replaceState(null, '', window.location.pathname);
+
+        selectConversation(conv);
+
+        // Pre-fill calling states so accept call flow can resolve
+        setCallType(type as any);
+        setActiveCallId(autoAcceptCallId);
+        setCallRate(5);
+        setCallData({
+          callId: autoAcceptCallId,
+          roomId: `room_${autoAcceptCallId}`,
+          callerName: conv.otherUser?.displayName || 'User'
+        });
+
+        // Trigger the accept API call
+        const triggerAutoAccept = async () => {
+          const hasPermissions = await checkMediaPermissions(type as any);
+          if (!hasPermissions) {
+            await fetch(`${API_BASE_URL}/v1/adult/sext/calls/${autoAcceptCallId}/decline`, {
+              method: 'PUT',
+              headers: getHeaders()
+            });
+            return;
+          }
+          setAcceptLoading(true);
+          try {
+            const res = await fetch(`${API_BASE_URL}/v1/adult/sext/calls/${autoAcceptCallId}/accept`, {
+              method: 'PUT',
+              headers: getHeaders()
+            });
+            const data = await res.json();
+
+            const tokenRes = await fetch(`${API_BASE_URL}/v1/adult/zego/token?roomId=${data.roomId}&type=call`, {
+              headers: getHeaders()
+            });
+            const tokenData = await tokenRes.json();
+            if (tokenData.token) {
+              setZegoToken(tokenData.token);
+              setZegoAppId(tokenData.appId);
+              setZegoRoomId(data.roomId);
+              setCallState('active');
+            } else {
+              setAcceptLoading(false);
+              toast.error('Failed to get call token');
+            }
+          } catch (err) {
+            setAcceptLoading(false);
+            console.error('Auto-accept call error:', err);
+          }
+        };
+
+        // Let selectConversation render and initialize before auto-accept
+        setTimeout(() => {
+          triggerAutoAccept();
+        }, 500);
+      }
+    }
+  }, [conversations]);
 
   // Handle window resizing for responsive navigation and layout adjustments
   useEffect(() => {
@@ -262,6 +339,19 @@ const PrivateSext: React.FC = () => {
     }
   };
 
+  const handleDeclineServiceTonightRequest = async (msgId: string) => {
+    try {
+      await fetch(`${API_BASE_URL}/v1/adult/sext/service-tonight-requests/${msgId}/decline`, {
+        method: 'PUT',
+        headers: getHeaders()
+      });
+      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, serviceTonightRequest: { ...m.serviceTonightRequest!, status: 'declined' } } : m));
+      toast.info('Service request cancelled');
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const fetchMessages = async (convId: string, page: number) => {
     try {
       const res = await fetch(`${API_BASE_URL}/v1/adult/sext/conversations/${convId}/messages?page=${page}&limit=30`, {
@@ -322,6 +412,17 @@ const PrivateSext: React.FC = () => {
         ...m,
         photoRequest: m.photoRequest ? {
           ...m.photoRequest,
+          status: payload.status,
+          fulfilledMessageId: payload.fulfilledMessageId || null
+        } : undefined
+      } : m));
+    });
+
+    s.on('sext:service_tonight_request_updated', (payload: { messageId: string, status: 'fulfilled' | 'declined', fulfilledMessageId?: string }) => {
+      setMessages(prev => prev.map(m => m.id === payload.messageId ? {
+        ...m,
+        serviceTonightRequest: m.serviceTonightRequest ? {
+          ...m.serviceTonightRequest,
           status: payload.status,
           fulfilledMessageId: payload.fulfilledMessageId || null
         } : undefined
@@ -847,6 +948,27 @@ const PrivateSext: React.FC = () => {
     }
   };
 
+  // Request Tonight Service
+  const handleSendServiceRequest = async () => {
+    if (!selectedConv) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/v1/adult/sext/conversations/${selectedConv.conversationId}/request-service`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ note: serviceRequestNote })
+      });
+      const data = await res.json();
+      if (data.id) {
+        setMessages(prev => [...prev, data]);
+        setShowServiceRequestModal(false);
+        setServiceRequestNote('');
+        toast.success('Tonight service request sent!');
+      }
+    } catch (err) {
+      toast.error('Failed to send service request');
+    }
+  };
+
   const handleDeclinePhotoRequest = async (msgId: string) => {
     try {
       await fetch(`${API_BASE_URL}/v1/adult/sext/photo-requests/${msgId}/decline`, {
@@ -1076,11 +1198,25 @@ const PrivateSext: React.FC = () => {
         }
       } else {
         setCallState('idle');
-        toast.error('Call initialization failed');
+        if (res.status === 402 || data.error?.toLowerCase().includes('insufficient')) {
+          toast.error('Insufficient tokens. Please get more tokens.', {
+            action: {
+              label: 'Get Tokens',
+              onClick: () => { window.location.href = '/wallet'; }
+            }
+          });
+        } else {
+          toast.error(data.error || 'Call initialization failed');
+        }
       }
     } catch (err) {
       setCallState('idle');
-      toast.error('Insufficient balance to place call');
+      toast.error('Insufficient tokens. Please get more tokens.', {
+        action: {
+          label: 'Get Tokens',
+          onClick: () => { window.location.href = '/wallet'; }
+        }
+      });
     }
   };
 
@@ -1582,6 +1718,40 @@ const PrivateSext: React.FC = () => {
                           </div>
                         )}
                       </div>
+                    ) : m.mediaType === 'request_service' ? (
+                      <div data-testid="message-service-tonight-request" className="w-64 bg-[#140b13] border-2 border-dashed border-purple-500/40 rounded-xl p-4 flex flex-col gap-3 message-service-tonight-request">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl">🌙</span>
+                          <span className="font-bold text-xs tracking-wider text-purple-400 uppercase">Service Request</span>
+                        </div>
+                        {m.serviceTonightRequest?.note && (
+                          <p className="text-xs text-gray-300 italic">"{m.serviceTonightRequest.note}"</p>
+                        )}
+
+                        {m.serviceTonightRequest?.status === 'pending' ? (
+                          isMe ? (
+                            <div className="text-[10px] text-gray-400 italic text-center mt-2 flex flex-col gap-2">
+                              <span>Waiting for provider to send service rates...</span>
+                              <button
+                                onClick={() => handleDeclineServiceTonightRequest(m.id)}
+                                className="py-1 bg-white/5 hover:bg-white/10 text-gray-400 rounded text-[9px] uppercase font-bold"
+                              >
+                                Cancel Request
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="text-[10px] text-gray-400 italic text-center mt-2">Waiting for response...</div>
+                          )
+                        ) : m.serviceTonightRequest?.status === 'fulfilled' ? (
+                          <div className="text-[10px] text-green-400 font-bold tracking-wider uppercase mt-2">
+                            ✓ Tonight Service Request fulfilled
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-red-400 font-bold tracking-wider uppercase mt-2">
+                            ✗ Tonight Service Request declined
+                          </div>
+                        )}
+                      </div>
                     ) : m.mediaType === 'image' ? (
                       <div data-testid="message-bubble" className="max-w-xs rounded-xl overflow-hidden border border-pink-500/20 message-bubble">
                         <img src={m.mediaUrl} className="max-h-72 object-cover" alt="attachment" />
@@ -1872,6 +2042,12 @@ const PrivateSext: React.FC = () => {
                 >
                   📸 Request Photo
                 </button>
+                <button
+                  onClick={() => setShowServiceRequestModal(true)}
+                  className="text-[10px] font-bold uppercase tracking-widest text-purple-400 hover:text-purple-500 flex items-center gap-1.5 transition-colors"
+                >
+                  🌙 Request Service
+                </button>
               </div>
             </div>
           </>
@@ -1985,6 +2161,38 @@ const PrivateSext: React.FC = () => {
               className="w-full py-2.5 bg-pink-600 hover:bg-pink-700 text-white font-bold text-xs uppercase tracking-widest rounded-full transition-colors"
             >
               Send Photo Request
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* SERVICE REQUEST modal */}
+      {showServiceRequestModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[9999]">
+          <div className="w-full max-w-sm bg-[#160b13] border border-pink-500/30 rounded-2xl p-6 shadow-2xl relative">
+            <button
+              onClick={() => setShowServiceRequestModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-white text-xl"
+            >
+              ×
+            </button>
+            <h3 className="text-xl font-serif italic text-pink-300 mb-1">Request a Tonight Service</h3>
+            <p className="text-[10px] text-gray-400 uppercase tracking-widest mb-4">Request a personalized service arrangement for tonight.</p>
+
+            <textarea
+              rows={4}
+              maxLength={200}
+              placeholder="E.g., Are you available for a private show or date tonight? 😉"
+              value={serviceRequestNote}
+              onChange={(e) => setServiceRequestNote(e.target.value)}
+              className="w-full bg-[#1e0d1b] border border-pink-500/20 text-xs rounded-lg p-3 outline-none text-white focus:border-pink-500 mb-4 no-scrollbar resize-none"
+            />
+
+            <button
+              onClick={handleSendServiceRequest}
+              className="w-full py-2.5 bg-pink-600 hover:bg-pink-700 text-white font-bold text-xs uppercase tracking-widest rounded-full transition-colors"
+            >
+              Send Service Request
             </button>
           </div>
         </div>

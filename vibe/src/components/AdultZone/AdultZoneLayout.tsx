@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useLocation, Outlet } from 'react-router-dom';
+import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom';
+import { io } from 'socket.io-client';
+import { API_BASE_URL, SOCKET_URL } from '../../config';
 import AgeGate from './AgeGate';
 import AdultAuthModal from './AdultAuthModal';
 import LoadingScreen from '../LoadingScreen/LoadingScreen';
@@ -25,6 +27,102 @@ const AdultZoneLayout: React.FC = () => {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const { isAuthenticated, logout, user, loading } = useAdultAuth();
   const location = useLocation();
+  const navigate = useNavigate();
+
+  const [incomingCall, setIncomingCall] = useState<{
+    callId: string;
+    callerId: string;
+    callerName: string;
+    callerAvatar: string;
+    type: 'video' | 'audio';
+    webrtcRoomId: string;
+    rate: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!isAuthenticated || !user) return;
+
+    const token = localStorage.getItem('adultAccessToken');
+    if (!token) return;
+
+    const socketUrl = SOCKET_URL || window.location.origin;
+    const s = io(`${socketUrl}/adult`, {
+      auth: { token },
+      transports: ['websocket', 'polling']
+    });
+
+    s.on('connect', () => {
+      console.log('Global Adult Zone socket connected:', s.id);
+    });
+
+    s.on('call:incoming', (payload: any) => {
+      // Ignore if already on the messaging page where calls are handled locally
+      const isChatPage = location.pathname === '/adult/provider/messages' || location.pathname === '/sext';
+      if (isChatPage) return;
+
+      setIncomingCall({
+        callId: payload.callId,
+        callerId: payload.callerId,
+        callerName: payload.callerName,
+        callerAvatar: payload.callerAvatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=150&auto=format&fit=crop",
+        type: payload.type || 'video',
+        webrtcRoomId: payload.webrtcRoomId,
+        rate: payload.rate
+      });
+    });
+
+    s.on('call:missed', (payload: any) => {
+      setIncomingCall(prev => {
+        if (!payload?.callId || prev?.callId === payload.callId) {
+          return null;
+        }
+        return prev;
+      });
+    });
+
+    s.on('call:ended', (payload: any) => {
+      setIncomingCall(prev => {
+        if (!payload?.callId || prev?.callId === payload.callId) {
+          return null;
+        }
+        return prev;
+      });
+    });
+
+    return () => {
+      s.disconnect();
+    };
+  }, [isAuthenticated, user?.id, location.pathname]);
+
+  const handleDeclineIncomingCall = async () => {
+    if (!incomingCall) return;
+    try {
+      const token = localStorage.getItem('adultAccessToken');
+      await fetch(`${API_BASE_URL}/v1/adult/sext/calls/${incomingCall.callId}/decline`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+    } catch (err) {
+      console.error('Error declining call globally:', err);
+    } finally {
+      setIncomingCall(null);
+    }
+  };
+
+  const handleAcceptIncomingCall = () => {
+    if (!incomingCall) return;
+    const dest = user?.role === 'provider' ? '/adult/provider/messages' : '/sext';
+    const params = new URLSearchParams();
+    params.set('autoAcceptCallId', incomingCall.callId);
+    params.set('callerId', incomingCall.callerId);
+    params.set('type', incomingCall.type);
+
+    setIncomingCall(null);
+    navigate(`${dest}?${params.toString()}`);
+  };
 
   useEffect(() => {
     const handleOpenAuth = () => {
@@ -107,8 +205,8 @@ const AdultZoneLayout: React.FC = () => {
                   <span className="text-xs font-mono text-[var(--az-accent-gold)]">💎 {user?.credits || 0} Credits</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <Link to="/wallet" className="w-8 h-8 rounded-full bg-[var(--az-bg-secondary)] border border-[var(--az-border)] flex items-center justify-center overflow-hidden">
-                    <img src={user?.profilePhoto || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=100&auto=format&fit=crop"} alt="User" className="w-full h-full object-cover" />
+                  <Link to="/wallet" className="w-8 h-8 rounded-full bg-[var(--az-bg-secondary)] border border-[var(--az-border)] flex items-center justify-center overflow-hidden hover:scale-110 active:scale-95 transition-transform" title="Wallet">
+                    <span className="text-base select-none">💎</span>
                   </Link>
                   <button onClick={logout} className="text-xs text-[var(--az-text-muted)] hover:text-white uppercase font-bold">Logout</button>
                 </div>
@@ -136,6 +234,34 @@ const AdultZoneLayout: React.FC = () => {
       />
 
       <TipSheet />
+
+      {incomingCall && (
+        <div className="fixed inset-0 bg-black/90 z-[11000] flex flex-col items-center justify-center p-8 text-white">
+          <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-pink-500 animate-pulse mb-6">
+            <img src={incomingCall.callerAvatar} className="w-full h-full object-cover" alt="Caller Avatar" />
+          </div>
+          <h2 className="text-3xl font-serif italic mb-2">{incomingCall.callerName}</h2>
+          <p className="text-xs text-pink-400 uppercase tracking-widest animate-pulse">Incoming {incomingCall.type} Call...</p>
+          <p className="text-xs text-yellow-400 mt-2 font-mono">Rate: 💎 {incomingCall.rate} credits / min</p>
+
+          <div className="flex gap-8 mt-12">
+            <button
+              onClick={handleDeclineIncomingCall}
+              className="w-16 h-16 bg-red-600 hover:bg-red-700 text-white text-2xl rounded-full flex items-center justify-center hover:scale-105 transition-transform"
+              title="Decline Call"
+            >
+              ✕
+            </button>
+            <button
+              onClick={handleAcceptIncomingCall}
+              className="w-16 h-16 bg-green-600 hover:bg-green-700 text-white text-2xl rounded-full flex items-center justify-center hover:scale-105 transition-transform animate-bounce"
+              title="Accept Call"
+            >
+              ✓
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Mobile Bottom Navigation */}
       <nav data-testid="bottom-tab-bar" className="md:hidden fixed bottom-0 left-0 right-0 z-50 az-glass border-t border-[var(--az-border)] pb-safe">

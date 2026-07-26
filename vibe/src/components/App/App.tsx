@@ -37,6 +37,7 @@ import ProviderSettings from "../AdultZone/ProviderSettings";
 import { useAuth } from "../../contexts/AuthContext";
 import { useAdultAuth } from "../../contexts/AdultAuthContext";
 import { API_BASE_URL } from "../../config";
+import ScrollToTop from "./ScrollToTop";
 
 function App() {
   const { user, isAuthenticated, loading } = useAuth();
@@ -79,6 +80,7 @@ function App() {
 
   return (
     <>
+      <ScrollToTop />
       {isAuthenticated && <CallManager />}
       <Routes>
         {/* Adult Zone is now the main layout at / */}
