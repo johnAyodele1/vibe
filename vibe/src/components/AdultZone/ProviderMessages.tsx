@@ -218,6 +218,76 @@ const ProviderMessages: React.FC = () => {
     fetchConversations(true);
   }, [user?.id]);
 
+  // Global auto-accept call check on load/mount
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const autoAcceptCallId = searchParams.get('autoAcceptCallId');
+    const callerId = searchParams.get('callerId');
+    const type = searchParams.get('type') || 'video';
+
+    if (autoAcceptCallId && callerId && conversations.length > 0) {
+      const conv = conversations.find(c => c.otherUser?.id === callerId);
+      if (conv) {
+        // Clear search parameters from address bar immediately to prevent re-execution
+        window.history.replaceState(null, '', window.location.pathname);
+
+        selectConversation(conv);
+
+        // Pre-fill calling states so accept call flow can resolve
+        setCallType(type as any);
+        setActiveCallId(autoAcceptCallId);
+        setCallRate(5);
+        setCallData({
+          callId: autoAcceptCallId,
+          roomId: `room_${autoAcceptCallId}`,
+          callerName: conv.otherUser?.displayName || 'User'
+        });
+
+        // Trigger the accept API call
+        const triggerAutoAccept = async () => {
+          const hasPermissions = await checkMediaPermissions(type as any);
+          if (!hasPermissions) {
+            await fetch(`${API_BASE_URL}/v1/adult/sext/calls/${autoAcceptCallId}/decline`, {
+              method: 'PUT',
+              headers: getHeaders()
+            });
+            return;
+          }
+          setAcceptLoading(true);
+          try {
+            const res = await fetch(`${API_BASE_URL}/v1/adult/sext/calls/${autoAcceptCallId}/accept`, {
+              method: 'PUT',
+              headers: getHeaders()
+            });
+            const data = await res.json();
+
+            const tokenRes = await fetch(`${API_BASE_URL}/v1/adult/zego/token?roomId=${data.roomId}&type=call`, {
+              headers: getHeaders()
+            });
+            const tokenData = await tokenRes.json();
+            if (tokenData.token) {
+              setZegoToken(tokenData.token);
+              setZegoAppId(tokenData.appId);
+              setZegoRoomId(data.roomId);
+              setCallState('active');
+            } else {
+              setAcceptLoading(false);
+              toast.error('Failed to get call token');
+            }
+          } catch (err) {
+            setAcceptLoading(false);
+            console.error('Auto-accept call error:', err);
+          }
+        };
+
+        // Let selectConversation render and initialize before auto-accept
+        setTimeout(() => {
+          triggerAutoAccept();
+        }, 500);
+      }
+    }
+  }, [conversations]);
+
   // Handle window resizing for responsive navigation and layout adjustments
   useEffect(() => {
     const handleResize = () => {
