@@ -65,6 +65,9 @@ import {
 } from '../controllers/adultSext.controller';
 import { getRooms, createRoom as createAdultRoom, getRoom as getAdultRoom, joinRoom as joinAdultRoom, leaveRoom as leaveAdultRoom, getRoomMembers, getRoomLeaderboard, getThreads, createThread, getThread, reactThread, pinThread, lockThread, getMessages as getAdultRoomMessages, sendMessage as sendAdultRoomMessage, reactMessage as reactAdultRoomMessage, deleteMessage as deleteAdultRoomMessage, getReplies, postReply, reactReply, getActivePolls, createPoll, votePoll, reportRoom, muteUser, kickUser } from '../controllers/adultRooms.controller';
 
+import { getProviderPublicProfile } from '../controllers/adultProviders.controller';
+import { getUserTasks, completeTask, dailyCheckin } from '../controllers/adultRewards.controller';
+
 import { getZegoToken } from '../controllers/zego.controller';
 import { joinMatchQueue, leaveMatchQueue, endMatchSession, nextStranger } from '../controllers/randomMatch.controller';
 
@@ -142,6 +145,12 @@ router.get('/adult/sext/calls/history', verifyAdultJWT, getCallHistory);
 // Provider Onboarding & Profile update routes
 router.get('/adult/hookup/nearby', optionalAdultJWT, getHookupNearbyProviders);
 router.get('/adult/profiles/me', verifyAdultJWT, getAdultMemberProfile);
+router.get('/adult/providers/:providerId', verifyAdultJWT, getProviderPublicProfile);
+
+// Rewards system routes
+router.get('/adult/rewards/tasks', verifyAdultJWT, getUserTasks);
+router.post('/adult/rewards/tasks/:taskId/complete', verifyAdultJWT, completeTask);
+router.post('/adult/rewards/checkin', verifyAdultJWT, dailyCheckin);
 router.get('/adult/providers/me/onboarding', verifyAdultJWT, getOnboardingProgress);
 router.put('/adult/providers/me/onboarding/step/:stepNumber', verifyAdultJWT, saveOnboardingStep);
 router.get('/adult/providers/me', verifyAdultJWT, getMyProfile);

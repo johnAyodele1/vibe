@@ -104,7 +104,7 @@ export interface IAdultUserModel extends Model<IAdultUser> {}
 
 export interface ICreditTransaction extends Document {
   userId: Types.ObjectId;
-  type: 'purchase' | 'spend' | 'refund' | 'tip_sent' | 'tip_received' | 'cam_tip' | 'payout' | 'bonus' | 'tip' | 'subscription';
+  type: 'purchase' | 'spend' | 'refund' | 'tip_sent' | 'tip_received' | 'cam_tip' | 'payout' | 'bonus' | 'tip' | 'subscription' | 'reward';
   amount: number;
   usdAmount: number;
   description: string;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
 import styles from "./Admin.module.css";
 import { API_BASE_URL } from "../../config";
@@ -107,7 +107,12 @@ const AdminDashboard: React.FC = () => {
     <div className={styles.dashboardContainer}>
       <header className={styles.dashboardHeader}>
         <h1>Admin Dashboard</h1>
-        <button onClick={handleLogout} className={styles.logoutBtn}>Logout</button>
+        <div className="flex items-center gap-4">
+          <Link to="/admin/rewards" style={{ marginRight: '16px', display: 'inline-block', backgroundColor: '#c8102e', color: 'white', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', textDecoration: 'none' }}>
+            🎁 Reward Tasks
+          </Link>
+          <button onClick={handleLogout} className={styles.logoutBtn}>Logout</button>
+        </div>
       </header>
 
       {analytics && (

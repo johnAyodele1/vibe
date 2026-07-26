@@ -52,6 +52,7 @@ interface AdultUser {
   role: 'user' | 'provider';
   credits: number;
   profilePhoto?: string;
+  subscriptionTier?: 'none' | 'gold' | 'platinum' | 'diamond';
 }
 
 interface AdultAuthContextType {
@@ -61,6 +62,8 @@ interface AdultAuthContextType {
   login: (credentials: any) => Promise<any>;
   signup: (data: any) => Promise<any>;
   logout: () => void;
+  refetchUser: () => Promise<void>;
+  updateCredits: (credits: number) => void;
 }
 
 const AdultAuthContext = createContext<AdultAuthContextType | undefined>(undefined);
@@ -69,28 +72,33 @@ export const AdultAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [user, setUser] = useState<AdultUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const checkAuth = async () => {
-      const token = localStorage.getItem('adultAccessToken');
-      if (token) {
-        try {
-          const response = await fetch(`${API_BASE_URL}/adult/auth/me`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-          const data = await response.json();
-          if (data.success) {
-            setUser(data.data.user);
-          } else {
-            localStorage.removeItem('adultAccessToken');
-          }
-        } catch (error) {
-          console.error('Adult auth check failed:', error);
+  const checkAuth = async () => {
+    const token = localStorage.getItem('adultAccessToken');
+    if (token) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/adult/auth/me`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await response.json();
+        if (data.success) {
+          setUser(data.data.user);
+        } else {
+          localStorage.removeItem('adultAccessToken');
         }
+      } catch (error) {
+        console.error('Adult auth check failed:', error);
       }
-      setLoading(false);
-    };
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
     checkAuth();
   }, []);
+
+  const updateCredits = (credits: number) => {
+    setUser(prev => prev ? { ...prev, credits } : null);
+  };
 
   const login = async (credentials: any) => {
     const response = await fetch(`${API_BASE_URL}/adult/auth/login`, {
@@ -132,7 +140,7 @@ export const AdultAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   return (
-    <AdultAuthContext.Provider value={{ user, isAuthenticated: !!user, loading, login, signup, logout }}>
+    <AdultAuthContext.Provider value={{ user, isAuthenticated: !!user, loading, login, signup, logout, refetchUser: checkAuth, updateCredits }}>
       {children}
     </AdultAuthContext.Provider>
   );

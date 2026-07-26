@@ -12,6 +12,7 @@
   "dependencies": {
     "@zegocloud/zego-uikit-prebuilt": "^2.18.0",
     "agora-rtc-sdk-ng": "^4.24.6",
+    "browser-image-compression": "^2.0.2",
     "firebase": "^12.12.1",
     "leaflet": "^1.9.4",
     "ngrok": "^5.0.0-beta.2",

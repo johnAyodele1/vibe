@@ -20,7 +20,7 @@ export interface TipSheetState {
   } | null;
 
   // Actions
-  openSheet: (provider: TipSheetState['provider']) => void;
+  openSheet: (provider: TipSheetState['provider'], initialAmount?: number | null) => void;
   closeSheet: () => void;
   setSelectedAmount: (amount: number | null) => void;
   setCustomAmount: (amount: string) => void;
@@ -39,10 +39,10 @@ export const useTipSheetStore = create<TipSheetState>((set) => ({
   step: 'select',
   result: null,
 
-  openSheet: (provider) => set({
+  openSheet: (provider, initialAmount) => set({
     isOpen: true,
     provider,
-    selectedAmount: null,
+    selectedAmount: initialAmount || null,
     customAmount: '',
     message: '',
     step: 'select',

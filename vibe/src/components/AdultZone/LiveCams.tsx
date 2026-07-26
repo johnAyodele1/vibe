@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { API_BASE_URL, SOCKET_URL } from '../../config';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { toast } from 'sonner';
@@ -7,6 +8,7 @@ import { io, Socket } from 'socket.io-client';
 const CamViewerRoom = React.lazy(() => import('./CamViewerRoom'));
 
 const LiveCams: React.FC = () => {
+  const navigate = useNavigate();
   const { user } = useAdultAuth();
   const token = localStorage.getItem('adultAccessToken') || '';
 
@@ -202,7 +204,15 @@ const LiveCams: React.FC = () => {
                 </div>
 
                 <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black via-black/40 to-transparent">
-                  <h3 className="text-lg font-serif italic text-white flex items-center gap-2">
+                  <h3
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (provider._id) {
+                        navigate(`/adult/providers/${provider._id}`);
+                      }
+                    }}
+                    className="text-lg font-serif italic text-white flex items-center gap-2 cursor-pointer hover:underline"
+                  >
                     {provider.username || 'Provider'} <span className="text-sm">🌍</span>
                   </h3>
                   <p className="text-xs text-[var(--az-text-secondary)] font-sans mt-1 line-clamp-1">{s.title || 'Live'}</p>
