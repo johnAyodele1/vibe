@@ -45,6 +45,9 @@ import {
   requestPhoto,
   fulfillPhotoRequest,
   declinePhotoRequest,
+  requestService,
+  fulfillServiceTonightRequest,
+  declineServiceTonightRequest,
   getGiftsCatalogue,
   sendGift,
   initiateCall,
@@ -118,6 +121,11 @@ router.put('/adult/sext/conversations/:conversationId/read', verifyAdultJWT, mar
 router.post('/adult/sext/conversations/:conversationId/request-photo', verifyAdultJWT, requestPhoto);
 router.put('/adult/sext/photo-requests/:messageId/fulfill', verifyAdultJWT, fulfillPhotoRequest);
 router.put('/adult/sext/photo-requests/:messageId/decline', verifyAdultJWT, declinePhotoRequest);
+
+// Service Tonight Requests (Member requested)
+router.post('/adult/sext/conversations/:conversationId/request-service', verifyAdultJWT, requestService);
+router.put('/adult/sext/service-tonight-requests/:messageId/fulfill', verifyAdultJWT, fulfillServiceTonightRequest);
+router.put('/adult/sext/service-tonight-requests/:messageId/decline', verifyAdultJWT, declineServiceTonightRequest);
 
 // Gifts
 router.get('/adult/gifts/catalogue', verifyAdultJWT, getGiftsCatalogue);

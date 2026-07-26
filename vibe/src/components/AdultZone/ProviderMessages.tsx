@@ -78,6 +78,11 @@ interface Message {
     note?: string;
     fulfilledMessageId?: string | null;
   };
+  serviceTonightRequest?: {
+    status: 'pending' | 'fulfilled' | 'declined';
+    note?: string;
+    fulfilledMessageId?: string | null;
+  };
   systemText?: string;
   reactions?: { userId: string; emoji: string; reactedAt?: string }[];
   isDeleted: boolean;
@@ -121,6 +126,7 @@ const ProviderMessages: React.FC = () => {
 
   // Fulfilling photo requests trigger state
   const [activePhotoRequestFulfillId, setActivePhotoRequestFulfillId] = useState<string | null>(null);
+  const [activeServiceTonightRequestFulfillId, setActiveServiceTonightRequestFulfillId] = useState<string | null>(null);
 
   // Gift Request states
   const [showGiftRequestDialog, setShowGiftRequestDialog] = useState(false);
@@ -368,6 +374,19 @@ const ProviderMessages: React.FC = () => {
     }
   };
 
+  const handleDeclineServiceTonightRequest = async (msgId: string) => {
+    try {
+      await fetch(`${API_BASE_URL}/v1/adult/sext/service-tonight-requests/${msgId}/decline`, {
+        method: 'PUT',
+        headers: getHeaders()
+      });
+      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, serviceTonightRequest: { ...m.serviceTonightRequest!, status: 'declined' } } : m));
+      toast.info('Service request declined');
+    } catch (err) {
+      console.error('Failed to decline service request:', err);
+    }
+  };
+
   const fetchMessages = async (convId: string, page: number) => {
     try {
       const res = await fetch(`${API_BASE_URL}/v1/adult/sext/conversations/${convId}/messages?page=${page}&limit=30`, {
@@ -439,6 +458,17 @@ const ProviderMessages: React.FC = () => {
         ...m,
         photoRequest: m.photoRequest ? {
           ...m.photoRequest,
+          status: payload.status,
+          fulfilledMessageId: payload.fulfilledMessageId || null
+        } : undefined
+      } : m));
+    });
+
+    s.on('sext:service_tonight_request_updated', (payload: { messageId: string, status: 'fulfilled' | 'declined', fulfilledMessageId?: string }) => {
+      setMessages(prev => prev.map(m => m.id === payload.messageId ? {
+        ...m,
+        serviceTonightRequest: m.serviceTonightRequest ? {
+          ...m.serviceTonightRequest,
           status: payload.status,
           fulfilledMessageId: payload.fulfilledMessageId || null
         } : undefined
@@ -900,25 +930,66 @@ const ProviderMessages: React.FC = () => {
     const cleanedExtras = serviceExtras.filter(e => e.label.trim());
 
     try {
-      const res = await fetch(`${API_BASE_URL}/v1/adult/sext/conversations/${selectedConv.conversationId}/service-request`, {
-        method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify({
+      let url = `${API_BASE_URL}/v1/adult/sext/conversations/${selectedConv.conversationId}/service-request`;
+      let method = 'POST';
+      let body: any = {
+        extras: cleanedExtras,
+        note: serviceRequestNote
+      };
+
+      if (activeServiceTonightRequestFulfillId) {
+        url = `${API_BASE_URL}/v1/adult/sext/service-tonight-requests/${activeServiceTonightRequestFulfillId}/fulfill`;
+        method = 'PUT';
+        body = {
+          baseRate: tonightRate,
           extras: cleanedExtras,
           note: serviceRequestNote
-        })
+        };
+      }
+
+      const res = await fetch(url, {
+        method,
+        headers: getHeaders(),
+        body: JSON.stringify(body)
       });
       const data = await res.json();
       if (res.status === 409) {
         toast.error(data.error || 'A service request is already active in this conversation');
         return;
       }
-      if (data.id) {
-        setMessages(prev => [...prev, data]);
-        setShowServiceRequestDialog(false);
-        setServiceExtras([]);
-        setServiceRequestNote('');
-        toast.success('Tonight service charge request sent!');
+
+      if (activeServiceTonightRequestFulfillId) {
+        if (data.requestMessage) {
+          setMessages(prev => prev.map(m => m.id === activeServiceTonightRequestFulfillId ? {
+            ...m,
+            serviceTonightRequest: { ...m.serviceTonightRequest!, status: 'fulfilled', fulfilledMessageId: data.invoiceMessage._id }
+          } : m));
+          setMessages(prev => [...prev, {
+            id: data.invoiceMessage._id,
+            senderId: data.invoiceMessage.senderId,
+            receiverId: data.invoiceMessage.receiverId,
+            content: `🌙 Service request: 💎 ${data.invoiceMessage.serviceRequest?.totalAmount}`,
+            mediaType: 'service_request',
+            serviceRequest: data.invoiceMessage.serviceRequest,
+            isUnlocked: true,
+            creditCost: 0,
+            isDeleted: false,
+            createdAt: data.invoiceMessage.createdAt
+          }]);
+          setShowServiceRequestDialog(false);
+          setServiceExtras([]);
+          setServiceRequestNote('');
+          setActiveServiceTonightRequestFulfillId(null);
+          toast.success('Tonight service request fulfilled!');
+        }
+      } else {
+        if (data.id) {
+          setMessages(prev => [...prev, data]);
+          setShowServiceRequestDialog(false);
+          setServiceExtras([]);
+          setServiceRequestNote('');
+          toast.success('Tonight service charge request sent!');
+        }
       }
     } catch (err) {
       toast.error('Failed to send service request');
@@ -1539,6 +1610,45 @@ const ProviderMessages: React.FC = () => {
                         ) : (
                           <div className="text-[10px] text-red-400 font-bold tracking-wider uppercase mt-2">
                             ✗ Photo Request declined
+                          </div>
+                        )}
+                      </div>
+                    ) : m.mediaType === 'request_service' ? (
+                      /* SERVICE TONIGHT REQUEST received by provider - ACTIONABLE CARD */
+                      <div data-testid="message-service-tonight-request" className="w-64 bg-[#140b13] border-2 border-dashed border-purple-500/40 rounded-xl p-4 flex flex-col gap-3 message-service-tonight-request">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl">🌙</span>
+                          <span className="font-bold text-xs tracking-wider text-purple-400 uppercase">Service Request</span>
+                        </div>
+                        {m.serviceTonightRequest?.note && (
+                          <p className="text-xs text-gray-300 italic">"{m.serviceTonightRequest.note}"</p>
+                        )}
+
+                        {m.serviceTonightRequest?.status === 'pending' ? (
+                          <div className="flex flex-col gap-2 mt-2">
+                            <button
+                              onClick={() => {
+                                setActiveServiceTonightRequestFulfillId(m.id);
+                                setShowServiceRequestDialog(true);
+                              }}
+                              className="w-full py-2 bg-gradient-to-r from-amber-500 to-yellow-600 text-black rounded text-[10px] font-bold uppercase tracking-wider"
+                            >
+                               Accept & Send Rates
+                            </button>
+                            <button
+                              onClick={() => handleDeclineServiceTonightRequest(m.id)}
+                              className="w-full py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-[10px] font-bold uppercase"
+                            >
+                              Decline
+                            </button>
+                          </div>
+                        ) : m.serviceTonightRequest?.status === 'fulfilled' ? (
+                          <div className="text-[10px] text-green-400 font-bold tracking-wider uppercase mt-2">
+                            ✓ Service Request fulfilled
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-red-400 font-bold tracking-wider uppercase mt-2">
+                            ✗ Service Request declined
                           </div>
                         )}
                       </div>

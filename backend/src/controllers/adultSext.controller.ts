@@ -153,11 +153,72 @@ export const sendGiftRequest = async (req: Request, res: Response) => {
     const ns = req.app.get('adultNamespace');
     if (ns) {
       ns.to(`conv:${conversationId}`).emit('sext:new_message', { message: responsePayload });
-      ns.to(`user:${receiverIdStr}`).emit('sext:conversation_updated', {
-        conversationId,
-        lastMessage: responsePayload,
-        unreadCount: currentUnread + 1
-      });
+    }
+
+    return res.status(201).json(responsePayload);
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// POST /api/v1/adult/sext/conversations/:conversationId/request-service
+export const requestService = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const { conversationId } = req.params;
+    const { note = '' } = req.body;
+
+    const conversation = await AdultConversation.findById(conversationId);
+    if (!conversation) {
+      return res.status(404).json({ success: false, error: 'Conversation not found' });
+    }
+
+    const otherParticipantId = conversation.participants.find(id => id.toString() !== user._id.toString());
+    if (!otherParticipantId) {
+      return res.status(400).json({ success: false, error: 'Recipient not found' });
+    }
+
+    const message = new AdultMessage({
+      conversationId,
+      senderId: user._id,
+      receiverId: otherParticipantId,
+      content: encrypt(`🌙 Requested a tonight service`),
+      messageType: 'request_service',
+      serviceTonightRequest: {
+        status: 'pending',
+        note,
+        fulfilledMessageId: null
+      }
+    });
+
+    await message.save();
+
+    conversation.lastMessage = {
+      content: encrypt(`🌙 Requested a tonight service`),
+      mediaType: 'request_service',
+      senderId: user._id,
+      sentAt: new Date()
+    };
+    await conversation.save();
+
+    const responsePayload = {
+      id: message._id,
+      senderId: message.senderId,
+      receiverId: message.receiverId,
+      content: `Requested a tonight service`,
+      mediaType: 'request_service',
+      isUnlocked: true,
+      serviceTonightRequest: message.serviceTonightRequest,
+      createdAt: message.createdAt
+    };
+
+    const ns = req.app.get('adultNamespace');
+    if (ns) {
+      ns.to(`conv:${conversationId}`).emit('sext:new_message', { message: responsePayload });
     }
 
     return res.status(201).json(responsePayload);
@@ -1457,6 +1518,128 @@ export const declinePhotoRequest = async (req: Request, res: Response) => {
     }
 
     return res.json(requestMsg);
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// PUT /api/v1/adult/sext/service-tonight-requests/:messageId/decline
+export const declineServiceTonightRequest = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const { messageId } = req.params;
+    const requestMsg = await AdultMessage.findById(messageId);
+
+    if (!requestMsg || requestMsg.messageType !== 'request_service') {
+      return res.status(404).json({ success: false, error: 'Service request not found' });
+    }
+
+    // Sender of the request can cancel, receiver of request can decline
+    const isReceiver = requestMsg.receiverId?.toString() === user._id.toString();
+    const isSender = requestMsg.senderId.toString() === user._id.toString();
+
+    if (!isReceiver && !isSender) {
+      return res.status(403).json({ success: false, error: 'Not authorized' });
+    }
+
+    requestMsg.serviceTonightRequest!.status = 'declined';
+    await requestMsg.save();
+
+    const ns = req.app.get('adultNamespace');
+    if (ns) {
+      ns.to(`conv:${requestMsg.conversationId}`).emit('sext:service_tonight_request_updated', {
+        messageId,
+        status: 'declined'
+      });
+    }
+
+    return res.json(requestMsg);
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// PUT /api/v1/adult/sext/service-tonight-requests/:messageId/fulfill
+export const fulfillServiceTonightRequest = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const { messageId } = req.params;
+    const { baseRate, extras = [], note = '' } = req.body;
+
+    const requestMsg = await AdultMessage.findById(messageId);
+    if (!requestMsg || requestMsg.messageType !== 'request_service') {
+      return res.status(404).json({ success: false, error: 'Service request not found' });
+    }
+
+    if (requestMsg.receiverId?.toString() !== user._id.toString()) {
+      return res.status(403).json({ success: false, error: 'Only the recipient of the request can fulfill it' });
+    }
+
+    if (requestMsg.serviceTonightRequest?.status === 'fulfilled') {
+      return res.status(409).json({ success: false, error: 'Already fulfilled' });
+    }
+
+    const validatedExtras = (extras || []).map((e: any) => ({
+      label: String(e.label).slice(0, 50),
+      amount: Math.max(0, parseInt(e.amount) || 0),
+    })).filter((e: any) => e.amount > 0 && e.label);
+
+    const extrasTotal = validatedExtras.reduce((sum: number, e: any) => sum + e.amount, 0);
+    const totalAmount = baseRate + extrasTotal;
+
+    // Create the formal invoice (service_request) message
+    const invoiceMsg = new AdultMessage({
+      conversationId: requestMsg.conversationId,
+      senderId: user._id,
+      receiverId: requestMsg.senderId,
+      content: encrypt(`🌙 Service request: 💎 ${totalAmount}`),
+      messageType: 'service_request',
+      serviceRequest: {
+        baseRate,
+        extras: validatedExtras,
+        totalAmount,
+        note,
+        status: 'pending',
+        eligibleForPayout: false
+      }
+    });
+    await invoiceMsg.save();
+
+    // Update request state
+    requestMsg.serviceTonightRequest!.status = 'fulfilled';
+    requestMsg.serviceTonightRequest!.fulfilledMessageId = invoiceMsg._id;
+    await requestMsg.save();
+
+    const ns = req.app.get('adultNamespace');
+    if (ns) {
+      ns.to(`conv:${requestMsg.conversationId}`).emit('sext:service_tonight_request_updated', {
+        messageId,
+        status: 'fulfilled',
+        fulfilledMessageId: invoiceMsg._id
+      });
+      ns.to(`conv:${requestMsg.conversationId}`).emit('sext:new_message', {
+        message: {
+          id: invoiceMsg._id,
+          senderId: invoiceMsg.senderId,
+          receiverId: invoiceMsg.receiverId,
+          content: `🌙 Service request: 💎 ${totalAmount}`,
+          mediaType: 'service_request',
+          serviceRequest: invoiceMsg.serviceRequest,
+          isUnlocked: true,
+          createdAt: invoiceMsg.createdAt
+        }
+      });
+    }
+
+    return res.json({ requestMessage: requestMsg, invoiceMessage: invoiceMsg });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
   }
