@@ -7,6 +7,13 @@ import {
   getAllUsers,
   adminAction,
 } from '../controllers/admin.controller';
+import {
+  adminGetTasks,
+  adminCreateTask,
+  adminUpdateTask,
+  adminDeleteTask,
+  adminGetStats
+} from '../controllers/adultRewards.controller';
 
 const router = Router();
 
@@ -20,5 +27,12 @@ router.get('/analytics', getAnalytics);
 router.get('/reports', getAllReports);
 router.get('/users', getAllUsers);
 router.post('/action', adminAction);
+
+// Reward Tasks management routes
+router.get('/rewards/tasks', adminGetTasks);
+router.post('/rewards/tasks', adminCreateTask);
+router.put('/rewards/tasks/:id', adminUpdateTask);
+router.delete('/rewards/tasks/:id', adminDeleteTask);
+router.get('/rewards/stats', adminGetStats);
 
 export default router;

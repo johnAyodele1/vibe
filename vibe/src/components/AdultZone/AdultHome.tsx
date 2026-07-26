@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../../config';
 import { useTipSheetStore } from './useTipSheetStore';
 import { toast } from 'sonner';
+import { DatingCrossPromo } from './DatingCrossPromo';
+import { RewardsButton } from './RewardsButton';
 
 const FALLBACK_PERFORMERS = [
   {
@@ -351,7 +353,7 @@ const AdultHome: React.FC = () => {
                 const displayName = p.displayName || p.providerProfile?.stageName || p.firstName;
                 return (
                   <div key={p._id} className="min-w-[280px] h-96 bg-[var(--az-bg-secondary)] rounded-xl border border-[var(--az-border)] overflow-hidden snap-start flex-shrink-0 group">
-                    <div className="h-2/3 relative">
+                    <div className="h-2/3 relative cursor-pointer" onClick={() => navigate(`/adult/providers/${p.userId || p._id}`)}>
                       <img src={photoUrl} alt={displayName} className="w-full h-full object-cover filter blur-[1px] group-hover:blur-0 transition-all duration-500" />
                       <div className="absolute top-3 left-3 flex gap-2">
                         {isLiveNow && (
@@ -362,8 +364,8 @@ const AdultHome: React.FC = () => {
                     </div>
                     <div className="p-4 flex flex-col justify-between h-1/3">
                       <div className="flex items-start justify-between">
-                        <div>
-                          <h4 className="font-serif italic text-white text-lg">{displayName}</h4>
+                        <div className="cursor-pointer" onClick={() => navigate(`/adult/providers/${p.userId || p._id}`)}>
+                          <h4 className="font-serif italic text-white text-lg hover:underline">{displayName}</h4>
                           <p className="text-[10px] text-[var(--az-text-secondary)] uppercase tracking-tighter">{p.age || 23} • {p.country || 'London, UK'}</p>
                         </div>
                         <div className="text-[var(--az-accent-gold)] text-sm">⭐ {ratingVal || 4.9}</div>
@@ -405,6 +407,12 @@ const AdultHome: React.FC = () => {
           </div>
         </div>
       </section>
+
+      {/* Dating app cross promotion circular button */}
+      <DatingCrossPromo />
+
+      {/* Free Rewards daily checkin and tasks button */}
+      <RewardsButton />
     </div>
   );
 };

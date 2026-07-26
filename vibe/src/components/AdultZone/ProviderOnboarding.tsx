@@ -5,6 +5,7 @@ import { API_BASE_URL } from '../../config';
 import LocationSelect from './LocationSelect';
 import { toast } from 'sonner';
 import { useOnboardingStore } from './useOnboardingStore';
+import { compressToWebP } from '../../lib/media/compressImage';
 
 const ProviderOnboarding: React.FC = () => {
   const navigate = useNavigate();
@@ -51,7 +52,8 @@ const ProviderOnboarding: React.FC = () => {
   const [dobError, setDobError] = useState<string | null>(null);
 
   const [photos, setPhotos] = useState<string[]>([]);
-  const [videoPreview, setVideoPreview] = useState<string>('');
+  const [videos, setVideos] = useState<string[]>([]);
+  const [compressing, setCompressing] = useState(false);
   const [services, setServices] = useState<string[]>(['live_cam']);
   const [pricing, setPricing] = useState({
     pricePerMinute: 3.99,
@@ -145,7 +147,8 @@ const ProviderOnboarding: React.FC = () => {
           }
           if (data.stepData[2]) {
             setPhotos(data.stepData[2].photos || []);
-            setVideoPreview(data.stepData[2].videoPreview || '');
+            const dbVid = data.stepData[2].videoPreview || '';
+            setVideos(dbVid ? dbVid.split(',').filter(Boolean) : []);
           }
           if (data.stepData[3]) {
             setServices(data.stepData[3].servicesOffered || []);
@@ -221,14 +224,27 @@ const ProviderOnboarding: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('File too large (max 5MB)');
+    if (photos.length >= 5) {
+      toast.error('Maximum 5 photos allowed');
       return;
     }
 
+    if (!file.type.startsWith('image/')) {
+      toast.error(`${file.name} is not an image`);
+      return;
+    }
+
+    setCompressing(true);
     setUploading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/v1/adult/media/presigned-url?type=image&filename=${encodeURIComponent(file.name)}`, {
+      // Compress client side to WebP
+      const webpFile = await compressToWebP(file);
+      console.log(`Compressed: ${(file.size/1024).toFixed(0)}KB → ${(webpFile.size/1024).toFixed(0)}KB`);
+      setCompressing(false);
+
+      const webpFilename = file.name.replace(/\.[^/.]+$/, "") + '.webp';
+
+      const res = await fetch(`${API_BASE_URL}/v1/adult/media/presigned-url?type=image&filename=${encodeURIComponent(webpFilename)}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -236,15 +252,16 @@ const ProviderOnboarding: React.FC = () => {
 
       await fetch(data.uploadUrl, {
         method: 'PUT',
-        body: file,
-        headers: { 'Content-Type': file.type }
+        body: webpFile,
+        headers: { 'Content-Type': 'image/webp' }
       });
 
       const photoUrl = data.publicUrl;
       setPhotos(prev => [...prev, photoUrl]);
-      toast.success('Photo uploaded successfully');
+      toast.success('Photo uploaded and optimized successfully');
     } catch (err: any) {
       toast.error(err.message || 'Photo upload failed');
+      setCompressing(false);
     } finally {
       setUploading(false);
     }
@@ -253,6 +270,22 @@ const ProviderOnboarding: React.FC = () => {
   const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (videos.length >= 2) {
+      toast.error('Maximum 2 videos allowed');
+      return;
+    }
+
+    if (!file.type.startsWith('video/')) {
+      toast.error('File is not a video');
+      return;
+    }
+
+    const MAX_VIDEO_SIZE = 5 * 1024 * 1024; // 5MB
+    if (file.size > MAX_VIDEO_SIZE) {
+      toast.error(`Video must be under 5MB. Your file is ${(file.size/1024/1024).toFixed(1)}MB`);
+      return;
+    }
 
     setUploading(true);
     try {
@@ -268,7 +301,8 @@ const ProviderOnboarding: React.FC = () => {
         headers: { 'Content-Type': file.type }
       });
 
-      setVideoPreview(data.publicUrl);
+      const videoUrl = data.publicUrl;
+      setVideos(prev => [...prev, videoUrl]);
       toast.success('Video preview uploaded successfully');
     } catch (err: any) {
       toast.error(err.message || 'Video upload failed');
@@ -327,7 +361,7 @@ const ProviderOnboarding: React.FC = () => {
       }
 
       else if (step === 2) {
-        stepPayload = { photos, videoPreview };
+        stepPayload = { photos, videoPreview: videos.join(',') };
       }
 
       else if (step === 3) {
@@ -646,7 +680,18 @@ const ProviderOnboarding: React.FC = () => {
 
             <div className="space-y-6">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-4">Photos (Up to 8)</label>
+                <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-4">Photos (Up to 5)</label>
+
+                {/* Optimization progress indicator */}
+                {compressing && (
+                  <div className="upload-zone__compressing mb-4 bg-neutral-900 border border-neutral-800 rounded-xl">
+                    <div className="upload-zone__compress-bar">
+                      <div className="upload-zone__compress-fill" />
+                    </div>
+                    <p className="text-xs font-serif italic mt-2">Optimising image... 🪄</p>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                   {photos.map((ph, idx) => (
                     <div key={idx} className="aspect-square bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl overflow-hidden relative group">
@@ -659,13 +704,13 @@ const ProviderOnboarding: React.FC = () => {
                       </button>
                     </div>
                   ))}
-                  {uploading && (
+                  {uploading && !compressing && (
                     <div className="aspect-square bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl flex flex-col items-center justify-center">
                       <div className="w-6 h-6 border-2 border-[var(--az-accent-rose)] border-t-transparent rounded-full animate-spin"></div>
                       <span className="text-[10px] uppercase font-bold text-[var(--az-text-secondary)] mt-2">Uploading...</span>
                     </div>
                   )}
-                  {photos.length < 8 && !uploading && (
+                  {photos.length < 5 && !uploading && (
                     <label className="aspect-square bg-[var(--az-bg-tertiary)] border-2 border-dashed border-var(--az-border) hover:border-[var(--az-accent-rose)] rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all">
                       <span className="text-2xl text-[var(--az-text-secondary)]">+</span>
                       <span className="text-[10px] uppercase font-bold text-[var(--az-text-secondary)] mt-1">Upload</span>
@@ -676,20 +721,27 @@ const ProviderOnboarding: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">Introductory video preview (optional)</label>
-                {videoPreview ? (
-                  <div className="bg-[var(--az-bg-tertiary)] rounded-2xl overflow-hidden border border-[var(--az-border)] relative">
-                    <video src={videoPreview} controls className="w-full max-h-[300px] object-cover" />
-                    <button
-                      onClick={() => setVideoPreview('')}
-                      className="absolute top-4 right-4 px-3 py-1 bg-black/60 hover:bg-black text-white rounded text-xs transition-colors"
-                    >
-                      Remove Video
-                    </button>
+                <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-4">Introductory video preview (Up to 2)</label>
+
+                {videos.length > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                    {videos.map((vidUrl, idx) => (
+                      <div key={idx} className="bg-[var(--az-bg-tertiary)] rounded-2xl overflow-hidden border border-[var(--az-border)] relative">
+                        <video src={vidUrl} controls className="w-full max-h-[180px] object-cover" />
+                        <button
+                          onClick={() => setVideos(prev => prev.filter((_, i) => i !== idx))}
+                          className="absolute top-2 right-2 px-2.5 py-1 bg-black/60 hover:bg-red-600 text-white rounded text-[10px] uppercase tracking-wider font-bold transition-colors"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                ) : (
+                )}
+
+                {videos.length < 2 && (
                   <label className="w-full py-10 bg-[var(--az-bg-tertiary)] border-2 border-dashed border-var(--az-border) hover:border-[var(--az-accent-rose)] rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all">
-                    {uploading ? (
+                    {uploading && !compressing ? (
                       <>
                         <div className="w-8 h-8 border-3 border-[var(--az-accent-rose)] border-t-transparent rounded-full animate-spin"></div>
                         <span className="text-xs text-[var(--az-text-secondary)] font-bold uppercase mt-3">Uploading Video...</span>

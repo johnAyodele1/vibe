@@ -481,6 +481,7 @@ const HookUpTonight: React.FC = () => {
                 {providers.map((p) => (
                   <div
                     key={p.id}
+                    onClick={() => navigate(`/adult/providers/${p.id}`)}
                     className="relative aspect-[2/3] rounded-2xl overflow-hidden border border-[var(--az-border)] bg-[var(--az-bg-secondary)] group cursor-pointer az-card-hover"
                   >
                     <img

@@ -22,7 +22,8 @@ const creditTransactionSchema = new Schema<ICreditTransaction>(
         'payout',
         'bonus',
         'tip',
-        'subscription'
+        'subscription',
+        'reward'
       ],
     },
     amount: {

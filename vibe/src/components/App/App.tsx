@@ -15,6 +15,7 @@ import Favourites from "../Favourites/Favourites";
 import CallManager from "../CallManager/CallManager";
 import AdminDashboard from "../Admin/AdminDashboard";
 import AdminLogin from "../Admin/AdminLogin";
+import AdminRewardsPage from "../Admin/AdminRewardsPage";
 import LoadingScreen from "../LoadingScreen/LoadingScreen";
 import AdultZoneLayout from "../AdultZone/AdultZoneLayout";
 import AdultHome from "../AdultZone/AdultHome";
@@ -25,6 +26,7 @@ import RandomStranger from "../AdultZone/RandomStranger";
 import HookUpTonight from "../AdultZone/HookUpTonight";
 import VIPLounge from "../AdultZone/VIPLounge";
 import Wallet from "../AdultZone/Wallet";
+import PublicProviderProfile from "../AdultZone/PublicProviderProfile";
 import ProviderOnboarding from "../AdultZone/ProviderOnboarding";
 import ProviderDashboard from "../AdultZone/ProviderDashboard";
 import ProviderEarnings from "../AdultZone/ProviderEarnings";
@@ -90,6 +92,7 @@ function App() {
           <Route path="hookup" element={<HookUpTonight />} />
           <Route path="vip" element={<VIPLounge />} />
           <Route path="wallet" element={<Wallet />} />
+          <Route path="adult/providers/:providerId" element={<PublicProviderProfile />} />
 
           {/* Provider studio routes nested under main layouts */}
           <Route path="adult/provider/onboarding" element={<ProviderOnboarding />} />
@@ -113,6 +116,16 @@ function App() {
               )
             ) : (
               <Onboarding />
+            )
+          }
+        />
+        <Route
+          path="/admin/rewards"
+          element={
+            isAdminAuthenticated ? (
+              <AdminRewardsPage />
+            ) : (
+              <Navigate to="/admin/login" replace />
             )
           }
         />

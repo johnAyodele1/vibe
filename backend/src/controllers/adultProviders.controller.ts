@@ -2,6 +2,73 @@ import { Request, Response } from 'express';
 import AdultUser from '../models/AdultUser';
 import { sendAdminNotification } from '../services/emailService';
 
+export const getProviderPublicProfile = async (req: Request, res: Response) => {
+  try {
+    const { providerId } = req.params;
+    const provider = await AdultUser.findOne({
+      _id: providerId,
+      role: 'provider'
+    });
+
+    if (!provider) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Provider not found' } });
+    }
+
+    const date = new Date(provider.createdAt);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const memberSince = `Member since ${months[date.getMonth()]} ${date.getFullYear()}`;
+
+    // Map photos
+    const photos = (provider.providerProfile?.photos || []).map((url, index) => ({
+      url,
+      order: index,
+      isExplicit: index > 0 // Heuristic: secondary photos are explicit
+    }));
+
+    const pricing = {
+      perMinuteRate: provider.providerProfile?.servicesOffered?.includes('private_call')
+        ? (provider.providerProfile?.pricePerMinute || null)
+        : null,
+      tonightRate: provider.providerProfile?.servicesOffered?.includes('hookup')
+        ? (provider.providerProfile?.tonightRate || null)
+        : null,
+      tipMenu: (provider.providerProfile?.tipMenu || []).map(item => ({
+        amount: item.amount,
+        description: item.action || 'Tip'
+      }))
+    };
+
+    const publicProfile = {
+      id: provider._id.toString(),
+      stageName: provider.providerProfile?.stageName || provider.displayName || 'Unknown',
+      bio: provider.bio || '',
+      tagline: provider.providerProfile?.contentTags?.join(', ') || '',
+      gender: provider.providerProfile?.gender || 'Not specified',
+      avatarUrl: provider.profilePhoto || provider.providerProfile?.photos?.[0] || '',
+      photos,
+      videoPreviewUrl: provider.providerProfile?.videoPreview || null,
+      location: {
+        city: provider.providerProfile?.location?.city?.name || provider.location?.city?.name || 'Unknown',
+        country: {
+          name: provider.providerProfile?.location?.country?.name || provider.location?.country?.name || 'Unknown'
+        }
+      },
+      servicesOffered: provider.providerProfile?.servicesOffered || [],
+      pricing,
+      isOnline: provider.providerProfile?.isLive || false,
+      rating: provider.providerProfile?.rating?.average || 0,
+      reviewCount: provider.providerProfile?.rating?.count || 0,
+      isVerified: provider.isVerified || false,
+      memberSince
+    };
+
+    return res.json({ success: true, data: publicProfile });
+  } catch (error) {
+    console.error('Error fetching provider public profile:', error);
+    return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Internal server error' } });
+  }
+};
+
 export const getProviders = async (req: Request, res: Response) => {
   const { page = 1, limit = 20, category, isLive, sortBy = 'rating' } = req.query;
 
