@@ -245,7 +245,7 @@ const AdultHome: React.FC = () => {
   return (
     <div className="flex flex-col">
       {/* Hero Section */}
-      <section className="relative h-[80vh] flex items-center justify-center overflow-hidden px-4">
+      <section className="relative min-h-[50vh] md:min-h-[60vh] py-12 md:py-16 flex items-center justify-center overflow-hidden px-4">
         {/* Animated Background Mesh */}
         <div className="absolute inset-0 z-0">
           <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-[var(--az-accent-primary)] rounded-full blur-[120px] opacity-20 animate-pulse" />
@@ -278,20 +278,11 @@ const AdultHome: React.FC = () => {
               View Live Now
             </button>
           </div>
-
-          <div className="mt-8">
-            <Link
-              to="/dating"
-              className="inline-flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-pink-500 to-red-500 hover:from-pink-600 hover:to-red-600 text-white font-bold uppercase tracking-wider rounded-full shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5"
-            >
-              <span>Want something deeper? Join the Dating App ❤️</span>
-            </Link>
-          </div>
         </div>
       </section>
 
       {/* Service Cards Grid */}
-      <section className="max-w-7xl mx-auto px-4 py-20 w-full">
+      <section className="max-w-7xl mx-auto px-4 pt-4 pb-16 md:pt-6 md:pb-20 w-full">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {serviceCards.map((card) => (
             <Link
