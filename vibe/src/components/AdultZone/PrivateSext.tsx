@@ -123,7 +123,6 @@ const PrivateSext: React.FC = () => {
   // Content Filtering
   const accountType = user?.role === 'provider' ? 'service_provider' : 'member';
   const { filterWarning, checkContent, dismissWarning, setFilterWarning } = useContentFilter(accountType);
-  const [warningDismissed, setWarningDismissed] = useState(false);
   const [selectedGift, setSelectedGift] = useState<Gift | null>(null);
   const [giftNote, setGiftNote] = useState('');
   const [giftsCatalogue, setGiftsCatalogue] = useState<Gift[]>([]);
@@ -183,6 +182,7 @@ const PrivateSext: React.FC = () => {
   const socketRef = useRef<Socket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const feedRef = useRef<HTMLDivElement | null>(null);
+  const activeConvIdRef = useRef<string | null>(null);
 
   const scrollToBottom = (behavior: 'smooth' | 'instant' = 'instant') => {
     if (behavior === 'instant') {
@@ -369,6 +369,9 @@ const PrivateSext: React.FC = () => {
       if (Array.isArray(data)) {
         if (page === 1) {
           setMessages(data.reverse());
+          setTimeout(() => {
+            scrollToBottom('instant');
+          }, 50);
         } else {
           setMessages(prev => [...data.reverse(), ...prev]);
         }
@@ -510,12 +513,24 @@ const PrivateSext: React.FC = () => {
     };
   }, [token, selectedConv?.conversationId]);
 
-  // On initial load — scroll to bottom instantly
+  // On initial load — scroll to bottom instantly when entering a chat and messages are loaded
   useEffect(() => {
-    if (messages.length > 0) {
-      scrollToBottom('instant');
+    if (!selectedConv) {
+      activeConvIdRef.current = null;
+      return;
     }
-  }, [selectedConv?.conversationId]);
+    if (activeConvIdRef.current !== selectedConv.conversationId) {
+      if (messages.length > 0) {
+        activeConvIdRef.current = selectedConv.conversationId;
+        setTimeout(() => {
+          scrollToBottom('instant');
+        }, 50);
+        setTimeout(() => {
+          scrollToBottom('instant');
+        }, 150);
+      }
+    }
+  }, [messages, selectedConv]);
 
   // On new message — scroll to bottom smoothly but only if near bottom
   const prevMessagesLengthRef = useRef(messages.length);
@@ -558,7 +573,7 @@ const PrivateSext: React.FC = () => {
   };
 
   // Send Text Message
-  const handleSendText = async (bypassCheck = false) => {
+  const handleSendText = async () => {
     if (!selectedConv || (!inputText.trim() && !uploadPreview)) return;
 
     if (uploadPreview) {
@@ -566,13 +581,12 @@ const PrivateSext: React.FC = () => {
       return;
     }
 
-    // Run final content check if not bypassed
-    if (!bypassCheck && !warningDismissed) {
-      const result = detectContactSharing(inputText);
-      if (result.detected) {
-        setFilterWarning({ show: true, category: result.category });
-        return;
-      }
+    // Run final content check
+    const result = detectContactSharing(inputText);
+    if (result.detected) {
+      setFilterWarning({ show: true, category: result.category });
+      toast.error('Message blocked: sharing contact information is not allowed.');
+      return;
     }
 
     try {
@@ -592,7 +606,6 @@ const PrivateSext: React.FC = () => {
       if (data.id) {
         setMessages(prev => [...prev, data]);
         setInputText('');
-        setWarningDismissed(false); // reset dismissed state
         dismissWarning(); // dismiss warning popup
         fetchConversations();
       }
@@ -1910,15 +1923,11 @@ const PrivateSext: React.FC = () => {
                 user?.role === 'provider' ? (
                   <ProviderContentWarning
                     onDismiss={dismissWarning}
-                    onSendAnyway={() => handleSendText(true)}
                   />
                 ) : (
                   <ContentFilterWarning
                     category={filterWarning.category}
-                    onDismiss={() => {
-                      setWarningDismissed(true);
-                      dismissWarning();
-                    }}
+                    onDismiss={dismissWarning}
                   />
                 )
               )}
@@ -2007,7 +2016,6 @@ const PrivateSext: React.FC = () => {
                     value={inputText}
                     onChange={(e) => {
                       setInputText(e.target.value);
-                      setWarningDismissed(false);
                       checkContent(e.target.value);
                     }}
                     onKeyDown={(e) => e.key === 'Enter' && handleSendText()}

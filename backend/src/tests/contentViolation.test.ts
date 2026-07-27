@@ -97,7 +97,7 @@ describe('Content Filter — Backend & Integration', () => {
     expect(violation?.matchedText).toBe('080123456789');
   });
 
-  it('member phone number share is allowed but flagged and soft-blocked', async () => {
+  it('member phone number share is blocked with 400 and logged', async () => {
     const res = await request(app)
       .post(`/api/v1/adult/sext/messages/${conversationId}`)
       .set('Authorization', `Bearer ${memberToken}`)
@@ -105,48 +105,17 @@ describe('Content Filter — Backend & Integration', () => {
         content: 'Hit me up 080987654321',
       });
 
-    expect(res.status).toBe(201);
-    expect(res.body.id).toBeDefined();
-    expect(res.body.isFlagged).toBe(true);
-    expect(res.body.flagReason).toBe('phone');
-
-    // Verify DB model has isFlagged: true
-    const messageDoc = await AdultMessage.findById(res.body.id);
-    expect(messageDoc).toBeDefined();
-    expect(messageDoc?.isFlagged).toBe(true);
-    expect(messageDoc?.flagReason).toBe('phone');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('blocked');
+    expect(res.body.violationType).toBe('phone');
 
     // Verify ContentViolation record exists
     const violation = await ContentViolation.findOne({ userId: memberUser._id });
     expect(violation).toBeDefined();
     expect(violation?.violationType).toBe('phone');
-
-    // Soft-block check: unreadCount on conversation should not increase for the provider recipient
-    const conv = await AdultConversation.findById(conversationId);
-    const unread = conv?.unreadCounts?.get(providerUser._id.toString()) || 0;
-    expect(unread).toBe(0);
-
-    // Soft-block check: recipient's fetch getMessages must NOT return the flagged message
-    const recipientGetRes = await request(app)
-      .get(`/api/v1/adult/sext/conversations/${conversationId}/messages`)
-      .set('Authorization', `Bearer ${providerToken}`);
-    expect(recipientGetRes.status).toBe(200);
-    const recipientMsgs = recipientGetRes.body;
-    const foundFlaggedRecipient = recipientMsgs.find((m: any) => m.id === res.body.id);
-    expect(foundFlaggedRecipient).toBeUndefined(); // Excluded/hidden for recipient
-
-    // Soft-block check: sender's fetch getMessages MUST return the flagged message (so they can see it)
-    const senderGetRes = await request(app)
-      .get(`/api/v1/adult/sext/conversations/${conversationId}/messages`)
-      .set('Authorization', `Bearer ${memberToken}`);
-    expect(senderGetRes.status).toBe(200);
-    const senderMsgs = senderGetRes.body;
-    const foundFlaggedSender = senderMsgs.find((m: any) => m.id === res.body.id);
-    expect(foundFlaggedSender).toBeDefined();
-    expect(foundFlaggedSender.isFlagged).toBe(true);
   });
 
-  it('creates ContentViolation record when flagged platform message is sent', async () => {
+  it('creates ContentViolation record when flagged platform message is blocked', async () => {
     const res = await request(app)
       .post(`/api/v1/adult/sext/messages/${conversationId}`)
       .set('Authorization', `Bearer ${providerToken}`)
@@ -154,9 +123,9 @@ describe('Content Filter — Backend & Integration', () => {
         content: 'Add me on Snapchat: test_snap',
       });
 
-    expect(res.status).toBe(201);
-    expect(res.body.isFlagged).toBe(true);
-    expect(res.body.flagReason).toBe('platform');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('blocked');
+    expect(res.body.violationType).toBe('platform');
 
     // Verify violation logged
     const violation = await ContentViolation.findOne({ userId: providerUser._id });
@@ -166,18 +135,19 @@ describe('Content Filter — Backend & Integration', () => {
   });
 
   it('3+ violations from a provider in 7 days triggers admin notification limit check', async () => {
-    // We already have 0 violations. Let's send 2 allowed violations (platform, etc) so that we reach 3.
     // Violation 1
-    await request(app)
+    const res1 = await request(app)
       .post(`/api/v1/adult/sext/messages/${conversationId}`)
       .set('Authorization', `Bearer ${providerToken}`)
       .send({ content: 'hit me on wa' });
+    expect(res1.status).toBe(400);
 
     // Violation 2
-    await request(app)
+    const res2 = await request(app)
       .post(`/api/v1/adult/sext/messages/${conversationId}`)
       .set('Authorization', `Bearer ${providerToken}`)
       .send({ content: 'let is talk on telegram' });
+    expect(res2.status).toBe(400);
 
     // Violation 3: This should trigger the threshold emit
     // Mock the socket emission behavior to spy on ns.emit
@@ -192,7 +162,7 @@ describe('Content Filter — Backend & Integration', () => {
       .set('Authorization', `Bearer ${providerToken}`)
       .send({ content: 'add my instagram: @foo' });
 
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(400);
 
     const count = await ContentViolation.countDocuments({ userId: providerUser._id });
     expect(count).toBe(3);

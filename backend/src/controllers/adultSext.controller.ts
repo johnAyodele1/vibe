@@ -1047,20 +1047,6 @@ export const sendMessage = async (req: Request, res: Response) => {
         matchedText: filterResult.matchedText,
       });
 
-      // For providers: block the message if it's a phone violation
-      if (user.role === 'provider' && filterResult.category === 'phone') {
-        return res.status(400).json({
-          success: false,
-          error: 'Message blocked: contains contact information',
-          violationType: filterResult.category,
-        });
-      }
-
-      // Flag the message for other violations
-      isFlagged = true;
-      flagReason = filterResult.category || '';
-      flaggedText = filterResult.matchedText || '';
-
       // Auto-escalation: count provider violations within last 7 days
       if (user.role === 'provider') {
         const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -1081,6 +1067,13 @@ export const sendMessage = async (req: Request, res: Response) => {
           }
         }
       }
+
+      // Hard block the message for both providers and members
+      return res.status(400).json({
+        success: false,
+        error: 'Message blocked: contains contact information',
+        violationType: filterResult.category,
+      });
     }
 
     // Set lock value

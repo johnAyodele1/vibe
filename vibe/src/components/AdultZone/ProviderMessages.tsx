@@ -120,7 +120,6 @@ const ProviderMessages: React.FC = () => {
 
   // Content Filtering (Provider-side)
   const { filterWarning, checkContent, dismissWarning, setFilterWarning } = useContentFilter('service_provider');
-  const [warningDismissed, setWarningDismissed] = useState(false);
 
   // Dialog states
   const [showPaidMediaDialog, setShowPaidMediaDialog] = useState(false);
@@ -211,6 +210,7 @@ const ProviderMessages: React.FC = () => {
   const socketRef = useRef<Socket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const feedRef = useRef<HTMLDivElement | null>(null);
+  const activeConvIdRef = useRef<string | null>(null);
 
   // Emoji picker states
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -403,6 +403,9 @@ const ProviderMessages: React.FC = () => {
       if (Array.isArray(data)) {
         if (page === 1) {
           setMessages(data.reverse());
+          setTimeout(() => {
+            scrollToBottom('instant');
+          }, 50);
         } else {
           setMessages(prev => [...data.reverse(), ...prev]);
         }
@@ -540,12 +543,24 @@ const ProviderMessages: React.FC = () => {
     };
   }, [token, selectedConv?.conversationId]);
 
-  // Scroll behaviors
+  // Scroll behaviors — scroll to bottom instantly when entering a chat and messages are loaded
   useEffect(() => {
-    if (messages.length > 0) {
-      scrollToBottom('instant');
+    if (!selectedConv) {
+      activeConvIdRef.current = null;
+      return;
     }
-  }, [selectedConv?.conversationId]);
+    if (activeConvIdRef.current !== selectedConv.conversationId) {
+      if (messages.length > 0) {
+        activeConvIdRef.current = selectedConv.conversationId;
+        setTimeout(() => {
+          scrollToBottom('instant');
+        }, 50);
+        setTimeout(() => {
+          scrollToBottom('instant');
+        }, 150);
+      }
+    }
+  }, [messages, selectedConv]);
 
   const prevMessagesLengthRef = useRef(messages.length);
   useEffect(() => {
@@ -686,7 +701,7 @@ const ProviderMessages: React.FC = () => {
   }, [activeCallId, token]);
 
   // Send Text Message
-  const handleSendText = async (bypassCheck = false) => {
+  const handleSendText = async () => {
     if (!selectedConv || (!inputText.trim() && !uploadPreview)) return;
 
     if (uploadPreview) {
@@ -694,13 +709,12 @@ const ProviderMessages: React.FC = () => {
       return;
     }
 
-    // Run final content check if not bypassed
-    if (!bypassCheck && !warningDismissed) {
-      const result = detectContactSharing(inputText);
-      if (result.detected) {
-        setFilterWarning({ show: true, category: result.category });
-        return;
-      }
+    // Run final content check
+    const result = detectContactSharing(inputText);
+    if (result.detected) {
+      setFilterWarning({ show: true, category: result.category });
+      toast.error('Message blocked: sharing contact information is not allowed.');
+      return;
     }
 
     try {
@@ -720,7 +734,6 @@ const ProviderMessages: React.FC = () => {
       if (data.id) {
         setMessages(prev => [...prev, data]);
         setInputText('');
-        setWarningDismissed(false); // reset dismissed state
         dismissWarning(); // dismiss warning popup
         fetchConversations();
       }
@@ -1795,7 +1808,6 @@ const ProviderMessages: React.FC = () => {
               {filterWarning.show && (
                 <ProviderContentWarning
                   onDismiss={dismissWarning}
-                  onSendAnyway={() => handleSendText(true)}
                 />
               )}
 
@@ -1876,7 +1888,6 @@ const ProviderMessages: React.FC = () => {
                     value={inputText}
                     onChange={(e) => {
                       setInputText(e.target.value);
-                      setWarningDismissed(false);
                       checkContent(e.target.value);
                     }}
                     onKeyDown={(e) => e.key === 'Enter' && handleSendText()}
