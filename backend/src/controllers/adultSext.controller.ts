@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
+import { detectContactSharing } from '@yourapp/content-filter';
+import ContentViolation from '../models/ContentViolation';
 import AdultUser from '../models/AdultUser';
 import AdultMessage from '../models/AdultMessage';
 import AdultConversation from '../models/AdultConversation';
@@ -1020,6 +1022,61 @@ export const sendMessage = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'Recipient not found' });
     }
 
+    // Scan content for contact sharing violations
+    const filterResult = detectContactSharing(content || '');
+    let isFlagged = false;
+    let flagReason = '';
+    let flaggedText = '';
+
+    if (filterResult.detected) {
+      const accountType = user.role === 'provider' ? 'service_provider' : 'member';
+
+      // Log the violation
+      await ContentViolation.create({
+        userId: user._id,
+        accountType,
+        conversationId,
+        messageContent: content,
+        violationType: filterResult.category,
+        matchedText: filterResult.matchedText,
+      });
+
+      // For providers: block the message if it's a phone violation
+      if (user.role === 'provider' && filterResult.category === 'phone') {
+        return res.status(400).json({
+          success: false,
+          error: 'Message blocked: contains contact information',
+          violationType: filterResult.category,
+        });
+      }
+
+      // Flag the message for other violations
+      isFlagged = true;
+      flagReason = filterResult.category || '';
+      flaggedText = filterResult.matchedText || '';
+
+      // Auto-escalation: count provider violations within last 7 days
+      if (user.role === 'provider') {
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        const violationCount = await ContentViolation.countDocuments({
+          userId: user._id,
+          reviewed: false,
+          createdAt: { $gte: sevenDaysAgo },
+        });
+
+        if (violationCount >= 3) {
+          const ns = req.app.get('adultNamespace');
+          if (ns) {
+            ns.emit('admin:violation_threshold', {
+              userId: user._id,
+              count: violationCount,
+              accountType: 'service_provider',
+            });
+          }
+        }
+      }
+    }
+
     // Set lock value
     let finalCreditCost = creditCost;
     let finalIsLocked = creditCost > 0;
@@ -1045,7 +1102,10 @@ export const sendMessage = async (req: Request, res: Response) => {
       mediaBlurred: finalIsLocked,
       gift,
       photoRequest,
-      systemText
+      systemText,
+      isFlagged,
+      flagReason,
+      flaggedText
     });
 
     await message.save();
@@ -1084,6 +1144,8 @@ export const sendMessage = async (req: Request, res: Response) => {
       systemText,
       reactions: [],
       isDeleted: false,
+      isFlagged: message.isFlagged,
+      flagReason: message.flagReason,
       createdAt: message.createdAt,
       readAt: null
     };

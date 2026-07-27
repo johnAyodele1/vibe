@@ -1,6 +1,7 @@
 import { Response, Request } from 'express';
 import User from '../models/User';
 import Report from '../models/Report';
+import ContentViolation from '../models/ContentViolation';
 import Conversation from '../models/Conversation';
 import VisitorStat from '../models/VisitorStat';
 import { IExpressRequest } from '../types/express';
@@ -29,6 +30,89 @@ export const adminLogin = async (req: Request, res: Response): Promise<Response>
   } catch (error) {
     console.error('Admin login error:', error);
     return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// @desc    Get all content violations
+// @access  Private/Admin
+export const getViolations = async (req: Request, res: Response): Promise<Response> => {
+  try {
+    const { reviewed, accountType, page = '1', limit = '20' } = req.query;
+
+    const query: any = {};
+    if (reviewed !== undefined) {
+      query.reviewed = reviewed === 'true';
+    }
+    if (accountType) {
+      query.accountType = accountType;
+    }
+
+    const pageNum = parseInt(page as string, 10);
+    const limitNum = parseInt(limit as string, 10);
+    const skipNum = (pageNum - 1) * limitNum;
+
+    const violations = await ContentViolation.find(query)
+      .select('+messageContent')
+      .populate('userId', 'displayName username email role')
+      .sort({ createdAt: -1 })
+      .skip(skipNum)
+      .limit(limitNum);
+
+    const total = await ContentViolation.countDocuments(query);
+
+    return res.json({
+      success: true,
+      data: {
+        violations,
+        pagination: {
+          total,
+          page: pageNum,
+          limit: limitNum,
+          pages: Math.ceil(total / limitNum),
+        },
+      },
+    });
+  } catch (error: any) {
+    console.error('Get violations error:', error);
+    return res.status(500).json({ success: false, message: 'Server error', error: error.message });
+  }
+};
+
+// @desc    Take action on a content violation
+// @access  Private/Admin
+export const updateViolationAction = async (req: Request, res: Response): Promise<Response> => {
+  try {
+    const { id } = req.params;
+    const { action } = req.body; // 'none' | 'warned' | 'suspended' | 'dismissed'
+
+    if (!['none', 'warned', 'suspended', 'dismissed'].includes(action)) {
+      return res.status(400).json({ success: false, message: 'Invalid action' });
+    }
+
+    const violation = await ContentViolation.findById(id);
+    if (!violation) {
+      return res.status(404).json({ success: false, message: 'Violation not found' });
+    }
+
+    violation.reviewed = true;
+    violation.actionTaken = action;
+    violation.reviewedAt = new Date();
+
+    const adminId = (req as any).user?.id || (req as any).user?._id;
+    if (adminId && mongoose.Types.ObjectId.isValid(adminId)) {
+      violation.reviewedBy = new mongoose.Types.ObjectId(adminId);
+    }
+
+    await violation.save();
+
+    return res.json({
+      success: true,
+      message: 'Violation action recorded successfully',
+      data: violation,
+    });
+  } catch (error: any) {
+    console.error('Update violation action error:', error);
+    return res.status(500).json({ success: false, message: 'Server error', error: error.message });
   }
 };
 

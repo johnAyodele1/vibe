@@ -289,6 +289,9 @@ export interface IMessage extends Document {
   deletedAt?: Date;
   deletedBy?: Types.ObjectId[];
   reportedBy?: Types.ObjectId[];
+  isFlagged?: boolean;
+  flagReason?: string;
+  flaggedText?: string;
   createdAt: Date;
 }
 
