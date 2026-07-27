@@ -11,6 +11,7 @@
     "test": "jest --passWithNoTests"
   },
   "dependencies": {
+    "@yourapp/content-filter": "*",
     "agora-access-token": "^2.0.4",
     "bcryptjs": "^2.4.3",
     "cloudinary": "^1.37.3",

@@ -6,6 +6,8 @@ import {
   getAllReports,
   getAllUsers,
   adminAction,
+  getViolations,
+  updateViolationAction,
 } from '../controllers/admin.controller';
 import {
   adminGetTasks,
@@ -27,6 +29,9 @@ router.get('/analytics', getAnalytics);
 router.get('/reports', getAllReports);
 router.get('/users', getAllUsers);
 router.post('/action', adminAction);
+
+router.get('/violations', getViolations);
+router.put('/violations/:id/action', updateViolationAction);
 
 // Reward Tasks management routes
 router.get('/rewards/tasks', adminGetTasks);

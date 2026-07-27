@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { detectContactSharing } from '@yourapp/content-filter';
+import { useContentFilter } from '../../hooks/useContentFilter';
+import { ProviderContentWarning } from './ContentFilterWarning';
 import { API_BASE_URL, SOCKET_URL } from '../../config';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { toast } from 'sonner';
@@ -114,6 +117,10 @@ const ProviderMessages: React.FC = () => {
 
   // Form states
   const [inputText, setInputText] = useState('');
+
+  // Content Filtering (Provider-side)
+  const { filterWarning, checkContent, dismissWarning, setFilterWarning } = useContentFilter('service_provider');
+  const [warningDismissed, setWarningDismissed] = useState(false);
 
   // Dialog states
   const [showPaidMediaDialog, setShowPaidMediaDialog] = useState(false);
@@ -679,12 +686,21 @@ const ProviderMessages: React.FC = () => {
   }, [activeCallId, token]);
 
   // Send Text Message
-  const handleSendText = async () => {
+  const handleSendText = async (bypassCheck = false) => {
     if (!selectedConv || (!inputText.trim() && !uploadPreview)) return;
 
     if (uploadPreview) {
       await handleUploadAndSend();
       return;
+    }
+
+    // Run final content check if not bypassed
+    if (!bypassCheck && !warningDismissed) {
+      const result = detectContactSharing(inputText);
+      if (result.detected) {
+        setFilterWarning({ show: true, category: result.category });
+        return;
+      }
     }
 
     try {
@@ -697,9 +713,15 @@ const ProviderMessages: React.FC = () => {
         })
       });
       const data = await res.json();
+      if (res.status === 400 && data.error) {
+        toast.error(data.error);
+        return;
+      }
       if (data.id) {
         setMessages(prev => [...prev, data]);
         setInputText('');
+        setWarningDismissed(false); // reset dismissed state
+        dismissWarning(); // dismiss warning popup
         fetchConversations();
       }
     } catch (err) {
@@ -1769,6 +1791,14 @@ const ProviderMessages: React.FC = () => {
 
             {/* BOTTOM INPUT BAR */}
             <div data-testid="chat-input-bar" className="chat-input-bar p-4 border-t border-[var(--az-border)] bg-[#10070e] flex flex-col gap-2 flex-shrink-0 relative">
+              {/* Content violation warnings */}
+              {filterWarning.show && (
+                <ProviderContentWarning
+                  onDismiss={dismissWarning}
+                  onSendAnyway={() => handleSendText(true)}
+                />
+              )}
+
               {recState === 'sending' ? (
                 <div className="recording-bar flex items-center justify-center gap-3 h-14 bg-[#150a12] rounded-full px-4 border border-[var(--az-border)] w-full">
                   <span className="animate-spin text-sm">⏳</span>
@@ -1844,7 +1874,11 @@ const ProviderMessages: React.FC = () => {
                     type="text"
                     placeholder="Send a message..."
                     value={inputText}
-                    onChange={(e) => setInputText(e.target.value)}
+                    onChange={(e) => {
+                      setInputText(e.target.value);
+                      setWarningDismissed(false);
+                      checkContent(e.target.value);
+                    }}
                     onKeyDown={(e) => e.key === 'Enter' && handleSendText()}
                     className="chat-input__field flex-grow bg-transparent border-none outline-none text-sm text-[var(--az-text-primary)] py-2 min-w-0"
                   />
@@ -1876,7 +1910,7 @@ const ProviderMessages: React.FC = () => {
                   </button>
 
                   <button
-                    onClick={handleSendText}
+                    onClick={() => handleSendText()}
                     className="chat-input__send w-8 h-8 bg-pink-600 hover:bg-pink-700 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-lg shadow-pink-500/20 active:scale-95 transition-all flex-shrink-0"
                   >
                     →

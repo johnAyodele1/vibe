@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
+import { detectContactSharing } from '@yourapp/content-filter';
+import ContentViolation from '../models/ContentViolation';
 import AdultUser from '../models/AdultUser';
 import AdultMessage from '../models/AdultMessage';
 import AdultConversation from '../models/AdultConversation';
@@ -923,7 +925,11 @@ export const getMessages = async (req: Request, res: Response) => {
 
     const query: any = {
       conversationId,
-      deletedBy: { $ne: user._id }
+      deletedBy: { $ne: user._id },
+      $or: [
+        { isFlagged: { $ne: true } },
+        { senderId: user._id }
+      ]
     };
 
     if (before) {
@@ -972,6 +978,8 @@ export const getMessages = async (req: Request, res: Response) => {
         systemText: m.systemText,
         reactions: m.reactions,
         isDeleted: m.isDeleted,
+        isFlagged: m.isFlagged,
+        flagReason: m.flagReason,
         createdAt: m.createdAt,
         readAt: m.readAt,
       };
@@ -1020,6 +1028,61 @@ export const sendMessage = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'Recipient not found' });
     }
 
+    // Scan content for contact sharing violations
+    const filterResult = detectContactSharing(content || '');
+    let isFlagged = false;
+    let flagReason = '';
+    let flaggedText = '';
+
+    if (filterResult.detected) {
+      const accountType = user.role === 'provider' ? 'service_provider' : 'member';
+
+      // Log the violation
+      await ContentViolation.create({
+        userId: user._id,
+        accountType,
+        conversationId,
+        messageContent: content,
+        violationType: filterResult.category,
+        matchedText: filterResult.matchedText,
+      });
+
+      // For providers: block the message if it's a phone violation
+      if (user.role === 'provider' && filterResult.category === 'phone') {
+        return res.status(400).json({
+          success: false,
+          error: 'Message blocked: contains contact information',
+          violationType: filterResult.category,
+        });
+      }
+
+      // Flag the message for other violations
+      isFlagged = true;
+      flagReason = filterResult.category || '';
+      flaggedText = filterResult.matchedText || '';
+
+      // Auto-escalation: count provider violations within last 7 days
+      if (user.role === 'provider') {
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        const violationCount = await ContentViolation.countDocuments({
+          userId: user._id,
+          reviewed: false,
+          createdAt: { $gte: sevenDaysAgo },
+        });
+
+        if (violationCount >= 3) {
+          const ns = req.app.get('adultNamespace');
+          if (ns) {
+            ns.emit('admin:violation_threshold', {
+              userId: user._id,
+              count: violationCount,
+              accountType: 'service_provider',
+            });
+          }
+        }
+      }
+    }
+
     // Set lock value
     let finalCreditCost = creditCost;
     let finalIsLocked = creditCost > 0;
@@ -1045,26 +1108,33 @@ export const sendMessage = async (req: Request, res: Response) => {
       mediaBlurred: finalIsLocked,
       gift,
       photoRequest,
-      systemText
+      systemText,
+      isFlagged,
+      flagReason,
+      flaggedText
     });
 
     await message.save();
 
-    // Reset deletedBy in case receiver/sender deleted it earlier
-    conversation.deletedBy = [];
-    conversation.lastMessage = {
-      content: encrypt(content || (type === 'gift' ? `🎁 Sent you a ${gift?.giftName || 'gift'}` : `[${type}]`)),
-      mediaType: type,
-      senderId: user._id,
-      sentAt: new Date()
-    };
-
-    // Increment unread count for other party
     const receiverIdStr = otherParticipantId.toString();
-    const currentUnread = conversation.unreadCounts.get(receiverIdStr) || 0;
-    conversation.unreadCounts.set(receiverIdStr, currentUnread + 1);
+    let currentUnread = conversation.unreadCounts.get(receiverIdStr) || 0;
 
-    await conversation.save();
+    if (!isFlagged) {
+      // Reset deletedBy in case receiver/sender deleted it earlier
+      conversation.deletedBy = [];
+      conversation.lastMessage = {
+        content: encrypt(content || (type === 'gift' ? `🎁 Sent you a ${gift?.giftName || 'gift'}` : `[${type}]`)),
+        mediaType: type,
+        senderId: user._id,
+        sentAt: new Date()
+      };
+
+      // Increment unread count for other party
+      currentUnread = currentUnread + 1;
+      conversation.unreadCounts.set(receiverIdStr, currentUnread);
+
+      await conversation.save();
+    }
 
     const responsePayload = {
       id: message._id,
@@ -1084,6 +1154,8 @@ export const sendMessage = async (req: Request, res: Response) => {
       systemText,
       reactions: [],
       isDeleted: false,
+      isFlagged: message.isFlagged,
+      flagReason: message.flagReason,
       createdAt: message.createdAt,
       readAt: null
     };
@@ -1091,12 +1163,17 @@ export const sendMessage = async (req: Request, res: Response) => {
     // Socket emission (handled mostly in Socket.io but let's make sure it relays)
     const ns = req.app.get('adultNamespace');
     if (ns) {
-      ns.to(`conv:${conversationId}`).emit('sext:new_message', { message: responsePayload });
-      ns.to(`user:${receiverIdStr}`).emit('sext:conversation_updated', {
-        conversationId,
-        lastMessage: responsePayload,
-        unreadCount: currentUnread + 1
-      });
+      if (isFlagged) {
+        // Soft block: Do NOT send/deliver/notify the recipient. Only emit to the sender's own channel.
+        ns.to(`user:${user._id.toString()}`).emit('sext:new_message', { message: responsePayload });
+      } else {
+        ns.to(`conv:${conversationId}`).emit('sext:new_message', { message: responsePayload });
+        ns.to(`user:${receiverIdStr}`).emit('sext:conversation_updated', {
+          conversationId,
+          lastMessage: responsePayload,
+          unreadCount: currentUnread
+        });
+      }
     }
 
     return res.status(201).json(responsePayload);

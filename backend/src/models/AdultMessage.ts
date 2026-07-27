@@ -139,6 +139,17 @@ const adultMessageSchema = new Schema<IMessage>(
         ref: 'AdultUser',
       },
     ],
+    isFlagged: {
+      type: Boolean,
+      default: false,
+    },
+    flagReason: {
+      type: String,
+    },
+    flaggedText: {
+      type: String,
+      select: false,
+    },
   },
   {
     timestamps: { createdAt: true, updatedAt: false },
