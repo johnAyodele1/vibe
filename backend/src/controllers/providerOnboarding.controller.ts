@@ -933,7 +933,8 @@ export const getProviderDashboard = async (req: Request, res: Response) => {
       }
 
       let timeLabel = 'Just now';
-      const diffMs = now.getTime() - msg.createdAt.getTime();
+      const msgCreatedAt = msg.createdAt ? new Date(msg.createdAt) : new Date();
+      const diffMs = now.getTime() - msgCreatedAt.getTime();
       const diffMins = Math.floor(diffMs / (1000 * 60));
       const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
       const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
@@ -998,8 +999,45 @@ export const getMyProfile = async (req: Request, res: Response) => {
     if (!user) {
       return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
     }
+
+    if (user.role === 'provider') {
+      let isChanged = false;
+      if (!user.providerProfile) {
+        user.providerProfile = getDefaultProviderProfile({
+          stageName: user.displayName || user.username || 'Stage Name'
+        }) as any;
+        isChanged = true;
+      } else {
+        if (!user.providerProfile.stageName) {
+          user.providerProfile.stageName = user.displayName || user.username || 'Stage Name';
+          isChanged = true;
+        }
+        if (!user.providerProfile.schedule || user.providerProfile.schedule.length === 0) {
+          user.providerProfile.schedule = getDefaultProviderProfile().schedule;
+          isChanged = true;
+        }
+        if (!user.providerProfile.photos) {
+          user.providerProfile.photos = [];
+          isChanged = true;
+        }
+        if (!user.providerProfile.servicesOffered) {
+          user.providerProfile.servicesOffered = [];
+          isChanged = true;
+        }
+        if (user.providerProfile.tonightRate === undefined || user.providerProfile.tonightRate === null) {
+          user.providerProfile.tonightRate = 150;
+          isChanged = true;
+        }
+      }
+
+      if (isChanged) {
+        await user.save();
+      }
+    }
+
     return res.json({ success: true, data: { user } });
   } catch (error: any) {
+    console.error('Error in getMyProfile:', error);
     return res.status(500).json({ success: false, error: error.message });
   }
 };

@@ -152,22 +152,27 @@ export const RewardsSheet: React.FC<RewardsSheetProps> = ({ onClose }) => {
         ) : (
           <>
             {/* Daily Check-in card — always first */}
-            <div className="rewards-checkin-card shadow-md">
-              <div className="rewards-checkin-card__left">
-                <span className="rewards-checkin-card__icon">☀️</span>
-                <div>
-                  <p className="rewards-checkin-card__title">Daily Check-in</p>
-                  <p className="rewards-checkin-card__desc">Come back every day</p>
+            {(() => {
+              const checkinTaskObj = tasks.find(t => t.type === 'daily_checkin');
+              return (
+                <div className="rewards-checkin-card shadow-md">
+                  <div className="rewards-checkin-card__left">
+                    <span className="rewards-checkin-card__icon">☀️</span>
+                    <div>
+                      <p className="rewards-checkin-card__title">{checkinTaskObj?.title || 'Daily Check-in'}</p>
+                      <p className="rewards-checkin-card__desc">{checkinTaskObj?.description || 'Come back every day'}</p>
+                    </div>
+                  </div>
+                  <button
+                    className="rewards-checkin-card__btn"
+                    onClick={handleCheckin}
+                    disabled={completing === 'checkin' || checkedInToday}
+                  >
+                    {checkedInToday ? '✓ Done' : completing === 'checkin' ? '...' : `💎 +${checkinTaskObj?.reward || 10}`}
+                  </button>
                 </div>
-              </div>
-              <button
-                className="rewards-checkin-card__btn"
-                onClick={handleCheckin}
-                disabled={completing === 'checkin' || checkedInToday}
-              >
-                {checkedInToday ? '✓ Done' : completing === 'checkin' ? '...' : '💎 +10'}
-              </button>
-            </div>
+              );
+            })()}
 
             {/* Task list */}
             <div className="rewards-task-list">

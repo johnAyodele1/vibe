@@ -1495,60 +1495,69 @@ const ProviderMessages: React.FC = () => {
                       </div>
                     ) : m.mediaType === 'gift_request' ? (
                       /* GIFT REQUEST (PROVIDER VIEW) */
-                      <div data-testid="gift-request-message" className="message-gift-request w-72">
-                        <span className="gift-request__icon">🎁</span>
-                        <h4 className="gift-request__title">You requested a {m.giftRequest?.giftName}</h4>
-                        <p className="gift-request__amount">💎 {m.giftRequest?.giftValue} credits</p>
+                      <div data-testid="gift-request-message" className="w-72 bg-gradient-to-br from-[#200e1b] to-[#120711] border-2 border-amber-500/50 rounded-2xl p-5 shadow-2xl text-center relative overflow-hidden flex flex-col items-center">
+                        <div className="absolute top-1.5 right-2.5 text-[8px] text-amber-400 font-bold uppercase tracking-widest">WISH REQUEST</div>
+                        <span className="text-5xl my-3 animate-bounce">🎁</span>
+                        <h5 className="font-serif italic text-white text-base">You requested a {m.giftRequest?.giftName}</h5>
+                        <p className="text-amber-400 font-bold font-mono text-xs mt-1">💎 {m.giftRequest?.giftValue} Credits</p>
                         {m.giftRequest?.message && (
-                          <p className="gift-request__note">"{m.giftRequest.message}"</p>
+                          <p className="text-[11px] italic text-gray-300 my-3 border-t border-pink-500/10 pt-3 w-full">"{m.giftRequest.message}"</p>
                         )}
-                        <span className="text-[10px] bg-white/5 text-gray-400 px-3 py-1 rounded-full uppercase tracking-wider font-mono">
-                          {m.giftRequest?.status === 'pending' ? '⏳ Waiting for response...' : '🎁 Gift sent!'}
-                        </span>
+                        <div className="w-full mt-4">
+                          <span className={`block text-[10px] font-bold uppercase tracking-wider py-1.5 px-3 rounded-xl border ${
+                            m.giftRequest?.status === 'pending'
+                              ? 'bg-amber-950/20 border-amber-500/30 text-amber-400'
+                              : 'bg-green-950/20 border-green-500/30 text-green-400'
+                          }`}>
+                            {m.giftRequest?.status === 'pending' ? '⏳ Waiting for response...' : '🎁 Gift sent!'}
+                          </span>
+                        </div>
                       </div>
                     ) : m.mediaType === 'service_request' ? (
                       /* SERVICE REQUEST (PROVIDER SENT VIEW) */
-                      <div data-testid="service-request-message" className="message-service-request w-72">
-                        <div className="service-request__header">
-                          <span className="service-request__icon">🌙</span>
-                          <span className="service-request__label">Service Request</span>
+                      <div data-testid="service-request-message" className="w-72 bg-gradient-to-br from-[#1b0a14] to-[#0d040a] border-2 border-amber-500/50 rounded-2xl p-5 shadow-2xl relative overflow-hidden flex flex-col text-left">
+                        <div className="flex items-center gap-2 mb-3 border-b border-white/5 pb-2">
+                          <span className="text-lg">🌙</span>
+                          <span className="font-bold text-[10px] uppercase tracking-wider text-amber-400">Tonight Service Charge</span>
                         </div>
 
-                        <div className="service-request__breakdown">
-                          <div className="service-request__row">
-                            <span className="service-request__row-label">Tonight Rate:</span>
-                            <span className="service-request__row-amount">💎 {m.serviceRequest?.baseRate}</span>
+                        <div className="space-y-2 text-xs">
+                          <div className="flex justify-between text-gray-300">
+                            <span>Tonight rate:</span>
+                            <span className="font-mono font-bold text-white">💎 {m.serviceRequest?.baseRate}</span>
                           </div>
-                          {m.serviceRequest?.extras.map((ext, i) => (
-                            <div key={i} className="service-request__row">
-                              <span className="service-request__row-label">{ext.label}:</span>
-                              <span className="service-request__row-amount">💎 {ext.amount}</span>
+                          {m.serviceRequest?.extras?.map((ext: { label: string; amount: number }, idx: number) => (
+                            <div key={idx} className="flex justify-between text-gray-400">
+                              <span>{ext.label}:</span>
+                              <span className="font-mono text-white">💎 {ext.amount}</span>
                             </div>
                           ))}
-                        </div>
-
-                        <div className="service-request__divider" />
-
-                        <div className="service-request__total-row">
-                          <span className="service-request__total-label">TOTAL:</span>
-                          <span className="service-request__total-amount">💎 {m.serviceRequest?.totalAmount}</span>
+                          <div className="border-t border-white/5 my-2 pt-2 flex justify-between items-center text-sm font-bold">
+                            <span className="text-white">TOTAL:</span>
+                            <span className="font-mono text-amber-400">💎 {m.serviceRequest?.totalAmount}</span>
+                          </div>
+                          <span className="text-[10px] text-gray-500 block text-right">
+                            ≈ ${(m.serviceRequest?.totalAmount! * 0.1).toFixed(2)} USD
+                          </span>
                         </div>
 
                         {m.serviceRequest?.note && (
-                          <p className="text-xs italic text-gray-400 mt-3">"{m.serviceRequest.note}"</p>
+                          <p className="text-[11px] text-gray-400 italic mt-3 bg-white/5 p-2 rounded-lg border-l-2 border-amber-400">
+                            "{m.serviceRequest.note}"
+                          </p>
                         )}
 
-                        <div className="mt-3">
+                        <div className="mt-4">
                           <span
                             data-testid="service-request-status"
-                            className={`service-request__status ${
+                            className={`block text-xs font-bold uppercase tracking-widest text-center py-2 rounded-xl border ${
                               m.serviceRequest?.status === 'pending'
-                                ? 'service-request__status--pending'
+                                ? 'bg-amber-950/20 border-amber-500/30 text-amber-400'
                                 : m.serviceRequest?.status === 'paid'
-                                ? 'service-request__status--paid'
+                                ? 'bg-green-950/20 border-green-500/30 text-green-400'
                                 : m.serviceRequest?.status === 'completed' || m.serviceRequest?.status === 'auto_completed'
-                                ? 'service-request__status--complete'
-                                : 'service-request__status--reported'
+                                ? 'bg-green-950/20 border-green-500/30 text-green-400'
+                                : 'bg-red-950/20 border-red-500/30 text-red-400'
                             }`}
                           >
                             {m.serviceRequest?.status === 'pending' && '⏳ Awaiting payment'}
@@ -1559,7 +1568,7 @@ const ProviderMessages: React.FC = () => {
                         </div>
 
                         {m.serviceRequest?.status === 'paid' && (
-                          <p className="text-[10px] text-gray-500 italic mt-2">
+                          <p className="text-[10px] text-gray-500 italic mt-2 text-center">
                             Payment is held until member confirms completion or 72 hours after payment.
                           </p>
                         )}
