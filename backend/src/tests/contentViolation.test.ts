@@ -69,9 +69,13 @@ describe('Content Filter — Backend & Integration', () => {
   });
 
   beforeEach(async () => {
-    // Clear violations before each test
+    // Clear violations and reset conversation counts before each test
     await ContentViolation.deleteMany({});
     await AdultMessage.deleteMany({});
+    await AdultConversation.findByIdAndUpdate(conversationId, {
+      unreadCounts: new Map(),
+      lastMessage: null,
+    });
   });
 
   it('provider phone number share is blocked with 400', async () => {
@@ -93,7 +97,7 @@ describe('Content Filter — Backend & Integration', () => {
     expect(violation?.matchedText).toBe('080123456789');
   });
 
-  it('member phone number share is allowed but flagged', async () => {
+  it('member phone number share is allowed but flagged and soft-blocked', async () => {
     const res = await request(app)
       .post(`/api/v1/adult/sext/messages/${conversationId}`)
       .set('Authorization', `Bearer ${memberToken}`)
@@ -116,6 +120,30 @@ describe('Content Filter — Backend & Integration', () => {
     const violation = await ContentViolation.findOne({ userId: memberUser._id });
     expect(violation).toBeDefined();
     expect(violation?.violationType).toBe('phone');
+
+    // Soft-block check: unreadCount on conversation should not increase for the provider recipient
+    const conv = await AdultConversation.findById(conversationId);
+    const unread = conv?.unreadCounts?.get(providerUser._id.toString()) || 0;
+    expect(unread).toBe(0);
+
+    // Soft-block check: recipient's fetch getMessages must NOT return the flagged message
+    const recipientGetRes = await request(app)
+      .get(`/api/v1/adult/sext/conversations/${conversationId}/messages`)
+      .set('Authorization', `Bearer ${providerToken}`);
+    expect(recipientGetRes.status).toBe(200);
+    const recipientMsgs = recipientGetRes.body;
+    const foundFlaggedRecipient = recipientMsgs.find((m: any) => m.id === res.body.id);
+    expect(foundFlaggedRecipient).toBeUndefined(); // Excluded/hidden for recipient
+
+    // Soft-block check: sender's fetch getMessages MUST return the flagged message (so they can see it)
+    const senderGetRes = await request(app)
+      .get(`/api/v1/adult/sext/conversations/${conversationId}/messages`)
+      .set('Authorization', `Bearer ${memberToken}`);
+    expect(senderGetRes.status).toBe(200);
+    const senderMsgs = senderGetRes.body;
+    const foundFlaggedSender = senderMsgs.find((m: any) => m.id === res.body.id);
+    expect(foundFlaggedSender).toBeDefined();
+    expect(foundFlaggedSender.isFlagged).toBe(true);
   });
 
   it('creates ContentViolation record when flagged platform message is sent', async () => {

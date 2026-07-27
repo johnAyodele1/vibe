@@ -925,7 +925,11 @@ export const getMessages = async (req: Request, res: Response) => {
 
     const query: any = {
       conversationId,
-      deletedBy: { $ne: user._id }
+      deletedBy: { $ne: user._id },
+      $or: [
+        { isFlagged: { $ne: true } },
+        { senderId: user._id }
+      ]
     };
 
     if (before) {
@@ -974,6 +978,8 @@ export const getMessages = async (req: Request, res: Response) => {
         systemText: m.systemText,
         reactions: m.reactions,
         isDeleted: m.isDeleted,
+        isFlagged: m.isFlagged,
+        flagReason: m.flagReason,
         createdAt: m.createdAt,
         readAt: m.readAt,
       };
@@ -1110,21 +1116,25 @@ export const sendMessage = async (req: Request, res: Response) => {
 
     await message.save();
 
-    // Reset deletedBy in case receiver/sender deleted it earlier
-    conversation.deletedBy = [];
-    conversation.lastMessage = {
-      content: encrypt(content || (type === 'gift' ? `🎁 Sent you a ${gift?.giftName || 'gift'}` : `[${type}]`)),
-      mediaType: type,
-      senderId: user._id,
-      sentAt: new Date()
-    };
-
-    // Increment unread count for other party
     const receiverIdStr = otherParticipantId.toString();
-    const currentUnread = conversation.unreadCounts.get(receiverIdStr) || 0;
-    conversation.unreadCounts.set(receiverIdStr, currentUnread + 1);
+    let currentUnread = conversation.unreadCounts.get(receiverIdStr) || 0;
 
-    await conversation.save();
+    if (!isFlagged) {
+      // Reset deletedBy in case receiver/sender deleted it earlier
+      conversation.deletedBy = [];
+      conversation.lastMessage = {
+        content: encrypt(content || (type === 'gift' ? `🎁 Sent you a ${gift?.giftName || 'gift'}` : `[${type}]`)),
+        mediaType: type,
+        senderId: user._id,
+        sentAt: new Date()
+      };
+
+      // Increment unread count for other party
+      currentUnread = currentUnread + 1;
+      conversation.unreadCounts.set(receiverIdStr, currentUnread);
+
+      await conversation.save();
+    }
 
     const responsePayload = {
       id: message._id,
@@ -1153,12 +1163,17 @@ export const sendMessage = async (req: Request, res: Response) => {
     // Socket emission (handled mostly in Socket.io but let's make sure it relays)
     const ns = req.app.get('adultNamespace');
     if (ns) {
-      ns.to(`conv:${conversationId}`).emit('sext:new_message', { message: responsePayload });
-      ns.to(`user:${receiverIdStr}`).emit('sext:conversation_updated', {
-        conversationId,
-        lastMessage: responsePayload,
-        unreadCount: currentUnread + 1
-      });
+      if (isFlagged) {
+        // Soft block: Do NOT send/deliver/notify the recipient. Only emit to the sender's own channel.
+        ns.to(`user:${user._id.toString()}`).emit('sext:new_message', { message: responsePayload });
+      } else {
+        ns.to(`conv:${conversationId}`).emit('sext:new_message', { message: responsePayload });
+        ns.to(`user:${receiverIdStr}`).emit('sext:conversation_updated', {
+          conversationId,
+          lastMessage: responsePayload,
+          unreadCount: currentUnread
+        });
+      }
     }
 
     return res.status(201).json(responsePayload);
