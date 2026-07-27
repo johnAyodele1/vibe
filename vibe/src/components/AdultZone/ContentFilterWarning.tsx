@@ -33,10 +33,10 @@ export const ContentFilterWarning: React.FC<ContentFilterWarningProps> = ({ cate
 
 interface ProviderContentWarningProps {
   onDismiss: () => void;
-  onSendAnyway: () => void;
+  onSendAnyway?: () => void;
 }
 
-export const ProviderContentWarning: React.FC<ProviderContentWarningProps> = ({ onDismiss, onSendAnyway }) => {
+export const ProviderContentWarning: React.FC<ProviderContentWarningProps> = ({ onDismiss }) => {
   return (
     <div className="content-filter-warning content-filter-warning--provider" data-testid="content-filter-warning-provider">
       <div className="cfm__icon">🚫</div>
@@ -54,9 +54,6 @@ export const ProviderContentWarning: React.FC<ProviderContentWarningProps> = ({ 
         <div className="cfm__actions">
           <button className="cfm__edit-btn" onClick={onDismiss}>
             Edit my message
-          </button>
-          <button className="cfm__send-anyway-btn" onClick={onSendAnyway}>
-            Send anyway (I accept responsibility)
           </button>
         </div>
       </div>
