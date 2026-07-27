@@ -1495,16 +1495,23 @@ const ProviderMessages: React.FC = () => {
                       </div>
                     ) : m.mediaType === 'gift_request' ? (
                       /* GIFT REQUEST (PROVIDER VIEW) */
-                      <div data-testid="gift-request-message" className="message-gift-request w-72">
-                        <span className="gift-request__icon">🎁</span>
-                        <h4 className="gift-request__title">You requested a {m.giftRequest?.giftName}</h4>
-                        <p className="gift-request__amount">💎 {m.giftRequest?.giftValue} credits</p>
+                      <div data-testid="gift-request-message" className="w-72 bg-gradient-to-br from-[#200e1b] to-[#120711] border-2 border-amber-500/50 rounded-2xl p-5 shadow-2xl text-center relative overflow-hidden flex flex-col items-center">
+                        <div className="absolute top-1.5 right-2.5 text-[8px] text-amber-400 font-bold uppercase tracking-widest">WISH REQUEST</div>
+                        <span className="text-5xl my-3 animate-bounce">🎁</span>
+                        <h5 className="font-serif italic text-white text-base">You requested a {m.giftRequest?.giftName}</h5>
+                        <p className="text-amber-400 font-bold font-mono text-xs mt-1">💎 {m.giftRequest?.giftValue} Credits</p>
                         {m.giftRequest?.message && (
-                          <p className="gift-request__note">"{m.giftRequest.message}"</p>
+                          <p className="text-[11px] italic text-gray-300 my-3 border-t border-pink-500/10 pt-3 w-full">"{m.giftRequest.message}"</p>
                         )}
-                        <span className="text-[10px] bg-white/5 text-gray-400 px-3 py-1 rounded-full uppercase tracking-wider font-mono">
-                          {m.giftRequest?.status === 'pending' ? '⏳ Waiting for response...' : '🎁 Gift sent!'}
-                        </span>
+                        <div className="w-full mt-4">
+                          <span className={`block text-[10px] font-bold uppercase tracking-wider py-1.5 px-3 rounded-xl border ${
+                            m.giftRequest?.status === 'pending'
+                              ? 'bg-amber-950/20 border-amber-500/30 text-amber-400'
+                              : 'bg-green-950/20 border-green-500/30 text-green-400'
+                          }`}>
+                            {m.giftRequest?.status === 'pending' ? '⏳ Waiting for response...' : '🎁 Gift sent!'}
+                          </span>
+                        </div>
                       </div>
                     ) : m.mediaType === 'service_request' ? (
                       /* SERVICE REQUEST (PROVIDER SENT VIEW) */
