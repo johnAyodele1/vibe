@@ -256,7 +256,7 @@ export const TipSheet: React.FC = () => {
   const usdValue = finalAmount * 0.0075;
 
   return (
-    <div className="fixed inset-0 z-[500] flex items-end md:items-center justify-center">
+    <div className="fixed inset-0 z-[20000] flex items-end md:items-center justify-center">
       {/* Backdrop */}
       <div
         data-testid="tip-sheet-backdrop"
