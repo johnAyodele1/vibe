@@ -81,16 +81,16 @@ const AdultAuthModal: React.FC<AdultAuthModalProps> = ({ isOpen, onClose, defaul
 
   return (
     <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl">
-      <div className="w-full max-w-md az-glass border border-[var(--az-border)] rounded-2xl p-8 relative">
-        <button onClick={onClose} className="absolute top-4 right-4 text-[var(--az-text-muted)] hover:text-white">✕</button>
+      <div className="w-full max-w-md az-glass border border-[var(--az-border)] rounded-2xl p-5 sm:p-6 relative max-h-[90vh] overflow-y-auto no-scrollbar">
+        <button onClick={onClose} className="absolute top-4 right-4 text-[var(--az-text-muted)] hover:text-white z-10">✕</button>
 
-        <h2 className="text-3xl font-serif italic text-white mb-6 text-center">
+        <h2 className="text-2xl sm:text-3xl font-serif italic text-white mb-4 text-center">
           {mode === 'login' ? 'Welcome Back' : 'Create Account'}
         </h2>
 
-        {error && <p className="text-[var(--az-accent-primary)] text-sm mb-4 text-center">{error}</p>}
+        {error && <p className="text-[var(--az-accent-primary)] text-sm mb-3 text-center">{error}</p>}
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           {mode === 'signup' && (
             <>
               {/* Account type selector */}
@@ -98,94 +98,100 @@ const AdultAuthModal: React.FC<AdultAuthModalProps> = ({ isOpen, onClose, defaul
                 <button
                   type="button"
                   onClick={() => setRole('user')}
-                  className={`flex-grow py-3 rounded-lg text-[10px] font-bold uppercase tracking-widest border transition-all ${role === 'user' ? 'bg-[var(--az-accent-primary)] text-white border-transparent shadow-[0_2px_12px_rgba(200,16,46,0.3)]' : 'bg-[var(--az-bg-tertiary)] text-[var(--az-text-secondary)] border-[var(--az-border)]'}`}
+                  className={`flex-grow py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest border transition-all ${role === 'user' ? 'bg-[var(--az-accent-primary)] text-white border-transparent shadow-[0_2px_12px_rgba(200,16,46,0.3)]' : 'bg-[var(--az-bg-tertiary)] text-[var(--az-text-secondary)] border-[var(--az-border)]'}`}
                 >
                   Join as User
                 </button>
                 <button
                   type="button"
                   onClick={() => setRole('provider')}
-                  className={`flex-grow py-3 rounded-lg text-[10px] font-bold uppercase tracking-widest border transition-all ${role === 'provider' ? 'bg-[var(--az-accent-gold)] text-black border-transparent shadow-[0_2px_12px_rgba(234,179,8,0.3)]' : 'bg-[var(--az-bg-tertiary)] text-[var(--az-text-secondary)] border-[var(--az-border)]'}`}
+                  className={`flex-grow py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest border transition-all ${role === 'provider' ? 'bg-[var(--az-accent-gold)] text-black border-transparent shadow-[0_2px_12px_rgba(234,179,8,0.3)]' : 'bg-[var(--az-bg-tertiary)] text-[var(--az-text-secondary)] border-[var(--az-border)]'}`}
                 >
                   Join as Provider
                 </button>
               </div>
 
-              {/* Username block */}
-              <div className="flex flex-col gap-1.5">
-                <label className="block text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-secondary)]">Username</label>
-                <input
-                  type="text"
-                  placeholder="Your unique username"
-                  required
-                  className="w-full h-[52px] bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 text-white focus:border-[var(--az-accent-rose)] outline-none box-border text-sm"
-                  value={formData.username}
-                  onChange={e => setFormData({ ...formData, username: e.target.value })}
-                />
+              {/* Username + Display Name grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Username block */}
+                <div className="flex flex-col gap-1">
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-secondary)]">Username</label>
+                  <input
+                    type="text"
+                    placeholder="Your username"
+                    required
+                    className="w-full h-[46px] bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-3.5 text-white focus:border-[var(--az-accent-rose)] outline-none box-border text-sm"
+                    value={formData.username}
+                    onChange={e => setFormData({ ...formData, username: e.target.value })}
+                  />
+                </div>
+
+                {/* Display / Stage Name block */}
+                <div className="flex flex-col gap-1">
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-secondary)]">
+                    {role === 'provider' ? 'Stage Name' : 'Display Name'}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder={role === 'provider' ? 'Your stage name' : 'Your screen name'}
+                    required
+                    className="w-full h-[46px] bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-3.5 text-white focus:border-[var(--az-accent-rose)] outline-none box-border text-sm"
+                    value={formData.displayName}
+                    onChange={e => setFormData({ ...formData, displayName: e.target.value })}
+                  />
+                </div>
               </div>
 
-              {/* Display / Stage Name block */}
-              <div className="flex flex-col gap-1.5">
-                <label className="block text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-secondary)]">
-                  {role === 'provider' ? 'Stage Name' : 'Display Name'}
-                </label>
-                <input
-                  type="text"
-                  placeholder={role === 'provider' ? 'Your public stage name' : 'How others see you'}
-                  required
-                  className="w-full h-[52px] bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 text-white focus:border-[var(--az-accent-rose)] outline-none box-border text-sm"
-                  value={formData.displayName}
-                  onChange={e => setFormData({ ...formData, displayName: e.target.value })}
-                />
-              </div>
+              {/* Date of Birth + Country grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Date of Birth block */}
+                <div className="flex flex-col gap-1">
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-secondary)]">Date of Birth</label>
+                  <input
+                    type="date"
+                    required
+                    className="w-full h-[46px] bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-3.5 text-white outline-none box-border text-sm"
+                    value={formData.dateOfBirth}
+                    onChange={e => setFormData({ ...formData, dateOfBirth: e.target.value })}
+                  />
+                </div>
 
-              {/* Date of Birth block */}
-              <div className="flex flex-col gap-1.5">
-                <label className="block text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-secondary)]">Date of Birth</label>
-                <input
-                  type="date"
-                  required
-                  className="w-full h-[52px] bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 text-white outline-none box-border text-sm"
-                  value={formData.dateOfBirth}
-                  onChange={e => setFormData({ ...formData, dateOfBirth: e.target.value })}
-                />
-              </div>
-
-              {/* Country block */}
-              <div className="flex flex-col gap-1.5">
-                <CustomSelect
-                  label="Country"
-                  value={formData.country || null}
-                  options={countryOptions}
-                  onSelect={(val) => setFormData({ ...formData, country: val })}
-                  placeholder="Select your country"
-                />
+                {/* Country block */}
+                <div className="flex flex-col gap-1 justify-end">
+                  <CustomSelect
+                    label="Country"
+                    value={formData.country || null}
+                    options={countryOptions}
+                    onSelect={(val) => setFormData({ ...formData, country: val })}
+                    placeholder="Select country"
+                  />
+                </div>
               </div>
             </>
           )}
 
           {/* Email block */}
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1">
             <label className="block text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-secondary)]">Email Address</label>
             <input
               type="email"
               placeholder="your@email.com"
               required
-              className="w-full h-[52px] bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 text-white focus:border-[var(--az-accent-rose)] outline-none box-border text-sm"
+              className="w-full h-[46px] bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-3.5 text-white focus:border-[var(--az-accent-rose)] outline-none box-border text-sm"
               value={formData.email}
               onChange={e => setFormData({ ...formData, email: e.target.value })}
             />
           </div>
 
           {/* Password block */}
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1">
             <label className="block text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-secondary)]">Password</label>
             <div className="relative w-full">
               <input
                 type={showPassword ? 'text' : 'password'}
                 placeholder="Min. 8 characters"
                 required
-                className="w-full h-[52px] bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl pl-4 pr-12 text-white focus:border-[var(--az-accent-rose)] outline-none box-border text-sm"
+                className="w-full h-[46px] bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl pl-3.5 pr-12 text-white focus:border-[var(--az-accent-rose)] outline-none box-border text-sm"
                 value={formData.password}
                 onChange={e => setFormData({ ...formData, password: e.target.value })}
               />
@@ -213,7 +219,7 @@ const AdultAuthModal: React.FC<AdultAuthModalProps> = ({ isOpen, onClose, defaul
           <button
             type="submit"
             disabled={loading}
-            className={`w-full h-[56px] bg-gradient-to-r from-[var(--az-accent-primary)] to-red-700 hover:brightness-110 active:scale-[0.98] text-white font-bold uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 shadow-[0_6px_24px_rgba(200,16,46,0.35)] ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}
+            className={`w-full h-[50px] bg-gradient-to-r from-[var(--az-accent-primary)] to-red-700 hover:brightness-110 active:scale-[0.98] text-white font-bold uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 shadow-[0_6px_24px_rgba(200,16,46,0.35)] ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}
           >
             {loading ? (
               <>
