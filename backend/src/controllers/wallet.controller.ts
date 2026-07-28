@@ -333,6 +333,23 @@ export const directTip = async (req: Request, res: Response) => {
         context
       });
 
+      // Broadcast tip notification to any active live cam room if context or active sessions exist
+      const activeSession = await mongoose.model('CamSession').findOne({ providerId: recipient._id, status: 'live' });
+      if (activeSession) {
+        const ns = req.app.get('adultNamespace');
+        if (ns) {
+          const notification = {
+            id: `tip_${Date.now()}`,
+            type: 'tip',
+            fromName: sender.displayName || sender.username || 'Member',
+            amount,
+            content: `${sender.displayName || sender.username} tipped 💎 ${amount}!`,
+            timestamp: Date.now(),
+          };
+          ns.to(`cam:${activeSession._id}`).emit('cam:new_message', notification);
+        }
+      }
+
       return res.status(200).json({
         success: true,
         tipId: senderTx[0]._id.toString(),

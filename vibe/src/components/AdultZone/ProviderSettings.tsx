@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { WheelEditor } from './WheelEditor';
 
 const ProviderSettings: React.FC = () => {
   const navigate = useNavigate();
   const token = localStorage.getItem('adultAccessToken');
+
+  const [activeTab, setActiveTab] = useState<'preferences' | 'wheel'>('preferences');
 
   const [notifications, setNotifications] = useState({
     newMessage: true,
@@ -85,7 +88,18 @@ const ProviderSettings: React.FC = () => {
           <div className="space-y-2">
             <h3 className="text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-4">Configurations Categories</h3>
             <div className="bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-2xl overflow-hidden divide-y divide-[var(--az-border)]/30">
-              <button className="w-full text-left p-4 hover:bg-[var(--az-bg-tertiary)]/50 text-xs font-bold uppercase tracking-widest transition-colors text-[var(--az-accent-rose)]">🛎️ Preferences & Privacy</button>
+              <button
+                className={`w-full text-left p-4 hover:bg-[var(--az-bg-tertiary)]/50 text-xs font-bold uppercase tracking-widest transition-colors ${activeTab === 'preferences' ? 'text-[var(--az-accent-rose)]' : 'text-white'}`}
+                onClick={() => setActiveTab('preferences')}
+              >
+                🛎️ Preferences & Privacy
+              </button>
+              <button
+                className={`w-full text-left p-4 hover:bg-[var(--az-bg-tertiary)]/50 text-xs font-bold uppercase tracking-widest transition-colors ${activeTab === 'wheel' ? 'text-[var(--az-accent-rose)]' : 'text-white'}`}
+                onClick={() => setActiveTab('wheel')}
+              >
+                🎡 Spin Wheel Editor
+              </button>
               <button className="w-full text-left p-4 hover:bg-[var(--az-bg-tertiary)]/50 text-xs font-bold uppercase tracking-widest transition-colors text-white" onClick={() => navigate('/adult/provider/profile')}>🏢 Performer Profile</button>
               <button className="w-full text-left p-4 hover:bg-[var(--az-bg-tertiary)]/50 text-xs font-bold uppercase tracking-widest transition-colors text-white" onClick={() => navigate('/adult/provider/earnings')}>💰 Earnings Ledger</button>
             </div>
@@ -94,6 +108,10 @@ const ProviderSettings: React.FC = () => {
           {/* Main workspace section */}
           <div className="md:col-span-2 space-y-8">
 
+            {activeTab === 'wheel' ? (
+              <WheelEditor />
+            ) : (
+              <>
             {/* Preferences */}
             <div className="bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-3xl p-6 space-y-6">
               <h3 className="text-lg font-serif italic text-white">Direct Alert Preferences</h3>
@@ -197,6 +215,8 @@ const ProviderSettings: React.FC = () => {
                 Deactivate My Performer Profile
               </button>
             </div>
+              </>
+            )}
 
           </div>
 

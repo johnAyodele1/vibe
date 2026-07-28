@@ -70,6 +70,12 @@ import { getRooms, createRoom as createAdultRoom, getRoom as getAdultRoom, joinR
 
 import { getProviderPublicProfile } from '../controllers/adultProviders.controller';
 import { getUserTasks, completeTask, dailyCheckin } from '../controllers/adultRewards.controller';
+import {
+  getProviderWheel,
+  updateProviderWheel,
+  spinProviderWheel,
+  getProviderWheelStats
+} from '../controllers/adultWheel.controller';
 
 import { getZegoToken } from '../controllers/zego.controller';
 import { joinMatchQueue, leaveMatchQueue, endMatchSession, nextStranger } from '../controllers/randomMatch.controller';
@@ -154,6 +160,12 @@ router.get('/adult/sext/calls/history', verifyAdultJWT, getCallHistory);
 router.get('/adult/hookup/nearby', optionalAdultJWT, getHookupNearbyProviders);
 router.get('/adult/profiles/me', verifyAdultJWT, getAdultMemberProfile);
 router.get('/adult/providers/:providerId', verifyAdultJWT, getProviderPublicProfile);
+
+// Spin Wheel Routes
+router.get('/adult/providers/:providerId/wheel', verifyAdultJWT, getProviderWheel);
+router.put('/adult/providers/me/wheel', verifyAdultJWT, updateProviderWheel);
+router.post('/adult/providers/:providerId/wheel/spin', verifyAdultJWT, spinProviderWheel);
+router.get('/adult/providers/me/wheel/stats', verifyAdultJWT, getProviderWheelStats);
 
 // Rewards system routes
 router.get('/adult/rewards/tasks', verifyAdultJWT, getUserTasks);
