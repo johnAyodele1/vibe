@@ -1,10 +1,22 @@
 import { Request, Response } from 'express';
+import mongoose from 'mongoose';
 import AdultUser from '../models/AdultUser';
 import { sendAdminNotification } from '../services/emailService';
 
 export const getProviderPublicProfile = async (req: Request, res: Response) => {
   try {
     const { providerId } = req.params;
+
+    if (typeof providerId !== 'string' || !mongoose.Types.ObjectId.isValid(providerId)) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_ID',
+          message: 'Invalid provider ID format'
+        }
+      });
+    }
+
     const provider = await AdultUser.findOne({
       _id: providerId,
       role: 'provider'

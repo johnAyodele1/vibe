@@ -159,24 +159,20 @@ router.get('/adult/sext/calls/history', verifyAdultJWT, getCallHistory);
 // Provider Onboarding & Profile update routes
 router.get('/adult/hookup/nearby', optionalAdultJWT, getHookupNearbyProviders);
 router.get('/adult/profiles/me', verifyAdultJWT, getAdultMemberProfile);
-router.get('/adult/providers/:providerId', verifyAdultJWT, getProviderPublicProfile);
-
-// Spin Wheel Routes
-router.get('/adult/providers/:providerId/wheel', verifyAdultJWT, getProviderWheel);
-router.put('/adult/providers/me/wheel', verifyAdultJWT, updateProviderWheel);
-router.post('/adult/providers/:providerId/wheel/spin', verifyAdultJWT, spinProviderWheel);
-router.get('/adult/providers/me/wheel/stats', verifyAdultJWT, getProviderWheelStats);
 
 // Rewards system routes
 router.get('/adult/rewards/tasks', verifyAdultJWT, getUserTasks);
 router.post('/adult/rewards/tasks/:taskId/complete', verifyAdultJWT, completeTask);
 router.post('/adult/rewards/checkin', verifyAdultJWT, dailyCheckin);
+
+// Provider specific /me routes (defined first to prevent route parameter hijacking)
 router.get('/adult/providers/me/onboarding', verifyAdultJWT, getOnboardingProgress);
 router.put('/adult/providers/me/onboarding/step/:stepNumber', verifyAdultJWT, saveOnboardingStep);
-router.get('/adult/providers/me', verifyAdultJWT, getMyProfile);
 router.get('/adult/providers/me/dashboard', verifyAdultJWT, getProviderDashboard);
 router.get('/adult/providers/me/earnings', verifyAdultJWT, getProviderEarnings);
 router.post('/adult/providers/me/payout', verifyAdultJWT, requestPayout);
+router.get('/adult/providers/me/wheel/stats', verifyAdultJWT, getProviderWheelStats);
+router.put('/adult/providers/me/wheel', verifyAdultJWT, updateProviderWheel);
 router.put('/adult/providers/me/profile', verifyAdultJWT, updateProfile);
 router.put('/adult/providers/me/services', verifyAdultJWT, updateServices);
 router.put('/adult/providers/me/pricing', verifyAdultJWT, updatePricing);
@@ -185,6 +181,12 @@ router.put('/adult/providers/me/payout', verifyAdultJWT, updatePayout);
 router.put('/adult/providers/me/status', verifyAdultJWT, updateStatus);
 router.put('/adult/providers/me/photos', verifyAdultJWT, updatePhotos);
 router.put('/adult/providers/me/schedule', verifyAdultJWT, updateSchedule);
+router.get('/adult/providers/me', verifyAdultJWT, getMyProfile);
+
+// Parameterized Provider Routes (must be defined after specific static routes)
+router.get('/adult/providers/:providerId', verifyAdultJWT, getProviderPublicProfile);
+router.get('/adult/providers/:providerId/wheel', verifyAdultJWT, getProviderWheel);
+router.post('/adult/providers/:providerId/wheel/spin', verifyAdultJWT, spinProviderWheel);
 
 // Naughty Rooms API
 router.get('/adult/rooms', optionalAdultJWT, getRooms);
