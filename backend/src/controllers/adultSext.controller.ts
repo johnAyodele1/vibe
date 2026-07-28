@@ -1946,28 +1946,36 @@ export const initiateCall = async (req: Request, res: Response) => {
 
     // Setup 45s timeout in background
     setTimeout(async () => {
-      const liveCall = await AdultCall.findById(call._id);
-      if (liveCall && liveCall.status === 'ringing') {
-        liveCall.status = 'missed';
-        liveCall.endReason = 'no_answer';
-        liveCall.endedAt = new Date();
-        liveCall.creditsDeducted = 0;
-        await liveCall.save();
+      // Check if mongoose is connected before performing database operations to avoid errors during test teardown or server shutdown
+      if (mongoose.connection.readyState !== 1) {
+        return;
+      }
+      try {
+        const liveCall = await AdultCall.findById(call._id);
+        if (liveCall && liveCall.status === 'ringing') {
+          liveCall.status = 'missed';
+          liveCall.endReason = 'no_answer';
+          liveCall.endedAt = new Date();
+          liveCall.creditsDeducted = 0;
+          await liveCall.save();
 
-        const systemMsg = new AdultMessage({
-          conversationId: liveCall.conversationId,
-          senderId: liveCall.callerId,
-          receiverId: liveCall.receiverId,
-          content: encrypt("No answer"),
-          messageType: 'system',
-          systemText: "No answer"
-        });
-        await systemMsg.save();
+          const systemMsg = new AdultMessage({
+            conversationId: liveCall.conversationId,
+            senderId: liveCall.callerId,
+            receiverId: liveCall.receiverId,
+            content: encrypt("No answer"),
+            messageType: 'system',
+            systemText: "No answer"
+          });
+          await systemMsg.save();
 
-        if (ns) {
-          ns.to(`user:${user._id.toString()}`).emit('call:missed', { callId: call._id });
-          ns.to(`user:${receiver._id.toString()}`).emit('call:missed', { callId: call._id });
+          if (ns) {
+            ns.to(`user:${user._id.toString()}`).emit('call:missed', { callId: call._id });
+            ns.to(`user:${receiver._id.toString()}`).emit('call:missed', { callId: call._id });
+          }
         }
+      } catch (err) {
+        // Ignore background query errors during teardown
       }
     }, 45000);
 

@@ -6,8 +6,16 @@ import RoomMembership from '../models/RoomMembership';
 import AdultRoomPoll from '../models/AdultRoomPoll';
 import Report from '../models/Report';
 import AdultUser from '../models/AdultUser';
-import { getIO } from '../socket';
 import mongoose from 'mongoose';
+
+// Dynamically retrieve the IO instance to prevent circular dependency undefined crashes during module initialization
+const getIO = () => {
+  try {
+    return require('../socket').getIO();
+  } catch (err) {
+    return null;
+  }
+};
 
 // ==========================================
 // 1. ROOMS CONTROLLER METHODS
