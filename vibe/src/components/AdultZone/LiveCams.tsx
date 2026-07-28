@@ -2,6 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_BASE_URL, SOCKET_URL } from '../../config';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
+import { useTipSheetStore } from './useTipSheetStore';
+import { CamLiveChat } from './CamLiveChat';
+import { WheelPreview } from './WheelEditor';
 import { toast } from 'sonner';
 import { io, Socket } from 'socket.io-client';
 
@@ -24,6 +27,15 @@ const LiveCams: React.FC = () => {
   const [agoraRoomId, setAgoraRoomId] = useState<string | null>(null);
   const [viewerCount, setViewerCount] = useState<number>(0);
 
+  const [providerProfile, setProviderProfile] = useState<any | null>(null);
+  const [wheel, setWheel] = useState<any | null>(null);
+  const [spinning, setSpinning] = useState(false);
+  const [landedIndex, setLandedIndex] = useState<number | null>(null);
+  const [lastSpinResult, setLastSpinResult] = useState<string | null>(null);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [wheelOpen, setWheelOpen] = useState(false);
+
+  const openTipSheet = useTipSheetStore(s => s.openSheet);
   const socketRef = useRef<Socket | null>(null);
 
   const getHeaders = () => ({
@@ -115,6 +127,35 @@ const LiveCams: React.FC = () => {
         setActiveSession(session);
         setViewerCount(session.totalViewerCount || 0);
 
+        // Fetch provider profile for tipping details
+        try {
+          const pRes = await fetch(`${API_BASE_URL}/v1/adult/providers/${session.providerId?._id || session.providerId}`, {
+            headers: getHeaders()
+          });
+          const pData = await pRes.json();
+          if (pData.success) {
+            setProviderProfile(pData.data);
+          }
+        } catch (err) {
+          console.error('Failed to fetch provider details:', err);
+        }
+
+        // Fetch provider's active wheel
+        try {
+          const wRes = await fetch(`${API_BASE_URL}/v1/adult/providers/${session.providerId?._id || session.providerId}/wheel`, {
+            headers: getHeaders()
+          });
+          const wData = await wRes.json();
+          if (wData.success && wData.data && wData.data.isActive) {
+            setWheel(wData.data);
+          } else {
+            setWheel(null);
+          }
+        } catch (err) {
+          console.error('Failed to fetch wheel:', err);
+          setWheel(null);
+        }
+
         // Join live room on socket
         if (socketRef.current) {
           socketRef.current.emit('cam:join', session._id);
@@ -124,6 +165,33 @@ const LiveCams: React.FC = () => {
           socketRef.current.on('cam:viewer_count', (data) => {
             if (data && typeof data.count === 'number') {
               setViewerCount(data.count);
+            }
+          });
+
+          // Listen to wheel spins from others
+          socketRef.current.on('cam:wheel_spin', (data: { spinnerName: string; itemId: string; itemLabel: string; creditsPaid: number }) => {
+            // Find landed slice index
+            try {
+              const fetchWheelFresh = async () => {
+                const wRes = await fetch(`${API_BASE_URL}/v1/adult/providers/${session.providerId?._id || session.providerId}/wheel`, {
+                  headers: { 'Authorization': `Bearer ${localStorage.getItem('adultAccessToken')}` }
+                });
+                const wData = await wRes.json();
+                if (wData.success && wData.data && wData.data.items) {
+                  const idx = wData.data.items.findIndex((item: any) => item.id === data.itemId);
+                  if (idx !== -1) {
+                    setLandedIndex(idx);
+                    setSpinning(true);
+                    setTimeout(() => {
+                      setLastSpinResult(data.itemLabel);
+                      setSpinning(false);
+                    }, 4200);
+                  }
+                }
+              };
+              fetchWheelFresh();
+            } catch (e) {
+              console.error(e);
             }
           });
         }
@@ -141,11 +209,56 @@ const LiveCams: React.FC = () => {
       socketRef.current.emit('cam:leave', activeSession._id);
       socketRef.current.off('cam:viewerCount');
       socketRef.current.off('cam:viewer_count');
+      socketRef.current.off('cam:wheel_spin');
     }
     setActiveSession(null);
     setAgoraToken(null);
     setAgoraAppId(null);
     setAgoraRoomId(null);
+    setWheel(null);
+    setProviderProfile(null);
+    setSpinning(false);
+    setLandedIndex(null);
+    setLastSpinResult(null);
+  };
+
+  const handleSpinWheel = async () => {
+    if (!activeSession || !wheel) return;
+    setSpinning(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/v1/adult/providers/${activeSession.providerId?._id || activeSession.providerId}/wheel/spin`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ camSessionId: activeSession._id })
+      });
+      const data = await response.json();
+      if (response.status === 402) {
+        toast.error('Insufficient tokens. Please get more tokens.');
+        setSpinning(false);
+        return;
+      }
+      if (response.ok) {
+        // Trigger local SVG rotation matching landed index
+        const idx = wheel.items.findIndex((item: any) => item.id === data.itemId);
+        if (idx !== -1) {
+          setLandedIndex(idx);
+          setTimeout(() => {
+            setLastSpinResult(data.itemLabel);
+            setSpinning(false);
+            toast.success(`🎡 Landed on: "${data.itemLabel}"!`);
+          }, 4200);
+        } else {
+          setSpinning(false);
+          toast.success(`🎡 Spun wheel and landed on "${data.itemLabel}"!`);
+        }
+      } else {
+        toast.error(data.error || 'Spin transaction failed');
+        setSpinning(false);
+      }
+    } catch (err) {
+      toast.error('Error spinning the wheel');
+      setSpinning(false);
+    }
   };
 
   return (
@@ -234,9 +347,10 @@ const LiveCams: React.FC = () => {
 
       {/* WATCH STREAM FULL SCREEN MODAL */}
       {activeSession && agoraToken && agoraAppId && agoraRoomId && (
-        <div className="fixed inset-0 bg-black z-[10000] flex flex-col items-center justify-between text-white">
-          <div className="absolute inset-0 bg-[#0a0608] z-0">
-            <React.Suspense fallback={<div className="flex items-center justify-center h-full text-pink-500">Loading stream viewer...</div>}>
+        <div className="fixed inset-0 bg-[#0a0608] z-[10000] flex flex-col md:flex-row text-white overflow-hidden">
+          {/* Main stream video viewport (Takes full height/width on mobile, left side on desktop) */}
+          <div className="relative flex-1 h-full bg-[#050305] flex items-center justify-center z-0">
+            <React.Suspense fallback={<div className="flex items-center justify-center h-full text-pink-500 font-serif italic">Streaming session starting...</div>}>
               <CamViewerRoom
                 appId={agoraAppId}
                 token={agoraToken}
@@ -246,37 +360,145 @@ const LiveCams: React.FC = () => {
                 onUserCountUpdate={setViewerCount}
               />
             </React.Suspense>
+
+            {/* Floating Close Header & Spectators metrics */}
+            <div className="absolute top-4 left-4 right-4 z-10 flex justify-between items-center bg-black/40 backdrop-blur-md p-4 rounded-2xl border border-white/5">
+              <div className="text-left">
+                <h4 className="font-serif italic text-base font-bold text-white leading-tight">
+                  {providerProfile?.stageName || activeSession.providerId?.username || 'Live Cam'}
+                </h4>
+                <span className="text-[10px] text-yellow-400 font-mono tracking-widest uppercase">
+                  👁️ {viewerCount} spectators
+                </span>
+              </div>
+              <button
+                onClick={handleCloseWatch}
+                className="w-10 h-10 bg-black/60 hover:bg-red-600 rounded-full flex items-center justify-center font-bold text-lg border border-[var(--az-border)] transition-colors shrink-0"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Support Performer and direct tip quick trigger (Bottom overlay footer on the video player) */}
+            <div className="absolute bottom-4 left-4 right-4 z-10 flex justify-between items-center bg-black/40 backdrop-blur-md p-4 rounded-2xl border border-white/5">
+              <div className="text-xs text-[var(--az-text-secondary)] font-serif italic truncate mr-2">
+                Support {providerProfile?.stageName || activeSession.providerId?.username || 'Performer'} by sending tips
+              </div>
+              <button
+                onClick={() => {
+                  if (providerProfile) {
+                    openTipSheet({
+                      userId: providerProfile.id,
+                      stageName: providerProfile.stageName,
+                      avatarUrl: providerProfile.avatarUrl,
+                      isOnline: true
+                    });
+                  } else {
+                    const customEvent = new CustomEvent('open-tip-sheet', { detail: { providerId: activeSession.providerId?._id } });
+                    window.dispatchEvent(customEvent);
+                  }
+                }}
+                className="px-6 py-2.5 bg-[var(--az-accent-gold)] text-black font-bold uppercase tracking-wider text-[10px] rounded-full shadow-[0_0_15px_rgba(234,179,8,0.2)] hover:scale-105 active:scale-95 transition-all shrink-0"
+              >
+                💎 TIP PERFORMER
+              </button>
+            </div>
+
+            {/* Mobile-Only Action Overlay Buttons on the screen corner */}
+            <div className="md:hidden absolute bottom-24 right-4 z-20 flex flex-col gap-3">
+              {/* Wheel toggle button if active */}
+              {wheel && (
+                <button
+                  onClick={() => setWheelOpen(!wheelOpen)}
+                  className="w-12 h-12 rounded-full bg-black/60 backdrop-blur-md border border-white/10 flex items-center justify-center text-xl shadow-lg relative"
+                >
+                  🎡
+                </button>
+              )}
+
+              {/* Chat drawer toggle button */}
+              <button
+                onClick={() => setChatOpen(!chatOpen)}
+                className="w-12 h-12 rounded-full bg-black/60 backdrop-blur-md border border-white/10 flex items-center justify-center text-xl shadow-lg"
+              >
+                💬
+              </button>
+            </div>
+
+            {/* Mobile bottom slide-up glassmorphic drawer for ephemeral chat */}
+            <div className={`md:hidden fixed bottom-0 left-0 right-0 h-[45%] bg-[#0d070a]/92 backdrop-blur-xl border-t border-white/10 rounded-t-3xl transition-transform duration-300 z-50 flex flex-col ${chatOpen ? 'translate-y-0' : 'translate-y-full'}`}>
+              <div className="w-12 h-1.5 bg-white/10 rounded-full mx-auto my-3 shrink-0 cursor-pointer" onClick={() => setChatOpen(false)} />
+              <div className="flex-1 p-3 min-h-0">
+                <CamLiveChat
+                  sessionId={activeSession._id}
+                  currentUserId={user?.id || ''}
+                  currentUserName={user?.firstName || 'Guest'}
+                  onViewerCountUpdate={setViewerCount}
+                />
+              </div>
+            </div>
+
+            {/* Mobile slide-up/fade overlay modal for spinning the SVG wheel */}
+            {wheel && wheelOpen && (
+              <div className="md:hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-6">
+                <div className="bg-[#120a10] border border-[var(--az-border)] rounded-3xl p-6 w-full max-w-sm flex flex-col items-center relative animate-fadeIn">
+                  <button onClick={() => setWheelOpen(false)} className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-xs text-white/50">✕</button>
+                  <h3 className="text-base font-serif italic text-white mb-2">Performer Spin Wheel</h3>
+
+                  <WheelPreview items={wheel.items} spinning={spinning} landedIndex={landedIndex} />
+
+                  <button
+                    onClick={handleSpinWheel}
+                    disabled={spinning}
+                    className="w-full h-11 bg-[var(--az-accent-crimson)] hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg flex items-center justify-center gap-2"
+                  >
+                    {spinning ? 'SPINNING...' : `SPIN WHEEL (💎 ${wheel.items[0]?.creditCost || 5})`}
+                  </button>
+
+                  {lastSpinResult && (
+                    <span className="text-xs text-pink-400 font-medium font-sans mt-3 text-center">
+                      Last landed: "{lastSpinResult}"
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Floating Close Header & Tips Controls */}
-          <div className="absolute top-4 inset-x-4 z-10 flex justify-between items-center bg-black/40 backdrop-blur-md p-4 rounded-xl">
-            <div className="text-left">
-              <h4 className="font-bold text-sm">{activeSession.providerId?.username || 'Live Cam'}</h4>
-              <span className="text-[10px] text-yellow-400">👁️ {viewerCount} viewing</span>
-            </div>
-            <button
-              onClick={handleCloseWatch}
-              className="w-10 h-10 bg-black/60 hover:bg-red-600 rounded-full flex items-center justify-center font-bold text-lg border border-[var(--az-border)] transition-colors"
-            >
-              ✕
-            </button>
-          </div>
+          {/* Desktop Right Sidebar Panel (Takes 400px width on desktop view, hidden on mobile) */}
+          <div className="hidden md:flex flex-col w-[380px] h-full bg-[#0a0608] border-l border-white/5 shrink-0 z-10 divide-y divide-white/5 overflow-y-auto no-scrollbar">
+            {/* Top Widget: SVG Spin Wheel if active */}
+            {wheel && (
+              <div className="p-4 flex flex-col items-center bg-[#10070c]/50">
+                <h4 className="text-xs font-serif italic text-pink-400 uppercase tracking-widest">Interactive Wheel</h4>
+                <WheelPreview items={wheel.items} spinning={spinning} landedIndex={landedIndex} />
+                <button
+                  onClick={handleSpinWheel}
+                  disabled={spinning}
+                  className="w-full h-10 bg-[var(--az-accent-crimson)] hover:bg-red-700 text-white font-bold text-[10px] uppercase tracking-widest rounded-xl transition-all shadow-md flex items-center justify-center gap-1 shrink-0"
+                >
+                  {spinning ? 'SPINNING...' : `SPIN THE WHEEL (💎 ${wheel.items[0]?.creditCost || 5}+)`}
+                </button>
+                {lastSpinResult && (
+                  <span className="text-[10px] text-white/50 mt-2 font-sans font-medium text-center leading-none">
+                    Last result: <strong className="text-pink-400">"{lastSpinResult}"</strong>
+                  </span>
+                )}
+              </div>
+            )}
 
-          {/* Tips / Interaction Footer */}
-          <div className="absolute bottom-4 inset-x-4 z-10 flex justify-between items-center bg-black/40 backdrop-blur-md p-4 rounded-xl">
-            <div className="text-xs text-[var(--az-text-secondary)] font-serif italic">
-              Support {activeSession.providerId?.username || 'Performer'} by sending tips
+            {/* Bottom Widget: Ephemeral Live Chat Feed */}
+            <div className="flex-1 p-3 min-h-0 flex flex-col">
+              <span className="text-[10px] font-bold tracking-[0.12em] text-white/30 uppercase mb-2 pl-1 block">Live Chat Feed</span>
+              <div className="flex-1 min-h-0">
+                <CamLiveChat
+                  sessionId={activeSession._id}
+                  currentUserId={user?.id || ''}
+                  currentUserName={user?.firstName || 'Guest'}
+                  onViewerCountUpdate={setViewerCount}
+                />
+              </div>
             </div>
-            <button
-              onClick={() => {
-                // Tipping flows are globally connected to the TipSheet window events
-                const customEvent = new CustomEvent('open-tip-sheet', { detail: { providerId: activeSession.providerId?._id } });
-                window.dispatchEvent(customEvent);
-              }}
-              className="px-6 py-2.5 bg-[var(--az-accent-gold)] text-black font-bold uppercase tracking-wider text-[10px] rounded-full shadow-[0_0_15px_rgba(234,179,8,0.2)] hover:scale-105 active:scale-95 transition-all"
-            >
-              💎 TIP PERFORMER
-            </button>
           </div>
         </div>
       )}

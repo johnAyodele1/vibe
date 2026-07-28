@@ -140,23 +140,24 @@ export const setupAdultSocket = (io: Server) => {
         const sessionId = typeof data === 'string' ? data : data?.sessionId;
         if (!sessionId) return;
 
-        const session = await CamSession.findById(sessionId);
-        if (!session || session.status !== 'live') return;
-
         socket.join(`cam:${sessionId}`);
 
-        await CamViewer.findOneAndUpdate(
-          { sessionId, userId: socket.data.user._id },
-          {
-            $setOnInsert: { joinedAt: new Date() },
-            $set: { deviceType: 'desktop' } // Simplified
-          },
-          { upsert: true }
-        );
+        const count = adultNamespace.adapter.rooms.get(`cam:${sessionId}`)?.size || 0;
+        adultNamespace.to(`cam:${sessionId}`).emit('cam:viewerCount', count);
+        adultNamespace.to(`cam:${sessionId}`).emit('cam:viewer_count', { count });
 
-        const viewerCount = adultNamespace.adapter.rooms.get(`cam:${sessionId}`)?.size || 0;
-        adultNamespace.to(`cam:${sessionId}`).emit('cam:viewerCount', viewerCount);
-        adultNamespace.to(`cam:${sessionId}`).emit('cam:viewer_count', { count: viewerCount });
+        try {
+          await CamViewer.findOneAndUpdate(
+            { sessionId, userId: socket.data.user._id },
+            {
+              $setOnInsert: { joinedAt: new Date() },
+              $set: { deviceType: 'desktop' } // Simplified
+            },
+            { upsert: true }
+          );
+        } catch (dbErr) {
+          console.warn('Non-blocking cam viewer join tracking failed:', dbErr);
+        }
       } catch (err) {
         console.error('Cam join error:', err);
       }
@@ -168,14 +169,18 @@ export const setupAdultSocket = (io: Server) => {
         if (!sessionId) return;
 
         socket.leave(`cam:${sessionId}`);
-        const viewerCount = adultNamespace.adapter.rooms.get(`cam:${sessionId}`)?.size || 0;
-        adultNamespace.to(`cam:${sessionId}`).emit('cam:viewerCount', viewerCount);
-        adultNamespace.to(`cam:${sessionId}`).emit('cam:viewer_count', { count: viewerCount });
+        const count = adultNamespace.adapter.rooms.get(`cam:${sessionId}`)?.size || 0;
+        adultNamespace.to(`cam:${sessionId}`).emit('cam:viewerCount', count);
+        adultNamespace.to(`cam:${sessionId}`).emit('cam:viewer_count', { count });
 
-        await CamViewer.findOneAndUpdate(
-          { sessionId, userId: socket.data.user._id },
-          { leftAt: new Date() }
-        );
+        try {
+          await CamViewer.findOneAndUpdate(
+            { sessionId, userId: socket.data.user._id },
+            { leftAt: new Date() }
+          );
+        } catch (dbErr) {
+          console.warn('Non-blocking cam viewer leave tracking failed:', dbErr);
+        }
       } catch (err) {
         console.error('Cam leave error:', err);
       }
@@ -336,6 +341,34 @@ export const setupAdultSocket = (io: Server) => {
 
     socket.on('call:join', (data: { callId: string }) => {
       socket.join(`call:${data.callId}`);
+    });
+
+    // EPHEMERAL CAM CHAT ROOM CHAT MESSAGE
+    socket.on('cam:chat_message', ({ sessionId, content }) => {
+      if (!content || content.trim().length === 0) return;
+      if (content.length > 200) return;
+
+      // Contact sharing content filtering check using direct import or shared content filter
+      try {
+        const { detectContactSharing } = require('@yourapp/content-filter');
+        const { detected } = detectContactSharing(content);
+        if (detected) return; // silently drop as specified
+      } catch (err) {
+        console.warn('content-filter package not loaded, skipped checks:', err);
+      }
+
+      const message = {
+        id: `msg_${Date.now()}_${socket.data.user._id}`,
+        senderId: socket.data.user._id,
+        senderName: socket.data.user.displayName || socket.data.user.username || 'Member',
+        senderBadge: socket.data.user.subscriptionTier === 'none' ? null : socket.data.user.subscriptionTier,
+        content: content.trim(),
+        timestamp: Date.now(),
+        type: 'chat',
+      };
+
+      // Broadcast to everyone in the cam room
+      adultNamespace.to(`cam:${sessionId}`).emit('cam:new_message', message);
     });
 
     // Individual user room for notifications
