@@ -425,6 +425,14 @@ const LiveCams: React.FC = () => {
               </button>
             </div>
 
+            {/* Mobile Chat backdrop overlay */}
+            {chatOpen && (
+              <div
+                className="md:hidden fixed inset-0 bg-black/40 z-40 transition-opacity"
+                onClick={() => setChatOpen(false)}
+              />
+            )}
+
             {/* Mobile bottom slide-up glassmorphic drawer for ephemeral chat */}
             <div className={`md:hidden fixed bottom-0 left-0 right-0 h-[45%] bg-[#0d070a]/92 backdrop-blur-xl border-t border-white/10 rounded-t-3xl transition-transform duration-300 z-50 flex flex-col ${chatOpen ? 'translate-y-0' : 'translate-y-full'}`}>
               <div className="w-12 h-1.5 bg-white/10 rounded-full mx-auto my-3 shrink-0 cursor-pointer" onClick={() => setChatOpen(false)} />
@@ -440,8 +448,14 @@ const LiveCams: React.FC = () => {
 
             {/* Mobile slide-up/fade overlay modal for spinning the SVG wheel */}
             {wheel && wheelOpen && (
-              <div className="md:hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-6">
-                <div className="bg-[#120a10] border border-[var(--az-border)] rounded-3xl p-6 w-full max-w-sm flex flex-col items-center relative animate-fadeIn">
+              <div
+                className="md:hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-6"
+                onClick={() => setWheelOpen(false)}
+              >
+                <div
+                  className="bg-[#120a10] border border-[var(--az-border)] rounded-3xl p-6 w-full max-w-sm flex flex-col items-center relative animate-fadeIn"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <button onClick={() => setWheelOpen(false)} className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-xs text-white/50">✕</button>
                   <h3 className="text-base font-serif italic text-white mb-2">Performer Spin Wheel</h3>
 

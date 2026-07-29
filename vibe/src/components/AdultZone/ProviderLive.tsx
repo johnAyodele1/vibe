@@ -24,14 +24,17 @@ const ProviderLive: React.FC = () => {
   const [agoraSessionId, setAgoraSessionId] = useState<string | null>(null);
 
   const socketRef = useRef<Socket | null>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const [chatMessages, setChatMessages] = useState<any[]>([
-    { id: '1', user: 'Member_882', text: 'Hey there beauty! Gorgeous room!' },
-    { id: '2', user: 'DiscreetLover', text: 'Tipped 50 credits! Play a special song?', tip: 50 },
-    { id: '3', user: 'VibeGold', text: 'Looking amazing today' }
-  ]);
+  const [chatMessages, setChatMessages] = useState<any[]>([]);
 
   const [inputText, setInputText] = useState('');
+
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollTop = chatEndRef.current.scrollHeight;
+    }
+  }, [chatMessages]);
 
   const getHeaders = () => ({
     'Authorization': `Bearer ${token}`,
@@ -85,13 +88,38 @@ const ProviderLive: React.FC = () => {
           ...prev,
           {
             id: 'tip-rec-' + Date.now(),
-            user: fromName,
-            text: `Tipped ${tipAmt} credits!`,
-            tip: tipAmt
+            senderName: fromName,
+            content: `Tipped ${tipAmt} credits!`,
+            type: 'tip',
+            amount: tipAmt
           }
         ]);
         toast.success(`🎉 Received a tip of 💎 ${tipAmt} from ${fromName}!`);
       }
+    });
+
+    socket.on('cam:new_message', (message: any) => {
+      // If it's a live tip in the room, increment cumulative tips!
+      if (message.type === 'tip') {
+        const amt = message.amount || 0;
+        setSessionTips(prev => prev + amt);
+      }
+      setChatMessages(prev => {
+        if (prev.some(m => m.id === message.id)) return prev;
+        return [...prev, message];
+      });
+    });
+
+    socket.on('cam:wheel_spin', (data: any) => {
+      setChatMessages(prev => [
+        ...prev,
+        {
+          id: 'spin-' + Date.now() + '-' + Math.random(),
+          senderName: 'System',
+          content: `🎡 ${data.spinnerName} spun the wheel and got: "${data.itemLabel}" (💎 ${data.creditsPaid})`,
+          type: 'spin'
+        }
+      ]);
     });
 
     return () => {
@@ -168,8 +196,21 @@ const ProviderLive: React.FC = () => {
   };
 
   const handleSendChat = () => {
-    if (!inputText.trim()) return;
-    setChatMessages(prev => [...prev, { id: 'msg-temp-' + Date.now(), user: 'Me (Provider)', text: inputText }]);
+    const text = inputText.trim();
+    if (!text) return;
+    if (isLive && agoraSessionId && socketRef.current) {
+      socketRef.current.emit('cam:chat_message', { sessionId: agoraSessionId, content: text });
+    } else {
+      setChatMessages(prev => [
+        ...prev,
+        {
+          id: 'msg-offline-' + Date.now(),
+          senderName: 'Me (Offline)',
+          content: text,
+          type: 'chat'
+        }
+      ]);
+    }
     setInputText('');
   };
 
@@ -262,21 +303,42 @@ const ProviderLive: React.FC = () => {
             <p className="text-[10px] text-[var(--az-text-secondary)] border-b border-[var(--az-border)]/30 pb-3">Spectators interact here in real-time</p>
           </div>
 
-          <div className="flex-grow overflow-y-auto py-4 space-y-3 pr-1">
-            {chatMessages.map(msg => (
-              <div key={msg.id} className="text-xs space-y-0.5">
-                {msg.tip ? (
-                  <div className="p-2 bg-yellow-950/20 border border-yellow-500/30 rounded-lg text-[var(--az-accent-gold)] font-bold mb-1">
-                    🎉 {msg.user} tipped 💎 {msg.tip} credits!
+          <div ref={chatEndRef} className="flex-grow overflow-y-auto py-4 space-y-3 pr-1 no-scrollbar">
+            {chatMessages.length === 0 && (
+              <p className="text-center text-xs text-[var(--az-text-muted)] py-10 font-serif italic">
+                No messages yet.
+              </p>
+            )}
+            {chatMessages.map(msg => {
+              const isTip = msg.type === 'tip' || msg.tip;
+              const isSpin = msg.type === 'spin';
+              const sender = msg.senderName || msg.user || 'Spectator';
+              const text = msg.content || msg.text || '';
+              const tipAmount = msg.amount || msg.tip;
+
+              if (isTip) {
+                return (
+                  <div key={msg.id} className="p-2 bg-yellow-950/20 border border-yellow-500/30 rounded-lg text-[var(--az-accent-gold)] font-bold mb-1 text-xs">
+                    🎉 {sender} tipped 💎 {tipAmount} credits!
                   </div>
-                ) : (
-                  <div>
-                    <span className="font-bold text-[var(--az-accent-rose)]">{msg.user}: </span>
-                    <span className="text-[var(--az-text-primary)]">{msg.text}</span>
+                );
+              }
+
+              if (isSpin) {
+                return (
+                  <div key={msg.id} className="p-2 bg-pink-950/20 border border-pink-500/30 rounded-lg text-pink-400 font-bold mb-1 text-xs">
+                    {text}
                   </div>
-                )}
-              </div>
-            ))}
+                );
+              }
+
+              return (
+                <div key={msg.id} className="text-xs space-y-0.5">
+                  <span className="font-bold text-[var(--az-accent-rose)]">{sender}: </span>
+                  <span className="text-[var(--az-text-primary)]">{text}</span>
+                </div>
+              );
+            })}
           </div>
 
           <div className="flex gap-2 border-t border-[var(--az-border)]/30 pt-4">
