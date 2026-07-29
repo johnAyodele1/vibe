@@ -140,6 +140,7 @@ const ProviderMessages: React.FC = () => {
   const [selectedGift, setSelectedGift] = useState<Gift | null>(null);
   const [giftRequestNote, setGiftRequestNote] = useState('');
   const [activeGiftTab, setActiveGiftTab] = useState<string>('all');
+  const [isGiftsLoading, setIsGiftsLoading] = useState(false);
 
   // Service Request states
   const [showServiceRequestDialog, setShowServiceRequestDialog] = useState(false);
@@ -147,6 +148,12 @@ const ProviderMessages: React.FC = () => {
   const [serviceRequestNote, setServiceRequestNote] = useState('');
   const tonightRate = (user as any)?.providerProfile?.tonightRate || 100;
   const [dynTonightRate, setDynTonightRate] = useState<number>(0);
+
+  // Double-click / duplicate submission prevention states
+  const [isSendingPaidMedia, setIsSendingPaidMedia] = useState(false);
+  const [isSendingGiftRequest, setIsSendingGiftRequest] = useState(false);
+  const [isSendingServiceRequest, setIsSendingServiceRequest] = useState(false);
+  const [processingIds, setProcessingIds] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (showServiceRequestDialog) {
@@ -382,6 +389,8 @@ const ProviderMessages: React.FC = () => {
   };
 
   const handleDeclineServiceTonightRequest = async (msgId: string) => {
+    if (processingIds[msgId]) return;
+    setProcessingIds(prev => ({ ...prev, [msgId]: true }));
     try {
       await fetch(`${API_BASE_URL}/v1/adult/sext/service-tonight-requests/${msgId}/decline`, {
         method: 'PUT',
@@ -391,6 +400,8 @@ const ProviderMessages: React.FC = () => {
       toast.info('Service request declined');
     } catch (err) {
       console.error('Failed to decline service request:', err);
+    } finally {
+      setProcessingIds(prev => ({ ...prev, [msgId]: false }));
     }
   };
 
@@ -829,11 +840,13 @@ const ProviderMessages: React.FC = () => {
 
   const handleSendPaidMediaSubmit = async () => {
     if (!paidMediaFile || !selectedConv) return;
+    if (isSendingPaidMedia) return;
     if (paidMediaCost < 1) {
       toast.error('Unlock price must be at least 1 credit.');
       return;
     }
 
+    setIsSendingPaidMedia(true);
     setIsMediaUploading(true);
     setMediaUploadProgress(10);
 
@@ -907,6 +920,7 @@ const ProviderMessages: React.FC = () => {
     } catch (err) {
       toast.error('Failed to send media');
     } finally {
+      setIsSendingPaidMedia(false);
       setIsMediaUploading(false);
       setMediaUploadProgress(0);
     }
@@ -915,6 +929,7 @@ const ProviderMessages: React.FC = () => {
   // Send Gift Request Picker Dialog
   const openGiftRequestPicker = async () => {
     setShowGiftRequestDialog(true);
+    setIsGiftsLoading(true);
     try {
       const res = await fetch(`${API_BASE_URL}/v1/adult/gifts/catalogue`, { headers: getHeaders() });
       const data = await res.json();
@@ -923,11 +938,15 @@ const ProviderMessages: React.FC = () => {
       }
     } catch (err) {
       console.error(err);
+    } finally {
+      setIsGiftsLoading(false);
     }
   };
 
   const handleSendGiftRequest = async () => {
     if (!selectedGift || !selectedConv) return;
+    if (isSendingGiftRequest) return;
+    setIsSendingGiftRequest(true);
     try {
       const res = await fetch(`${API_BASE_URL}/v1/adult/sext/conversations/${selectedConv.conversationId}/gift-request`, {
         method: 'POST',
@@ -947,6 +966,8 @@ const ProviderMessages: React.FC = () => {
       }
     } catch (err) {
       toast.error('Failed to request gift');
+    } finally {
+      setIsSendingGiftRequest(false);
     }
   };
 
@@ -962,8 +983,10 @@ const ProviderMessages: React.FC = () => {
 
   const handleSendServiceRequestSubmit = async () => {
     if (!selectedConv) return;
+    if (isSendingServiceRequest) return;
     const cleanedExtras = serviceExtras.filter(e => e.label.trim());
 
+    setIsSendingServiceRequest(true);
     try {
       let url = `${API_BASE_URL}/v1/adult/sext/conversations/${selectedConv.conversationId}/service-request`;
       let method = 'POST';
@@ -1028,11 +1051,14 @@ const ProviderMessages: React.FC = () => {
       }
     } catch (err) {
       toast.error('Failed to send service request');
+    } finally {
+      setIsSendingServiceRequest(false);
     }
   };
 
   // Handle Actionable Photo Requests received from members
   const handleFulfillPhotoRequestFree = async (msgId: string) => {
+    if (processingIds[msgId]) return;
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
@@ -1040,6 +1066,7 @@ const ProviderMessages: React.FC = () => {
       const file = e.target.files?.[0];
       if (!file) return;
 
+      setProcessingIds(prev => ({ ...prev, [msgId]: true }));
       toast.loading('Uploading and fulfilling request...');
       try {
         const presignedRes = await fetch(`${API_BASE_URL}/v1/adult/media/presigned-url?type=image&filename=${encodeURIComponent(file.name)}`, {
@@ -1075,12 +1102,16 @@ const ProviderMessages: React.FC = () => {
       } catch (err) {
         toast.dismiss();
         toast.error('Failed to fulfill request');
+      } finally {
+        setProcessingIds(prev => ({ ...prev, [msgId]: false }));
       }
     };
     input.click();
   };
 
   const handleDeclinePhotoRequest = async (msgId: string) => {
+    if (processingIds[msgId]) return;
+    setProcessingIds(prev => ({ ...prev, [msgId]: true }));
     try {
       await fetch(`${API_BASE_URL}/v1/adult/sext/photo-requests/${msgId}/decline`, {
         method: 'PUT',
@@ -1090,6 +1121,8 @@ const ProviderMessages: React.FC = () => {
       toast.info('Photo request declined');
     } catch (err) {
       console.error(err);
+    } finally {
+      setProcessingIds(prev => ({ ...prev, [msgId]: false }));
     }
   };
 
@@ -1628,23 +1661,26 @@ const ProviderMessages: React.FC = () => {
                                 setPaidMediaCaption("Here's your requested photo 📸");
                                 setShowPaidMediaDialog(true);
                               }}
-                              className="w-full py-2 bg-gradient-to-r from-amber-500 to-yellow-600 text-black rounded text-[10px] font-bold uppercase tracking-wider"
+                              disabled={processingIds[m.id]}
+                              className="w-full py-2 bg-gradient-to-r from-amber-500 to-yellow-600 text-black rounded text-[10px] font-bold uppercase tracking-wider disabled:opacity-50"
                             >
                               💰 Accept & Send Paid
                             </button>
                             <button
                               data-testid="photo-request-send-free"
                               onClick={() => handleFulfillPhotoRequestFree(m.id)}
-                              className="w-full py-2 bg-pink-600 hover:bg-pink-700 text-white rounded text-[10px] font-bold uppercase"
+                              disabled={processingIds[m.id]}
+                              className="w-full py-2 bg-pink-600 hover:bg-pink-700 text-white rounded text-[10px] font-bold uppercase disabled:opacity-50"
                             >
-                              Send Free Photo
+                              {processingIds[m.id] ? 'Fulfilling...' : 'Send Free Photo'}
                             </button>
                             <button
                               data-testid="photo-request-decline"
                               onClick={() => handleDeclinePhotoRequest(m.id)}
-                              className="w-full py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-[10px] font-bold uppercase"
+                              disabled={processingIds[m.id]}
+                              className="w-full py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-[10px] font-bold uppercase disabled:opacity-50"
                             >
-                              Decline
+                              {processingIds[m.id] ? 'Declining...' : 'Decline'}
                             </button>
                           </div>
                         ) : m.photoRequest?.status === 'fulfilled' ? (
@@ -1675,15 +1711,17 @@ const ProviderMessages: React.FC = () => {
                                 setActiveServiceTonightRequestFulfillId(m.id);
                                 setShowServiceRequestDialog(true);
                               }}
-                              className="w-full py-2 bg-gradient-to-r from-amber-500 to-yellow-600 text-black rounded text-[10px] font-bold uppercase tracking-wider"
+                              disabled={processingIds[m.id]}
+                              className="w-full py-2 bg-gradient-to-r from-amber-500 to-yellow-600 text-black rounded text-[10px] font-bold uppercase tracking-wider disabled:opacity-50"
                             >
                                Accept & Send Rates
                             </button>
                             <button
                               onClick={() => handleDeclineServiceTonightRequest(m.id)}
-                              className="w-full py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-[10px] font-bold uppercase"
+                              disabled={processingIds[m.id]}
+                              className="w-full py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-[10px] font-bold uppercase disabled:opacity-50"
                             >
-                              Decline
+                              {processingIds[m.id] ? 'Declining...' : 'Decline'}
                             </button>
                           </div>
                         ) : m.serviceTonightRequest?.status === 'fulfilled' ? (
@@ -2087,10 +2125,10 @@ const ProviderMessages: React.FC = () => {
               <button
                 data-testid="send-paid-media-submit"
                 onClick={handleSendPaidMediaSubmit}
-                disabled={!paidMediaFile || isMediaUploading}
+                disabled={!paidMediaFile || isMediaUploading || isSendingPaidMedia}
                 className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-black font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg active:scale-95 disabled:opacity-40"
               >
-                {isMediaUploading ? 'Uploading payload...' : 'Send Locked Media'}
+                {isSendingPaidMedia || isMediaUploading ? 'Sending...' : 'Send Locked Media'}
               </button>
             </div>
           </div>
@@ -2129,23 +2167,38 @@ const ProviderMessages: React.FC = () => {
 
             {/* Gift list grid */}
             <div className="grid grid-cols-3 gap-3 max-h-60 overflow-y-auto pr-1 no-scrollbar mb-6">
-              {giftsCatalogue
-                .filter(g => activeGiftTab === 'all' || g.category === activeGiftTab)
-                .map(g => {
-                  const isSelected = selectedGift?._id === g._id;
-                  const iconsMap: any = { rose: '🌹', balloon: '🎈', teddy: '🧸', lingerie: '👙', champagne: '🍾', ring: '💍' };
-                  return (
-                    <div
-                      key={g._id}
-                      onClick={() => setSelectedGift(g)}
-                      className={`p-3 bg-[#200e1b] rounded-xl border flex flex-col items-center justify-center text-center cursor-pointer transition-all ${isSelected ? 'border-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.3)]' : 'border-pink-500/10 hover:border-pink-500/30'}`}
-                    >
-                      <span className="text-3xl mb-1">{iconsMap[g.iconUrl] || '🎁'}</span>
-                      <span className="text-[10px] font-bold block truncate w-full">{g.name}</span>
-                      <span className="text-[9px] text-yellow-400 font-mono mt-1">💎 {g.creditCost}</span>
-                    </div>
-                  );
-                })}
+              {isGiftsLoading ? (
+                Array.from({ length: 6 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="p-3 bg-[#200e1b] rounded-xl border border-pink-500/5 animate-pulse flex flex-col items-center justify-center text-center h-[90px]"
+                  >
+                    <div className="w-8 h-8 bg-pink-500/10 rounded-full mb-2" />
+                    <div className="w-12 h-3 bg-pink-500/10 rounded mb-1.5" />
+                    <div className="w-8 h-2 bg-pink-500/10 rounded" />
+                  </div>
+                ))
+              ) : giftsCatalogue.length === 0 ? (
+                <p className="col-span-3 text-center py-10 text-xs text-[var(--az-text-muted)] font-serif italic">No gifts found.</p>
+              ) : (
+                giftsCatalogue
+                  .filter(g => activeGiftTab === 'all' || g.category === activeGiftTab)
+                  .map(g => {
+                    const isSelected = selectedGift?._id === g._id;
+                    const iconsMap: any = { rose: '🌹', balloon: '🎈', teddy: '🧸', lingerie: '👙', champagne: '🍾', ring: '💍' };
+                    return (
+                      <div
+                        key={g._id}
+                        onClick={() => setSelectedGift(g)}
+                        className={`p-3 bg-[#200e1b] rounded-xl border flex flex-col items-center justify-center text-center cursor-pointer transition-all ${isSelected ? 'border-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.3)]' : 'border-pink-500/10 hover:border-pink-500/30'}`}
+                      >
+                        <span className="text-3xl mb-1">{iconsMap[g.iconUrl] || '🎁'}</span>
+                        <span className="text-[10px] font-bold block truncate w-full">{g.name}</span>
+                        <span className="text-[9px] text-yellow-400 font-mono mt-1">💎 {g.creditCost}</span>
+                      </div>
+                    );
+                  })
+              )}
             </div>
 
             {selectedGift && (
@@ -2165,9 +2218,10 @@ const ProviderMessages: React.FC = () => {
                 <button
                   data-testid="gift-request-send-btn"
                   onClick={handleSendGiftRequest}
-                  className="w-full py-2.5 bg-pink-600 hover:bg-pink-700 text-white font-bold text-xs uppercase tracking-widest rounded-full transition-all"
+                  disabled={isSendingGiftRequest}
+                  className="w-full py-2.5 bg-pink-600 hover:bg-pink-700 text-white font-bold text-xs uppercase tracking-widest rounded-full transition-all disabled:opacity-50"
                 >
-                  Send Gift Request
+                  {isSendingGiftRequest ? 'Requesting...' : 'Send Gift Request'}
                 </button>
               </div>
             )}
@@ -2283,9 +2337,10 @@ const ProviderMessages: React.FC = () => {
               <button
                 data-testid="service-request-submit"
                 onClick={handleSendServiceRequestSubmit}
-                className="w-full py-3.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-rose-900/20 active:scale-95"
+                disabled={isSendingServiceRequest}
+                className="w-full py-3.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-rose-900/20 active:scale-95 disabled:opacity-50"
               >
-                Send Service Request
+                {isSendingServiceRequest ? 'Sending...' : 'Send Service Request'}
               </button>
             </div>
           </div>

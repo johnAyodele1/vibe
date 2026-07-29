@@ -130,10 +130,17 @@ const PrivateSext: React.FC = () => {
   const [giftNote, setGiftNote] = useState('');
   const [giftsCatalogue, setGiftsCatalogue] = useState<Gift[]>([]);
   const [activeGiftTab, setActiveGiftTab] = useState<string>('all');
+  const [isGiftsLoading, setIsGiftsLoading] = useState(false);
   const [showPhotoRequestModal, setShowPhotoRequestModal] = useState(false);
   const [photoRequestNote, setPhotoRequestNote] = useState('');
   const [showServiceRequestModal, setShowServiceRequestModal] = useState(false);
   const [serviceRequestNote, setServiceRequestNote] = useState('');
+
+  // Double-click / duplicate submission prevention states
+  const [isSendingGift, setIsSendingGift] = useState(false);
+  const [isSendingPhotoRequest, setIsSendingPhotoRequest] = useState(false);
+  const [isSendingServiceRequest, setIsSendingServiceRequest] = useState(false);
+  const [processingIds, setProcessingIds] = useState<Record<string, boolean>>({});
 
   // S3 upload states
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -918,6 +925,7 @@ const PrivateSext: React.FC = () => {
 
   // Media Unlock Flow
   const handleUnlockMedia = async (msgId: string, cost: number) => {
+    if (processingIds[msgId]) return;
     const clientCost = Math.ceil(cost * 1.15);
     if (creditsRemaining < clientCost) {
       setInsufficientCreditsMsgId(msgId);
@@ -926,6 +934,7 @@ const PrivateSext: React.FC = () => {
       return;
     }
 
+    setProcessingIds(prev => ({ ...prev, [msgId]: true }));
     try {
       const res = await fetch(`${API_BASE_URL}/v1/adult/sext/messages/${msgId}/unlock`, {
         method: 'POST',
@@ -938,12 +947,15 @@ const PrivateSext: React.FC = () => {
       }
     } catch (err) {
       toast.error('Failed to unlock content');
+    } finally {
+      setProcessingIds(prev => ({ ...prev, [msgId]: false }));
     }
   };
 
   // Gift catalog fetch & send
   const openGiftPicker = async () => {
     setShowGiftPicker(true);
+    setIsGiftsLoading(true);
     try {
       const res = await fetch(`${API_BASE_URL}/v1/adult/gifts/catalogue`, { headers: getHeaders() });
       const data = await res.json();
@@ -952,11 +964,14 @@ const PrivateSext: React.FC = () => {
       }
     } catch (err) {
       console.error(err);
+    } finally {
+      setIsGiftsLoading(false);
     }
   };
 
   const handleSendGift = async () => {
     if (!selectedGift || !selectedConv) return;
+    if (isSendingGift) return;
 
     if (creditsRemaining < selectedGift.creditCost) {
       setShakeGiftButton(true);
@@ -965,6 +980,7 @@ const PrivateSext: React.FC = () => {
       return;
     }
 
+    setIsSendingGift(true);
     try {
       const res = await fetch(`${API_BASE_URL}/v1/adult/sext/conversations/${selectedConv.conversationId}/send-gift`, {
         method: 'POST',
@@ -994,12 +1010,17 @@ const PrivateSext: React.FC = () => {
       }
     } catch (err) {
       toast.error('Failed to send gift');
+    } finally {
+      setIsSendingGift(false);
     }
   };
 
   // Photo Request
   const handleSendPhotoRequest = async () => {
     if (!selectedConv) return;
+    if (isSendingPhotoRequest) return;
+
+    setIsSendingPhotoRequest(true);
     try {
       const res = await fetch(`${API_BASE_URL}/v1/adult/sext/conversations/${selectedConv.conversationId}/request-photo`, {
         method: 'POST',
@@ -1015,12 +1036,17 @@ const PrivateSext: React.FC = () => {
       }
     } catch (err) {
       toast.error('Failed to send request');
+    } finally {
+      setIsSendingPhotoRequest(false);
     }
   };
 
   // Request Tonight Service
   const handleSendServiceRequest = async () => {
     if (!selectedConv) return;
+    if (isSendingServiceRequest) return;
+
+    setIsSendingServiceRequest(true);
     try {
       const res = await fetch(`${API_BASE_URL}/v1/adult/sext/conversations/${selectedConv.conversationId}/request-service`, {
         method: 'POST',
@@ -1036,6 +1062,8 @@ const PrivateSext: React.FC = () => {
       }
     } catch (err) {
       toast.error('Failed to send service request');
+    } finally {
+      setIsSendingServiceRequest(false);
     }
   };
 
@@ -1074,6 +1102,8 @@ const PrivateSext: React.FC = () => {
   };
 
   const handleFulfillGiftRequest = async (msgId: string) => {
+    if (processingIds[msgId]) return;
+    setProcessingIds(prev => ({ ...prev, [msgId]: true }));
     try {
       const res = await fetch(`${API_BASE_URL}/v1/adult/sext/gift-requests/${msgId}/fulfill`, {
         method: 'POST',
@@ -1089,10 +1119,14 @@ const PrivateSext: React.FC = () => {
       }
     } catch (err) {
       toast.error('Failed to fulfill gift request');
+    } finally {
+      setProcessingIds(prev => ({ ...prev, [msgId]: false }));
     }
   };
 
   const handleDismissGiftRequest = async (msgId: string) => {
+    if (processingIds[msgId]) return;
+    setProcessingIds(prev => ({ ...prev, [msgId]: true }));
     try {
       const res = await fetch(`${API_BASE_URL}/v1/adult/sext/gift-requests/${msgId}/dismiss`, {
         method: 'POST',
@@ -1105,10 +1139,14 @@ const PrivateSext: React.FC = () => {
       }
     } catch (err) {
       console.error(err);
+    } finally {
+      setProcessingIds(prev => ({ ...prev, [msgId]: false }));
     }
   };
 
   const handlePayServiceRequest = async (msgId: string) => {
+    if (processingIds[msgId]) return;
+    setProcessingIds(prev => ({ ...prev, [msgId]: true }));
     try {
       const res = await fetch(`${API_BASE_URL}/v1/adult/sext/service-requests/${msgId}/pay`, {
         method: 'POST',
@@ -1124,10 +1162,14 @@ const PrivateSext: React.FC = () => {
       }
     } catch (err) {
       toast.error('Failed to pay service request');
+    } finally {
+      setProcessingIds(prev => ({ ...prev, [msgId]: false }));
     }
   };
 
   const handleCompleteServiceRequest = async (msgId: string) => {
+    if (processingIds[msgId]) return;
+    setProcessingIds(prev => ({ ...prev, [msgId]: true }));
     try {
       const res = await fetch(`${API_BASE_URL}/v1/adult/sext/service-requests/${msgId}/complete`, {
         method: 'POST',
@@ -1140,6 +1182,8 @@ const PrivateSext: React.FC = () => {
       }
     } catch (err) {
       toast.error('Failed to complete service request');
+    } finally {
+      setProcessingIds(prev => ({ ...prev, [msgId]: false }));
     }
   };
 
@@ -1595,9 +1639,10 @@ const PrivateSext: React.FC = () => {
                             {!isMe ? (
                               <button
                                 onClick={() => handleUnlockMedia(m.id, m.creditCost)}
-                                className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-yellow-600 text-black font-bold rounded-full text-[10px] uppercase tracking-wider shadow-[0_0_15px_rgba(245,158,11,0.5)] hover:scale-105 active:scale-95 transition-all"
+                                disabled={processingIds[m.id]}
+                                className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-yellow-600 text-black font-bold rounded-full text-[10px] uppercase tracking-wider shadow-[0_0_15px_rgba(245,158,11,0.5)] hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
                               >
-                                Unlock for {Math.ceil(m.creditCost * 1.15)} 💎
+                                {processingIds[m.id] ? 'Unlocking...' : `Unlock for ${Math.ceil(m.creditCost * 1.15)} 💎`}
                               </button>
                             ) : (
                               <p className="text-[10px] text-amber-400 italic">Your premium locked content</p>
@@ -1631,21 +1676,24 @@ const PrivateSext: React.FC = () => {
                             <>
                               <button
                                 onClick={() => handleFulfillGiftRequest(m.id)}
-                                className="w-full py-2 bg-gradient-to-r from-amber-500 to-yellow-600 text-black font-bold rounded-xl text-xs uppercase tracking-wider hover:scale-[1.02] active:scale-[0.98] transition-transform"
+                                disabled={processingIds[m.id]}
+                                className="w-full py-2 bg-gradient-to-r from-amber-500 to-yellow-600 text-black font-bold rounded-xl text-xs uppercase tracking-wider hover:scale-[1.02] active:scale-[0.98] transition-transform disabled:opacity-50"
                               >
-                                Send {m.giftRequest?.giftName}
+                                {processingIds[m.id] ? 'Sending...' : `Send ${m.giftRequest?.giftName}`}
                               </button>
                               <button
                                 onClick={openGiftPicker}
-                                className="w-full py-1.5 border border-pink-500/30 text-pink-300 rounded-xl text-[10px] uppercase font-bold"
+                                disabled={processingIds[m.id]}
+                                className="w-full py-1.5 border border-pink-500/30 text-pink-300 rounded-xl text-[10px] uppercase font-bold disabled:opacity-50"
                               >
                                 Send a different gift
                               </button>
                               <button
                                 onClick={() => handleDismissGiftRequest(m.id)}
-                                className="text-[10px] text-gray-400 hover:text-white underline mt-2 block mx-auto bg-transparent border-none cursor-pointer"
+                                disabled={processingIds[m.id]}
+                                className="text-[10px] text-gray-400 hover:text-white underline mt-2 block mx-auto bg-transparent border-none cursor-pointer disabled:opacity-50"
                               >
-                                Maybe later
+                                {processingIds[m.id] ? 'Dismissing...' : 'Maybe later'}
                               </button>
                             </>
                           ) : m.giftRequest?.status === 'fulfilled' ? (
@@ -1702,13 +1750,15 @@ const PrivateSext: React.FC = () => {
                                     handlePayServiceRequest(m.id);
                                   }
                                 }}
-                                className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-yellow-600 text-black font-bold rounded-xl text-xs uppercase tracking-wider hover:scale-[1.02] active:scale-[0.98] transition-transform"
+                                disabled={processingIds[m.id]}
+                                className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-yellow-600 text-black font-bold rounded-xl text-xs uppercase tracking-wider hover:scale-[1.02] active:scale-[0.98] transition-transform disabled:opacity-50"
                               >
-                                Pay 💎 {m.serviceRequest?.totalAmount} Credits
+                                {processingIds[m.id] ? 'Paying...' : `Pay 💎 ${m.serviceRequest?.totalAmount} Credits`}
                               </button>
                               <button
                                 onClick={() => handleDeclineServiceRequest(m.id)}
-                                className="w-full py-1.5 bg-white/5 hover:bg-white/10 text-gray-300 rounded-xl text-[10px] uppercase font-bold"
+                                disabled={processingIds[m.id]}
+                                className="w-full py-1.5 bg-white/5 hover:bg-white/10 text-gray-300 rounded-xl text-[10px] uppercase font-bold disabled:opacity-50"
                               >
                                 Decline
                               </button>
@@ -1721,9 +1771,10 @@ const PrivateSext: React.FC = () => {
                               <p className="text-[10px] text-gray-400 text-center italic">Confirm once the service is delivered:</p>
                               <button
                                 onClick={() => handleCompleteServiceRequest(m.id)}
-                                className="w-full py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-[10px] font-bold uppercase"
+                                disabled={processingIds[m.id]}
+                                className="w-full py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-[10px] font-bold uppercase disabled:opacity-50"
                               >
-                                Confirm Service Delivered
+                                {processingIds[m.id] ? 'Completing...' : 'Confirm Service Delivered'}
                               </button>
                               <button
                                 onClick={() => handleReportServiceRequest(m.id)}
@@ -2179,23 +2230,38 @@ const PrivateSext: React.FC = () => {
 
             {/* Gift list grid */}
             <div className="grid grid-cols-3 gap-3 max-h-60 overflow-y-auto pr-1 no-scrollbar mb-6">
-              {giftsCatalogue
-                .filter(g => activeGiftTab === 'all' || g.category === activeGiftTab)
-                .map(g => {
-                  const isSelected = selectedGift?._id === g._id;
-                  const iconsMap: any = { rose: '🌹', balloon: '🎈', teddy: '🧸', lingerie: '👙', champagne: '🍾', ring: '💍' };
-                  return (
-                    <div
-                      key={g._id}
-                      onClick={() => setSelectedGift(g)}
-                      className={`p-3 bg-[#200e1b] rounded-xl border flex flex-col items-center justify-center text-center cursor-pointer transition-all ${isSelected ? 'border-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.3)]' : 'border-pink-500/10 hover:border-pink-500/30'}`}
-                    >
-                      <span className="text-3xl mb-1">{iconsMap[g.iconUrl] || '🎁'}</span>
-                      <span className="text-[10px] font-bold block truncate w-full">{g.name}</span>
-                      <span className="text-[9px] text-yellow-400 font-mono mt-1">💎 {g.creditCost}</span>
-                    </div>
-                  );
-                })}
+              {isGiftsLoading ? (
+                Array.from({ length: 6 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="p-3 bg-[#200e1b] rounded-xl border border-pink-500/5 animate-pulse flex flex-col items-center justify-center text-center h-[90px]"
+                  >
+                    <div className="w-8 h-8 bg-pink-500/10 rounded-full mb-2" />
+                    <div className="w-12 h-3 bg-pink-500/10 rounded mb-1.5" />
+                    <div className="w-8 h-2 bg-pink-500/10 rounded" />
+                  </div>
+                ))
+              ) : giftsCatalogue.length === 0 ? (
+                <p className="col-span-3 text-center py-10 text-xs text-[var(--az-text-muted)] font-serif italic">No gifts found.</p>
+              ) : (
+                giftsCatalogue
+                  .filter(g => activeGiftTab === 'all' || g.category === activeGiftTab)
+                  .map(g => {
+                    const isSelected = selectedGift?._id === g._id;
+                    const iconsMap: any = { rose: '🌹', balloon: '🎈', teddy: '🧸', lingerie: '👙', champagne: '🍾', ring: '💍' };
+                    return (
+                      <div
+                        key={g._id}
+                        onClick={() => setSelectedGift(g)}
+                        className={`p-3 bg-[#200e1b] rounded-xl border flex flex-col items-center justify-center text-center cursor-pointer transition-all ${isSelected ? 'border-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.3)]' : 'border-pink-500/10 hover:border-pink-500/30'}`}
+                      >
+                        <span className="text-3xl mb-1">{iconsMap[g.iconUrl] || '🎁'}</span>
+                        <span className="text-[10px] font-bold block truncate w-full">{g.name}</span>
+                        <span className="text-[9px] text-yellow-400 font-mono mt-1">💎 {g.creditCost}</span>
+                      </div>
+                    );
+                  })
+              )}
             </div>
 
             {selectedGift && (
@@ -2211,9 +2277,10 @@ const PrivateSext: React.FC = () => {
 
                 <button
                   onClick={handleSendGift}
-                  className={`w-full py-2.5 bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-black font-bold text-xs uppercase tracking-widest rounded-full transition-all ${shakeGiftButton ? 'animate-shake' : ''}`}
+                  disabled={isSendingGift}
+                  className={`w-full py-2.5 bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-black font-bold text-xs uppercase tracking-widest rounded-full transition-all disabled:opacity-50 ${shakeGiftButton ? 'animate-shake' : ''}`}
                 >
-                  Confirm Send ({selectedGift.creditCost} 💎)
+                  {isSendingGift ? 'Sending...' : `Confirm Send (${selectedGift.creditCost} 💎)`}
                 </button>
               </div>
             )}
@@ -2245,9 +2312,10 @@ const PrivateSext: React.FC = () => {
 
             <button
               onClick={handleSendPhotoRequest}
-              className="w-full py-2.5 bg-pink-600 hover:bg-pink-700 text-white font-bold text-xs uppercase tracking-widest rounded-full transition-colors"
+              disabled={isSendingPhotoRequest}
+              className="w-full py-2.5 bg-pink-600 hover:bg-pink-700 text-white font-bold text-xs uppercase tracking-widest rounded-full transition-colors disabled:opacity-50"
             >
-              Send Photo Request
+              {isSendingPhotoRequest ? 'Sending...' : 'Send Photo Request'}
             </button>
           </div>
         </div>
@@ -2277,9 +2345,10 @@ const PrivateSext: React.FC = () => {
 
             <button
               onClick={handleSendServiceRequest}
-              className="w-full py-2.5 bg-pink-600 hover:bg-pink-700 text-white font-bold text-xs uppercase tracking-widest rounded-full transition-colors"
+              disabled={isSendingServiceRequest}
+              className="w-full py-2.5 bg-pink-600 hover:bg-pink-700 text-white font-bold text-xs uppercase tracking-widest rounded-full transition-colors disabled:opacity-50"
             >
-              Send Service Request
+              {isSendingServiceRequest ? 'Sending...' : 'Send Service Request'}
             </button>
           </div>
         </div>
