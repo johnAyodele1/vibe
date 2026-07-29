@@ -90,6 +90,9 @@ function App() {
           <Route path="rooms" element={<NaughtyRooms />} />
           <Route path="rooms/:roomId" element={<NaughtyRooms />} />
           <Route path="sext" element={<PrivateSext />} />
+          <Route path="sext/:conversationId" element={<PrivateSext />} />
+          <Route path="adult/sext" element={<PrivateSext />} />
+          <Route path="adult/sext/:conversationId" element={<PrivateSext />} />
           <Route path="random" element={<RandomStranger />} />
           <Route path="hookup" element={<HookUpTonight />} />
           <Route path="vip" element={<VIPLounge />} />

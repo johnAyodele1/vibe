@@ -7,6 +7,7 @@ import { API_BASE_URL, SOCKET_URL } from '../../config';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { toast } from 'sonner';
 import { useUIStore } from './useUIStore';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 const CallRoom = React.lazy(() => import('./CallRoom'));
 
@@ -105,6 +106,8 @@ interface Gift {
 const PrivateSext: React.FC = () => {
   const { user } = useAdultAuth();
   const token = localStorage.getItem('adultAccessToken') || '';
+  const navigate = useNavigate();
+  const location = useLocation();
 
   // Conversation list & messages state
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -185,10 +188,12 @@ const PrivateSext: React.FC = () => {
   const activeConvIdRef = useRef<string | null>(null);
 
   const scrollToBottom = (behavior: 'smooth' | 'instant' = 'instant') => {
-    if (behavior === 'instant') {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
-    } else {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messagesEndRef.current?.scrollIntoView) {
+      if (behavior === 'instant') {
+        messagesEndRef.current.scrollIntoView({ behavior: 'auto' });
+      } else {
+        messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      }
     }
   };
 
@@ -200,6 +205,30 @@ const PrivateSext: React.FC = () => {
   useEffect(() => {
     fetchConversations();
   }, [user?.id]);
+
+  // Auto-select conversation from query parameter or path segments on load
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const conversationIdParam = searchParams.get('conversation');
+
+    let targetConvId = conversationIdParam;
+    if (!targetConvId) {
+      const pathSegments = location.pathname.split('/').filter(Boolean);
+      // Path segments can look like: ["sext", "conv_id"] or ["adult", "sext", "conv_id"]
+      if (pathSegments.length === 2 && pathSegments[0] === 'sext') {
+        targetConvId = pathSegments[1];
+      } else if (pathSegments.length === 3 && pathSegments[0] === 'adult' && pathSegments[1] === 'sext') {
+        targetConvId = pathSegments[2];
+      }
+    }
+
+    if (targetConvId && conversations.length > 0) {
+      const matchingConv = conversations.find(c => c.conversationId === targetConvId);
+      if (matchingConv && (!selectedConv || selectedConv.conversationId !== matchingConv.conversationId)) {
+        selectConversation(matchingConv);
+      }
+    }
+  }, [conversations, selectedConv, location]);
 
   // Global auto-accept call check on load/mount
   useEffect(() => {
@@ -328,6 +357,11 @@ const PrivateSext: React.FC = () => {
     setMobileView('chat');
     setMsgPage(1);
     setHasMoreMessages(true);
+
+    // Sync URL with selected conversation
+    const basePath = location.pathname.includes('/adult/sext') ? '/adult/sext' : '/sext';
+    navigate(`${basePath}?conversation=${conv.conversationId}`, { replace: true });
+
     await markConversationRead(conv.conversationId);
     await fetchMessages(conv.conversationId, 1);
     if (socketRef.current) {
