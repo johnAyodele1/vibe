@@ -5,8 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "prebuild": "npm run build --prefix ../packages/content-filter",
-    "build": "tsc -b && vite build",
+    "build": "npm run build --prefix ../packages/content-filter && tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
