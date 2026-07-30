@@ -366,6 +366,8 @@ const ProviderMessages: React.FC = () => {
 
   const selectConversation = async (conv: Conversation) => {
     setSelectedConv(conv);
+    activeConvIdRef.current = conv.conversationId;
+    setMessages([]);
     setMobileView('chat');
     setMsgPage(1);
     setHasMoreMessages(true);
@@ -411,6 +413,7 @@ const ProviderMessages: React.FC = () => {
         headers: getHeaders()
       });
       const data = await res.json();
+      if (activeConvIdRef.current !== convId) return;
       if (Array.isArray(data)) {
         if (page === 1) {
           setMessages(data.reverse());

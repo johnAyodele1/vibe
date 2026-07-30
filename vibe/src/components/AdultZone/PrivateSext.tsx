@@ -231,11 +231,11 @@ const PrivateSext: React.FC = () => {
 
     if (targetConvId && conversations.length > 0) {
       const matchingConv = conversations.find(c => c.conversationId === targetConvId);
-      if (matchingConv && (!selectedConv || selectedConv.conversationId !== matchingConv.conversationId)) {
+      if (matchingConv && activeConvIdRef.current !== targetConvId) {
         selectConversation(matchingConv);
       }
     }
-  }, [conversations, selectedConv, location]);
+  }, [conversations, location]);
 
   // Global auto-accept call check on load/mount
   useEffect(() => {
@@ -361,6 +361,8 @@ const PrivateSext: React.FC = () => {
 
   const selectConversation = async (conv: Conversation) => {
     setSelectedConv(conv);
+    activeConvIdRef.current = conv.conversationId;
+    setMessages([]);
     setMobileView('chat');
     setMsgPage(1);
     setHasMoreMessages(true);
@@ -407,6 +409,7 @@ const PrivateSext: React.FC = () => {
         headers: getHeaders()
       });
       const data = await res.json();
+      if (activeConvIdRef.current !== convId) return;
       if (Array.isArray(data)) {
         if (page === 1) {
           setMessages(data.reverse());
