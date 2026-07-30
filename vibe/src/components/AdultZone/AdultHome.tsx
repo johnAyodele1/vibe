@@ -102,6 +102,40 @@ const AdultHome: React.FC = () => {
   const [messageLoading, setMessageLoading] = useState<string | null>(null);
   const [flashingTips, setFlashingTips] = useState<Record<string, boolean>>({});
 
+  // Dynamic homepage stats initialized with randomized values
+  const [stats, setStats] = useState({
+    liveNow: Math.floor(1150 + Math.random() * 180),
+    camsOnline: Math.floor(310 + Math.random() * 60),
+    roomsActive: Math.floor(1100 + Math.random() * 200),
+    sextChatting: Math.floor(3100 + Math.random() * 600),
+    randomWaiting: Math.floor(820 + Math.random() * 140),
+    hookupNearby: Math.floor(130 + Math.random() * 40),
+  });
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setStats((prev) => {
+        const change = (val: number, minChange: number, maxChange: number, minBound: number, maxBound: number) => {
+          const delta = Math.floor(Math.random() * (maxChange - minChange + 1)) + minChange;
+          const sign = Math.random() > 0.5 ? 1 : -1;
+          const newVal = val + sign * delta;
+          return Math.max(minBound, Math.min(maxBound, newVal));
+        };
+
+        return {
+          liveNow: change(prev.liveNow, 1, 5, 1000, 1500),
+          camsOnline: change(prev.camsOnline, 1, 3, 250, 450),
+          roomsActive: change(prev.roomsActive, 2, 8, 900, 1500),
+          sextChatting: change(prev.sextChatting, 5, 15, 2500, 4500),
+          randomWaiting: change(prev.randomWaiting, 1, 4, 700, 1000),
+          hookupNearby: change(prev.hookupNearby, 1, 2, 100, 250),
+        };
+      });
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, []);
+
   useEffect(() => {
     const handleHighlight = (e: Event) => {
       const providerId = (e as CustomEvent).detail?.providerId;
@@ -185,13 +219,21 @@ const AdultHome: React.FC = () => {
     fetchPerformers();
   }, []);
 
+  // Helper to format thousands as K (e.g. 1.2K)
+  const formatK = (num: number) => {
+    if (num >= 1000) {
+      return (num / 1000).toFixed(1) + 'K';
+    }
+    return num.toString();
+  };
+
   const serviceCards = [
     {
       id: 'cams',
       title: 'Live Cams',
       tagline: 'Watch stunning performers live, tip to interact',
       icon: '📹',
-      stats: '🔴 340 online',
+      stats: `🔴 ${stats.camsOnline.toLocaleString()} online`,
       path: '/cams',
       color: 'from-red-900/40'
     },
@@ -200,7 +242,7 @@ const AdultHome: React.FC = () => {
       title: 'Naughty Rooms',
       tagline: 'Join themed group chat rooms, no limits',
       icon: '🔞',
-      stats: '🔴 1.2K active',
+      stats: `🔴 ${formatK(stats.roomsActive)} active`,
       path: '/rooms',
       color: 'from-purple-900/40'
     },
@@ -209,7 +251,7 @@ const AdultHome: React.FC = () => {
       title: 'Private Sext',
       tagline: 'One-on-one explicit text & photo exchange',
       icon: '💬',
-      stats: '🔴 3.4K chatting',
+      stats: `🔴 ${formatK(stats.sextChatting)} chatting`,
       path: '/sext',
       color: 'from-pink-900/40'
     },
@@ -218,7 +260,7 @@ const AdultHome: React.FC = () => {
       title: 'Random Stranger',
       tagline: 'Matched with a random adult, no names needed',
       icon: '🎲',
-      stats: '🔴 890 waiting',
+      stats: `🔴 ${stats.randomWaiting.toLocaleString()} waiting`,
       path: '/random',
       color: 'from-indigo-900/40'
     },
@@ -227,7 +269,7 @@ const AdultHome: React.FC = () => {
       title: 'Hook Up Tonight',
       tagline: 'Find someone nearby for tonight',
       icon: '🌙',
-      stats: '🔴 150 nearby',
+      stats: `🔴 ${stats.hookupNearby.toLocaleString()} nearby`,
       path: '/hookup',
       color: 'from-orange-900/40'
     },
@@ -255,7 +297,7 @@ const AdultHome: React.FC = () => {
         <div className="relative z-10 text-center max-w-4xl mx-auto">
           <div className="flex justify-center gap-4 mb-6">
             <span className="bg-[var(--az-bg-secondary)] border border-[var(--az-border)] text-[var(--az-text-secondary)] text-[10px] px-3 py-1 rounded-full uppercase tracking-widest font-bold">
-              🔴 1,240 Live Now
+              🔴 {stats.liveNow.toLocaleString()} Live Now
             </span>
             <span className="bg-[var(--az-bg-secondary)] border border-[var(--az-border)] text-[var(--az-text-secondary)] text-[10px] px-3 py-1 rounded-full uppercase tracking-widest font-bold">
               ⭐ 98% Satisfaction
