@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../../config';
 import { useTipSheetStore } from './useTipSheetStore';
@@ -96,6 +96,7 @@ const FALLBACK_PERFORMERS = [
 const AdultHome: React.FC = () => {
   const navigate = useNavigate();
   const openSheet = useTipSheetStore((state) => state.openSheet);
+  const serviceCardsRef = useRef<HTMLDivElement>(null);
 
   const [performers, setPerformers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -313,10 +314,16 @@ const AdultHome: React.FC = () => {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <button className="w-full sm:w-auto px-10 py-4 bg-[var(--az-accent-primary)] text-white font-bold uppercase tracking-widest rounded-full shadow-[0_0_20px_var(--az-glow)] hover:scale-105 active:scale-95 transition-all">
+            <button
+              onClick={() => serviceCardsRef.current?.scrollIntoView({ behavior: 'smooth' })}
+              className="w-full sm:w-auto px-10 py-4 bg-[var(--az-accent-primary)] text-white font-bold uppercase tracking-widest rounded-full shadow-[0_0_20px_var(--az-glow)] hover:scale-105 active:scale-95 transition-all"
+            >
               Explore Now
             </button>
-            <button className="w-full sm:w-auto px-10 py-4 border-2 border-[var(--az-accent-rose)] text-[var(--az-accent-rose)] font-bold uppercase tracking-widest rounded-full hover:bg-[var(--az-accent-rose)] hover:text-white transition-all">
+            <button
+              onClick={() => navigate('/cams')}
+              className="w-full sm:w-auto px-10 py-4 border-2 border-[var(--az-accent-rose)] text-[var(--az-accent-rose)] font-bold uppercase tracking-widest rounded-full hover:bg-[var(--az-accent-rose)] hover:text-white transition-all"
+            >
               View Live Now
             </button>
           </div>
@@ -324,7 +331,7 @@ const AdultHome: React.FC = () => {
       </section>
 
       {/* Service Cards Grid */}
-      <section className="max-w-7xl mx-auto px-4 pt-4 pb-16 md:pt-6 md:pb-20 w-full">
+      <section ref={serviceCardsRef} className="max-w-7xl mx-auto px-4 pt-4 pb-16 md:pt-6 md:pb-20 w-full">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {serviceCards.map((card) => (
             <Link

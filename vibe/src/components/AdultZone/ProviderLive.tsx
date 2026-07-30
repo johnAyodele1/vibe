@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
 import { API_BASE_URL, SOCKET_URL } from '../../config';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
@@ -9,8 +9,12 @@ const ProviderStreamRoom = React.lazy(() => import('./ProviderStreamRoom'));
 
 const ProviderLive: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const token = localStorage.getItem('adultAccessToken') || '';
   const { user } = useAdultAuth();
+
+  const queryParams = new URLSearchParams(location.search);
+  const autoStart = queryParams.get('autoStart') === 'true' || location.state?.autoStartStream === true;
 
   const [isLive, setIsLive] = useState(false);
   const [duration, setDuration] = useState(0);
@@ -167,6 +171,12 @@ const ProviderLive: React.FC = () => {
       toast.error('Failed to connect to stream server');
     }
   };
+
+  useEffect(() => {
+    if (autoStart && !isLive && token && user) {
+      handleStartStream();
+    }
+  }, [autoStart, isLive, token, user]);
 
   const handleEndStream = async () => {
     if (!window.confirm('Are you sure you want to end this webcam session?')) return;
