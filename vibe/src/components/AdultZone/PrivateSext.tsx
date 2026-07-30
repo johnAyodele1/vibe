@@ -231,11 +231,34 @@ const PrivateSext: React.FC = () => {
 
     if (targetConvId && conversations.length > 0) {
       const matchingConv = conversations.find(c => c.conversationId === targetConvId);
-      if (matchingConv && (!selectedConv || selectedConv.conversationId !== matchingConv.conversationId)) {
-        selectConversation(matchingConv);
+      if (matchingConv) {
+        if (activeConvIdRef.current !== targetConvId) {
+          selectConversation(matchingConv);
+        }
+      } else {
+        const fetchAndSelect = async () => {
+          try {
+            const res = await fetch(`${API_BASE_URL}/v1/adult/sext/conversations/${targetConvId}`, {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+              }
+            });
+            const data = await res.json();
+            if (data && data.conversationId) {
+              setConversations(prev => {
+                if (prev.some(c => c.conversationId === data.conversationId)) return prev;
+                return [data, ...prev];
+              });
+            }
+          } catch (err) {
+            console.error('Failed to fetch specific conversation:', err);
+          }
+        };
+        fetchAndSelect();
       }
     }
-  }, [conversations, selectedConv, location]);
+  }, [conversations, location]);
 
   // Global auto-accept call check on load/mount
   useEffect(() => {
@@ -361,6 +384,8 @@ const PrivateSext: React.FC = () => {
 
   const selectConversation = async (conv: Conversation) => {
     setSelectedConv(conv);
+    activeConvIdRef.current = conv.conversationId;
+    setMessages([]);
     setMobileView('chat');
     setMsgPage(1);
     setHasMoreMessages(true);
@@ -407,6 +432,7 @@ const PrivateSext: React.FC = () => {
         headers: getHeaders()
       });
       const data = await res.json();
+      if (activeConvIdRef.current !== convId) return;
       if (Array.isArray(data)) {
         if (page === 1) {
           setMessages(data.reverse());
