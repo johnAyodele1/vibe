@@ -108,38 +108,6 @@ const ProviderDashboard: React.FC = () => {
     );
   }
 
-  const toggleStatus = async () => {
-    const newLiveState = !isLive;
-    setIsLive(newLiveState);
-    try {
-      const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/status`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ isOnline: newLiveState, isLive: newLiveState })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to update online/offline state');
-      toast.success(newLiveState ? "You're now live to members!" : "You're now offline.");
-    } catch (err: any) {
-      toast.error(err.message);
-      setIsLive(!newLiveState); // revert
-    }
-  };
-
-  const handleStatusButtonClick = () => {
-    if (isLive) {
-      toast.success("Preparing your live room... Navigating in 3 seconds.");
-      setTimeout(() => {
-        navigate('/adult/provider/live?autoStart=true', { state: { autoStartStream: true } });
-      }, 3000);
-    } else {
-      toggleStatus();
-    }
-  };
-
   return (
     <div className="min-h-screen bg-[var(--az-bg-primary)] text-white font-sans az-grain py-24 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto space-y-10">
@@ -157,13 +125,12 @@ const ProviderDashboard: React.FC = () => {
 
           <div className="flex items-center gap-4">
             <span className="text-xs text-[var(--az-text-secondary)] font-mono font-bold uppercase">System Status:</span>
-            <button
-              onClick={handleStatusButtonClick}
-              className={`px-6 py-2.5 rounded-full text-xs font-bold uppercase tracking-widest border transition-all flex items-center gap-2 ${isLive ? 'bg-green-950/40 text-green-400 border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.2)]' : 'bg-[var(--az-bg-secondary)] text-[var(--az-text-secondary)] border-[var(--az-border)]'}`}
+            <div
+              className="px-6 py-2.5 rounded-full text-xs font-bold uppercase tracking-widest border transition-all flex items-center gap-2 bg-green-950/40 text-green-400 border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.2)] cursor-default"
             >
-              <span className={`w-2 h-2 rounded-full ${isLive ? 'bg-green-400 animate-ping' : 'bg-grey-500'}`} />
-              {isLive ? 'Online & Streaming' : 'Go Live / Offline'}
-            </button>
+              <span className="w-2 h-2 rounded-full bg-green-400 animate-ping" />
+              Online
+            </div>
           </div>
         </div>
 
