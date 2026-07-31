@@ -4,6 +4,7 @@ import AdultUser from '../models/AdultUser';
 import CamSession from '../models/CamSession';
 import CamViewer from '../models/CamViewer';
 import PrivateShowRequest from '../models/PrivateShowRequest';
+import AdultMessage from '../models/AdultMessage';
 import { decrypt } from '../services/encryptionService';
 import mongoose from 'mongoose';
 import { getClientPrice } from '../services/pricingService';
@@ -132,6 +133,27 @@ export const setupAdultSocket = (io: Server) => {
       socket.to(`conv:${data.conversationId}`).emit('sext:stop_typing', {
         userId: socket.data.user._id
       });
+    });
+
+    socket.on('sext:message_delivered', async ({ messageId }) => {
+      try {
+        if (!mongoose.Types.ObjectId.isValid(messageId)) return;
+        const msg = await AdultMessage.findByIdAndUpdate(
+          messageId,
+          { $set: { deliveredAt: new Date() } },
+          { new: true }
+        );
+        if (msg) {
+          // Tell the SENDER their message was delivered
+          adultNamespace.to(`user:${msg.senderId}`).emit('sext:message_status_update', {
+            messageId,
+            status: 'delivered',
+            deliveredAt: msg.deliveredAt,
+          });
+        }
+      } catch (err) {
+        console.error('Error handling sext:message_delivered:', err);
+      }
     });
 
     // Cam Events

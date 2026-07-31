@@ -122,6 +122,10 @@ const adultMessageSchema = new Schema<IMessage>(
       default: false,
     },
     readAt: Date,
+    deliveredAt: {
+      type: Date,
+      default: null,
+    },
     isDeleted: {
       type: Boolean,
       default: false,

@@ -285,6 +285,7 @@ export interface IMessage extends Document {
   }[];
   isRead: boolean;
   readAt?: Date;
+  deliveredAt?: Date | null;
   isDeleted: boolean;
   deletedAt?: Date;
   deletedBy?: Types.ObjectId[];

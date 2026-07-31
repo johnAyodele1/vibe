@@ -7,6 +7,7 @@ import { API_BASE_URL, SOCKET_URL } from '../../config';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { toast } from 'sonner';
 import { useUIStore } from './useUIStore';
+import MessageTick, { getMessageStatus } from './MessageTick';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 const CallRoom = React.lazy(() => import('./CallRoom'));
@@ -49,6 +50,9 @@ interface Message {
   mediaType: string;
   creditCost: number;
   isUnlocked: boolean;
+  deliveredAt?: string | null;
+  isOptimistic?: boolean;
+  isFailed?: boolean;
   gift?: {
     giftId: string;
     giftName: string;
@@ -212,6 +216,19 @@ const PrivateSext: React.FC = () => {
   useEffect(() => {
     fetchConversations();
   }, [user?.id]);
+
+  // Auto-mark unread messages as read when loaded or changed
+  useEffect(() => {
+    if (!selectedConv || !messages?.length) return;
+
+    const hasUnread = messages.some(
+      m => m.senderId !== (user?.id || (user as any)?._id) && !m.readAt
+    );
+
+    if (hasUnread) {
+      markConversationRead(selectedConv.conversationId);
+    }
+  }, [selectedConv?.conversationId, messages]);
 
   // Auto-select conversation from query parameter or path segments on load
   useEffect(() => {
@@ -408,6 +425,13 @@ const PrivateSext: React.FC = () => {
         headers: getHeaders()
       });
       setConversations(prev => prev.map(c => c.conversationId === convId ? { ...c, unreadCount: 0 } : c));
+
+      // Update local unread received messages as read
+      setMessages(prev => prev.map(m =>
+        m.senderId !== (user?.id || (user as any)?._id) && !m.readAt
+          ? { ...m, readAt: new Date().toISOString() }
+          : m
+      ));
     } catch (err) {
       console.error(err);
     }
@@ -477,6 +501,7 @@ const PrivateSext: React.FC = () => {
         // Append message if in current conversation
         setMessages(prev => [...prev, payload.message]);
         markConversationRead(selectedConv.conversationId);
+        s.emit('sext:message_delivered', { messageId: payload.message.id });
       }
       fetchConversations();
     });
@@ -513,6 +538,35 @@ const PrivateSext: React.FC = () => {
 
     s.on('sext:message_deleted', (payload: { messageId: string }) => {
       setMessages(prev => prev.map(m => m.id === payload.messageId ? { ...m, isDeleted: true, content: '[Message deleted]' } : m));
+    });
+
+    s.on('sext:message_status_update', (payload: { messageId: string, status: string, deliveredAt: string }) => {
+      if (payload.status === 'delivered') {
+        setMessages(prev => prev.map(m => m.id === payload.messageId ? { ...m, deliveredAt: payload.deliveredAt } : m));
+      }
+    });
+
+    s.on('sext:messages_seen', (payload: { conversationId: string, seenAt: string }) => {
+      if (payload.conversationId !== selectedConv?.conversationId) return;
+
+      // Update all sent messages that don't have readAt with a 30ms stagger delay
+      setMessages(prev => {
+        const unreadSent = prev.filter(m => m.senderId === (user?.id || (user as any)?._id) && !m.readAt);
+        if (unreadSent.length === 0) return prev;
+
+        // Schedule staggered state updates for each unread sent message
+        unreadSent.forEach((m, idx) => {
+          setTimeout(() => {
+            setMessages(current => current.map(msg => msg.id === m.id ? { ...msg, readAt: payload.seenAt } : msg));
+          }, idx * 30);
+        });
+
+        return prev;
+      });
+    });
+
+    s.on('sext:new_message_notification', (payload: { conversationId: string, messageId: string }) => {
+      s.emit('sext:message_delivered', { messageId: payload.messageId });
     });
 
     s.on('wallet:updated', (payload: { balance: number }) => {
@@ -639,6 +693,44 @@ const PrivateSext: React.FC = () => {
     setAcceptLoading(false);
   };
 
+  // Retry Send Message
+  const handleRetrySend = async (msg: Message) => {
+    const tempId = msg.id;
+    setMessages(prev => prev.map(m => m.id === tempId ? { ...m, isOptimistic: true, isFailed: false } : m));
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/v1/adult/sext/messages/${selectedConv!.conversationId}`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          type: msg.mediaType || 'text',
+          content: msg.content
+        })
+      });
+      const data = await res.json();
+      if (res.status === 400 && data.error) {
+        toast.error(data.error);
+        setMessages(prev => prev.filter(m => m.id !== tempId));
+        return;
+      }
+      if (data.id) {
+        setMessages(prev => prev.map(m => m.id === tempId ? data : m));
+        fetchConversations();
+
+        const s = socketRef.current;
+        if (s) {
+          s.emit('sext:message_delivered', { messageId: data.id });
+        }
+      } else {
+        setMessages(prev => prev.map(m => m.id === tempId ? { ...m, isOptimistic: false, isFailed: true } : m));
+        toast.error('Message failed to send');
+      }
+    } catch (err) {
+      setMessages(prev => prev.map(m => m.id === tempId ? { ...m, isOptimistic: false, isFailed: true } : m));
+      toast.error('Message failed to send');
+    }
+  };
+
   // Send Text Message
   const handleSendText = async () => {
     if (!selectedConv || (!inputText.trim() && !uploadPreview)) return;
@@ -656,28 +748,57 @@ const PrivateSext: React.FC = () => {
       return;
     }
 
+    const contentToSend = inputText;
+    setInputText('');
+    dismissWarning(); // dismiss warning popup
+
+    const tempId = `temp_${Date.now()}`;
+    const optimisticMessage: Message = {
+      id: tempId,
+      senderId: user?.id || (user as any)?._id || '',
+      content: contentToSend,
+      mediaType: 'text',
+      creditCost: 0,
+      isUnlocked: true,
+      isOptimistic: true,
+      isFailed: false,
+      createdAt: new Date().toISOString(),
+      deliveredAt: null,
+      readAt: null
+    };
+
+    setMessages(prev => [...prev, optimisticMessage]);
+
     try {
       const res = await fetch(`${API_BASE_URL}/v1/adult/sext/messages/${selectedConv.conversationId}`, {
         method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify({
           type: 'text',
-          content: inputText
+          content: contentToSend
         })
       });
       const data = await res.json();
       if (res.status === 400 && data.error) {
         toast.error(data.error);
+        setMessages(prev => prev.filter(m => m.id !== tempId));
         return;
       }
       if (data.id) {
-        setMessages(prev => [...prev, data]);
-        setInputText('');
-        dismissWarning(); // dismiss warning popup
+        setMessages(prev => prev.map(m => m.id === tempId ? data : m));
         fetchConversations();
+
+        const s = socketRef.current;
+        if (s) {
+          s.emit('sext:message_delivered', { messageId: data.id });
+        }
+      } else {
+        setMessages(prev => prev.map(m => m.id === tempId ? { ...m, isOptimistic: false, isFailed: true } : m));
+        toast.error('Message failed to send');
       }
     } catch (err) {
-      toast.error('Failed to send message');
+      setMessages(prev => prev.map(m => m.id === tempId ? { ...m, isOptimistic: false, isFailed: true } : m));
+      toast.error('Message failed to send');
     }
   };
 
@@ -1900,15 +2021,15 @@ const PrivateSext: React.FC = () => {
                         )}
                       </div>
                     ) : m.mediaType === 'image' ? (
-                      <div data-testid="message-bubble" className="max-w-xs rounded-xl overflow-hidden border border-pink-500/20 message-bubble">
+                      <div data-testid="message-bubble" className={`max-w-xs rounded-xl overflow-hidden border border-pink-500/20 message-bubble ${m.isFailed ? 'msg-bubble--failed' : ''}`}>
                         <img src={m.mediaUrl} className="max-h-72 object-cover" alt="attachment" />
                       </div>
                     ) : m.mediaType === 'video' ? (
-                      <div data-testid="message-bubble" className="max-w-xs rounded-xl overflow-hidden border border-pink-500/20 bg-black message-bubble">
+                      <div data-testid="message-bubble" className={`max-w-xs rounded-xl overflow-hidden border border-pink-500/20 bg-black message-bubble ${m.isFailed ? 'msg-bubble--failed' : ''}`}>
                         <video src={m.mediaUrl} controls className="max-h-72 object-cover" />
                       </div>
                     ) : m.mediaType === 'voice_note' || m.mediaType === 'voice' ? (
-                      <div data-testid="message-voice-note" className={`p-3.5 rounded-2xl flex items-center gap-3 w-64 message-voice-note ${isMe ? 'bg-pink-700 text-white' : 'bg-[#1e101a] text-gray-200 border border-pink-500/20'}`}>
+                      <div data-testid="message-voice-note" className={`p-3.5 rounded-2xl flex items-center gap-3 w-64 message-voice-note ${isMe ? 'bg-pink-700 text-white' : 'bg-[#1e101a] text-gray-200 border border-pink-500/20'} ${m.isFailed ? 'msg-bubble--failed' : ''}`}>
                         <button className="w-8 h-8 rounded-full bg-white text-black flex items-center justify-center font-bold text-xs">
                           ▶
                         </button>
@@ -1928,18 +2049,26 @@ const PrivateSext: React.FC = () => {
                       </div>
                     ) : (
                       // STANDARD TEXT MESSAGE
-                      <div data-testid="message-bubble" className={`p-3.5 max-w-xs text-sm rounded-2xl shadow-md leading-relaxed message-bubble ${isMe ? 'bg-pink-600 text-white rounded-tr-none' : 'bg-[#1b0d19] border border-pink-500/20 text-gray-200 rounded-tl-none'}`}>
+                      <div data-testid="message-bubble" className={`p-3.5 max-w-xs text-sm rounded-2xl shadow-md leading-relaxed message-bubble ${isMe ? 'bg-pink-600 text-white rounded-tr-none' : 'bg-[#1b0d19] border border-pink-500/20 text-gray-200 rounded-tl-none'} ${m.isFailed ? 'msg-bubble--failed' : ''}`}>
                         {m.content}
                       </div>
                     )}
 
                     {/* Time & seen tick mark */}
-                    <div className="flex items-center gap-1.5 mt-1 text-[9px] text-gray-400 uppercase tracking-widest font-mono">
-                      <span>{new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                      {isMe && (
-                        <span>· SEEN</span>
+                    <div className="msg-meta flex items-center gap-1.5 mt-1 text-[9px] text-gray-400 uppercase tracking-widest font-mono">
+                      <span className="msg-time">{new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      {isMe && !m.isFailed && (
+                        <MessageTick status={getMessageStatus(m)} />
+                      )}
+                      {isMe && m.isFailed && (
+                        <span className="msg-tick--failed text-red-500 font-bold ml-1">✗ Failed</span>
                       )}
                     </div>
+                    {isMe && m.isFailed && (
+                      <button className="msg-retry" onClick={() => handleRetrySend(m)}>
+                        ↻ Tap to retry
+                      </button>
+                    )}
 
                     {/* Hover tools / floating reaction bar & delete */}
                     <div className="flex gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">

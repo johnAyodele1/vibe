@@ -1112,6 +1112,26 @@ export const sendMessage = async (req: Request, res: Response) => {
     const receiverIdStr = otherParticipantId.toString();
     let currentUnread = conversation.unreadCounts.get(receiverIdStr) || 0;
 
+    const ns = req.app.get('adultNamespace');
+    let deliveredAt: Date | null = null;
+
+    if (ns && !isFlagged) {
+      try {
+        const socketsInRoom = await ns.in(`conv:${conversationId}`).fetchSockets();
+        const recipientInRoom = socketsInRoom.some(
+          (s: any) => s.data?.user?._id?.toString() === receiverIdStr
+        );
+
+        if (recipientInRoom) {
+          deliveredAt = new Date();
+          message.deliveredAt = deliveredAt;
+          await AdultMessage.updateOne({ _id: message._id }, { $set: { deliveredAt } });
+        }
+      } catch (err) {
+        console.error('Error fetching sockets in conv room:', err);
+      }
+    }
+
     if (!isFlagged) {
       // Reset deletedBy in case receiver/sender deleted it earlier
       conversation.deletedBy = [];
@@ -1150,11 +1170,11 @@ export const sendMessage = async (req: Request, res: Response) => {
       isFlagged: message.isFlagged,
       flagReason: message.flagReason,
       createdAt: message.createdAt,
-      readAt: null
+      readAt: null,
+      deliveredAt: message.deliveredAt || null
     };
 
     // Socket emission (handled mostly in Socket.io but let's make sure it relays)
-    const ns = req.app.get('adultNamespace');
     if (ns) {
       if (isFlagged) {
         // Soft block: Do NOT send/deliver/notify the recipient. Only emit to the sender's own channel.
@@ -1165,6 +1185,14 @@ export const sendMessage = async (req: Request, res: Response) => {
           conversationId,
           lastMessage: responsePayload,
           unreadCount: currentUnread
+        });
+      }
+
+      if (!isFlagged) {
+        ns.to(`user:${receiverIdStr}`).emit('sext:new_message_notification', {
+          conversationId,
+          messageId: message._id,
+          preview: content ? content.slice(0, 50) : '',
         });
       }
     }
@@ -1201,6 +1229,20 @@ export const markAsRead = async (req: Request, res: Response) => {
     const otherParticipantId = conversation.participants.find(id => id.toString() !== user._id.toString());
     const ns = req.app.get('adultNamespace');
     if (ns && otherParticipantId) {
+      const readMessages = await AdultMessage.find({
+        conversationId,
+        receiverId: user._id,
+        readAt: { $ne: null }
+      }).select('_id senderId readAt');
+
+      const senderIds = [...new Set(readMessages.map(m => m.senderId.toString()))];
+      for (const senderId of senderIds) {
+        ns.to(`user:${senderId}`).emit('sext:messages_seen', {
+          conversationId,
+          seenAt: new Date()
+        });
+      }
+
       ns.to(`user:${otherParticipantId.toString()}`).emit('sext:messages_read', {
         conversationId,
         readAt: new Date()
