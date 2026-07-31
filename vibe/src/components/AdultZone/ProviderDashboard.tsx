@@ -282,16 +282,16 @@ const ProviderDashboard: React.FC = () => {
               {recentMessages.length > 0 ? (
                 recentMessages.map(msg => (
                   <div key={msg.id} className="p-4 bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-2xl flex items-center justify-between hover:scale-[1.01] transition-transform cursor-pointer" onClick={() => navigate('/adult/provider/messages')}>
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-[var(--az-bg-primary)] border border-[var(--az-border)] flex items-center justify-center text-xs font-mono">
+                    <div className="flex items-center gap-3 min-w-0 mr-4 flex-1">
+                      <div className="w-10 h-10 rounded-full bg-[var(--az-bg-primary)] border border-[var(--az-border)] flex items-center justify-center text-xs font-mono flex-shrink-0">
                         👤
                       </div>
-                      <div>
-                        <h4 className="text-xs font-bold text-white">{msg.name}</h4>
-                        <p className="text-[11px] text-[var(--az-text-secondary)] mt-0.5">{msg.text}</p>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-xs font-bold text-white truncate">{msg.name}</h4>
+                        <p className="text-[11px] text-[var(--az-text-secondary)] mt-0.5 truncate">{msg.text}</p>
                       </div>
                     </div>
-                    <span className="text-[9px] text-[var(--az-text-muted)] font-mono">{msg.time}</span>
+                    <span className="text-[9px] text-[var(--az-text-muted)] font-mono flex-shrink-0">{msg.time}</span>
                   </div>
                 ))
               ) : (

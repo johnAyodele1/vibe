@@ -1683,7 +1683,7 @@ const ProviderMessages: React.FC = () => {
                         <h5 className="font-serif italic text-pink-300 text-base">{m.gift?.giftName}</h5>
                         <p className="text-yellow-400 font-bold text-xs mt-1">💎 {m.gift?.giftValue} Credits</p>
                         {m.gift?.message && (
-                          <p className="text-xs italic text-gray-300 mt-2 border-t border-pink-500/20 pt-2 w-full">"{m.gift.message}"</p>
+                          <p className="text-xs italic text-gray-300 mt-2 border-t border-pink-500/20 pt-2 w-full break-words">"{m.gift.message}"</p>
                         )}
                       </div>
                     ) : m.mediaType === 'gift_request' ? (
@@ -1694,7 +1694,7 @@ const ProviderMessages: React.FC = () => {
                         <h5 className="font-serif italic text-white text-base">You requested a {m.giftRequest?.giftName}</h5>
                         <p className="text-amber-400 font-bold font-mono text-xs mt-1">💎 {m.giftRequest?.giftValue} Credits</p>
                         {m.giftRequest?.message && (
-                          <p className="text-[11px] italic text-gray-300 my-3 border-t border-pink-500/10 pt-3 w-full">"{m.giftRequest.message}"</p>
+                          <p className="text-[11px] italic text-gray-300 my-3 border-t border-pink-500/10 pt-3 w-full break-words">"{m.giftRequest.message}"</p>
                         )}
                         <div className="w-full mt-4">
                           <span className={`block text-[10px] font-bold uppercase tracking-wider py-1.5 px-3 rounded-xl border ${
@@ -1735,7 +1735,7 @@ const ProviderMessages: React.FC = () => {
                         </div>
 
                         {m.serviceRequest?.note && (
-                          <p className="text-[11px] text-gray-400 italic mt-3 bg-white/5 p-2 rounded-lg border-l-2 border-amber-400">
+                          <p className="text-[11px] text-gray-400 italic mt-3 bg-white/5 p-2 rounded-lg border-l-2 border-amber-400 break-words">
                             "{m.serviceRequest.note}"
                           </p>
                         )}
@@ -1774,7 +1774,7 @@ const ProviderMessages: React.FC = () => {
                           <span className="font-bold text-xs tracking-wider text-pink-400 uppercase">Photo Request</span>
                         </div>
                         {m.photoRequest?.note && (
-                          <p className="text-xs text-gray-300 italic">"{m.photoRequest.note}"</p>
+                          <p className="text-xs text-gray-300 italic break-words">"{m.photoRequest.note}"</p>
                         )}
 
                         {m.photoRequest?.status === 'pending' ? (
@@ -1826,7 +1826,7 @@ const ProviderMessages: React.FC = () => {
                           <span className="font-bold text-xs tracking-wider text-purple-400 uppercase">Service Request</span>
                         </div>
                         {m.serviceTonightRequest?.note && (
-                          <p className="text-xs text-gray-300 italic">"{m.serviceTonightRequest.note}"</p>
+                          <p className="text-xs text-gray-300 italic break-words">"{m.serviceTonightRequest.note}"</p>
                         )}
 
                         {m.serviceTonightRequest?.status === 'pending' ? (
@@ -1887,7 +1887,7 @@ const ProviderMessages: React.FC = () => {
                       </div>
                     ) : (
                       // STANDARD TEXT MESSAGE
-                      <div data-testid="message-bubble" className={`p-3.5 max-w-xs text-sm rounded-2xl shadow-md leading-relaxed message-bubble ${isMe ? 'bg-pink-600 text-white rounded-tr-none' : 'bg-[#1b0d19] border border-pink-500/20 text-gray-200 rounded-tl-none'} ${m.isFailed ? 'msg-bubble--failed' : ''}`}>
+                      <div data-testid="message-bubble" className={`p-3.5 max-w-xs text-sm rounded-2xl shadow-md leading-relaxed message-bubble break-words ${isMe ? 'bg-pink-600 text-white rounded-tr-none' : 'bg-[#1b0d19] border border-pink-500/20 text-gray-200 rounded-tl-none'} ${m.isFailed ? 'msg-bubble--failed' : ''}`}>
                         {m.content}
                       </div>
                     )}
