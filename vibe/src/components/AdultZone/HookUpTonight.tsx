@@ -3,8 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { CustomSelect } from './CustomSelect';
 import HookupMap from './HookupMap';
 import { useCountries, useStates, useCities } from '../../hooks/useLocation';
-import { API_BASE_URL, SOCKET_URL } from '../../config';
-import { io } from 'socket.io-client';
+import { API_BASE_URL } from '../../config';
 
 interface LocationValue {
   country?: { code: string; name: string };
@@ -171,39 +170,6 @@ const HookUpTonight: React.FC = () => {
     }, 300);
     return () => clearTimeout(timer);
   }, [fetchProviders]);
-
-  useEffect(() => {
-    const token = localStorage.getItem('adultAccessToken');
-    if (!token) return;
-
-    const socketUrl = SOCKET_URL || window.location.origin;
-    const socket = io(`${socketUrl}/adult`, {
-      auth: { token },
-      transports: ['websocket', 'polling']
-    });
-
-    socket.on('provider:online', ({ providerId }) => {
-      setProviders((prev) =>
-        prev.map((p) => (p.id === providerId ? { ...p, isOnline: true } : p))
-      );
-      setMapProviders((prev) =>
-        prev.map((p) => (p.id === providerId ? { ...p, isOnline: true } : p))
-      );
-    });
-
-    socket.on('provider:offline', ({ providerId }) => {
-      setProviders((prev) =>
-        prev.map((p) => (p.id === providerId ? { ...p, isOnline: false } : p))
-      );
-      setMapProviders((prev) =>
-        prev.map((p) => (p.id === providerId ? { ...p, isOnline: false } : p))
-      );
-    });
-
-    return () => {
-      socket.disconnect();
-    };
-  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {

@@ -42,7 +42,6 @@ export interface IAdultUser extends Document {
   isActive: boolean;
   isBanned: boolean;
   banReason?: string;
-  isOnline?: boolean;
   twoFactorEnabled: boolean;
   twoFactorSecret?: string;
   emailVerified: boolean;
@@ -57,8 +56,6 @@ export interface IAdultUser extends Document {
     gender?: string;
     categories: string[];
     isLive: boolean;
-    isOnline?: boolean;
-    onlineSince?: Date | null;
     pricePerMinute: number;
     tipMinimum: number;
     videoCallPrice?: number;

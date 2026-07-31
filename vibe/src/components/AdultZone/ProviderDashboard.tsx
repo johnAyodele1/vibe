@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../../config';
+import { toast } from 'sonner';
 
 const ProviderDashboard: React.FC = () => {
   const navigate = useNavigate();
   const token = localStorage.getItem('adultAccessToken');
 
-  const [activeSession, setActiveSession] = useState<any>(null);
-  const isLive = !!activeSession && activeSession.status === 'live';
+  const [isLive, setIsLive] = useState(false);
   const [stageName, setStageName] = useState('Stage Name');
   const [isLoading, setIsLoading] = useState(true);
   const [stats, setStats] = useState<any>({
@@ -39,15 +39,8 @@ const ProviderDashboard: React.FC = () => {
         const userData = await userRes.json();
         if (userRes.ok && userData.success && userData.data.user) {
           const profile = userData.data.user.providerProfile || {};
+          setIsLive(profile.isLive ?? false);
           setStageName(profile.stageName || userData.data.user.displayName || userData.data.user.username || 'Stage Name');
-        }
-
-        const sessionRes = await fetch(`${API_BASE_URL}/adult/cams/my-active-session`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const sessionData = await sessionRes.json();
-        if (sessionRes.ok && sessionData.success) {
-          setActiveSession(sessionData.data);
         }
 
         const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/dashboard`, {
@@ -115,33 +108,36 @@ const ProviderDashboard: React.FC = () => {
     );
   }
 
-  useEffect(() => {
-    if (!token) return;
-
-    const fetchActiveSession = async () => {
-      try {
-        const res = await fetch(`${API_BASE_URL}/adult/cams/my-active-session`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const data = await res.json();
-        if (res.ok && data.success) {
-          setActiveSession(data.data);
-        } else {
-          setActiveSession(null);
-        }
-      } catch (err) {
-        console.error('Failed to fetch active session:', err);
-        setActiveSession(null);
-      }
-    };
-
-    fetchActiveSession();
-    const interval = setInterval(fetchActiveSession, 30000); // Check every 30 seconds
-    return () => clearInterval(interval);
-  }, [token]);
+  const toggleStatus = async () => {
+    const newLiveState = !isLive;
+    setIsLive(newLiveState);
+    try {
+      const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ isOnline: newLiveState, isLive: newLiveState })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update online/offline state');
+      toast.success(newLiveState ? "You're now live to members!" : "You're now offline.");
+    } catch (err: any) {
+      toast.error(err.message);
+      setIsLive(!newLiveState); // revert
+    }
+  };
 
   const handleStatusButtonClick = () => {
-    navigate('/adult/provider/live?autoStart=true', { state: { autoStartStream: true } });
+    if (isLive) {
+      toast.success("Preparing your live room... Navigating in 3 seconds.");
+      setTimeout(() => {
+        navigate('/adult/provider/live?autoStart=true', { state: { autoStartStream: true } });
+      }, 3000);
+    } else {
+      toggleStatus();
+    }
   };
 
   return (
@@ -165,8 +161,8 @@ const ProviderDashboard: React.FC = () => {
               onClick={handleStatusButtonClick}
               className={`px-6 py-2.5 rounded-full text-xs font-bold uppercase tracking-widest border transition-all flex items-center gap-2 ${isLive ? 'bg-green-950/40 text-green-400 border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.2)]' : 'bg-[var(--az-bg-secondary)] text-[var(--az-text-secondary)] border-[var(--az-border)]'}`}
             >
-              <span className={`w-2 h-2 rounded-full ${isLive ? 'bg-green-400 animate-ping' : 'bg-gray-500'}`} />
-              {isLive ? 'Online & Streaming' : 'Go Live'}
+              <span className={`w-2 h-2 rounded-full ${isLive ? 'bg-green-400 animate-ping' : 'bg-grey-500'}`} />
+              {isLive ? 'Online & Streaming' : 'Go Live / Offline'}
             </button>
           </div>
         </div>

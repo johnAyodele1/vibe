@@ -94,7 +94,7 @@ interface Message {
   reactions?: { userId: string; emoji: string; reactedAt?: string }[];
   isDeleted: boolean;
   createdAt: string;
-  readAt?: string;
+  readAt?: string | null;
 }
 
 interface Gift {
@@ -837,6 +837,7 @@ const ProviderMessages: React.FC = () => {
       isUnlocked: true,
       isOptimistic: true,
       isFailed: false,
+      isDeleted: false,
       createdAt: new Date().toISOString(),
       deliveredAt: null,
       readAt: null

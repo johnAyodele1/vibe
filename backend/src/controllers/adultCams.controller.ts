@@ -79,11 +79,6 @@ export const startStream = async (req: Request, res: Response) => {
 
   await session.save();
 
-  if (provider.providerProfile) {
-    provider.providerProfile.isLive = true;
-    await provider.save();
-  }
-
   const ns = req.app.get('adultNamespace');
   if (ns) {
     ns.emit('cam:session_started', {
@@ -123,12 +118,6 @@ export const endStream = async (req: Request, res: Response) => {
   session.endedAt = new Date();
   session.durationSeconds = Math.floor((session.endedAt.getTime() - (session.startedAt?.getTime() || 0)) / 1000);
   await session.save();
-
-  const provider = req.adultUser;
-  if (provider && provider.providerProfile) {
-    provider.providerProfile.isLive = false;
-    await provider.save();
-  }
 
   const ns = req.app.get('adultNamespace');
   if (ns) {
@@ -175,55 +164,4 @@ export const getCamViewerToken = async (req: Request, res: Response) => {
     appId,
     roomId,
   });
-};
-
-export const getMyActiveSession = async (req: Request, res: Response) => {
-  try {
-    const providerId = req.adultUser?._id;
-    if (!providerId) {
-      return res.status(401).json({ success: false, error: { message: 'Auth required' } });
-    }
-
-    const session = await CamSession.findOne({
-      providerId,
-      status: 'live',
-    }).select('_id status startedAt viewerCount totalTipsReceived');
-
-    // If session is 'live' but provider socket is disconnected,
-    // this is a stale session — clean it up
-    if (session) {
-      // Check remaining connections in Redis or memory fallback
-      let isSocketConnected = 0;
-      const { redisClient } = require('../socket/adultSocket');
-
-      if (redisClient) {
-        try {
-          isSocketConnected = await redisClient.scard(`adult:online:${providerId}`);
-        } catch (err) {}
-      } else {
-        // Fallback to local map
-        const { getAdultUserSocketMap } = require('../socket/adultSocket');
-        const socketMap = getAdultUserSocketMap();
-        isSocketConnected = socketMap.get(providerId.toString())?.size || 0;
-      }
-
-      if (isSocketConnected === 0) {
-        // Provider is not actually connected — end the stale session
-        await CamSession.findByIdAndUpdate(session._id, {
-          $set: { status: 'ended', endedAt: new Date() },
-        });
-
-        const ns = req.app.get('adultNamespace');
-        if (ns) {
-          ns.emit('cam:session_ended', { sessionId: session._id });
-        }
-
-        return res.json({ success: true, data: null });  // No active session
-      }
-    }
-
-    return res.json({ success: true, data: session || null });
-  } catch (err: any) {
-    return res.status(500).json({ success: false, error: err.message });
-  }
 };
