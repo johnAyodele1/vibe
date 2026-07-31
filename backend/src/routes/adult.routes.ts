@@ -79,6 +79,7 @@ const upload = multer({
 });
 
 // Cams
+router.get('/cams/my-active-session', verifyAdultJWT, requireAdultRole('provider'), camsController.getMyActiveSession);
 router.get('/cams', camsController.getCams);
 router.post('/cams/stream/start', verifyAdultJWT, requireAdultRole('provider'), validateRequest(startStreamSchema), camsController.startStream);
 router.patch('/cams/stream/:sessionId/end', verifyAdultJWT, camsController.endStream);
