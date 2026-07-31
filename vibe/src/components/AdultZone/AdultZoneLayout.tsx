@@ -55,6 +55,10 @@ const AdultZoneLayout: React.FC = () => {
       console.log('Global Adult Zone socket connected:', s.id);
     });
 
+    s.on('sext:new_message_notification', (payload: any) => {
+      s.emit('sext:message_delivered', { messageId: payload.messageId });
+    });
+
     s.on('call:incoming', (payload: any) => {
       // Ignore if already on the messaging page where calls are handled locally
       const isChatPage = location.pathname === '/adult/provider/messages' || location.pathname === '/sext';

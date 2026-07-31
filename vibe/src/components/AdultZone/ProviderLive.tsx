@@ -178,16 +178,6 @@ const ProviderLive: React.FC = () => {
     }
   }, [autoStart, isLive, token, user]);
 
-  // Remove ?autoStart from URL after using it
-  // (prevents re-triggering on refresh)
-  useEffect(() => {
-    if (autoStart) {
-      const url = new URL(window.location.href);
-      url.searchParams.delete('autoStart');
-      window.history.replaceState({}, '', url.toString());
-    }
-  }, [autoStart]);
-
   const handleEndStream = async () => {
     if (!window.confirm('Are you sure you want to end this webcam session?')) return;
     try {

@@ -178,6 +178,7 @@ router.put('/adult/providers/me/services', verifyAdultJWT, updateServices);
 router.put('/adult/providers/me/pricing', verifyAdultJWT, updatePricing);
 router.put('/adult/providers/me/location', verifyAdultJWT, updateLocation);
 router.put('/adult/providers/me/payout', verifyAdultJWT, updatePayout);
+router.put('/adult/providers/me/status', verifyAdultJWT, updateStatus);
 router.put('/adult/providers/me/photos', verifyAdultJWT, updatePhotos);
 router.put('/adult/providers/me/schedule', verifyAdultJWT, updateSchedule);
 router.get('/adult/providers/me', verifyAdultJWT, getMyProfile);
