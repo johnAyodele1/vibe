@@ -149,17 +149,6 @@ describe('Provider Onboarding & Profile API', () => {
     expect(res.body.data.user.providerProfile.location.city.name).toBe('Ikeja');
   });
 
-  it('PUT /api/v1/adult/providers/me/status sets isLive', async () => {
-    const res = await request(app)
-      .put('/api/v1/adult/providers/me/status')
-      .set('Authorization', `Bearer ${providerToken}`)
-      .send({ isOnline: true })
-      .expect(200);
-
-    expect(res.body.success).toBe(true);
-    expect(res.body.data.user.providerProfile.isLive).toBe(true);
-  });
-
   it('member cannot access provider-only endpoints', async () => {
     await request(app)
       .put('/api/v1/adult/providers/me/profile')

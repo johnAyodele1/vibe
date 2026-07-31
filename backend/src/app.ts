@@ -93,6 +93,10 @@ if (process.env.NODE_ENV !== 'test') {
         // Reset all users to offline on startup
         await User.updateMany({}, { isOnline: false });
         console.log("Reset all users' online status to false");
+
+        // Clean stale presence in Adult Zone
+        const { cleanStalePresence } = require('./socket/adultSocket');
+        await cleanStalePresence();
       } catch (err) {
         console.error("Error resetting users' online status:", err);
       }
