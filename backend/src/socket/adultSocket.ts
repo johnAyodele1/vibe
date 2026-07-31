@@ -5,10 +5,135 @@ import CamSession from '../models/CamSession';
 import CamViewer from '../models/CamViewer';
 import PrivateShowRequest from '../models/PrivateShowRequest';
 import AdultMessage from '../models/AdultMessage';
+import AdultConversation from '../models/AdultConversation';
 import { decrypt } from '../services/encryptionService';
 import mongoose from 'mongoose';
 import { getClientPrice } from '../services/pricingService';
 import app from '../app';
+import Redis from 'ioredis';
+
+export let redisClient: Redis | null = null;
+if (process.env.REDIS_URL || process.env.REDIS_HOST) {
+  try {
+    redisClient = new Redis(process.env.REDIS_URL || '');
+  } catch (err) {
+    console.warn('Failed to initialize Redis client in adultSocket:', err);
+  }
+}
+
+// In-memory socket connection tracking
+const adultUserSocketMap = new Map<string, Set<string>>();
+
+export const getAdultUserSocketMap = () => adultUserSocketMap;
+
+const updateUserConversationOnlineState = async (userId: string, isOnline: boolean) => {
+  try {
+    await AdultConversation.updateMany(
+      { "participantProfiles.userId": userId },
+      { $set: { "participantProfiles.$[elem].isOnline": isOnline } },
+      { arrayFilters: [{ "elem.userId": userId }] }
+    );
+  } catch (err) {
+    console.error(`Failed to update conversation online state for ${userId}:`, err);
+  }
+};
+
+const handleProviderGoesOffline = async (userId: string, namespace: any) => {
+  if (mongoose.connection.readyState !== 1) {
+    return;
+  }
+  // 1. Mark provider as offline
+  await AdultUser.findOneAndUpdate(
+    { _id: userId },
+    { $set: { isOnline: false, "providerProfile.isOnline": false, "providerProfile.isLive": false, "providerProfile.onlineSince": null } }
+  );
+
+  // 2. End any active cam session for this provider
+  const activeSession = await CamSession.findOne({
+    providerId: userId,
+    status:     'live',
+  });
+
+  if (activeSession) {
+    await CamSession.findByIdAndUpdate(activeSession._id, {
+      $set: {
+        status:  'ended',
+        endedAt: new Date(),
+      },
+    });
+
+    // 3. Tell all viewers in this cam room that the stream ended
+    namespace.to(`cam:${activeSession._id}`).emit('cam:session_ended', {
+      sessionId: activeSession._id.toString(),
+      reason:    'provider_disconnected',
+    });
+
+    // 4. Remove from the global live list
+    namespace.emit('cam:session_ended', {
+      sessionId: activeSession._id.toString(),
+    });
+
+    console.log(`Auto-ended cam session ${activeSession._id} because provider ${userId} disconnected`);
+  }
+
+  // 5. Tell members browsing that this provider went offline
+  namespace.emit('provider:offline', {
+    providerId: userId,
+    isOnline:   false,
+  });
+};
+
+export const cleanStalePresence = async () => {
+  try {
+    const ioredis = require('ioredis');
+    let redis: any = null;
+    if (process.env.REDIS_URL || process.env.REDIS_HOST) {
+      try {
+        redis = new ioredis(process.env.REDIS_URL || '');
+      } catch (err) {
+        console.warn('Failed to connect to Redis for startup presence cleanup:', err);
+      }
+    }
+
+    if (redis) {
+      const keys = await redis.keys('adult:online:*');
+      if (keys.length > 0) {
+        await redis.del(keys);
+      }
+    }
+
+    // Mark ALL providers and users as offline on startup
+    await AdultUser.updateMany(
+      {},
+      {
+        $set: {
+          isOnline: false,
+          "providerProfile.isOnline": false,
+          "providerProfile.isLive": false,
+          "providerProfile.onlineSince": null
+        }
+      }
+    );
+
+    // End ALL active cam sessions (they cannot survive a server restart)
+    const staleSessions = await CamSession.find({ status: 'live' });
+    for (const session of staleSessions) {
+      await CamSession.findByIdAndUpdate(session._id, {
+        $set: { status: 'ended', endedAt: new Date() },
+      });
+    }
+
+    // Reset all participants online state inside conversations
+    await AdultConversation.updateMany(
+      {},
+      { $set: { "participantProfiles.$[].isOnline": false } }
+    );
+
+    console.log(`Cleaned up ${staleSessions.length} stale cam sessions on startup`);
+  } catch (err) {
+    console.error('Error in cleanStalePresence:', err);
+  }
+};
 
 // Centralized map for active call tickers accessible across all socket connections in the adult namespace
 const activeCallTickers = new Map<string, NodeJS.Timeout>();
@@ -36,8 +161,51 @@ export const setupAdultSocket = (io: Server) => {
     }
   });
 
-  adultNamespace.on('connection', (socket: Socket) => {
+  adultNamespace.on('connection', async (socket: Socket) => {
     console.log(`Adult Socket connected: ${socket.id}`);
+    const user = socket.data.user;
+    if (!user) return;
+    const userId = user._id.toString();
+    const accountType = user.role === 'provider' ? 'service_provider' : 'user';
+
+    // ── Mark user as online ────────────────────────────────────────
+    if (accountType === 'service_provider') {
+      await AdultUser.findOneAndUpdate(
+        { _id: userId },
+        { $set: { isOnline: true, "providerProfile.isOnline": true, "providerProfile.onlineSince": new Date() } }
+      );
+
+      // Notify members that this provider came online
+      adultNamespace.emit('provider:online', {
+        providerId: userId,
+        isOnline:   true,
+      });
+    } else {
+      await AdultUser.findOneAndUpdate(
+        { _id: userId },
+        { $set: { isOnline: true } }
+      );
+    }
+
+    // Update isOnline inside participantProfiles of conversations they belong to
+    await updateUserConversationOnlineState(userId, true);
+
+    // ── Track socket in Redis & Memory map ───────────────────────────
+    if (redisClient) {
+      try {
+        await redisClient.sadd(`adult:online:${userId}`, socket.id);
+      } catch (err) {
+        console.warn('Redis sadd error in adultSocket:', err);
+      }
+    }
+
+    if (!adultUserSocketMap.has(userId)) {
+      adultUserSocketMap.set(userId, new Set());
+    }
+    adultUserSocketMap.get(userId)!.add(socket.id);
+
+    // Join the user's personal room
+    socket.join(`user:${userId}`);
 
     // Room events (for both standard rooms and naughty rooms)
     socket.on('room:join', (data: any) => {
@@ -393,17 +561,64 @@ export const setupAdultSocket = (io: Server) => {
       adultNamespace.to(`cam:${sessionId}`).emit('cam:new_message', message);
     });
 
-    // Individual user room for notifications
-    socket.join(`user:${socket.data.user._id}`);
-
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => {
       console.log(`Adult Socket disconnected: ${socket.id}`);
+
       // Clean up any active tickers associated with this user/provider
       for (const [callId, ticker] of activeCallTickers.entries()) {
-        if (callId.includes(socket.data.user._id.toString())) {
+        if (callId.includes(userId)) {
           clearInterval(ticker);
           activeCallTickers.delete(callId);
           adultNamespace.to(`call:${callId}`).emit('call:ended', { reason: 'participant_disconnected' });
+        }
+      }
+
+      if (mongoose.connection.readyState !== 1) {
+        return;
+      }
+
+      // ── Track socket in Redis & Memory map ───────────────────────────
+      if (redisClient) {
+        try {
+          await redisClient.srem(`adult:online:${userId}`, socket.id);
+        } catch (err) {
+          console.warn('Redis srem error in adultSocket:', err);
+        }
+      }
+
+      const userSockets = adultUserSocketMap.get(userId);
+      if (userSockets) {
+        userSockets.delete(socket.id);
+        if (userSockets.size === 0) {
+          adultUserSocketMap.delete(userId);
+        }
+      }
+
+      // Check remaining connections count
+      let remainingConnections = 0;
+      if (redisClient) {
+        try {
+          remainingConnections = await redisClient.scard(`adult:online:${userId}`);
+        } catch (err) {
+          console.warn('Redis scard error in adultSocket:', err);
+          remainingConnections = adultUserSocketMap.get(userId)?.size || 0;
+        }
+      } else {
+        remainingConnections = adultUserSocketMap.get(userId)?.size || 0;
+      }
+
+      if (remainingConnections === 0) {
+        // User is truly offline — no open tabs anywhere
+        if (accountType === 'service_provider') {
+          await handleProviderGoesOffline(userId, adultNamespace);
+        } else {
+          // Member went offline
+          await AdultUser.findOneAndUpdate(
+            { _id: userId },
+            { $set: { isOnline: false } }
+          );
+          // Tell members browsing/chatting they went offline by updating conversation participant profiles
+          await updateUserConversationOnlineState(userId, false);
         }
       }
     });
