@@ -1,13 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../../config';
-import { toast } from 'sonner';
 
 const ProviderDashboard: React.FC = () => {
   const navigate = useNavigate();
   const token = localStorage.getItem('adultAccessToken');
 
-  const [isLive, setIsLive] = useState(false);
   const [stageName, setStageName] = useState('Stage Name');
   const [isLoading, setIsLoading] = useState(true);
   const [stats, setStats] = useState<any>({
@@ -39,7 +37,6 @@ const ProviderDashboard: React.FC = () => {
         const userData = await userRes.json();
         if (userRes.ok && userData.success && userData.data.user) {
           const profile = userData.data.user.providerProfile || {};
-          setIsLive(profile.isLive ?? false);
           setStageName(profile.stageName || userData.data.user.displayName || userData.data.user.username || 'Stage Name');
         }
 
