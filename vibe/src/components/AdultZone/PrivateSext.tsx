@@ -625,7 +625,45 @@ const PrivateSext: React.FC = () => {
       toast.info('Call missed');
     });
 
+    // Real-time online status updates
+    const handleStatusChange = (userId: string, isOnline: boolean) => {
+      setConversations(prev => prev.map(conv => {
+        if (conv.otherUser && conv.otherUser.id === userId) {
+          return {
+            ...conv,
+            otherUser: {
+              ...conv.otherUser,
+              isOnline
+            }
+          };
+        }
+        return conv;
+      }));
+      setSelectedConv(current => {
+        if (current && current.otherUser && current.otherUser.id === userId) {
+          return {
+            ...current,
+            otherUser: {
+              ...current.otherUser,
+              isOnline
+            }
+          };
+        }
+        return current;
+      });
+    };
 
+    s.on('user:status', (payload: { userId: string; isOnline: boolean }) => {
+      handleStatusChange(payload.userId, payload.isOnline);
+    });
+
+    s.on('provider:online', (payload: { providerId: string; isOnline: boolean }) => {
+      handleStatusChange(payload.providerId, true);
+    });
+
+    s.on('provider:offline', (payload: { providerId: string; isOnline: boolean }) => {
+      handleStatusChange(payload.providerId, false);
+    });
 
     socketRef.current = s;
 

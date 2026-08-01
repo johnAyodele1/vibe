@@ -67,7 +67,7 @@ export const getProviderPublicProfile = async (req: Request, res: Response) => {
       },
       servicesOffered: provider.providerProfile?.servicesOffered || [],
       pricing,
-      isOnline: provider.providerProfile?.isLive || false,
+      isOnline: provider.providerProfile?.isOnline || false,
       rating: provider.providerProfile?.rating?.average || 0,
       reviewCount: provider.providerProfile?.rating?.count || 0,
       isVerified: provider.isVerified || false,

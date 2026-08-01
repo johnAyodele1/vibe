@@ -102,7 +102,7 @@ export const getHookupNearbyProviders = async (req: Request, res: Response) => {
       baseProviderFilter['providerProfile.location.city.name'] = { $regex: new RegExp(`^${city}$`, 'i') };
     }
     if (isOnline === 'true') {
-      baseProviderFilter['providerProfile.isLive'] = true;
+      baseProviderFilter['providerProfile.isOnline'] = true;
     }
 
     if (view === 'map') {
@@ -125,7 +125,7 @@ export const getHookupNearbyProviders = async (req: Request, res: Response) => {
             stageName: p.providerProfile?.stageName || p.displayName,
             avatarUrl: p.profilePhoto || p.providerProfile?.photos?.[0] || '/placeholder.svg',
             coordinates: [lat, lng],
-            isOnline: p.providerProfile?.isLive || false,
+            isOnline: p.providerProfile?.isOnline || false,
             tonightRate: p.providerProfile?.tonightRate,
           };
         });
@@ -138,7 +138,7 @@ export const getHookupNearbyProviders = async (req: Request, res: Response) => {
 
     // Grid view (paginated)
     const sort: any = {
-      'providerProfile.isLive': -1,
+      'providerProfile.isOnline': -1,
       'providerProfile.rating.average': -1,
       'createdAt': -1
     };
@@ -167,7 +167,7 @@ export const getHookupNearbyProviders = async (req: Request, res: Response) => {
         stageName: p.providerProfile?.stageName || p.displayName,
         age,
         location: p.providerProfile?.location,
-        isOnline: p.providerProfile?.isLive || false,
+        isOnline: p.providerProfile?.isOnline || false,
         isVerified: p.isVerified,
         photoUrl: p.profilePhoto || p.providerProfile?.photos?.[0] || '/placeholder.svg',
         tonightRate: p.providerProfile?.tonightRate,
