@@ -96,6 +96,14 @@ const adultUserSchema = new Schema<IAdultUser, IAdultUserModel>(
       type: Boolean,
       default: false,
     },
+    isOnline: {
+      type: Boolean,
+      default: false,
+    },
+    onlineSince: {
+      type: Date,
+      default: null,
+    },
     isBanned: {
       type: Boolean,
       default: false,
@@ -126,6 +134,8 @@ const adultUserSchema = new Schema<IAdultUser, IAdultUserModel>(
       gender: String,
       categories: [String],
       isLive: { type: Boolean, default: false },
+      isOnline: { type: Boolean, default: false },
+      onlineSince: { type: Date, default: null },
       pricePerMinute: { type: Number, default: 0 },
       tipMinimum: { type: Number, default: 0 },
       videoCallPrice: { type: Number, default: 0 },

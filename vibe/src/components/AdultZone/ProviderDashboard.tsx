@@ -8,6 +8,7 @@ const ProviderDashboard: React.FC = () => {
 
   const [stageName, setStageName] = useState('Stage Name');
   const [isLoading, setIsLoading] = useState(true);
+  const [hasActiveSession, setHasActiveSession] = useState(false);
   const [stats, setStats] = useState<any>({
     todayEarnings: 0,
     weekEarnings: 0,
@@ -38,6 +39,20 @@ const ProviderDashboard: React.FC = () => {
         if (userRes.ok && userData.success && userData.data.user) {
           const profile = userData.data.user.providerProfile || {};
           setStageName(profile.stageName || userData.data.user.displayName || userData.data.user.username || 'Stage Name');
+        }
+
+        try {
+          const sessionRes = await fetch(`${API_BASE_URL}/adult/cams/my-active-session`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          const sessionData = await sessionRes.json();
+          if (sessionRes.ok && sessionData.success && sessionData.data?.activeSession) {
+            setHasActiveSession(true);
+          } else {
+            setHasActiveSession(false);
+          }
+        } catch (sessionErr) {
+          console.error('Failed to load active cam session:', sessionErr);
         }
 
         const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/dashboard`, {
@@ -122,12 +137,23 @@ const ProviderDashboard: React.FC = () => {
 
           <div className="flex items-center gap-4">
             <span className="text-xs text-[var(--az-text-secondary)] font-mono font-bold uppercase">System Status:</span>
-            <div
-              className="px-6 py-2.5 rounded-full text-xs font-bold uppercase tracking-widest border transition-all flex items-center gap-2 bg-green-950/40 text-green-400 border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.2)] cursor-default"
-            >
-              <span className="w-2 h-2 rounded-full bg-green-400 animate-ping" />
-              Online
-            </div>
+            {hasActiveSession ? (
+              <button
+                onClick={() => navigate('/adult/provider/live')}
+                className="px-6 py-2.5 rounded-full text-xs font-bold uppercase tracking-widest border transition-all flex items-center gap-2 bg-green-950/40 text-green-400 border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.2)] hover:scale-105"
+              >
+                <span className="w-2 h-2 rounded-full bg-green-400 animate-ping" />
+                Online & Streaming
+              </button>
+            ) : (
+              <button
+                onClick={() => navigate('/adult/provider/live?autoStart=true')}
+                className="px-6 py-2.5 rounded-full text-xs font-bold uppercase tracking-widest border transition-all flex items-center gap-2 bg-[var(--az-bg-tertiary)] text-[var(--az-text-secondary)] border-[var(--az-border)] hover:border-[var(--az-accent-rose)] hover:text-[var(--az-accent-rose)] hover:scale-105"
+              >
+                <span className="w-2 h-2 rounded-full bg-zinc-500" />
+                Go Live
+              </button>
+            )}
           </div>
         </div>
 
