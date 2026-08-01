@@ -1227,28 +1227,6 @@ export const updatePayout = async (req: Request, res: Response) => {
   }
 };
 
-export const updateStatus = async (req: Request, res: Response) => {
-  try {
-    const user = req.adultUser;
-    if (!user || user.role !== 'provider') {
-      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Only providers can update status' } });
-    }
-
-    const { isOnline } = req.body;
-
-    if (!user.providerProfile) {
-      user.providerProfile = getDefaultProviderProfile({ isLive: isOnline || false });
-    } else {
-      user.providerProfile!.isLive = isOnline;
-    }
-
-    await user.save();
-    return res.json({ success: true, message: 'Status updated successfully', data: { user } });
-  } catch (error: any) {
-    return res.status(500).json({ success: false, error: error.message });
-  }
-};
-
 export const updatePhotos = async (req: Request, res: Response) => {
   try {
     const user = req.adultUser;

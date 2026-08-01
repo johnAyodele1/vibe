@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { API_BASE_URL } from '../../config';
+import { API_BASE_URL, SOCKET_URL } from '../../config';
 import { useTipSheetStore } from './useTipSheetStore';
 import { toast } from 'sonner';
 import { DatingCrossPromo } from './DatingCrossPromo';
 import { RewardsButton } from './RewardsButton';
+import { io } from 'socket.io-client';
 
 const FALLBACK_PERFORMERS = [
   {
@@ -199,6 +200,55 @@ const AdultHome: React.FC = () => {
       isOnline: p.providerProfile?.isLive || false
     });
   };
+
+  useEffect(() => {
+    const token = localStorage.getItem('adultAccessToken');
+    if (!token) return;
+
+    const socketUrl = SOCKET_URL || window.location.origin;
+    const socket = io(`${socketUrl}/adult`, {
+      auth: { token },
+      transports: ['websocket', 'polling']
+    });
+
+    socket.on('provider:online', ({ providerId }) => {
+      setPerformers(prev => prev.map(p => {
+        const pId = p.userId || p._id;
+        if (pId === providerId) {
+          return {
+            ...p,
+            providerProfile: {
+              ...(p.providerProfile || {}),
+              isOnline: true,
+              isLive: true
+            }
+          };
+        }
+        return p;
+      }));
+    });
+
+    socket.on('provider:offline', ({ providerId }) => {
+      setPerformers(prev => prev.map(p => {
+        const pId = p.userId || p._id;
+        if (pId === providerId) {
+          return {
+            ...p,
+            providerProfile: {
+              ...(p.providerProfile || {}),
+              isOnline: false,
+              isLive: false
+            }
+          };
+        }
+        return p;
+      }));
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
     const fetchPerformers = async () => {

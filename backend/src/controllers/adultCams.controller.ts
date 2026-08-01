@@ -165,3 +165,50 @@ export const getCamViewerToken = async (req: Request, res: Response) => {
     roomId,
   });
 };
+
+export const getMyActiveSession = async (req: Request, res: Response) => {
+  try {
+    const provider = req.adultUser;
+    if (!provider || provider.role !== 'provider') {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Only providers can access this endpoint' } });
+    }
+
+    const activeSession = await CamSession.findOne({
+      providerId: provider._id,
+      status: 'live',
+    });
+
+    if (!activeSession) {
+      return res.json({ success: true, data: { activeSession: null } });
+    }
+
+    // Check if the socket is actually connected
+    const { getActiveConnectionCount } = require('../socket/adultSocket');
+    const activeConnections = await getActiveConnectionCount(provider._id.toString());
+
+    if (activeConnections === 0) {
+      // Stale session found: auto-end it
+      activeSession.status = 'ended';
+      activeSession.endedAt = new Date();
+      await activeSession.save();
+
+      const ns = req.app.get('adultNamespace');
+      if (ns) {
+        ns.to(`cam:${activeSession._id}`).emit('cam:session_ended', {
+          sessionId: activeSession._id.toString(),
+          reason: 'provider_disconnected',
+        });
+        ns.emit('cam:session_ended', {
+          sessionId: activeSession._id.toString(),
+        });
+      }
+
+      console.log(`Auto-ended stale cam session ${activeSession._id} during active session validation`);
+      return res.json({ success: true, data: { activeSession: null } });
+    }
+
+    return res.json({ success: true, data: { activeSession } });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+};

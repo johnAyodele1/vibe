@@ -175,6 +175,13 @@ const ProviderLive: React.FC = () => {
   useEffect(() => {
     if (autoStart && !isLive && token && user) {
       handleStartStream();
+      // Remove ?autoStart param from URL immediately
+      const params = new URLSearchParams(window.location.search);
+      if (params.has('autoStart')) {
+        params.delete('autoStart');
+        const newRelativePathQuery = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+        window.history.replaceState(null, '', newRelativePathQuery);
+      }
     }
   }, [autoStart, isLive, token, user]);
 
