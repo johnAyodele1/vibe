@@ -203,6 +203,12 @@ export const setupAdultSocket = (io: Server) => {
       );
     }
 
+    // Broadcast user status change globally in the adult namespace
+    adultNamespace.emit('user:status', {
+      userId,
+      isOnline: true,
+    });
+
     // Room events (for both standard rooms and naughty rooms)
     socket.on('room:join', (data: any) => {
       const roomId = typeof data === 'string' ? data : data?.roomId;
@@ -586,6 +592,12 @@ export const setupAdultSocket = (io: Server) => {
             { $set: { isOnline: false } }
           );
         }
+
+        // Broadcast user status change globally in the adult namespace
+        adultNamespace.emit('user:status', {
+          userId,
+          isOnline: false,
+        });
       }
     });
   });

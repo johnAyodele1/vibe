@@ -52,6 +52,7 @@ describe('Hook Up Tonight — Location Filters and Nearby API', () => {
         servicesOffered: ['hookup'],
         tonightRate: 150,
         isLive: true,
+        isOnline: true,
         location: {
           country: { code: 'NG', name: 'Nigeria' },
           state: { code: 'LA', name: 'Lagos' },

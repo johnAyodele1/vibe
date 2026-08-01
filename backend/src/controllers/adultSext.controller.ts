@@ -45,14 +45,14 @@ export const startConversation = async (req: Request, res: Response) => {
             displayName: user.displayName || user.username,
             avatarUrl: user.profilePhoto || '/placeholder.svg',
             accountType: user.role === 'provider' ? 'provider' : 'member',
-            isOnline: user.providerProfile?.isLive || false,
+            isOnline: user.role === 'provider' ? (user.providerProfile?.isOnline || false) : (user.isOnline || false),
           },
           {
             userId: recipient._id,
             displayName: recipient.providerProfile?.stageName || recipient.displayName || recipient.username,
             avatarUrl: recipient.profilePhoto || '/placeholder.svg',
             accountType: recipient.role === 'provider' ? 'provider' : 'member',
-            isOnline: recipient.providerProfile?.isLive || false,
+            isOnline: recipient.role === 'provider' ? (recipient.providerProfile?.isOnline || false) : (recipient.isOnline || false),
           }
         ],
         unreadCounts: {
@@ -777,7 +777,9 @@ export const getConversations = async (req: Request, res: Response) => {
           id: otherProfile.userId,
           displayName: otherUser?.providerProfile?.stageName || otherProfile.displayName || 'User',
           avatarUrl: otherUser?.profilePhoto || otherProfile.avatarUrl || '/placeholder.svg',
-          isOnline: otherUser?.providerProfile?.isLive || otherProfile.isOnline || false,
+          isOnline: otherUser
+            ? (otherUser.role === 'provider' ? (otherUser.providerProfile?.isOnline || false) : (otherUser.isOnline || false))
+            : (otherProfile.isOnline || false),
           accountType: otherProfile.accountType
         } : null,
         lastMessage: conv.lastMessage?.sentAt ? {
@@ -827,7 +829,9 @@ export const getConversationById = async (req: Request, res: Response) => {
         id: otherProfile.userId,
         displayName: otherUser?.providerProfile?.stageName || otherProfile.displayName || 'User',
         avatarUrl: otherUser?.profilePhoto || otherProfile.avatarUrl || '/placeholder.svg',
-        isOnline: otherUser?.providerProfile?.isLive || otherProfile.isOnline || false,
+        isOnline: otherUser
+          ? (otherUser.role === 'provider' ? (otherUser.providerProfile?.isOnline || false) : (otherUser.isOnline || false))
+          : (otherProfile.isOnline || false),
         accountType: otherProfile.accountType,
         bio: otherUser?.bio || '',
         country: otherUser?.country || ''
