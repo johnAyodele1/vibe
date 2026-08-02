@@ -74,14 +74,14 @@ describe('Provider Earnings & Payout API', () => {
     expect(res.body.success).toBe(true);
     expect(res.body.data.totalEarned).toBe(15000);
     expect(res.body.data.paidOut).toBe(0);
-    // 15000 * 0.0075 = 112.50
-    expect(res.body.data.pending).toBe(112.50);
+    // 15000 * 100 = 1500000
+    expect(res.body.data.pending).toBe(1500000);
     expect(res.body.data.timeline).toHaveLength(6);
     expect(res.body.data.transactions).toHaveLength(0);
   });
 
   it('POST /api/v1/adult/providers/me/payout processes payout successfully and creates CreditTransaction', async () => {
-    // We have 15000 pending credits ($112.50 USD), which is over the $50 threshold.
+    // We have 15000 pending credits (1,500,000 Naira), which is over the threshold.
     // Provider wallet balance starts at 20000 credits.
     const res = await request(app)
       .post('/api/v1/adult/providers/me/payout')
@@ -106,13 +106,12 @@ describe('Provider Earnings & Payout API', () => {
 
     expect(res.body.success).toBe(true);
     expect(res.body.data.totalEarned).toBe(15000);
-    expect(res.body.data.paidOut).toBe(112.50);
+    expect(res.body.data.paidOut).toBe(1500000);
     expect(res.body.data.pending).toBe(0);
     expect(res.body.data.transactions).toHaveLength(1);
     expect(res.body.data.transactions[0].type).toBe('Payout');
     expect(res.body.data.transactions[0].from).toBe('Bank Transfer');
     expect(res.body.data.transactions[0].amount).toBe(-15000);
-    expect(res.body.data.transactions[0].usd).toBe(-112.50);
   });
 
   it('POST /api/v1/adult/providers/me/payout fails if pending payout is below threshold', async () => {

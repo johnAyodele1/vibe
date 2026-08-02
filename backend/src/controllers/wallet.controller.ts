@@ -3,6 +3,16 @@ import mongoose from 'mongoose';
 import AdultUser from '../models/AdultUser';
 import CreditTransaction from '../models/CreditTransaction';
 import { socketService } from '../services/socketService';
+import { getDiamondNairaRate } from '../shared/pricing';
+
+export const getDiamondRate = async (req: Request, res: Response) => {
+  try {
+    const rate = await getDiamondNairaRate();
+    return res.json({ rate, formatted: `₦${rate} per diamond` });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
 
 export const getWallet = async (req: Request, res: Response) => {
   try {
@@ -20,10 +30,14 @@ export const getWallet = async (req: Request, res: Response) => {
       .filter(tx => (tx.type === 'tip' || tx.type === 'tip_sent') && tx.status === 'completed')
       .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
 
+    const rate = await getDiamondNairaRate();
+    const estimatedNairaValue = user.credits * rate;
+
     return res.json({
       creditBalance: user.credits,
       lifetimeCreditsPurchased: purchased,
       lifetimeCreditsSpent: spent,
+      estimatedNairaValue,
       estimatedUsdValue: (user.credits * 0.0075).toFixed(2),
     });
   } catch (error: any) {
@@ -32,11 +46,12 @@ export const getWallet = async (req: Request, res: Response) => {
 };
 
 export const getBundles = async (req: Request, res: Response) => {
+  const rate = await getDiamondNairaRate();
   const bundles = [
-    { id: 'bundle_100',  credits: 100,   priceUsd: 4.99,   label: 'Starter' },
-    { id: 'bundle_500',  credits: 500,   priceUsd: 19.99,  label: 'Popular',    badge: 'Best Value' },
-    { id: 'bundle_1500', credits: 1500,  priceUsd: 49.99,  label: 'Premium' },
-    { id: 'bundle_5000', credits: 5000,  priceUsd: 129.99, label: 'Elite',      badge: 'Most Popular' },
+    { id: 'bundle_100',  credits: 100,   priceNaira: 100 * rate,  priceUsd: 4.99,   label: 'Starter' },
+    { id: 'bundle_500',  credits: 500,   priceNaira: 500 * rate,  priceUsd: 19.99,  label: 'Popular',    badge: 'Best Value' },
+    { id: 'bundle_1500', credits: 1500,  priceNaira: 1500 * rate, priceUsd: 49.99,  label: 'Premium' },
+    { id: 'bundle_5000', credits: 5000,  priceNaira: 5000 * rate, priceUsd: 129.99, label: 'Elite',      badge: 'Most Popular' },
   ];
   return res.json(bundles);
 };
@@ -81,11 +96,12 @@ export const createPurchaseIntent = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'bundleId is required' });
     }
 
+    const rate = await getDiamondNairaRate();
     const bundles = [
-      { id: 'bundle_100',  credits: 100,   priceUsd: 4.99 },
-      { id: 'bundle_500',  credits: 500,   priceUsd: 19.99 },
-      { id: 'bundle_1500', credits: 1500,  priceUsd: 49.99 },
-      { id: 'bundle_5000', credits: 5000,  priceUsd: 129.99 },
+      { id: 'bundle_100',  credits: 100,   priceNaira: 100 * rate,  priceUsd: 4.99 },
+      { id: 'bundle_500',  credits: 500,   priceNaira: 500 * rate,  priceUsd: 19.99 },
+      { id: 'bundle_1500', credits: 1500,  priceNaira: 1500 * rate, priceUsd: 49.99 },
+      { id: 'bundle_5000', credits: 5000,  priceNaira: 5000 * rate, priceUsd: 129.99 },
     ];
 
     const bundle = bundles.find(b => b.id === bundleId);
@@ -99,6 +115,7 @@ export const createPurchaseIntent = async (req: Request, res: Response) => {
       type: 'purchase',
       amount: bundle.credits,
       usdAmount: bundle.priceUsd,
+      nairaAmount: bundle.priceNaira,
       description: `Purchase of ${bundle.credits} credits`,
       paymentProvider: 'stripe',
       paymentIntentId: `pi_mock_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
@@ -155,9 +172,9 @@ export const getSubscriptionPlans = async (req: Request, res: Response) => {
     {
       id: 'gold',
       name: 'Gold',
-      priceMonthly: 9.99,
-      priceAnnual:  99.99,
-      currency: 'USD',
+      priceMonthly: 4999,
+      priceAnnual:  49999,
+      currency: 'NGN',
       features: [
         'All Free features',
         'Unlimited messages',
@@ -173,9 +190,9 @@ export const getSubscriptionPlans = async (req: Request, res: Response) => {
     {
       id: 'platinum',
       name: 'Platinum',
-      priceMonthly: 19.99,
-      priceAnnual:  199.99,
-      currency: 'USD',
+      priceMonthly: 9999,
+      priceAnnual:  99999,
+      currency: 'NGN',
       features: [
         'All Gold features',
         'Direct connection priority',
@@ -186,6 +203,23 @@ export const getSubscriptionPlans = async (req: Request, res: Response) => {
       stripePriceIdMonthly: 'price_plat_monthly',
       stripePriceIdAnnual:  'price_plat_annual',
       isPopular: true,
+    },
+    {
+      id: 'diamond',
+      name: 'Diamond',
+      priceMonthly: 19999,
+      priceAnnual:  199999,
+      currency: 'NGN',
+      features: [
+        'All Platinum features',
+        'Exclusive rooms',
+        'Priority support',
+        'Custom badge',
+        'Ad-free experience',
+      ],
+      stripePriceIdMonthly: 'price_diamond_monthly',
+      stripePriceIdAnnual:  'price_diamond_annual',
+      isPopular: false,
     }
   ];
   return res.json(plans);

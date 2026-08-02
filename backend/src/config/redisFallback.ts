@@ -48,4 +48,16 @@ export const setCache = async (key: string, ttlSeconds: number, value: any): Pro
   });
 };
 
-export default { getCache, setCache };
+export const deleteCache = async (key: string): Promise<void> => {
+  if (redisClient) {
+    try {
+      await redisClient.del(key);
+      return;
+    } catch (err) {
+      console.warn('Redis delete error:', err);
+    }
+  }
+  memoryCache.delete(key);
+};
+
+export default { getCache, setCache, deleteCache };

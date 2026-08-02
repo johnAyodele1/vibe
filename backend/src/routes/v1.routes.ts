@@ -27,7 +27,8 @@ import {
   createPurchaseIntent,
   simulateWebhookSuccess,
   getSubscriptionPlans,
-  directTip
+  directTip,
+  getDiamondRate
 } from '../controllers/wallet.controller';
 import {
   startConversation,
@@ -102,6 +103,7 @@ router.put('/adult/media/upload-mock', handleMockUpload);
 // Wallet & Subscription routes
 router.get('/adult/wallet', verifyAdultJWT, getWallet);
 router.get('/adult/wallet/bundles', getBundles);
+router.get('/adult/config/diamond-rate', getDiamondRate);
 router.get('/adult/wallet/transactions', verifyAdultJWT, getTransactions);
 router.post('/adult/wallet/purchase/intent', verifyAdultJWT, createPurchaseIntent);
 router.post('/adult/wallet/purchase/webhook', simulateWebhookSuccess);

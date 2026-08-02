@@ -8,6 +8,8 @@ import {
   adminAction,
   getViolations,
   updateViolationAction,
+  getAdminDiamondRate,
+  updateAdminDiamondRate,
 } from '../controllers/admin.controller';
 import {
   adminGetTasks,
@@ -32,6 +34,9 @@ router.post('/action', adminAction);
 
 router.get('/violations', getViolations);
 router.put('/violations/:id/action', updateViolationAction);
+
+router.get('/config/diamond-rate', getAdminDiamondRate);
+router.put('/config/diamond-rate', updateAdminDiamondRate);
 
 // Reward Tasks management routes
 router.get('/rewards/tasks', adminGetTasks);

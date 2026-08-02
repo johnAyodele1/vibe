@@ -216,8 +216,8 @@ describe('ProviderMessages Frontend Component', () => {
     const priceInput = screen.getByTestId('send-paid-media-price-input');
     fireEvent.change(priceInput, { target: { value: '100' } });
 
-    // Helper USD estimation text should display ≈ $10
-    expect(screen.getByText(/≈ \$10 USD value/)).toBeInTheDocument();
+    // Helper Naira estimation text should display ≈ ₦10,000
+    expect(screen.getByText(/≈ ₦10,000 value/)).toBeInTheDocument();
   });
 
   it('opens Gift Request Dialog, loads catalogue, allows selection, personal note, and sends request', async () => {

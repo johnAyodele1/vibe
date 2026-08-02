@@ -1954,8 +1954,8 @@ export const initiateCall = async (req: Request, res: Response) => {
 
     // Determine cost rate
     const rate = type === 'video'
-      ? (receiver.providerProfile?.videoCallPrice || 5)
-      : (receiver.providerProfile?.audioCallPrice || 2);
+      ? (receiver.providerProfile?.videoCallPrice || receiver.providerProfile?.pricePerMinute || 5)
+      : (receiver.providerProfile?.audioCallPrice || receiver.providerProfile?.pricePerMinute || 5);
 
     const userPrice = getClientPrice(rate);
 

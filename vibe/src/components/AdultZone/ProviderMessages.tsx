@@ -8,6 +8,7 @@ import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { toast } from 'sonner';
 import { useUIStore } from './useUIStore';
 import MessageTick, { getMessageStatus } from './MessageTick';
+import { usePricingStore, formatNaira } from '../../lib/pricing';
 
 const CallRoom = React.lazy(() => import('./CallRoom'));
 
@@ -1768,7 +1769,7 @@ const ProviderMessages: React.FC = () => {
                             <span className="font-mono text-amber-400">💎 {m.serviceRequest?.totalAmount}</span>
                           </div>
                           <span className="text-[10px] text-gray-500 block text-right">
-                            ≈ ${(m.serviceRequest?.totalAmount! * 0.1).toFixed(2)} USD
+                            ≈ {formatNaira(m.serviceRequest?.totalAmount! * usePricingStore.getState().diamondNairaRate)}
                           </span>
                         </div>
 
@@ -2269,7 +2270,7 @@ const ProviderMessages: React.FC = () => {
                   />
                 </div>
                 <p className="text-[11px] text-gray-500 mt-1">
-                  Members pay this to view your content. (≈ ${Math.round(paidMediaCost * 0.1 * 100) / 100} USD value)
+                  Members pay this to view your content. (≈ {formatNaira(paidMediaCost * usePricingStore.getState().diamondNairaRate)} value)
                 </p>
               </div>
 
@@ -2424,7 +2425,7 @@ const ProviderMessages: React.FC = () => {
                 </label>
                 <div className="flex justify-between items-center p-3 bg-black/40 border border-white/5 rounded-xl">
                   <span className="text-xs text-gray-400">Your tonight rate (from profile):</span>
-                  <span className="text-xs font-mono font-bold text-amber-400">💎 {dynTonightRate || tonightRate} credits (≈ ${Math.round((dynTonightRate || tonightRate) * 0.1 * 100) / 100})</span>
+                  <span className="text-xs font-mono font-bold text-amber-400">💎 {dynTonightRate || tonightRate} credits (≈ {formatNaira((dynTonightRate || tonightRate) * usePricingStore.getState().diamondNairaRate)})</span>
                 </div>
               </div>
 
@@ -2501,7 +2502,7 @@ const ProviderMessages: React.FC = () => {
               <div className="border-t border-white/5 pt-4 flex justify-between items-center">
                 <span className="text-sm font-bold text-white uppercase tracking-wider">TOTAL:</span>
                 <span data-testid="service-request-total" className="text-2xl font-mono font-bold text-amber-400">
-                  💎 {totalServiceChargeAmount} credits <span className="text-xs text-gray-500 font-sans font-normal">(≈ ${Math.round(totalServiceChargeAmount * 0.1 * 100) / 100})</span>
+                  💎 {totalServiceChargeAmount} credits <span className="text-xs text-gray-500 font-sans font-normal">(≈ {formatNaira(totalServiceChargeAmount * usePricingStore.getState().diamondNairaRate)})</span>
                 </span>
               </div>
 
@@ -2665,7 +2666,7 @@ const ProviderMessages: React.FC = () => {
                       ) : (
                         <>
                           <span className="text-gray-400">Credits Charged:</span>
-                          <span className="font-bold text-yellow-400">💎 {callSummary.cost}  ≈  ${(callSummary.cost * 0.1).toFixed(2)}</span>
+                          <span className="font-bold text-yellow-400">💎 {callSummary.cost}  ≈  {formatNaira(callSummary.cost * usePricingStore.getState().diamondNairaRate)}</span>
                         </>
                       )}
                     </div>

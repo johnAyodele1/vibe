@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { useUIStore } from './useUIStore';
 import MessageTick, { getMessageStatus } from './MessageTick';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { usePricingStore, formatNaira } from '../../lib/pricing';
 
 const CallRoom = React.lazy(() => import('./CallRoom'));
 
@@ -1917,7 +1918,7 @@ const PrivateSext: React.FC = () => {
                             <span className="font-mono text-amber-400">💎 {m.serviceRequest?.totalAmount}</span>
                           </div>
                           <span className="text-[10px] text-gray-500 block text-right">
-                            ≈ ${(m.serviceRequest?.totalAmount! * 0.1).toFixed(2)} USD
+                            ≈ {formatNaira(m.serviceRequest?.totalAmount! * usePricingStore.getState().diamondNairaRate)}
                           </span>
                         </div>
 
@@ -1932,7 +1933,7 @@ const PrivateSext: React.FC = () => {
                             <>
                               <button
                                 onClick={() => {
-                                  if (window.confirm(`Confirm payment of 💎 ${m.serviceRequest?.totalAmount} credits (≈ $${(m.serviceRequest?.totalAmount! * 0.1).toFixed(2)} USD)?`)) {
+                                  if (window.confirm(`Confirm payment of 💎 ${m.serviceRequest?.totalAmount} credits (≈ ${formatNaira(m.serviceRequest?.totalAmount! * usePricingStore.getState().diamondNairaRate)})?`)) {
                                     handlePayServiceRequest(m.id);
                                   }
                                 }}
@@ -2716,7 +2717,7 @@ const PrivateSext: React.FC = () => {
                       ) : (
                         <>
                           <span className="text-gray-400">Credits Charged:</span>
-                          <span className="font-bold text-yellow-400">💎 {callSummary.cost}  ≈  ${(callSummary.cost * 0.1).toFixed(2)}</span>
+                          <span className="font-bold text-yellow-400">💎 {callSummary.cost}  ≈  {formatNaira(callSummary.cost * usePricingStore.getState().diamondNairaRate)}</span>
                         </>
                       )}
                     </div>

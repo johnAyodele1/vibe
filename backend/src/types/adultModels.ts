@@ -111,6 +111,7 @@ export interface ICreditTransaction extends Document {
   type: 'purchase' | 'spend' | 'refund' | 'tip_sent' | 'tip_received' | 'cam_tip' | 'payout' | 'bonus' | 'tip' | 'subscription' | 'reward';
   amount: number;
   usdAmount: number;
+  nairaAmount?: number;
   description: string;
   relatedUserId?: Types.ObjectId;
   paymentProvider?: 'stripe' | 'apple' | 'google' | 'crypto';

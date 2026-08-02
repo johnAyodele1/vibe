@@ -182,7 +182,7 @@ describe('TipSheet Component', () => {
 
       fireEvent.change(customInput, { target: { value: '75' } });
       expect(screen.getByRole('button', { name: /Send 💎 75 to Elena Rose/i })).toBeInTheDocument();
-      expect(screen.getByText('≈ $0.56')).toBeInTheDocument();
+      expect(screen.getByText('≈ ₦7,500')).toBeInTheDocument();
     });
   });
 

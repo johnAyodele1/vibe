@@ -65,7 +65,7 @@ describe('Wallet Component', () => {
     await waitFor(() => {
       expect(screen.getByText('240')).toBeInTheDocument();
       expect(screen.getByText(/Credits available for tipping/)).toBeInTheDocument();
-      expect(screen.getByText(/~\$1\.80 USD/)).toBeInTheDocument();
+      expect(screen.getByText(/~₦24,000/)).toBeInTheDocument();
     });
   });
 

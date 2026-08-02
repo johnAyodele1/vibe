@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import AdultUser from '../models/AdultUser';
 import CreditTransaction from '../models/CreditTransaction';
 import { createPaymentIntent } from '../services/stripeService';
+import { getDiamondNairaRate } from '../shared/pricing';
 
 const BUNDLES: any = {
   'bundle_100': { credits: 100, usdCents: 499 },
@@ -31,7 +32,11 @@ export const purchaseCredits = async (req: Request, res: Response) => {
 
   if (!bundle) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid bundle' } });
 
-  const paymentIntent = await createPaymentIntent(bundle.usdCents, 'usd', req.adultUser?._id.toString() || '', { bundleId });
+  const rate = await getDiamondNairaRate();
+  const nairaAmount = bundle.credits * rate;
+  const koboAmount = nairaAmount * 100; // Smallest unit in Naira is kobo (₦1 = 100 kobo)
+
+  const paymentIntent = await createPaymentIntent(koboAmount, 'ngn', req.adultUser?._id.toString() || '', { bundleId });
 
   res.json({ success: true, data: { clientSecret: paymentIntent.client_secret } });
 };

@@ -7,6 +7,10 @@ import VisitorStat from '../models/VisitorStat';
 import { IExpressRequest } from '../types/express';
 import mongoose from 'mongoose';
 import { generateAccessToken } from '../middleware/auth';
+import AppConfig from '../models/AppConfig';
+import { getDiamondNairaRate } from '../shared/pricing';
+import { deleteCache } from '../config/redisFallback';
+import jwt from 'jsonwebtoken';
 
 // @desc    Admin login
 // @access  Public
@@ -30,6 +34,81 @@ export const adminLogin = async (req: Request, res: Response): Promise<Response>
   } catch (error) {
     console.error('Admin login error:', error);
     return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// @desc    Get admin config diamond rate
+// @access  Private/Admin
+export const getAdminDiamondRate = async (req: Request, res: Response): Promise<Response> => {
+  try {
+    const rate = await getDiamondNairaRate();
+    const config = await AppConfig.findOne({ key: 'diamond_naira_rate' });
+    return res.json({
+      success: true,
+      rate,
+      history: config?.history || [],
+      updatedAt: config?.updatedAt,
+      updatedBy: config?.updatedBy,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: 'Server error', error: error.message });
+  }
+};
+
+// @desc    Update admin config diamond rate
+// @access  Private/Admin
+export const updateAdminDiamondRate = async (req: Request, res: Response): Promise<Response> => {
+  try {
+    const { rate } = req.body;
+
+    if (rate === undefined || typeof rate !== 'number' || rate < 1 || rate > 100000) {
+      return res.status(400).json({ success: false, message: 'Rate must be between 1 and 100,000' });
+    }
+
+    // Extract adminId from JWT token
+    let adminId = 'admin_user_id';
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret') as any;
+        if (decoded && decoded.userId) {
+          adminId = decoded.userId;
+        }
+      } catch (err) {
+        // Ignore JWT verification error here since middleware already verified it
+      }
+    }
+
+    const config = await AppConfig.findOneAndUpdate(
+      { key: 'diamond_naira_rate' },
+      {
+        $set: {
+          value: rate,
+          updatedBy: adminId,
+          updatedAt: new Date(),
+        },
+        $push: {
+          history: {
+            value: rate,
+            changedBy: adminId,
+            changedAt: new Date(),
+          },
+        },
+      },
+      { upsert: true, new: true }
+    );
+
+    // Clear Redis cache immediately so new rate takes effect right away
+    await deleteCache('config:diamond_naira_rate');
+
+    return res.json({
+      success: true,
+      rate: config.value,
+      message: 'Rate updated successfully',
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: 'Server error', error: error.message });
   }
 };
 
