@@ -735,8 +735,8 @@ export const requestPayout = async (req: Request, res: Response) => {
     const rate = await getDiamondNairaRate();
     const pendingNaira = pendingCredits * rate;
 
-    if (pendingCredits < 5000) {
-      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: `Minimum payout threshold is 5,000 diamonds (≈ ₦${(5000 * rate).toLocaleString('en-NG')})` } });
+    if (pendingCredits < 500) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: `Minimum payout threshold is 500 diamonds (≈ ₦${(500 * rate).toLocaleString('en-NG')})` } });
     }
 
     // 2. Check user has enough credits to withdraw (user.credits)
