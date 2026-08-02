@@ -2425,7 +2425,7 @@ const ProviderMessages: React.FC = () => {
                 </label>
                 <div className="flex justify-between items-center p-3 bg-black/40 border border-white/5 rounded-xl">
                   <span className="text-xs text-gray-400">Your tonight rate (from profile):</span>
-                  <span className="text-xs font-mono font-bold text-amber-400">💎 {dynTonightRate || tonightRate} credits (≈ ${Math.round((dynTonightRate || tonightRate) * 0.1 * 100) / 100})</span>
+                  <span className="text-xs font-mono font-bold text-amber-400">💎 {dynTonightRate || tonightRate} credits (≈ {formatNaira((dynTonightRate || tonightRate) * usePricingStore.getState().diamondNairaRate)})</span>
                 </div>
               </div>
 
@@ -2502,7 +2502,7 @@ const ProviderMessages: React.FC = () => {
               <div className="border-t border-white/5 pt-4 flex justify-between items-center">
                 <span className="text-sm font-bold text-white uppercase tracking-wider">TOTAL:</span>
                 <span data-testid="service-request-total" className="text-2xl font-mono font-bold text-amber-400">
-                  💎 {totalServiceChargeAmount} credits <span className="text-xs text-gray-500 font-sans font-normal">(≈ ${Math.round(totalServiceChargeAmount * 0.1 * 100) / 100})</span>
+                  💎 {totalServiceChargeAmount} credits <span className="text-xs text-gray-500 font-sans font-normal">(≈ {formatNaira(totalServiceChargeAmount * usePricingStore.getState().diamondNairaRate)})</span>
                 </span>
               </div>
 
