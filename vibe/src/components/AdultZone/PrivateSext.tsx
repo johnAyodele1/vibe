@@ -2717,7 +2717,7 @@ const PrivateSext: React.FC = () => {
                       ) : (
                         <>
                           <span className="text-gray-400">Credits Charged:</span>
-                          <span className="font-bold text-yellow-400">💎 {callSummary.cost}  ≈  ${(callSummary.cost * 0.1).toFixed(2)}</span>
+                          <span className="font-bold text-yellow-400">💎 {callSummary.cost}  ≈  {formatNaira(callSummary.cost * usePricingStore.getState().diamondNairaRate)}</span>
                         </>
                       )}
                     </div>

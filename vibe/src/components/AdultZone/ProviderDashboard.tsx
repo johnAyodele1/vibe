@@ -167,12 +167,12 @@ const ProviderDashboard: React.FC = () => {
             <div className="space-y-1">
               <p className="text-xs text-[var(--az-text-secondary)] font-serif italic">Today's Earnings</p>
               <p className="text-4xl font-mono font-bold text-[var(--az-accent-gold)]">💎 {stats.todayEarnings}</p>
-              <p className="text-xs text-[var(--az-text-muted)]">${(stats.todayEarnings * 0.0075).toFixed(2)} est.</p>
+              <p className="text-xs text-[var(--az-text-muted)]">≈ {formatNaira(stats.todayEarnings * usePricingStore.getState().diamondNairaRate)} est.</p>
             </div>
             <div className="space-y-1 border-t md:border-t-0 md:border-l border-[var(--az-border)]/50 pt-4 md:pt-0 md:pl-8">
               <p className="text-xs text-[var(--az-text-secondary)] font-serif italic">This Week</p>
               <p className="text-4xl font-mono font-bold text-white">💎 {stats.weekEarnings}</p>
-              <p className="text-xs text-[var(--az-text-muted)]">${(stats.weekEarnings * 0.0075).toFixed(2)} est.</p>
+              <p className="text-xs text-[var(--az-text-muted)]">≈ {formatNaira(stats.weekEarnings * usePricingStore.getState().diamondNairaRate)} est.</p>
             </div>
             <div className="space-y-1 border-t md:border-t-0 md:border-l border-[var(--az-border)]/50 pt-4 md:pt-0 md:pl-8">
               <p className="text-xs text-[var(--az-text-secondary)] font-serif italic">This Month</p>
