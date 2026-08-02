@@ -361,12 +361,12 @@ describe('Onboarding Step Validation', () => {
       expect(res.body.errors.perMinuteRate).toBeDefined();
     });
 
-    it('returns 400 if perMinuteRate below 1.99', async () => {
+    it('returns 400 if perMinuteRate below 0', async () => {
       const res = await request(app)
         .put('/api/v1/adult/providers/me/onboarding/step/4')
         .set('Authorization', `Bearer ${providerToken}`)
         .send({
-          perMinuteRate: 1.50,
+          perMinuteRate: -1,
           tonightRate: 150,
         });
 

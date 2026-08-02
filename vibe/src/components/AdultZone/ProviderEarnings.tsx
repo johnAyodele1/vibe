@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { API_BASE_URL } from '../../config';
+import { usePricingStore, formatNaira } from '../../lib/pricing';
 
 const ProviderEarnings: React.FC = () => {
   const navigate = useNavigate();
@@ -54,8 +55,9 @@ const ProviderEarnings: React.FC = () => {
   }, [token, navigate, dateRange]);
 
   const requestEarlyPayout = async () => {
-    if (pending < 50.00) {
-      toast.error('Minimum payout threshold is $50.00 USD');
+    const rate = usePricingStore.getState().diamondNairaRate;
+    if (pending < (rate * 5000)) {
+      toast.error(`Minimum payout threshold is 5,000 diamonds (≈ ${formatNaira(5000 * rate)})`);
       return;
     }
     try {
@@ -116,19 +118,19 @@ const ProviderEarnings: React.FC = () => {
           <div className="bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-2xl p-6">
             <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-1">Total Accumulated Balance</p>
             <p className="text-3xl font-mono font-bold text-[var(--az-accent-gold)]">💎 {totalEarned}</p>
-            <p className="text-xs text-[var(--az-text-muted)]">${(totalEarned * 0.0075).toFixed(2)} est. valuation</p>
+            <p className="text-xs text-[var(--az-text-muted)]">≈ {formatNaira(totalEarned * usePricingStore.getState().diamondNairaRate)} est. valuation</p>
           </div>
 
           <div className="bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-2xl p-6">
             <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-1">Paid Out to Date</p>
-            <p className="text-3xl font-mono font-bold text-green-400">${paidOut.toFixed(2)}</p>
+            <p className="text-3xl font-mono font-bold text-green-400">{formatNaira(paidOut)}</p>
             <p className="text-xs text-[var(--az-text-muted)]">Cleared to configured payout coordinates</p>
           </div>
 
           <div className="bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-2xl p-6 flex flex-col justify-between">
             <div>
               <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-1">Pending Clearance</p>
-              <p className="text-3xl font-mono font-bold text-[var(--az-accent-rose)]">${pending.toFixed(2)}</p>
+              <p className="text-3xl font-mono font-bold text-[var(--az-accent-rose)]">{formatNaira(pending)}</p>
             </div>
             <button
               onClick={requestEarlyPayout}
@@ -188,7 +190,7 @@ const ProviderEarnings: React.FC = () => {
                     <th className="p-4 text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)]">Type</th>
                     <th className="p-4 text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)]">From / Method</th>
                     <th className="p-4 text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)]">Credits</th>
-                    <th className="p-4 text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)]">Estimated USD</th>
+                    <th className="p-4 text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)]">Estimated Earnings</th>
                     <th className="p-4 text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)]">Status</th>
                   </tr>
                 </thead>
@@ -211,7 +213,7 @@ const ProviderEarnings: React.FC = () => {
                             {tx.amount > 0 ? `+${tx.amount}` : tx.amount}
                           </td>
                           <td className="p-4 font-mono text-white">
-                            {tx.usd < 0 ? `-$${Math.abs(tx.usd).toFixed(2)}` : `$${tx.usd.toFixed(2)}`}
+                            {tx.naira !== undefined ? (tx.naira < 0 ? `-${formatNaira(Math.abs(tx.naira))}` : formatNaira(tx.naira)) : (tx.amount < 0 ? `-${formatNaira(Math.abs(tx.amount) * usePricingStore.getState().diamondNairaRate)}` : formatNaira(tx.amount * usePricingStore.getState().diamondNairaRate))}
                           </td>
                           <td className="p-4">
                             <span className={`px-2.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest ${

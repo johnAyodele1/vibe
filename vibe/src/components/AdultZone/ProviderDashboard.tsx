@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../../config';
+import { usePricingStore, formatNaira } from '../../lib/pricing';
 
 const ProviderDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -176,12 +177,12 @@ const ProviderDashboard: React.FC = () => {
             <div className="space-y-1 border-t md:border-t-0 md:border-l border-[var(--az-border)]/50 pt-4 md:pt-0 md:pl-8">
               <p className="text-xs text-[var(--az-text-secondary)] font-serif italic">This Month</p>
               <p className="text-4xl font-mono font-bold text-white">💎 {stats.monthEarnings}</p>
-              <p className="text-xs text-[var(--az-text-muted)]">${(stats.monthEarnings * 0.0075).toFixed(2)} est.</p>
+              <p className="text-xs text-[var(--az-text-muted)]">≈ {formatNaira(stats.monthEarnings * usePricingStore.getState().diamondNairaRate)} est.</p>
             </div>
           </div>
 
           <div className="border-t border-[var(--az-border)]/50 mt-8 pt-4 flex justify-between items-center">
-            <span className="text-[10px] text-[var(--az-text-muted)] uppercase tracking-widest font-bold">Payout Threshold: $50.00 USD</span>
+            <span className="text-[10px] text-[var(--az-text-muted)] uppercase tracking-widest font-bold">Payout Threshold: 5,000 diamonds (≈ {formatNaira(5000 * usePricingStore.getState().diamondNairaRate)})</span>
             <Link to="/adult/provider/earnings" className="text-xs text-[var(--az-accent-rose)] hover:underline uppercase font-bold tracking-widest">
               View Detailed Earnings History →
             </Link>

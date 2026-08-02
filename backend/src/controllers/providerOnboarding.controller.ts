@@ -4,6 +4,7 @@ import CreditTransaction from '../models/CreditTransaction';
 import AdultMessage from '../models/AdultMessage';
 import CamSession from '../models/CamSession';
 import { decrypt } from '../services/encryptionService';
+import { getDiamondNairaRate } from '../shared/pricing';
 
 const geocodeLocation = async (city: string, state: string, country: string) => {
   try {
@@ -415,16 +416,16 @@ export const saveOnboardingStep = async (req: Request, res: Response) => {
       if (selectedServices.includes('private_call')) {
         if (perMinuteRate === undefined || isNaN(Number(perMinuteRate))) {
           errors.perMinuteRate = 'Per-minute rate is required';
-        } else if (Number(perMinuteRate) < 1.99) {
-          errors.perMinuteRate = 'Minimum rate per minute is $1.99';
+        } else if (Number(perMinuteRate) < 0) {
+          errors.perMinuteRate = 'Minimum rate per minute is 0 diamonds';
         }
       }
 
       if (selectedServices.includes('hookup')) {
         if (tonightRate === undefined || isNaN(Number(tonightRate))) {
           errors.tonightRate = 'Rate for tonight is required';
-        } else if (Number(tonightRate) < 1) {
-          errors.tonightRate = 'Minimum rate for tonight is $1';
+        } else if (Number(tonightRate) < 0) {
+          errors.tonightRate = 'Minimum rate for tonight is 0 diamonds';
         }
       }
 
@@ -641,8 +642,9 @@ export const getProviderEarnings = async (req: Request, res: Response) => {
     // pendingCredits is remaining balance: totalEarned - paidOutCredits
     const pendingCredits = Math.max(0, totalEarned - paidOutCredits);
 
-    const paidOutUsd = paidOutCredits * 0.0075;
-    const pendingUsd = pendingCredits * 0.0075;
+    const rate = await getDiamondNairaRate();
+    const paidOutNaira = paidOutCredits * rate;
+    const pendingNaira = pendingCredits * rate;
 
     // 4. Calculate Earnings Timeline (last 6 days)
     const timeline: any[] = [];
@@ -695,6 +697,7 @@ export const getProviderEarnings = async (req: Request, res: Response) => {
         type: typeLabel,
         from: fromLabel,
         amount: tx.amount,
+        naira: Math.abs(tx.amount) * rate * (tx.amount < 0 ? -1 : 1),
         usd: Math.abs(tx.amount) * 0.0075 * (tx.amount < 0 ? -1 : 1),
         status: tx.status === 'completed' ? 'Completed' : tx.status.charAt(0).toUpperCase() + tx.status.slice(1)
       };
@@ -704,8 +707,8 @@ export const getProviderEarnings = async (req: Request, res: Response) => {
       success: true,
       data: {
         totalEarned,
-        paidOut: paidOutUsd,
-        pending: pendingUsd,
+        paidOut: paidOutNaira,
+        pending: pendingNaira,
         timeline,
         transactions: formattedTransactions
       }
@@ -728,10 +731,12 @@ export const requestPayout = async (req: Request, res: Response) => {
     const payoutTxs = transactions.filter(tx => tx.type === 'payout');
     const paidOutCredits = payoutTxs.reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
     const pendingCredits = Math.max(0, totalEarned - paidOutCredits);
-    const pendingUsd = pendingCredits * 0.0075;
 
-    if (pendingUsd < 50.00) {
-      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Minimum payout threshold is $50.00 USD' } });
+    const rate = await getDiamondNairaRate();
+    const pendingNaira = pendingCredits * rate;
+
+    if (pendingCredits < 5000) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: `Minimum payout threshold is 5,000 diamonds (≈ ₦${(5000 * rate).toLocaleString('en-NG')})` } });
     }
 
     // 2. Check user has enough credits to withdraw (user.credits)
@@ -753,6 +758,7 @@ export const requestPayout = async (req: Request, res: Response) => {
       type: 'payout',
       amount: -payoutAmountCredits,
       usdAmount: -(payoutAmountCredits * 0.0075),
+      nairaAmount: -(payoutAmountCredits * rate),
       description: 'Payout to configured coordinates',
       status: 'completed'
     });
@@ -1025,7 +1031,7 @@ export const getMyProfile = async (req: Request, res: Response) => {
           isChanged = true;
         }
         if (user.providerProfile.tonightRate === undefined || user.providerProfile.tonightRate === null) {
-          user.providerProfile.tonightRate = 150;
+          user.providerProfile.tonightRate = 300;
           isChanged = true;
         }
       }
@@ -1128,8 +1134,8 @@ export const updatePricing = async (req: Request, res: Response) => {
 
     const { perMinuteRate, tonightRate, tipMenu, videoCallPrice, audioCallPrice, privateSextPrice } = req.body;
 
-    if (perMinuteRate !== undefined && perMinuteRate < 1.99) {
-      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Minimum per-minute rate is $1.99' } });
+    if (perMinuteRate !== undefined && perMinuteRate < 0) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Minimum per-minute rate is 0 diamonds' } });
     }
 
     if (!user.providerProfile) {

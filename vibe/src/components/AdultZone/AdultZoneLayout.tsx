@@ -8,6 +8,7 @@ import LoadingScreen from '../LoadingScreen/LoadingScreen';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { TipSheet } from './TipSheet';
 import { useUIStore } from './useUIStore';
+import { usePricingStore } from '../../lib/pricing';
 
 const AdultZoneLayout: React.FC = () => {
   const { hideGlobalHeader, hideFooter } = useUIStore();
@@ -26,6 +27,17 @@ const AdultZoneLayout: React.FC = () => {
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const { isAuthenticated, logout, user, loading } = useAdultAuth();
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/v1/adult/config/diamond-rate`)
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.rate) {
+          usePricingStore.getState().setRate(data.rate);
+        }
+      })
+      .catch(err => console.error('Failed to fetch diamond rate config:', err));
+  }, []);
   const location = useLocation();
   const navigate = useNavigate();
 

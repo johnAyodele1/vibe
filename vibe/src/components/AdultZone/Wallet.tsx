@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { API_BASE_URL } from '../../config';
+import { usePricingStore, formatNaira } from '../../lib/pricing';
 
 const Wallet: React.FC = () => {
   const navigate = useNavigate();
@@ -157,7 +158,7 @@ const Wallet: React.FC = () => {
           <span>{loadingWallet ? '...' : (wallet?.creditBalance ?? 0)}</span>
         </div>
         <p className="text-sm text-[var(--az-text-secondary)] font-serif italic">
-          {loadingWallet ? 'Loading wallet...' : `Credits available for tipping & private shows (~$${wallet?.estimatedUsdValue ?? '0.00'} USD)`}
+          {loadingWallet ? 'Loading wallet...' : `Credits available for tipping & private shows (~${formatNaira((wallet?.creditBalance ?? 0) * usePricingStore.getState().diamondNairaRate)})`}
         </p>
       </div>
 
@@ -195,7 +196,9 @@ const Wallet: React.FC = () => {
                 </div>
 
                 <div className="flex items-center justify-between">
-                  <span className="text-xl font-bold text-[var(--az-text-primary)]">${bundle.priceUsd}</span>
+                  <span className="text-xl font-bold text-[var(--az-text-primary)]">
+                    {formatNaira(bundle.priceNaira || (bundle.credits * usePricingStore.getState().diamondNairaRate))}
+                  </span>
                   <button
                     disabled={purchaseLoading !== null}
                     className={`px-6 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all ${isBestValue ? 'bg-[var(--az-accent-gold)] text-black shadow-lg shadow-yellow-900/20' : 'bg-[var(--az-bg-tertiary)] text-[var(--az-text-primary)] group-hover:bg-[var(--az-accent-primary)] group-hover:text-white'}`}
@@ -235,9 +238,12 @@ const Wallet: React.FC = () => {
                         {new Date(tx.createdAt).toLocaleDateString()}
                       </p>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right flex flex-col items-end">
                       <p className={`text-xs font-mono font-bold ${isPositive ? 'text-green-400' : 'text-[var(--az-accent-rose)]'}`}>
                         {isPositive ? '+' : '-'}{tx.amount} 💎
+                      </p>
+                      <p className="text-[10px] text-[var(--az-text-muted)] font-mono">
+                        ≈ {formatNaira(Math.abs(tx.amount) * usePricingStore.getState().diamondNairaRate)}
                       </p>
                       <p className="text-[8px] uppercase tracking-tighter text-[var(--az-text-muted)] font-bold">{tx.status}</p>
                     </div>

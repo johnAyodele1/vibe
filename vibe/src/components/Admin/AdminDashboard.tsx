@@ -231,6 +231,157 @@ const AdminDashboard: React.FC = () => {
           </table>
         </div>
       </div>
+
+      <div className={styles.section}>
+        <h2>System Settings</h2>
+        <RateConfigPanel />
+      </div>
+    </div>
+  );
+};
+
+const RateConfigPanel: React.FC = () => {
+  const [config, setConfig] = useState<{ rate: number; history: any[] } | null>(null);
+  const [newRate, setNewRate] = useState<string>("");
+  const [saving, setSaving] = useState(false);
+
+  const fetchRateConfig = async () => {
+    try {
+      const token = localStorage.getItem("adminToken");
+      const res = await fetch(`${API_BASE_URL}/admin/config/diamond-rate`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setConfig(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch rate config:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchRateConfig();
+  }, []);
+
+  const handleSave = async () => {
+    const rate = parseInt(newRate, 10);
+    if (!rate || rate < 1) {
+      toast.error("Please enter a valid rate");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const token = localStorage.getItem("adminToken");
+      const res = await fetch(`${API_BASE_URL}/admin/config/diamond-rate`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ rate })
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`Rate updated successfully: ₦${rate} per diamond`);
+        setNewRate("");
+        fetchRateConfig();
+      } else {
+        toast.error(data.message || "Failed to update rate");
+      }
+    } catch (err) {
+      toast.error("Could not update rate");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="bg-[#1a1a1c] border border-neutral-800 rounded-2xl p-8 text-white max-w-3xl">
+      <h3 className="text-xl font-bold mb-2 flex items-center gap-2 text-white">
+        💎 Diamond Exchange Rate Management
+      </h3>
+      <p className="text-sm text-neutral-400 mb-6">
+        Configure how much 1 diamond is worth in Nigerian Naira (₦).
+        Changing this affects all future Naira displays, earnings calculations, and payment amounts immediately.
+        It does NOT retroactively alter past transactions.
+      </p>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div>
+          <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 mb-6">
+            <span className="text-xs uppercase tracking-wider text-neutral-500 font-bold block mb-1">Current rate:</span>
+            <span className="text-2xl font-mono text-amber-500 font-bold block">
+              ₦{config?.rate ?? "100"} per 💎 diamond
+            </span>
+            <span className="text-xs text-neutral-400 mt-2 block font-serif italic">
+              Example: 1,000 Naira = {Math.floor(1000 / (config?.rate || 100))} diamonds
+            </span>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs uppercase tracking-wider text-neutral-400 font-bold block mb-2">
+                New rate (₦ per diamond)
+              </label>
+              <div className="flex items-center bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-2">
+                <span className="text-neutral-500 font-bold mr-2">₦</span>
+                <input
+                  type="number"
+                  min="1"
+                  className="bg-transparent border-none outline-none text-white w-full font-mono font-bold"
+                  value={newRate}
+                  onChange={e => setNewRate(e.target.value)}
+                  placeholder={config?.rate?.toString() || "100"}
+                />
+                <span className="text-neutral-500 text-xs uppercase font-bold ml-2">per 💎</span>
+              </div>
+            </div>
+
+            {newRate && (
+              <p className="text-xs text-amber-500 font-mono">
+                Preview: 1,000 Naira = {Math.floor(1000 / (parseInt(newRate, 10) || 1))} diamonds
+              </p>
+            )}
+
+            <button
+              onClick={handleSave}
+              disabled={saving || !newRate}
+              className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition-all uppercase text-xs tracking-widest disabled:opacity-50"
+            >
+              {saving ? "Saving..." : "Update Rate"}
+            </button>
+
+            <p className="text-[10px] text-red-500/80 italic">
+              ⚠️ Changing this updates all Naira displays immediately. Notify users before major rate changes.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-col">
+          <h4 className="text-xs uppercase tracking-wider text-neutral-400 font-bold mb-3">Rate Change History</h4>
+          <div className="flex-grow bg-neutral-900 border border-neutral-800 rounded-xl p-4 max-h-[250px] overflow-y-auto space-y-3">
+            {!config?.history || config.history.length === 0 ? (
+              <p className="text-xs text-neutral-500 italic">No previous rate changes logged.</p>
+            ) : (
+              config.history.slice().reverse().map((h, i) => (
+                <div key={i} className="border-b border-neutral-800 pb-2 last:border-0 last:pb-0">
+                  <div className="flex justify-between text-xs font-bold text-neutral-300">
+                    <span>₦{h.value} / 💎</span>
+                    <span className="text-neutral-500">
+                      {new Date(h.changedAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-neutral-500">
+                    Changed by: {h.changedBy}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

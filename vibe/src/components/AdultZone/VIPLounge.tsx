@@ -4,24 +4,24 @@ const VIPLounge: React.FC = () => {
   const tiers = [
     {
       name: 'Gold',
-      price: '$9.99',
+      price: '₦4,999',
       duration: '/mo',
-      features: ['Access to all Live Cams', 'Basic Naughty Rooms', '5 Free Credits Monthly', 'Standard Support'],
+      features: ['Access to all Live Cams', 'Basic Naughty Rooms', '💎 10 Credits Monthly', 'Standard Support'],
       color: 'border-yellow-700/30'
     },
     {
       name: 'Platinum',
-      price: '$19.99',
+      price: '₦9,999',
       duration: '/mo',
-      features: ['Priority Cam Access', 'All Premium Rooms', '20 Free Credits Monthly', 'Private Photo Requests', 'No Ads'],
+      features: ['Priority Cam Access', 'All Premium Rooms', '💎 20 Credits Monthly', 'Private Photo Requests', 'No Ads'],
       color: 'border-[var(--az-accent-rose)]',
       popular: true
     },
     {
       name: 'Diamond',
-      price: '$39.99',
+      price: '₦19,999',
       duration: '/mo',
-      features: ['Full Elite Access', 'Exclusive Performer Events', '100 Free Credits Monthly', 'Personal Account Manager', 'Crypto Rewards'],
+      features: ['Full Elite Access', 'Exclusive Performer Events', '💎 100 Credits Monthly', 'Personal Account Manager', 'Crypto Rewards'],
       color: 'border-[var(--az-accent-gold)]'
     }
   ];

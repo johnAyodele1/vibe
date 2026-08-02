@@ -4,6 +4,7 @@ import { io } from 'socket.io-client';
 import { API_BASE_URL, SOCKET_URL } from '../../config';
 import { useTipSheetStore } from './useTipSheetStore';
 import { useWalletStore } from './useWalletStore';
+import { usePricingStore } from '../../lib/pricing';
 
 const PRESETS = [10, 25, 50, 100, 250, 500];
 
@@ -253,7 +254,8 @@ export const TipSheet: React.FC = () => {
     }
   };
 
-  const usdValue = finalAmount * 0.0075;
+  const rate = usePricingStore((state) => state.diamondNairaRate);
+  const nairaValue = finalAmount * rate;
 
   return (
     <div className="fixed inset-0 z-[20000] flex items-end md:items-center justify-center">
@@ -400,7 +402,7 @@ export const TipSheet: React.FC = () => {
                     </div>
                     {finalAmount > 0 && (
                       <span className="text-xs text-[var(--az-text-muted)] font-mono">
-                        ≈ ${usdValue.toFixed(2)}
+                        ≈ ₦{nairaValue.toLocaleString('en-NG')}
                       </span>
                     )}
                   </div>

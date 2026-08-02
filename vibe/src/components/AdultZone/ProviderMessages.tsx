@@ -8,6 +8,7 @@ import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { toast } from 'sonner';
 import { useUIStore } from './useUIStore';
 import MessageTick, { getMessageStatus } from './MessageTick';
+import { usePricingStore, formatNaira } from '../../lib/pricing';
 
 const CallRoom = React.lazy(() => import('./CallRoom'));
 
@@ -1768,7 +1769,7 @@ const ProviderMessages: React.FC = () => {
                             <span className="font-mono text-amber-400">💎 {m.serviceRequest?.totalAmount}</span>
                           </div>
                           <span className="text-[10px] text-gray-500 block text-right">
-                            ≈ ${(m.serviceRequest?.totalAmount! * 0.1).toFixed(2)} USD
+                            ≈ {formatNaira(m.serviceRequest?.totalAmount! * usePricingStore.getState().diamondNairaRate)}
                           </span>
                         </div>
 
@@ -2269,7 +2270,7 @@ const ProviderMessages: React.FC = () => {
                   />
                 </div>
                 <p className="text-[11px] text-gray-500 mt-1">
-                  Members pay this to view your content. (≈ ${Math.round(paidMediaCost * 0.1 * 100) / 100} USD value)
+                  Members pay this to view your content. (≈ {formatNaira(paidMediaCost * usePricingStore.getState().diamondNairaRate)} value)
                 </p>
               </div>
 

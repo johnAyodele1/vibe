@@ -124,12 +124,12 @@ describe('Provider Onboarding & Profile API', () => {
     expect(res.body.data.user.providerProfile.tipMenu.length).toBe(2);
   });
 
-  it('PUT /api/v1/adult/providers/me/pricing rejects perMinuteRate below 1.99', async () => {
+  it('PUT /api/v1/adult/providers/me/pricing rejects perMinuteRate below 0', async () => {
     await request(app)
       .put('/api/v1/adult/providers/me/pricing')
       .set('Authorization', `Bearer ${providerToken}`)
       .send({
-        perMinuteRate: 1.50,
+        perMinuteRate: -1,
       })
       .expect(400);
   });

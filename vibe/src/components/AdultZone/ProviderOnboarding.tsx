@@ -6,6 +6,7 @@ import LocationSelect from './LocationSelect';
 import { toast } from 'sonner';
 import { useOnboardingStore } from './useOnboardingStore';
 import { compressToWebP } from '../../lib/media/compressImage';
+import { usePricingStore } from '../../lib/pricing';
 
 const ProviderOnboarding: React.FC = () => {
   const navigate = useNavigate();
@@ -56,8 +57,8 @@ const ProviderOnboarding: React.FC = () => {
   const [compressing, setCompressing] = useState(false);
   const [services, setServices] = useState<string[]>(['live_cam']);
   const [pricing, setPricing] = useState({
-    pricePerMinute: 3.99,
-    tonightRate: 150,
+    pricePerMinute: 5,
+    tonightRate: 300,
     chargeForMedia: false,
     pricePerPhoto: 10,
     pricePerVideo: 25,
@@ -157,8 +158,8 @@ const ProviderOnboarding: React.FC = () => {
             const s4 = data.stepData[4];
             setPricing(prev => ({
               ...prev,
-              pricePerMinute: s4.pricing?.perMinuteRate || 3.99,
-              tonightRate: s4.pricing?.tonightRate || 150,
+              pricePerMinute: s4.pricing?.perMinuteRate || 5,
+              tonightRate: s4.pricing?.tonightRate || 300,
             }));
             setTipMenu(s4.tipMenu || []);
           }
@@ -374,13 +375,13 @@ const ProviderOnboarding: React.FC = () => {
       }
 
       else if (step === 4) {
-        if (services.includes('private_call') && pricing.pricePerMinute < 1.99) {
-          toast.error('Minimum rate per minute is $1.99');
+        if (services.includes('private_call') && (pricing.pricePerMinute === undefined || pricing.pricePerMinute < 0)) {
+          toast.error('Per-minute rate is required');
           setSaving(false);
           return;
         }
-        if (services.includes('hookup') && pricing.tonightRate < 1) {
-          toast.error('Minimum rate for tonight is $1');
+        if (services.includes('hookup') && (pricing.tonightRate === undefined || pricing.tonightRate < 0)) {
+          toast.error('Rate for tonight is required');
           setSaving(false);
           return;
         }
@@ -873,16 +874,20 @@ const ProviderOnboarding: React.FC = () => {
                 <div className="p-5 bg-[var(--az-bg-tertiary)] rounded-2xl border border-[var(--az-border)]">
                   <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">Per-minute Video Call Rate</label>
                   <div className="flex items-center gap-3">
-                    <span className="text-2xl font-mono text-[var(--az-accent-gold)] font-bold">$</span>
+                    <span className="text-2xl font-mono text-[var(--az-accent-gold)] font-bold">💎</span>
                     <input
                       type="number"
-                      step="0.01"
-                      min="1.99"
+                      min="5"
                       className="bg-black border border-[var(--az-border)] rounded-xl px-4 py-3 text-white font-mono outline-none text-xl w-32"
                       value={pricing.pricePerMinute}
                       onChange={e => setPricing({ ...pricing, pricePerMinute: parseFloat(e.target.value) || 0 })}
                     />
-                    <span className="text-xs text-[var(--az-text-muted)]">Suggested range: $3.99 – $9.99/min</span>
+                    <div className="flex flex-col">
+                      <span className="text-xs text-[var(--az-text-muted)]">Suggested range: 💎 5 – 50 / min</span>
+                      <span className="text-xs text-[var(--az-accent-gold)] font-bold">
+                        ≈ ₦{((pricing.pricePerMinute || 0) * usePricingStore.getState().diamondNairaRate).toLocaleString('en-NG')} per minute
+                      </span>
+                    </div>
                   </div>
                 </div>
               )}
@@ -891,14 +896,19 @@ const ProviderOnboarding: React.FC = () => {
                 <div className="p-5 bg-[var(--az-bg-tertiary)] rounded-2xl border border-[var(--az-border)]">
                   <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">Your Rate for Tonight</label>
                   <div className="flex items-center gap-3">
-                    <span className="text-2xl font-mono text-[var(--az-accent-gold)] font-bold">$</span>
+                    <span className="text-2xl font-mono text-[var(--az-accent-gold)] font-bold">💎</span>
                     <input
                       type="number"
                       className="bg-black border border-[var(--az-border)] rounded-xl px-4 py-3 text-white font-mono outline-none text-xl w-32"
                       value={pricing.tonightRate}
                       onChange={e => setPricing({ ...pricing, tonightRate: parseInt(e.target.value) || 0 })}
                     />
-                    <span className="text-xs text-[var(--az-text-muted)]">Fixed premium flat-fee for tonight arrange requests.</span>
+                    <div className="flex flex-col">
+                      <span className="text-xs text-[var(--az-text-muted)]">Fixed premium flat-fee for tonight arrange requests. (Suggested: 300+ diamonds)</span>
+                      <span className="text-xs text-[var(--az-accent-gold)] font-bold">
+                        ≈ ₦{((pricing.tonightRate || 0) * usePricingStore.getState().diamondNairaRate).toLocaleString('en-NG')}
+                      </span>
+                    </div>
                   </div>
                 </div>
               )}
@@ -972,7 +982,7 @@ const ProviderOnboarding: React.FC = () => {
                   <div className="flex justify-between items-center border-t border-[var(--az-border)]/50 pt-4">
                     <span className="text-xs text-[var(--az-text-secondary)]">Weekly Take-Home (75%)</span>
                     <span className="text-2xl font-mono text-green-400 font-bold">
-                      ${((calcMinutes * pricing.pricePerMinute) * 0.75).toFixed(2)}
+                      💎 {Math.floor((calcMinutes * pricing.pricePerMinute) * 0.75).toLocaleString()} (≈ ₦{(Math.floor((calcMinutes * pricing.pricePerMinute) * 0.75) * usePricingStore.getState().diamondNairaRate).toLocaleString('en-NG')})
                     </span>
                   </div>
                 </div>
