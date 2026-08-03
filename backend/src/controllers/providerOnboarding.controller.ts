@@ -5,6 +5,7 @@ import AdultMessage from '../models/AdultMessage';
 import CamSession from '../models/CamSession';
 import { decrypt } from '../services/encryptionService';
 import { getDiamondNairaRate } from '../shared/pricing';
+import { FOLDERS, uploadToCloudinary } from '../shared/media/cloudinaryUpload';
 
 const geocodeLocation = async (city: string, state: string, country: string) => {
   try {
@@ -78,6 +79,71 @@ export const getPresignedUrl = async (req: Request, res: Response) => {
     return res.json({ uploadUrl, publicUrl });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const uploadMedia = async (req: Request, res: Response) => {
+  const { context, isLocked } = req.body;
+  const file = req.file;
+
+  if (!file) return res.status(400).json({ error: 'No file provided' });
+
+  // Determine folder and resource type from context
+  const CONTEXT_MAP: Record<string, { folder: string, resourceType: 'image' | 'video' | 'raw', isPrivate: boolean }> = {
+    profile_photo:    { folder: FOLDERS.profilePhoto,    resourceType: 'image',  isPrivate: false },
+    onboarding_photo: { folder: FOLDERS.onboardingPhoto, resourceType: 'image',  isPrivate: false },
+    onboarding_video: { folder: FOLDERS.onboardingVideo, resourceType: 'video',  isPrivate: false },
+    chat_image:       { folder: FOLDERS.chatImage,       resourceType: 'image',  isPrivate: false },
+    chat_video:       { folder: FOLDERS.chatVideo,       resourceType: 'video',  isPrivate: false },
+    voice_note:       { folder: FOLDERS.voiceNote,       resourceType: 'video',  isPrivate: false },
+    paid_image:       { folder: FOLDERS.paidMedia,       resourceType: 'image',  isPrivate: true  },
+    paid_video:       { folder: FOLDERS.paidMedia,       resourceType: 'video',  isPrivate: true  },
+    cam_thumbnail:    { folder: FOLDERS.camThumbnail,    resourceType: 'image',  isPrivate: false },
+  };
+
+  const config = CONTEXT_MAP[context as string];
+  if (!config) return res.status(400).json({ error: 'Invalid context' });
+
+  // File size limits per type
+  const SIZE_LIMITS = {
+    image: 2 * 1024 * 1024,    // 2MB (already compressed client-side to WebP at 0.4)
+    audio: 5 * 1024 * 1024,    // 5MB for voice notes
+    video: 5 * 1024 * 1024,    // 5MB for videos
+  };
+
+  const typeCategory = file.mimetype.startsWith('audio') || context === 'voice_note'
+    ? 'audio'
+    : file.mimetype.startsWith('video')
+    ? 'video'
+    : 'image';
+
+  if (file.size > SIZE_LIMITS[typeCategory]) {
+    return res.status(413).json({
+      error: `File too large. Maximum: ${SIZE_LIMITS[typeCategory] / 1024 / 1024}MB`,
+    });
+  }
+
+  try {
+    const result = await uploadToCloudinary(file.buffer, {
+      resourceType: config.resourceType,
+      folder:       config.folder,
+      isPrivate:    config.isPrivate || isLocked === 'true',
+    });
+
+    return res.json({
+      url:         result.url,
+      publicUrl:   result.url, // For compatibility
+      publicId:    result.publicId,
+      format:      result.format,
+      bytes:       result.bytes,
+      duration:    result.duration,
+      width:       result.width,
+      height:      result.height,
+      isPrivate:   config.isPrivate || isLocked === 'true',
+    });
+  } catch (err) {
+    console.error('Cloudinary upload error:', err);
+    return res.status(500).json({ error: 'Upload failed. Please try again.' });
   }
 };
 

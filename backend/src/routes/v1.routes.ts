@@ -1,9 +1,11 @@
 import express from 'express';
 import { getCountries, getStatesByCountry, getCities } from '../controllers/sharedLocation.controller';
 import { verifyAdultJWT, optionalAdultJWT } from '../middleware/adultAuth';
+import multer from 'multer';
 import {
   getPresignedUrl,
   handleMockUpload,
+  uploadMedia,
   getMyProfile,
   updateProfile,
   updateServices,
@@ -80,7 +82,10 @@ import {
 import { getZegoToken } from '../controllers/zego.controller';
 import { joinMatchQueue, leaveMatchQueue, endMatchSession, nextStranger } from '../controllers/randomMatch.controller';
 
+import { trackDailyActive } from '../middleware/trackDailyActive';
+
 const router = express.Router();
+router.use(trackDailyActive);
 
 // Zego Token Route
 router.get('/adult/zego/token', verifyAdultJWT, getZegoToken);
@@ -97,8 +102,14 @@ router.get('/shared/countries/:code/states', getStatesByCountry);
 router.get('/shared/cities', getCities);
 
 // Media uploads simulation
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 100 * 1024 * 1024 } // 100MB limit for video upload support
+});
+
 router.get('/adult/media/presigned-url', verifyAdultJWT, getPresignedUrl);
 router.put('/adult/media/upload-mock', handleMockUpload);
+router.post('/adult/media/upload', verifyAdultJWT, upload.single('file'), uploadMedia);
 
 // Wallet & Subscription routes
 router.get('/adult/wallet', verifyAdultJWT, getWallet);

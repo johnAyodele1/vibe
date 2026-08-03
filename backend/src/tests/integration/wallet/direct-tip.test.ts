@@ -165,7 +165,7 @@ describe('POST /api/v1/adult/wallet/tip', () => {
         .set('Authorization', `Bearer ${memberToken}`)
         .send({ recipientId: providerId, amount: 100 });
       const providerAfter = await getWalletBalance(providerId);
-      expect(providerAfter).toBe(providerBefore + 100);
+      expect(providerAfter).toBe(providerBefore + 85);
     });
 
     it('returns 200 with tipId, newBalance, recipientName', async () => {
@@ -197,7 +197,7 @@ describe('POST /api/v1/adult/wallet/tip', () => {
       const tx = await getLatestTransaction(providerId);
       expect(tx).toBeTruthy();
       expect(tx!.type).toBe('tip_received');
-      expect(tx!.amount).toBe(100);
+      expect(tx!.amount).toBe(85);
       expect(tx!.status).toBe('completed');
     });
 
@@ -313,7 +313,7 @@ describe('POST /api/v1/adult/wallet/tip', () => {
       await Promise.all(tips);
       const providerAfter = await getWalletBalance(providerId);
       const successCount = 3;
-      expect(providerAfter).toBe(providerBefore + (60 * successCount));
+      expect(providerAfter).toBe(providerBefore + (51 * successCount));
     });
   });
 

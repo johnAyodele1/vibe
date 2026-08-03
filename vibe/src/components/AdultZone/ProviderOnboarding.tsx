@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { useOnboardingStore } from './useOnboardingStore';
 import { compressToWebP } from '../../lib/media/compressImage';
 import { usePricingStore } from '../../lib/pricing';
+import { uploadMedia } from '../../lib/media/uploadMedia';
 
 const ProviderOnboarding: React.FC = () => {
   const navigate = useNavigate();
@@ -243,21 +244,8 @@ const ProviderOnboarding: React.FC = () => {
       console.log(`Compressed: ${(file.size/1024).toFixed(0)}KB → ${(webpFile.size/1024).toFixed(0)}KB`);
       setCompressing(false);
 
-      const webpFilename = file.name.replace(/\.[^/.]+$/, "") + '.webp';
-
-      const res = await fetch(`${API_BASE_URL}/v1/adult/media/presigned-url?type=image&filename=${encodeURIComponent(webpFilename)}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (!res.ok || !data.uploadUrl) throw new Error(data.error || 'Failed pre-signed URL fetch');
-
-      await fetch(data.uploadUrl, {
-        method: 'PUT',
-        body: webpFile,
-        headers: { 'Content-Type': 'image/webp' }
-      });
-
-      const photoUrl = data.publicUrl;
+      const result = await uploadMedia(webpFile, 'onboarding_photo');
+      const photoUrl = result.url;
       setPhotos(prev => [...prev, photoUrl]);
       toast.success('Photo uploaded and optimized successfully');
     } catch (err: any) {
@@ -290,19 +278,8 @@ const ProviderOnboarding: React.FC = () => {
 
     setUploading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/v1/adult/media/presigned-url?type=video&filename=${encodeURIComponent(file.name)}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (!res.ok || !data.uploadUrl) throw new Error(data.error || 'Failed pre-signed URL fetch');
-
-      await fetch(data.uploadUrl, {
-        method: 'PUT',
-        body: file,
-        headers: { 'Content-Type': file.type }
-      });
-
-      const videoUrl = data.publicUrl;
+      const result = await uploadMedia(file, 'onboarding_video');
+      const videoUrl = result.url;
       setVideos(prev => [...prev, videoUrl]);
       toast.success('Video preview uploaded successfully');
     } catch (err: any) {

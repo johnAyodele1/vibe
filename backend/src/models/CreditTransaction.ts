@@ -23,7 +23,13 @@ const creditTransactionSchema = new Schema<ICreditTransaction>(
         'bonus',
         'tip',
         'subscription',
-        'reward'
+        'reward',
+        'call_charge',
+        'call_earning',
+        'service_payment_received',
+        'service_payment_sent',
+        'paid_media_unlock',
+        'spin_wheel'
       ],
     },
     amount: {
@@ -59,6 +65,14 @@ const creditTransactionSchema = new Schema<ICreditTransaction>(
       required: true,
       enum: ['pending', 'completed', 'failed', 'refunded'],
       default: 'pending',
+    },
+    platformFee: {
+      type: Number,
+      default: 0,
+    },
+    eligibleForPayout: {
+      type: Boolean,
+      default: true,
     },
     metadata: Schema.Types.Mixed,
   },

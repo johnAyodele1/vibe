@@ -108,7 +108,7 @@ export interface IAdultUserModel extends Model<IAdultUser> {}
 
 export interface ICreditTransaction extends Document {
   userId: Types.ObjectId;
-  type: 'purchase' | 'spend' | 'refund' | 'tip_sent' | 'tip_received' | 'cam_tip' | 'payout' | 'bonus' | 'tip' | 'subscription' | 'reward';
+  type: 'purchase' | 'spend' | 'refund' | 'tip_sent' | 'tip_received' | 'cam_tip' | 'payout' | 'bonus' | 'tip' | 'subscription' | 'reward' | 'call_charge' | 'call_earning' | 'service_payment_received' | 'service_payment_sent' | 'paid_media_unlock' | 'spin_wheel';
   amount: number;
   usdAmount: number;
   nairaAmount?: number;
@@ -117,6 +117,8 @@ export interface ICreditTransaction extends Document {
   paymentProvider?: 'stripe' | 'apple' | 'google' | 'crypto';
   paymentIntentId?: string;
   status: 'pending' | 'completed' | 'failed' | 'refunded';
+  platformFee?: number;
+  eligibleForPayout?: boolean;
   metadata?: any;
   createdAt: Date;
 }
@@ -234,6 +236,7 @@ export interface IMessage extends Document {
   content: string;
   messageType: string; // support expanded types: text, image, video, audio, voice_note, gift, locked_image, locked_video, request_photo, system
   mediaUrl?: string;
+  cloudinaryPublicId?: string;
   mediaThumbnailUrl?: string;
   mediaDurationSeconds?: number;
   mediaFileSizeBytes?: number;

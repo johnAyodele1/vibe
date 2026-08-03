@@ -115,9 +115,24 @@ const ProviderEarnings: React.FC = () => {
 
         {/* Financial metrics bar */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-2xl p-6">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-1">Total Accumulated Balance</p>
-            <p className="text-3xl font-mono font-bold text-[var(--az-accent-gold)]">💎 {totalEarned}</p>
+          <div className="bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-2xl p-6 flex flex-col justify-between">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-3">Total Accumulated Balance</p>
+              <div className="space-y-2 text-xs mb-3 border-b border-[var(--az-border)]/30 pb-3">
+                <div className="flex justify-between">
+                  <span className="text-[var(--az-text-secondary)]">Gross earnings</span>
+                  <span className="font-mono">💎 {Math.round(totalEarned / 0.85).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between text-[var(--az-accent-rose)]">
+                  <span>Platform fee (15%)</span>
+                  <span className="font-mono">- 💎 {Math.round((totalEarned / 0.85) * 0.15).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between text-[var(--az-accent-gold)] font-bold">
+                  <span>Your earnings (85%)</span>
+                  <span className="font-mono">💎 {totalEarned.toLocaleString()}</span>
+                </div>
+              </div>
+            </div>
             <p className="text-xs text-[var(--az-text-muted)]">≈ {formatNaira(totalEarned * usePricingStore.getState().diamondNairaRate)} est. valuation</p>
           </div>
 
@@ -211,6 +226,11 @@ const ProviderEarnings: React.FC = () => {
                           <td className="p-4 text-[var(--az-text-secondary)]">{tx.from}</td>
                           <td className={`p-4 font-mono font-bold ${tx.amount > 0 ? 'text-green-400' : 'text-red-400'}`}>
                             {tx.amount > 0 ? `+${tx.amount}` : tx.amount}
+                            {tx.platformFee > 0 && (
+                              <div className="text-[10px] text-neutral-400 font-normal mt-0.5">
+                                Fee: -💎{tx.platformFee}
+                              </div>
+                            )}
                           </td>
                           <td className="p-4 font-mono text-white">
                             {tx.naira !== undefined ? (tx.naira < 0 ? `-${formatNaira(Math.abs(tx.naira))}` : formatNaira(tx.naira)) : (tx.amount < 0 ? `-${formatNaira(Math.abs(tx.amount) * usePricingStore.getState().diamondNairaRate)}` : formatNaira(tx.amount * usePricingStore.getState().diamondNairaRate))}

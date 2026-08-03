@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { useUIStore } from './useUIStore';
 import MessageTick, { getMessageStatus } from './MessageTick';
 import { usePricingStore, formatNaira } from '../../lib/pricing';
+import { uploadMedia } from '../../lib/media/uploadMedia';
 
 const CallRoom = React.lazy(() => import('./CallRoom'));
 
@@ -940,24 +941,15 @@ const ProviderMessages: React.FC = () => {
     setUploadProgress(10);
 
     try {
-      const realPresignedUrlRes = await fetch(`${API_BASE_URL}/v1/adult/media/presigned-url?type=${uploadFile.type.startsWith('video/') ? 'video' : 'image'}&filename=${encodeURIComponent(uploadFile.name)}`, {
-        headers: getHeaders()
-      });
-      const presignedData = await realPresignedUrlRes.json();
+      const isVideo = uploadFile.type.startsWith('video/');
+      const context = isVideo ? 'chat_video' : 'chat_image';
 
-      setUploadProgress(40);
-
-      await fetch(presignedData.uploadUrl, {
-        method: 'PUT',
-        body: uploadFile,
-        headers: {
-          'Content-Type': uploadFile.type
-        }
+      const result = await uploadMedia(uploadFile, context, false, (percent) => {
+        setUploadProgress(10 + Math.round(percent * 0.7)); // scale from 10 to 80
       });
 
       setUploadProgress(80);
 
-      const isVideo = uploadFile.type.startsWith('video/');
       const mediaType = isVideo ? 'video' : 'image';
 
       const res = await fetch(`${API_BASE_URL}/v1/adult/sext/messages/${selectedConv.conversationId}`, {
@@ -965,8 +957,9 @@ const ProviderMessages: React.FC = () => {
         headers: getHeaders(),
         body: JSON.stringify({
           type: mediaType,
-          mediaUrl: presignedData.publicUrl,
-          mediaThumbnailUrl: isVideo ? "https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?q=80&w=300&auto=format&fit=crop" : presignedData.publicUrl,
+          mediaUrl: result.url,
+          cloudinaryPublicId: result.publicId,
+          mediaThumbnailUrl: isVideo ? "https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?q=80&w=300&auto=format&fit=crop" : result.url,
           creditCost: 0
         })
       });
@@ -1016,19 +1009,10 @@ const ProviderMessages: React.FC = () => {
 
     try {
       const isVideo = paidMediaFile.type.startsWith('video/');
-      const presignedRes = await fetch(`${API_BASE_URL}/v1/adult/media/presigned-url?type=${isVideo ? 'video' : 'image'}&filename=${encodeURIComponent(paidMediaFile.name)}`, {
-        headers: getHeaders()
-      });
-      const presignedData = await presignedRes.json();
+      const context = isVideo ? 'paid_video' : 'paid_image';
 
-      setMediaUploadProgress(45);
-
-      await fetch(presignedData.uploadUrl, {
-        method: 'PUT',
-        body: paidMediaFile,
-        headers: {
-          'Content-Type': paidMediaFile.type
-        }
+      const result = await uploadMedia(paidMediaFile, context, true, (percent) => {
+        setMediaUploadProgress(10 + Math.round(percent * 0.7)); // scale from 10 to 80
       });
 
       setMediaUploadProgress(80);
@@ -1040,8 +1024,9 @@ const ProviderMessages: React.FC = () => {
           method: 'PUT',
           headers: getHeaders(),
           body: JSON.stringify({
-            mediaUrl: presignedData.publicUrl,
-            mediaThumbnailUrl: isVideo ? "https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?q=80&w=300&auto=format&fit=crop" : presignedData.publicUrl,
+            mediaUrl: result.url,
+            cloudinaryPublicId: result.publicId,
+            mediaThumbnailUrl: isVideo ? "https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?q=80&w=300&auto=format&fit=crop" : result.url,
             creditCost: paidMediaCost,
             isLocked: true
           })
@@ -1062,8 +1047,9 @@ const ProviderMessages: React.FC = () => {
           body: JSON.stringify({
             type: mediaType,
             content: paidMediaCaption || '[Premium Locked Content]',
-            mediaUrl: presignedData.publicUrl,
-            mediaThumbnailUrl: isVideo ? "https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?q=80&w=300&auto=format&fit=crop" : presignedData.publicUrl,
+            mediaUrl: result.url,
+            cloudinaryPublicId: result.publicId,
+            mediaThumbnailUrl: isVideo ? "https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?q=80&w=300&auto=format&fit=crop" : result.url,
             creditCost: paidMediaCost
           })
         });
@@ -1233,22 +1219,14 @@ const ProviderMessages: React.FC = () => {
       setProcessingIds(prev => ({ ...prev, [msgId]: true }));
       toast.loading('Uploading and fulfilling request...');
       try {
-        const presignedRes = await fetch(`${API_BASE_URL}/v1/adult/media/presigned-url?type=image&filename=${encodeURIComponent(file.name)}`, {
-          headers: getHeaders()
-        });
-        const presignedData = await presignedRes.json();
-
-        await fetch(presignedData.uploadUrl, {
-          method: 'PUT',
-          body: file,
-          headers: { 'Content-Type': file.type }
-        });
+        const result = await uploadMedia(file, 'chat_image', false);
 
         const res = await fetch(`${API_BASE_URL}/v1/adult/sext/photo-requests/${msgId}/fulfill`, {
           method: 'PUT',
           headers: getHeaders(),
           body: JSON.stringify({
-            mediaUrl: presignedData.publicUrl,
+            mediaUrl: result.url,
+            cloudinaryPublicId: result.publicId,
             creditCost: 0,
             isLocked: false
           })
@@ -1405,13 +1383,7 @@ const ProviderMessages: React.FC = () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: recorder.mimeType });
         const file = new File([audioBlob], `voice_note_${Date.now()}.webm`, { type: recorder.mimeType });
 
-        const pData = await (await fetch(`${API_BASE_URL}/v1/adult/media/presigned-url?type=audio&filename=${file.name}`, { headers: getHeaders() })).json();
-
-        await fetch(pData.uploadUrl, {
-          method: 'PUT',
-          body: file,
-          headers: { 'Content-Type': file.type }
-        });
+        const result = await uploadMedia(file, 'voice_note', false);
 
         const amplitudeWaveform = Array.from({ length: 25 }, () => Math.random());
 
@@ -1420,7 +1392,7 @@ const ProviderMessages: React.FC = () => {
           headers: getHeaders(),
           body: JSON.stringify({
             type: 'voice_note',
-            mediaUrl: pData.publicUrl,
+            mediaUrl: result.url,
             mediaDurationSeconds: duration,
             mediaMimeType: recorder.mimeType,
             content: amplitudeWaveform.join(',')

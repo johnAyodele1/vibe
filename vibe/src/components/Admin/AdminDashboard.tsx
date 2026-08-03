@@ -108,6 +108,9 @@ const AdminDashboard: React.FC = () => {
       <header className={styles.dashboardHeader}>
         <h1>Admin Dashboard</h1>
         <div className="flex items-center gap-4">
+          <Link to="/admin/analytics" style={{ marginRight: '8px', display: 'inline-block', backgroundColor: '#130d10', color: 'white', border: '1px solid #c8102e', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', textDecoration: 'none' }}>
+            📊 Analytics
+          </Link>
           <Link to="/admin/rewards" style={{ marginRight: '16px', display: 'inline-block', backgroundColor: '#c8102e', color: 'white', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', textDecoration: 'none' }}>
             🎁 Reward Tasks
           </Link>
