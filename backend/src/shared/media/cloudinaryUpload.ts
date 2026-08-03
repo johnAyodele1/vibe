@@ -21,8 +21,8 @@ if (!existingConfig || !existingConfig.cloud_name) {
 // ── QUALITY CONSTANT ───────────────────────────────────────────
 // 0.4 for all uploads — do not hardcode differently anywhere else
 export const QUALITY = 0.4;
-export const IMAGE_QUALITY = `q_${Math.round(QUALITY * 100)}`;   // q_40
-export const VIDEO_QUALITY = `q_${Math.round(QUALITY * 100)}`;   // q_40
+export const IMAGE_QUALITY = Math.round(QUALITY * 100);   // 40
+export const VIDEO_QUALITY = Math.round(QUALITY * 100);   // 40
 
 // ── UPLOAD FOLDERS ────────────────────────────────────────────
 export const FOLDERS = {
@@ -74,14 +74,14 @@ export const uploadToCloudinary = (fileData: Buffer | Readable, options: UploadO
     if (resourceType === 'image') {
       uploadOptions.transformation = [
         { quality: 'auto:low', fetch_format: 'webp' },   // auto-WebP conversion
-        { quality: Math.round(QUALITY * 100) },            // then apply our q_40
+        { quality: IMAGE_QUALITY },                      // then apply our 40
       ];
     }
 
     // For video: compress and optimize
     if (resourceType === 'video') {
       uploadOptions.transformation = [
-        { quality: Math.round(QUALITY * 100) },
+        { quality: VIDEO_QUALITY },
         { video_codec: 'auto' },
       ];
       uploadOptions.eager_async = true;
