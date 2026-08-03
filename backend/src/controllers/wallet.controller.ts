@@ -4,6 +4,7 @@ import AdultUser from '../models/AdultUser';
 import CreditTransaction from '../models/CreditTransaction';
 import { socketService } from '../services/socketService';
 import { getDiamondNairaRate } from '../shared/pricing';
+import { calculateFees, recordPlatformEarning } from '../shared/fees';
 
 export const getDiamondRate = async (req: Request, res: Response) => {
   try {
@@ -314,13 +315,15 @@ export const directTip = async (req: Request, res: Response) => {
         });
       }
 
+      const { providerAmount, platformFee } = calculateFees(amount);
+
       // Credit recipient
       const updatedRecipient = await AdultUser.findByIdAndUpdate(
         recipientId,
         {
           $inc: {
-            credits: amount,
-            'providerProfile.totalEarnings': amount
+            credits: providerAmount,
+            'providerProfile.totalEarnings': providerAmount
           }
         },
         { session, new: true }
@@ -343,12 +346,22 @@ export const directTip = async (req: Request, res: Response) => {
       await CreditTransaction.create([{
         userId: recipient._id,
         type: 'tip_received',
-        amount: amount,
+        amount: providerAmount,
+        platformFee: platformFee,
         usdAmount: 0,
         description: `Tip from member` + (message ? `: ${message}` : ''),
         relatedUserId: sender._id,
         status: 'completed',
       }], { session });
+
+      // Record Platform Earnings
+      await recordPlatformEarning({
+        source: 'tip',
+        amount: platformFee,
+        fromUserId: sender._id,
+        toProviderId: recipient._id,
+        referenceId: senderTx[0]._id,
+      }, { session });
 
       await session.commitTransaction();
       session.endSession();

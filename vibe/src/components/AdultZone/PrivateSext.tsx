@@ -10,6 +10,7 @@ import { useUIStore } from './useUIStore';
 import MessageTick, { getMessageStatus } from './MessageTick';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { usePricingStore, formatNaira } from '../../lib/pricing';
+import { uploadMedia } from '../../lib/media/uploadMedia';
 
 const CallRoom = React.lazy(() => import('./CallRoom'));
 
@@ -865,27 +866,17 @@ const PrivateSext: React.FC = () => {
     setUploadProgress(10);
 
     try {
-      // Fallback query matching our endpoint: /adult/media/presigned-url?type=image&filename=xxx
-      const realPresignedUrlRes = await fetch(`${API_BASE_URL}/v1/adult/media/presigned-url?type=${uploadFile.type.startsWith('video/') ? 'video' : 'image'}&filename=${encodeURIComponent(uploadFile.name)}`, {
-        headers: getHeaders()
-      });
-      const presignedData = await realPresignedUrlRes.json();
+      const isVideo = uploadFile.type.startsWith('video/');
+      const context = isLockedUpload
+        ? (isVideo ? 'paid_video' : 'paid_image')
+        : (isVideo ? 'chat_video' : 'chat_image');
 
-      setUploadProgress(40);
-
-      // 2. Upload direct
-      await fetch(presignedData.uploadUrl, {
-        method: 'PUT',
-        body: uploadFile,
-        headers: {
-          'Content-Type': uploadFile.type
-        }
+      const result = await uploadMedia(uploadFile, context, isLockedUpload, (percent) => {
+        setUploadProgress(10 + Math.round(percent * 0.7)); // scale from 10 to 80
       });
 
       setUploadProgress(80);
 
-      // 3. Send message with S3 publicUrl
-      const isVideo = uploadFile.type.startsWith('video/');
       const mediaType = isLockedUpload
         ? (isVideo ? 'locked_video' : 'locked_image')
         : (isVideo ? 'video' : 'image');
@@ -896,8 +887,9 @@ const PrivateSext: React.FC = () => {
         body: JSON.stringify({
           type: mediaType,
           content: isLockedUpload ? '[Locked Premium Media]' : '',
-          mediaUrl: presignedData.publicUrl,
-          mediaThumbnailUrl: isVideo ? "https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?q=80&w=300&auto=format&fit=crop" : presignedData.publicUrl,
+          mediaUrl: result.url,
+          cloudinaryPublicId: result.publicId,
+          mediaThumbnailUrl: isVideo ? "https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?q=80&w=300&auto=format&fit=crop" : result.url,
           creditCost: isLockedUpload ? uploadCost : 0
         })
       });
@@ -1009,13 +1001,7 @@ const PrivateSext: React.FC = () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: recorder.mimeType });
         const file = new File([audioBlob], `voice_note_${Date.now()}.webm`, { type: recorder.mimeType });
 
-        const pData = await (await fetch(`${API_BASE_URL}/v1/adult/media/presigned-url?type=audio&filename=${file.name}`, { headers: getHeaders() })).json();
-
-        await fetch(pData.uploadUrl, {
-          method: 'PUT',
-          body: file,
-          headers: { 'Content-Type': file.type }
-        });
+        const result = await uploadMedia(file, 'voice_note', false);
 
         const amplitudeWaveform = Array.from({ length: 25 }, () => Math.random());
 
@@ -1024,7 +1010,7 @@ const PrivateSext: React.FC = () => {
           headers: getHeaders(),
           body: JSON.stringify({
             type: 'voice_note',
-            mediaUrl: pData.publicUrl,
+            mediaUrl: result.url,
             mediaDurationSeconds: duration,
             mediaMimeType: recorder.mimeType,
             content: amplitudeWaveform.join(',')

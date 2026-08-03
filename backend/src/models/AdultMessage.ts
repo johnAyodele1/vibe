@@ -28,6 +28,7 @@ const adultMessageSchema = new Schema<IMessage>(
       default: 'text',
     },
     mediaUrl: String,
+    cloudinaryPublicId: String,
     mediaThumbnailUrl: String,
     mediaDurationSeconds: Number,
     mediaFileSizeBytes: Number,

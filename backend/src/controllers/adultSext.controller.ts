@@ -10,6 +10,8 @@ import AdultGift from '../models/AdultGift';
 import CreditTransaction from '../models/CreditTransaction';
 import { encrypt, decrypt } from '../services/encryptionService';
 import { getClientPrice } from '../services/pricingService';
+import { calculateFees, recordPlatformEarning } from '../shared/fees';
+import { getSignedUrl } from '../shared/media/cloudinaryUpload';
 
 // Backwards compatibility startConversation route
 export const startConversation = async (req: Request, res: Response) => {
@@ -411,19 +413,21 @@ export const payServiceRequest = async (req: Request, res: Response) => {
       dbUser.credits -= clientCost;
       await dbUser.save({ session });
 
+      const { providerAmount, platformFee } = calculateFees(totalAmount);
+
       const provider = await AdultUser.findById(message.senderId).session(session);
       if (provider) {
-        provider.credits += totalAmount;
+        provider.credits += providerAmount;
         if (provider.providerProfile) {
-          provider.providerProfile.totalEarnings += totalAmount;
+          provider.providerProfile.totalEarnings += providerAmount;
         }
         await provider.save({ session });
       }
 
       // Member Transaction
-      await CreditTransaction.create([{
+      const memberTx = await CreditTransaction.create([{
         userId: user._id,
-        type: 'spend',
+        type: 'service_payment_sent',
         amount: -clientCost,
         usdAmount: 0,
         description: `Paid for Service Request ${messageId}`,
@@ -434,14 +438,25 @@ export const payServiceRequest = async (req: Request, res: Response) => {
       // Provider Transaction
       await CreditTransaction.create([{
         userId: provider?._id,
-        type: 'tip',
-        amount: totalAmount,
+        type: 'service_payment_received',
+        amount: providerAmount,
+        platformFee: platformFee,
         usdAmount: 0,
         description: `Service request payout from ${user.username}`,
         relatedUserId: user._id,
         status: 'completed',
-        eligibleForPayout: false
+        eligibleForPayout: false,
+        metadata: { serviceRequestId: message._id }
       }], { session });
+
+      // Record Platform Earnings
+      await recordPlatformEarning({
+        source: 'service',
+        amount: platformFee,
+        fromUserId: user._id,
+        toProviderId: provider?._id,
+        referenceId: memberTx[0]._id,
+      }, { session });
 
       message.serviceRequest.status = 'paid';
       await message.save({ session });
@@ -672,17 +687,19 @@ export const fulfillGiftRequest = async (req: Request, res: Response) => {
       dbUser.credits -= giftValue;
       await dbUser.save({ session });
 
+      const { providerAmount, platformFee } = calculateFees(giftValue);
+
       const provider = await AdultUser.findById(message.senderId).session(session);
       if (provider) {
-        provider.credits += giftValue;
+        provider.credits += providerAmount;
         if (provider.providerProfile) {
-          provider.providerProfile.totalEarnings += giftValue;
+          provider.providerProfile.totalEarnings += providerAmount;
         }
         await provider.save({ session });
       }
 
       // Member Transaction
-      await CreditTransaction.create([{
+      const memberTx = await CreditTransaction.create([{
         userId: user._id,
         type: 'tip',
         amount: -giftValue,
@@ -696,12 +713,22 @@ export const fulfillGiftRequest = async (req: Request, res: Response) => {
       await CreditTransaction.create([{
         userId: provider?._id,
         type: 'tip',
-        amount: giftValue,
+        amount: providerAmount,
+        platformFee: platformFee,
         usdAmount: 0,
         description: `Received requested gift: ${message.giftRequest!.giftName} from ${user.username}`,
         relatedUserId: user._id,
         status: 'completed',
       }], { session });
+
+      // Record Platform Earnings
+      await recordPlatformEarning({
+        source: 'gift',
+        amount: platformFee,
+        fromUserId: user._id,
+        toProviderId: provider?._id,
+        referenceId: memberTx[0]._id,
+      }, { session });
 
       message.giftRequest!.status = 'fulfilled';
       await message.save({ session });
@@ -962,12 +989,21 @@ export const getMessages = async (req: Request, res: Response) => {
         m.senderId.toString() === user._id.toString() ||
         m.unlockedBy.some(id => id.toString() === user._id.toString());
 
+      let finalMediaUrl = m.mediaUrl || '';
+      if (isUnlocked && m.cloudinaryPublicId) {
+        try {
+          finalMediaUrl = getSignedUrl(m.cloudinaryPublicId, 3600);
+        } catch (err) {
+          console.error('Error signing URL in getMessages:', err);
+        }
+      }
+
       return {
         id: m._id,
         senderId: m.senderId,
         receiverId: m.receiverId,
         content: m.isDeleted ? '[Message deleted]' : decryptedContent,
-        mediaUrl: isUnlocked ? m.mediaUrl : '',
+        mediaUrl: isUnlocked ? finalMediaUrl : '',
         mediaThumbnailUrl: m.mediaThumbnailUrl || '',
         mediaDurationSeconds: m.mediaDurationSeconds,
         mediaFileSizeBytes: m.mediaFileSizeBytes,
@@ -1015,7 +1051,8 @@ export const sendMessage = async (req: Request, res: Response) => {
       creditCost = 0,
       gift = null,
       photoRequest = null,
-      systemText = ''
+      systemText = '',
+      cloudinaryPublicId = ''
     } = req.body;
 
     const conversation = await AdultConversation.findById(conversationId);
@@ -1108,7 +1145,8 @@ export const sendMessage = async (req: Request, res: Response) => {
       systemText,
       isFlagged,
       flagReason,
-      flaggedText
+      flaggedText,
+      cloudinaryPublicId
     });
 
     await message.save();
@@ -1392,18 +1430,20 @@ export const unlockMedia = async (req: Request, res: Response) => {
     dbUser.credits -= clientCost;
     await dbUser.save({ session });
 
+      const { providerAmount, platformFee } = calculateFees(cost);
+
       const provider = await AdultUser.findById(message.senderId).session(session);
       if (provider) {
-        provider.credits += cost;
+        provider.credits += providerAmount;
         if (provider.providerProfile) {
-          provider.providerProfile.totalEarnings += cost;
+          provider.providerProfile.totalEarnings += providerAmount;
         }
         await provider.save({ session });
       }
 
-      await CreditTransaction.create([{
+      const senderTx = await CreditTransaction.create([{
         userId: user._id,
-        type: 'tip',
+        type: 'paid_media_unlock',
         amount: -clientCost,
         usdAmount: 0,
         description: `Unlock media from ${provider?.username || 'provider'}`,
@@ -1414,19 +1454,38 @@ export const unlockMedia = async (req: Request, res: Response) => {
       if (provider) {
         await CreditTransaction.create([{
           userId: provider._id,
-          type: 'tip',
-          amount: cost,
+          type: 'paid_media_unlock',
+          amount: providerAmount,
+          platformFee: platformFee,
           usdAmount: 0,
           description: `Media unlock by ${user.username}`,
           relatedUserId: user._id,
           status: 'completed',
         }], { session });
+
+        // Record Platform Earnings
+        await recordPlatformEarning({
+          source: 'paid_media',
+          amount: platformFee,
+          fromUserId: user._id,
+          toProviderId: provider._id,
+          referenceId: senderTx[0]._id,
+        }, { session });
       }
 
       message.unlockedBy.push(user._id);
       await message.save({ session });
 
       await session.commitTransaction();
+
+      let finalMediaUrl = message.mediaUrl;
+      if (message.cloudinaryPublicId) {
+        try {
+          finalMediaUrl = getSignedUrl(message.cloudinaryPublicId, 3600);
+        } catch (err) {
+          console.error('Error signing URL in unlockMedia:', err);
+        }
+      }
 
       // Emit balance socket updates and media unlock
       const ns = req.app.get('adultNamespace');
@@ -1437,13 +1496,13 @@ export const unlockMedia = async (req: Request, res: Response) => {
         }
         ns.to(`conv:${message.conversationId}`).emit('sext:media_unlocked', {
           messageId: message._id,
-          mediaUrl: message.mediaUrl
+          mediaUrl: finalMediaUrl
         });
       }
 
       return res.json({
         success: true,
-        mediaUrl: message.mediaUrl,
+        mediaUrl: finalMediaUrl,
         mediaThumbnailUrl: message.mediaThumbnailUrl,
         mediaMimeType: message.mediaMimeType
       });
@@ -1829,16 +1888,18 @@ export const sendGift = async (req: Request, res: Response) => {
       dbUser.credits -= gift.creditCost;
       await dbUser.save({ session });
 
+      const { providerAmount, platformFee } = calculateFees(gift.creditCost);
+
       const receiver = await AdultUser.findById(otherParticipantId).session(session);
       if (receiver) {
-        receiver.credits += gift.creditCost;
+        receiver.credits += providerAmount;
         if (receiver.providerProfile) {
-          receiver.providerProfile.totalEarnings += gift.creditCost;
+          receiver.providerProfile.totalEarnings += providerAmount;
         }
         await receiver.save({ session });
       }
 
-      await CreditTransaction.create([{
+      const senderTx = await CreditTransaction.create([{
         userId: user._id,
         type: 'tip',
         amount: -gift.creditCost,
@@ -1852,12 +1913,22 @@ export const sendGift = async (req: Request, res: Response) => {
         await CreditTransaction.create([{
           userId: receiver._id,
           type: 'tip',
-          amount: gift.creditCost,
+          amount: providerAmount,
+          platformFee: platformFee,
           usdAmount: 0,
           description: `Received gift: ${gift.name} from ${user.username}`,
           relatedUserId: user._id,
           status: 'completed',
         }], { session });
+
+        // Record Platform Earnings
+        await recordPlatformEarning({
+          source: 'gift',
+          amount: platformFee,
+          fromUserId: user._id,
+          toProviderId: receiver._id,
+          referenceId: senderTx[0]._id,
+        }, { session });
       }
 
       const msg = new AdultMessage({
@@ -2224,9 +2295,11 @@ export const endCall = async (req: Request, res: Response) => {
         callerUser.credits -= actualDeduct;
         await callerUser.save({ session: dbSession });
 
-        providerUser.credits += providerPayout;
+        const { providerAmount, platformFee } = calculateFees(actualDeduct);
+
+        providerUser.credits += providerAmount;
         if (providerUser.providerProfile) {
-          providerUser.providerProfile.totalEarnings += providerPayout;
+          providerUser.providerProfile.totalEarnings += providerAmount;
         }
         await providerUser.save({ session: dbSession });
 
@@ -2235,7 +2308,7 @@ export const endCall = async (req: Request, res: Response) => {
         // Transactions
         await CreditTransaction.create([{
           userId: callerUser._id,
-          type: 'tip',
+          type: 'call_charge',
           amount: -actualDeduct,
           usdAmount: 0,
           description: `${call.type.charAt(0).toUpperCase() + call.type.slice(1)} call — ${durationSeconds}s`,
@@ -2243,15 +2316,25 @@ export const endCall = async (req: Request, res: Response) => {
           status: 'completed',
         }], { session: dbSession });
 
-        await CreditTransaction.create([{
+        const providerTx = await CreditTransaction.create([{
           userId: providerUser._id,
-          type: 'tip',
-          amount: providerPayout,
+          type: 'call_earning',
+          amount: providerAmount,
+          platformFee: platformFee,
           usdAmount: 0,
           description: `${call.type.charAt(0).toUpperCase() + call.type.slice(1)} call payout from ${callerUser.username}`,
           relatedUserId: callerUser._id,
           status: 'completed',
         }], { session: dbSession });
+
+        // Record Platform Earnings
+        await recordPlatformEarning({
+          source: 'call',
+          amount: platformFee,
+          fromUserId: callerUser._id,
+          toProviderId: providerUser._id,
+          referenceId: providerTx[0]._id,
+        }, { session: dbSession });
       }
 
       await call.save({ session: dbSession });

@@ -4,6 +4,7 @@ import AdultUser from '../models/AdultUser';
 import CreditTransaction from '../models/CreditTransaction';
 import { createPaymentIntent } from '../services/stripeService';
 import { getDiamondNairaRate } from '../shared/pricing';
+import { calculateFees, recordPlatformEarning } from '../shared/fees';
 
 const BUNDLES: any = {
   'bundle_100': { credits: 100, usdCents: 499 },
@@ -56,14 +57,16 @@ export const tip = async (req: Request, res: Response) => {
     const recipient = await AdultUser.findById(recipientId).session(session);
     if (!recipient) throw new Error('Recipient not found');
 
+    const { providerAmount, platformFee } = calculateFees(amount);
+
     sender.credits -= amount;
     await (sender as any).save({ session });
 
-    recipient.credits += amount;
-    if (recipient.providerProfile) recipient.providerProfile.totalEarnings += amount;
+    recipient.credits += providerAmount;
+    if (recipient.providerProfile) recipient.providerProfile.totalEarnings += providerAmount;
     await recipient.save({ session });
 
-    await CreditTransaction.create([{
+    const senderTx = await CreditTransaction.create([{
       userId: sender._id,
       type: 'tip',
       amount: -amount,
@@ -76,12 +79,22 @@ export const tip = async (req: Request, res: Response) => {
     await CreditTransaction.create([{
       userId: recipient._id,
       type: 'tip',
-      amount: amount,
+      amount: providerAmount,
+      platformFee: platformFee,
       usdAmount: 0,
       description: `Tip from ${sender.username}`,
       relatedUserId: sender._id,
       status: 'completed',
     }], { session });
+
+    // Record Platform Earnings
+    await recordPlatformEarning({
+      source: 'tip',
+      amount: platformFee,
+      fromUserId: sender._id,
+      toProviderId: recipient._id,
+      referenceId: senderTx[0]._id,
+    }, { session });
 
     await session.commitTransaction();
 

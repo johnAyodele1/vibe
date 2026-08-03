@@ -196,7 +196,7 @@ describe('Adult Zone Backend Production Tests', () => {
         expect(updatedUser?.credits).toBe(950);
 
         const updatedProvider = await AdultUser.findById(providerId);
-        expect(updatedProvider?.credits).toBe(50);
+        expect(updatedProvider?.credits).toBe(42);
     });
 
     it('should subscribe to a VIP Tier successfully using credits', async () => {
@@ -304,7 +304,7 @@ describe('Adult Zone Backend Production Tests', () => {
       expect(updatedUser?.credits).toBe(677); // 700 - 23
 
       const updatedProvider = await AdultUser.findById(providerId);
-      expect(updatedProvider?.credits).toBe(70); // 50 (from tip) + 20 (base message unlock)
+      expect(updatedProvider?.credits).toBe(59); // 42 (from tip) + 17 (base message unlock)
 
       // Verify transaction records exist
       const transactions = await CreditTransaction.find({ relatedUserId: { $exists: true } });

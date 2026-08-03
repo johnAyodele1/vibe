@@ -5,6 +5,7 @@ import SpinResult from '../models/SpinResult';
 import AdultUser from '../models/AdultUser';
 import CreditTransaction from '../models/CreditTransaction';
 import { socketService } from '../services/socketService';
+import { calculateFees, recordPlatformEarning } from '../shared/fees';
 
 export const pickWheelItem = (items: any[]) => {
   const pool = items.flatMap(item =>
@@ -153,8 +154,7 @@ export const spinProviderWheel = async (req: Request, res: Response) => {
       }
 
       // Calculate fee splitting
-      const creditsToProvider = Math.floor(cost * 0.85);
-      const platformFee = cost - creditsToProvider;
+      const { providerAmount: creditsToProvider, platformFee } = calculateFees(cost);
 
       // Increment recipient/provider profile balance
       const updatedRecipient = await AdultUser.findByIdAndUpdate(
@@ -171,7 +171,7 @@ export const spinProviderWheel = async (req: Request, res: Response) => {
       // Create dual transactional logs
       const spinnerTx = await CreditTransaction.create([{
         userId: spinner._id,
-        type: 'tip_sent', // Using tip_sent or a custom type for analytics
+        type: 'spin_wheel',
         amount: -cost,
         usdAmount: 0,
         description: `Spun Wheel for ${updatedRecipient?.providerProfile?.stageName || updatedRecipient?.displayName || 'Provider'}: ${pickedItem.label}`,
@@ -181,13 +181,23 @@ export const spinProviderWheel = async (req: Request, res: Response) => {
 
       await CreditTransaction.create([{
         userId: recipient._id,
-        type: 'tip_received',
+        type: 'spin_wheel',
         amount: creditsToProvider,
+        platformFee: platformFee,
         usdAmount: 0,
         description: `Wheel spin received from member: ${pickedItem.label}`,
         relatedUserId: spinner._id,
         status: 'completed',
       }], { session });
+
+      // Record Platform Earnings
+      await recordPlatformEarning({
+        source: 'spin_wheel',
+        amount: platformFee,
+        fromUserId: spinner._id,
+        toProviderId: recipient._id,
+        referenceId: spinnerTx[0]._id,
+      }, { session });
 
       // Save SpinResult record
       const spinResult = await SpinResult.create([{

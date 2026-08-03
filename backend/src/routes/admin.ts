@@ -10,6 +10,13 @@ import {
   updateViolationAction,
   getAdminDiamondRate,
   updateAdminDiamondRate,
+  getAnalyticsOverview,
+  getDailyUsers,
+  getDailyEarnings,
+  getEarningsBreakdown,
+  getTopProviders,
+  getUserRetention,
+  getRecentTransactions,
 } from '../controllers/admin.controller';
 import {
   adminGetTasks,
@@ -28,6 +35,13 @@ router.post('/login', adminLogin);
 router.use(authenticateAdmin);
 
 router.get('/analytics', getAnalytics);
+router.get('/analytics/overview', getAnalyticsOverview);
+router.get('/analytics/users/daily', getDailyUsers);
+router.get('/analytics/earnings/daily', getDailyEarnings);
+router.get('/analytics/earnings/breakdown', getEarningsBreakdown);
+router.get('/analytics/providers/top', getTopProviders);
+router.get('/analytics/users/retention', getUserRetention);
+router.get('/analytics/transactions/recent', getRecentTransactions);
 router.get('/reports', getAllReports);
 router.get('/users', getAllUsers);
 router.post('/action', adminAction);
