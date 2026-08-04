@@ -753,13 +753,6 @@ const ProviderOnboarding: React.FC = () => {
                 <button
                   onClick={() => saveStep()}
                   disabled={saving}
-                  className="w-full sm:w-auto text-center py-2 text-xs font-bold text-[var(--az-text-secondary)] hover:text-white uppercase tracking-widest cursor-pointer"
-                >
-                  Skip
-                </button>
-                <button
-                  onClick={() => saveStep()}
-                  disabled={saving}
                   className="w-full sm:w-auto px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg flex items-center justify-center"
                 >
                   {saving ? (
@@ -1165,15 +1158,13 @@ const ProviderOnboarding: React.FC = () => {
                 ← Back
               </button>
               <div className="flex flex-col-reverse gap-2 w-full sm:w-auto sm:flex-row sm:gap-4 sm:items-center">
-                {step !== 2 && (
-                  <button
-                    onClick={() => saveStep(true)}
-                    disabled={saving}
-                    className="w-full sm:w-auto text-center py-2 text-xs font-bold text-[var(--az-text-secondary)] hover:text-white uppercase tracking-widest cursor-pointer"
-                  >
-                    Set Up Later
-                  </button>
-                )}
+                <button
+                  onClick={() => saveStep(true)}
+                  disabled={saving}
+                  className="w-full sm:w-auto text-center py-2 text-xs font-bold text-[var(--az-text-secondary)] hover:text-white uppercase tracking-widest cursor-pointer"
+                >
+                  Set Up Later
+                </button>
                 <button
                   onClick={() => saveStep()}
                   disabled={saving}
