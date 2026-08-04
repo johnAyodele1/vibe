@@ -16,7 +16,7 @@ const SERVICE_LABELS: Record<string, { icon: string; label: string; color: strin
 export const PublicProviderProfile: React.FC = () => {
   const { providerId } = useParams<{ providerId: string }>();
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useAdultAuth();
+  const { isAuthenticated } = useAdultAuth();
   const openTipSheet = useTipSheetStore((state) => state.openSheet);
 
   const [provider, setProvider] = useState<any | null>(null);
@@ -112,8 +112,6 @@ export const PublicProviderProfile: React.FC = () => {
       fetchProviderProfile();
     }
   }, [providerId, isAuthenticated]);
-
-  const isSubscriber = isAuthenticated && user && user.subscriptionTier && user.subscriptionTier !== 'none';
 
   const handleStartConversation = async () => {
     if (!isAuthenticated) {
