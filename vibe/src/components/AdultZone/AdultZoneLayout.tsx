@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom';
+import { Avatar } from './Avatar';
 import { io } from 'socket.io-client';
 import { API_BASE_URL, SOCKET_URL } from '../../config';
 import AgeGate from './AgeGate';
@@ -253,10 +254,10 @@ const AdultZoneLayout: React.FC = () => {
 
       {incomingCall && (
         <div className="fixed inset-0 bg-black/90 z-[11000] flex flex-col items-center justify-center p-8 text-white">
-          <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-pink-500 animate-pulse mb-6">
-            <img src={incomingCall.callerAvatar} className="w-full h-full object-cover" alt="Caller Avatar" />
+          <div className="w-32 h-32 rounded-full border-4 border-pink-500 animate-pulse mb-6 flex items-center justify-center overflow-hidden">
+            <Avatar src={incomingCall.callerAvatar} name={incomingCall.callerName} size={128} />
           </div>
-          <h2 className="text-3xl font-serif italic mb-2">{incomingCall.callerName}</h2>
+          <h2 className="text-3xl font-serif italic mb-2 truncate max-w-xs px-4 text-center" title={incomingCall.callerName}>{incomingCall.callerName}</h2>
           <p className="text-xs text-pink-400 uppercase tracking-widest animate-pulse">Incoming {incomingCall.type} Call...</p>
           <p className="text-xs text-yellow-400 mt-2 font-mono">Rate: 💎 {incomingCall.rate} credits / min</p>
 

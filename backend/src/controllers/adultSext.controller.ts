@@ -211,6 +211,7 @@ export const requestService = async (req: Request, res: Response) => {
 
     const responsePayload = {
       id: message._id,
+      conversationId: message.conversationId,
       senderId: message.senderId,
       receiverId: message.receiverId,
       content: `Requested a tonight service`,
@@ -1129,7 +1130,7 @@ export const sendMessage = async (req: Request, res: Response) => {
       conversationId,
       senderId: user._id,
       receiverId: otherParticipantId,
-      content: encrypt(content),
+      content: encrypt(content || (type === 'voice_note' || type === 'voice' ? '[Voice Note]' : '[Attachment]')),
       messageType: type,
       mediaUrl,
       mediaThumbnailUrl,
@@ -1193,6 +1194,7 @@ export const sendMessage = async (req: Request, res: Response) => {
 
     const responsePayload = {
       id: message._id,
+      conversationId: message.conversationId,
       senderId: message.senderId,
       receiverId: message.receiverId,
       content,

@@ -16,13 +16,54 @@ const SERVICE_LABELS: Record<string, { icon: string; label: string; color: strin
 export const PublicProviderProfile: React.FC = () => {
   const { providerId } = useParams<{ providerId: string }>();
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useAdultAuth();
+  const { isAuthenticated } = useAdultAuth();
   const openTipSheet = useTipSheetStore((state) => state.openSheet);
 
   const [provider, setProvider] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [isStartingConversation, setIsStartingConversation] = useState(false);
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
+  const [unlockedIndexes, setUnlockedIndexes] = useState<Set<number>>(new Set());
+  const [unlocking, setUnlocking] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (provider?.unlockedPhotoIndexes) {
+      setUnlockedIndexes(new Set(provider.unlockedPhotoIndexes));
+    }
+  }, [provider]);
+
+  const handleUnlock = async (photoIndex: number) => {
+    setUnlocking(photoIndex);
+    try {
+      const token = localStorage.getItem('adultAccessToken');
+      const res = await fetch(`${API_BASE_URL}/v1/adult/providers/${providerId}/photos/${photoIndex}/unlock`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setUnlockedIndexes(prev => {
+          const next = new Set(prev);
+          next.add(photoIndex);
+          return next;
+        });
+        toast.success('💎 Photo unlocked!');
+      } else {
+        if (res.status === 402 || data.error?.code === 'INSUFFICIENT_FUNDS') {
+          toast.error('Not enough credits. Top up your wallet.');
+        } else {
+          toast.error(data.error?.message || 'Could not unlock photo');
+        }
+      }
+    } catch (err) {
+      toast.error('Could not unlock photo');
+    } finally {
+      setUnlocking(null);
+    }
+  };
 
   // Automatically trigger the authentication modal if user is unauthenticated
   useEffect(() => {
@@ -71,8 +112,6 @@ export const PublicProviderProfile: React.FC = () => {
       fetchProviderProfile();
     }
   }, [providerId, isAuthenticated]);
-
-  const isSubscriber = isAuthenticated && user && user.subscriptionTier && user.subscriptionTier !== 'none';
 
   const handleStartConversation = async () => {
     if (!isAuthenticated) {
@@ -183,6 +222,7 @@ export const PublicProviderProfile: React.FC = () => {
   }
 
   const activePhoto = provider.photos?.[activePhotoIndex] || { url: provider.avatarUrl, isExplicit: false };
+  const isHeroPhotoLocked = activePhotoIndex > 0 && !unlockedIndexes.has(activePhotoIndex);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 pb-32 md:pb-16 text-[var(--az-text-primary)]">
@@ -200,19 +240,28 @@ export const PublicProviderProfile: React.FC = () => {
         {/* LEFT — Photos & Media (60% width on Desktop) */}
         <div className="lg:col-span-7 flex flex-col">
           {/* Hero Main Photo */}
-          <div className="provider-profile__hero shadow-2xl relative">
+          <div className="provider-profile__hero shadow-2xl relative overflow-hidden">
             <img
               src={activePhoto.url}
               alt={provider.stageName}
               className={`w-full h-full object-cover transition-all duration-300 ${
-                activePhoto.isExplicit && !isSubscriber ? 'blur-2xl scale-110' : ''
+                isHeroPhotoLocked ? 'blur-2xl scale-110' : ''
               }`}
             />
-            {activePhoto.isExplicit && !isSubscriber && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 z-10 text-center p-6">
-                <span className="text-3xl mb-2">🔒</span>
-                <p className="text-sm font-semibold text-white uppercase tracking-wider">Premium Explicit Photo</p>
-                <p className="text-xs text-[var(--az-text-secondary)] mt-1">Subscribe to a Premium Tier to unlock exclusive explicit galleries</p>
+            {isHeroPhotoLocked && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0a0608]/50 z-10 text-center p-6 photo-lock-overlay">
+                <span className="text-3xl mb-2 photo-lock-icon">🔒</span>
+                <button
+                  className="photo-unlock-btn"
+                  onClick={() => handleUnlock(activePhotoIndex)}
+                  disabled={unlocking === activePhotoIndex}
+                >
+                  {unlocking === activePhotoIndex ? (
+                    <span className="animate-spin rounded-full h-4 w-4 border-t-2 border-white inline-block"></span>
+                  ) : (
+                    '💎 1 to unlock'
+                  )}
+                </button>
               </div>
             )}
 
@@ -231,22 +280,25 @@ export const PublicProviderProfile: React.FC = () => {
           {/* Photo strip below */}
           {provider.photos?.length > 1 && (
             <div className="provider-profile__photo-strip mt-3 overflow-x-auto pb-2 no-scrollbar">
-              {provider.photos.map((photo: any, i: number) => (
-                <button
-                  key={i}
-                  className={`photo-strip__thumb flex-shrink-0 relative ${activePhotoIndex === i ? 'active border-[var(--az-accent-crimson)]' : ''}`}
-                  onClick={() => setActivePhotoIndex(i)}
-                >
-                  <img
-                    src={photo.url}
-                    alt=""
-                    className={`w-full h-full object-cover ${photo.isExplicit && !isSubscriber ? 'blur-md scale-105' : ''}`}
-                  />
-                  {photo.isExplicit && !isSubscriber && (
-                    <div className="photo-strip__lock">🔒</div>
-                  )}
-                </button>
-              ))}
+              {provider.photos.map((photo: any, i: number) => {
+                const isThumbLocked = i > 0 && !unlockedIndexes.has(i);
+                return (
+                  <button
+                    key={i}
+                    className={`photo-strip__thumb flex-shrink-0 relative ${activePhotoIndex === i ? 'active border-[var(--az-accent-crimson)]' : ''}`}
+                    onClick={() => setActivePhotoIndex(i)}
+                  >
+                    <img
+                      src={photo.url}
+                      alt=""
+                      className={`w-full h-full object-cover ${isThumbLocked ? 'blur-md scale-105' : ''}`}
+                    />
+                    {isThumbLocked && (
+                      <div className="photo-strip__lock">🔒</div>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           )}
 
@@ -279,9 +331,9 @@ export const PublicProviderProfile: React.FC = () => {
 
         {/* RIGHT — Info & Actions (40% width on Desktop) */}
         <div className="lg:col-span-5 flex flex-col justify-start">
-          <div className="mb-6">
-            <div className="flex items-center gap-3 mb-2">
-              <h1 className="text-4xl font-serif italic text-white tracking-wide">
+          <div className="mb-6 max-w-full">
+            <div className="flex items-center gap-3 mb-2 max-w-full">
+              <h1 className="text-4xl font-serif italic text-white tracking-wide truncate max-w-full" title={provider.stageName}>
                 {provider.stageName}
               </h1>
               {provider.isVerified && (
@@ -354,17 +406,17 @@ export const PublicProviderProfile: React.FC = () => {
 
           {/* PRIMARY CTA: MESSAGE BUTTON */}
           <button
-            className="provider-profile__message-btn"
+            className="provider-profile__message-btn truncate max-w-full"
             onClick={handleStartConversation}
             disabled={isStartingConversation}
           >
             {isStartingConversation ? (
               <span className="animate-spin rounded-full h-5 w-5 border-t-2 border-white"></span>
             ) : (
-              <>
+              <span className="truncate">
                 <span className="message-btn__icon">💬</span>
-                Message {provider.stageName}
-              </>
+                Message {provider.stageName.length > 15 ? `${provider.stageName.slice(0, 15)}...` : provider.stageName}
+              </span>
             )}
           </button>
 

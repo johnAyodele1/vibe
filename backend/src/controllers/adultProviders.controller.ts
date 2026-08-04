@@ -2,6 +2,17 @@ import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import AdultUser from '../models/AdultUser';
 import { sendAdminNotification } from '../services/emailService';
+import Redis from 'ioredis';
+import CreditTransaction from '../models/CreditTransaction';
+
+let redisClient: Redis | null = null;
+if (process.env.REDIS_URL || process.env.REDIS_HOST) {
+  try {
+    redisClient = new Redis(process.env.REDIS_URL || '');
+  } catch (err) {}
+}
+
+const memoryPhotoUnlocks = new Map<string, Set<string>>();
 
 export const getProviderPublicProfile = async (req: Request, res: Response) => {
   try {
@@ -37,6 +48,31 @@ export const getProviderPublicProfile = async (req: Request, res: Response) => {
       isExplicit: index > 0 // Heuristic: secondary photos are explicit
     }));
 
+    const memberId = req.adultUser?._id?.toString();
+    const unlockedPhotoIndexes: number[] = [];
+    if (memberId) {
+      const unlockKey = `unlock:provider:${providerId}:member:${memberId}`;
+      if (redisClient) {
+        try {
+          const members = await redisClient.smembers(unlockKey);
+          members.forEach(m => {
+            const parsed = parseInt(m);
+            if (!isNaN(parsed)) unlockedPhotoIndexes.push(parsed);
+          });
+        } catch (e) {
+          console.error('smembers error:', e);
+        }
+      } else {
+        const set = memoryPhotoUnlocks.get(unlockKey);
+        if (set) {
+          set.forEach(m => {
+            const parsed = parseInt(m);
+            if (!isNaN(parsed)) unlockedPhotoIndexes.push(parsed);
+          });
+        }
+      }
+    }
+
     const pricing = {
       perMinuteRate: provider.providerProfile?.servicesOffered?.includes('private_call')
         ? (provider.providerProfile?.pricePerMinute || null)
@@ -58,6 +94,7 @@ export const getProviderPublicProfile = async (req: Request, res: Response) => {
       gender: provider.providerProfile?.gender || 'Not specified',
       avatarUrl: provider.profilePhoto || provider.providerProfile?.photos?.[0] || '',
       photos,
+      unlockedPhotoIndexes,
       videoPreviewUrl: provider.providerProfile?.videoPreview || null,
       location: {
         city: provider.providerProfile?.location?.city?.name || provider.location?.city?.name || 'Unknown',
@@ -226,4 +263,146 @@ export const updateProviderProfile = async (req: Request, res: Response) => {
       }
     }
   });
+};
+
+export const unlockProviderPhoto = async (req: Request, res: Response) => {
+  try {
+    const providerId = req.params.providerId as string;
+    const photoIndex = req.params.photoIndex as string;
+    const memberId = req.adultUser?._id;
+
+    if (!memberId) {
+      return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } });
+    }
+
+    const UNLOCK_COST = 1;  // 1 diamond
+
+    // Get provider
+    const provider = await AdultUser.findOne({ _id: providerId, role: 'provider' });
+    if (!provider || !provider.providerProfile || !provider.providerProfile.photos) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Provider profile not found' } });
+    }
+
+    const idx = parseInt(photoIndex);
+    const photosCount = provider.providerProfile.photos.length;
+    if (isNaN(idx) || idx < 1 || idx >= photosCount) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Photo not found' } });
+    }
+
+    const realPhotoUrl = provider.providerProfile.photos[idx];
+
+    // Check if already unlocked
+    const unlockKey = `unlock:provider:${providerId}:member:${memberId}`;
+    let alreadyUnlocked = false;
+
+    if (redisClient) {
+      try {
+        alreadyUnlocked = (await redisClient.sismember(unlockKey, idx.toString())) === 1;
+      } catch (err) {
+        console.error('Redis sismember error:', err);
+      }
+    } else {
+      alreadyUnlocked = !!memoryPhotoUnlocks.get(unlockKey)?.has(idx.toString());
+    }
+
+    if (alreadyUnlocked) {
+      return res.json({ success: true, url: realPhotoUrl, alreadyUnlocked: true });
+    }
+
+    // Check balance
+    const memberCredits = req.adultUser!.credits;
+    if (memberCredits < UNLOCK_COST) {
+      return res.status(402).json({
+        success: false,
+        error: {
+          code: 'INSUFFICIENT_FUNDS',
+          message: 'Not enough credits',
+          required: UNLOCK_COST,
+        }
+      });
+    }
+
+    // Deduct from member atomically
+    const updatedMember = await AdultUser.findOneAndUpdate(
+      { _id: memberId, credits: { $gte: UNLOCK_COST } },
+      { $inc: { credits: -UNLOCK_COST } },
+      { new: true }
+    );
+
+    if (!updatedMember) {
+      return res.status(402).json({
+        success: false,
+        error: {
+          code: 'INSUFFICIENT_FUNDS',
+          message: 'Not enough credits',
+          required: UNLOCK_COST,
+        }
+      });
+    }
+
+    // Increment provider
+    const updatedProvider = await AdultUser.findByIdAndUpdate(
+      providerId,
+      {
+        $inc: {
+          credits: UNLOCK_COST,
+          'providerProfile.totalEarnings': UNLOCK_COST
+        }
+      },
+      { new: true }
+    );
+
+    // Record transaction for member
+    await CreditTransaction.create({
+      userId: memberId,
+      type: 'paid_media_unlock',
+      amount: UNLOCK_COST,
+      usdAmount: 0,
+      description: `Unlocked photo index ${idx} for provider ${provider.providerProfile?.stageName || provider.displayName}`,
+      relatedUserId: provider._id,
+      status: 'completed',
+      platformFee: 0,
+      eligibleForPayout: true,
+    });
+
+    // Record transaction for provider as earning
+    await CreditTransaction.create({
+      userId: provider._id,
+      type: 'paid_media_unlock',
+      amount: UNLOCK_COST,
+      usdAmount: 0,
+      description: `Earning from photo index ${idx} unlocked by member ${updatedMember.displayName}`,
+      relatedUserId: memberId,
+      status: 'completed',
+      platformFee: 0,
+      eligibleForPayout: true,
+    });
+
+    // Record the unlock in Redis / Memory cache
+    if (redisClient) {
+      try {
+        await redisClient.sadd(unlockKey, idx.toString());
+        await redisClient.expire(unlockKey, 30 * 24 * 60 * 60);  // 30 days
+      } catch (err) {
+        console.error('Redis sadd error:', err);
+      }
+    } else {
+      if (!memoryPhotoUnlocks.has(unlockKey)) {
+        memoryPhotoUnlocks.set(unlockKey, new Set());
+      }
+      memoryPhotoUnlocks.get(unlockKey)!.add(idx.toString());
+    }
+
+    // Emit socket updates dynamically to prevent circular dependencies
+    const { socketService: dynamicSocketService } = require('../services/socketService');
+    dynamicSocketService.emitToUser(memberId.toString(), 'wallet:updated', { balance: updatedMember.credits });
+    if (updatedProvider) {
+      dynamicSocketService.emitToUser(providerId.toString(), 'wallet:updated', { balance: updatedProvider.credits });
+    }
+
+    return res.json({ success: true, url: realPhotoUrl });
+  } catch (error) {
+    console.error('Error unlocking provider photo:', error);
+    return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Internal server error' } });
+  }
 };

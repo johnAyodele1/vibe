@@ -299,7 +299,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
               </div>
 
               {/* Restyled Username below the avatar with Premium Typography */}
-              <h2 className="text-2xl md:text-3xl font-serif italic text-white tracking-wide font-semibold drop-shadow-md text-center">
+              <h2 className="text-2xl md:text-3xl font-serif italic text-white tracking-wide font-semibold drop-shadow-md text-center truncate max-w-xs px-4 mx-auto" title={partnerName || userName || 'Partner'}>
                 {partnerName || userName || 'Partner'}
               </h2>
 

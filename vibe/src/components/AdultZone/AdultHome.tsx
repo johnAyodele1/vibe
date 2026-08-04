@@ -425,15 +425,12 @@ const AdultHome: React.FC = () => {
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between mb-10">
             <h2 className="text-3xl font-serif italic text-[var(--az-text-primary)]">Recommended For You</h2>
-            <Link to="/cams" className="text-[10px] font-bold uppercase tracking-widest text-[var(--az-accent-gold)] hover:underline">
-              View All
-            </Link>
           </div>
 
           <div className="flex gap-6 overflow-x-auto pb-8 no-scrollbar snap-x snap-mandatory">
             {loading ? (
               [1, 2, 3, 4].map(i => (
-                <div key={i} className="min-w-[280px] h-96 bg-[var(--az-bg-secondary)] rounded-xl border border-[var(--az-border)] overflow-hidden snap-start flex-shrink-0 animate-pulse" />
+                <div key={i} className="min-w-[280px] aspect-[3/4] bg-[var(--az-bg-secondary)] rounded-xl border border-[var(--az-border)] overflow-hidden snap-start flex-shrink-0 animate-pulse" />
               ))
             ) : (
               performers.map((p) => {
@@ -442,9 +439,9 @@ const AdultHome: React.FC = () => {
                 const ratingVal = typeof p.providerProfile?.rating === 'object' ? p.providerProfile?.rating?.average : p.providerProfile?.rating;
                 const displayName = p.displayName || p.providerProfile?.stageName || p.firstName;
                 return (
-                  <div key={p._id} className="min-w-[280px] h-96 bg-[var(--az-bg-secondary)] rounded-xl border border-[var(--az-border)] overflow-hidden snap-start flex-shrink-0 group">
-                    <div className="h-2/3 relative cursor-pointer" onClick={() => navigate(`/adult/providers/${p.userId || p._id}`)}>
-                      <img src={photoUrl} alt={displayName} className="w-full h-full object-cover filter blur-[1px] group-hover:blur-0 transition-all duration-500" />
+                  <div key={p._id} className="min-w-[280px] bg-[var(--az-bg-secondary)] rounded-xl border border-[var(--az-border)] overflow-hidden snap-start flex-shrink-0 group">
+                    <div className="relative aspect-[3/4] overflow-hidden bg-[#1e1318] cursor-pointer" onClick={() => navigate(`/adult/providers/${p.userId || p._id}`)}>
+                      <img src={photoUrl} alt={displayName} className="absolute inset-0 w-full h-full object-cover object-top filter blur-[1px] group-hover:blur-0 transition-all duration-500" />
                       <div className="absolute top-3 left-3 flex gap-2">
                         {isLiveNow && (
                           <span className="bg-[var(--az-accent-primary)] text-white text-[8px] font-bold px-1.5 py-0.5 rounded uppercase">🔴 Live</span>
@@ -452,7 +449,7 @@ const AdultHome: React.FC = () => {
                         <span className="bg-black/50 text-white text-[8px] font-bold px-1.5 py-0.5 rounded uppercase">New</span>
                       </div>
                     </div>
-                    <div className="p-4 flex flex-col justify-between h-1/3">
+                    <div className="p-4 flex flex-col justify-between">
                       <div className="flex items-start justify-between">
                         <div className="cursor-pointer" onClick={() => navigate(`/adult/providers/${p.userId || p._id}`)}>
                           <h4 className="font-serif italic text-white text-lg hover:underline">{displayName}</h4>

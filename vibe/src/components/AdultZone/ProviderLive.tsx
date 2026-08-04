@@ -5,6 +5,8 @@ import { API_BASE_URL, SOCKET_URL } from '../../config';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { io, Socket } from 'socket.io-client';
 
+import { WheelEditor } from './WheelEditor';
+
 const ProviderStreamRoom = React.lazy(() => import('./ProviderStreamRoom'));
 
 const ProviderLive: React.FC = () => {
@@ -20,6 +22,7 @@ const ProviderLive: React.FC = () => {
   const [duration, setDuration] = useState(0);
   const [viewerCount, setViewerCount] = useState(0);
   const [sessionTips, setSessionTips] = useState(0);
+  const [showWheelEditor, setShowWheelEditor] = useState(false);
 
   // Agora States
   const [agoraToken, setAgoraToken] = useState<string | null>(null);
@@ -311,6 +314,21 @@ const ProviderLive: React.FC = () => {
             </div>
             <span className="text-3xl font-mono font-bold text-[var(--az-accent-gold)]">💎 {sessionTips}</span>
           </div>
+
+          <div className="stream-tools mt-4">
+            <h3 className="stream-tools__title text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Stream Tools</h3>
+            <button
+              onClick={() => setShowWheelEditor(true)}
+              className="stream-tool-link flex items-center gap-4 p-4 bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-2xl cursor-pointer hover:border-pink-500/50 transition-all text-left w-full"
+            >
+              <span className="stream-tool-link__icon text-2xl">🎡</span>
+              <div className="stream-tool-link__text flex-1">
+                <span className="stream-tool-link__label block font-semibold text-sm text-white">Spin Wheel Editor</span>
+                <span className="stream-tool-link__desc block text-xs text-[var(--az-text-secondary)] mt-1">Update your wheel while live</span>
+              </div>
+              <span className="stream-tool-link__arrow text-gray-400">→</span>
+            </button>
+          </div>
         </div>
 
         {/* Right: Live Chat arena */}
@@ -374,6 +392,28 @@ const ProviderLive: React.FC = () => {
         </div>
 
       </div>
+
+      {/* Slide-in panel or bottom-sheet for Spin Wheel Editor */}
+      {showWheelEditor && (
+        <div className="stream-panel-overlay fixed inset-0 bg-black/60 z-[10500] flex justify-end" onClick={() => setShowWheelEditor(false)}>
+          <div className="stream-panel w-[450px] max-w-full bg-[#140b13] border-l border-[var(--az-border)] h-full overflow-y-auto p-6 flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="stream-panel__header flex justify-between items-center pb-4 border-b border-[var(--az-border)] mb-6">
+              <h3 className="text-lg font-serif italic text-white flex items-center gap-2">
+                <span>🎡</span> Spin Wheel Editor
+              </h3>
+              <button
+                onClick={() => setShowWheelEditor(false)}
+                className="w-8 h-8 rounded-full bg-[var(--az-bg-secondary)] border border-[var(--az-border)] text-gray-400 flex items-center justify-center hover:text-white text-lg font-bold"
+              >
+                ×
+              </button>
+            </div>
+            <div className="flex-1">
+              <WheelEditor />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -501,7 +501,7 @@ const HookUpTonight: React.FC = () => {
                 {Array.from({ length: 8 }).map((_, idx) => (
                   <div
                     key={idx}
-                    className="relative aspect-[2/3] rounded-2xl overflow-hidden border border-[var(--az-border)] bg-[var(--az-bg-tertiary)] animate-pulse"
+                    className="relative aspect-[3/4] rounded-2xl overflow-hidden border border-[var(--az-border)] bg-[var(--az-bg-tertiary)] animate-pulse"
                   />
                 ))}
               </div>
@@ -529,21 +529,21 @@ const HookUpTonight: React.FC = () => {
                   <div
                     key={p.id}
                     onClick={() => navigate(`/adult/providers/${p.id}`)}
-                    className="relative aspect-[2/3] rounded-2xl overflow-hidden border border-[var(--az-border)] bg-[var(--az-bg-secondary)] group cursor-pointer az-card-hover"
+                    className="relative aspect-[3/4] rounded-2xl overflow-hidden border border-[var(--az-border)] bg-[var(--az-bg-secondary)] group cursor-pointer az-card-hover"
                   >
                     <img
                       src={p.photoUrl}
                       alt={p.stageName}
-                      className="w-full h-full object-cover filter blur-sm group-hover:blur-0 transition-all duration-500"
+                      className="absolute inset-0 w-full h-full object-cover object-top filter blur-[1px] group-hover:blur-0 transition-all duration-500"
                     />
 
                     {p.isOnline && (
                       <div className="absolute top-3 left-3 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-black shadow-[0_0_8px_green]" />
                     )}
 
-                    <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent p-4 flex flex-col justify-end">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h4 className="text-lg font-serif italic text-white">
+                    <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent p-4 flex flex-col justify-end min-w-0">
+                      <div className="flex items-center gap-2 mb-1 min-w-0 max-w-full">
+                        <h4 className="text-lg font-serif italic text-white truncate flex-1 min-w-0" title={`${p.stageName}, ${p.age}`}>
                           {p.stageName}, {p.age}
                         </h4>
                         {p.isVerified && <span className="text-[10px] text-[var(--az-accent-gold)]">⭐</span>}

@@ -339,6 +339,11 @@ const ProviderOnboarding: React.FC = () => {
       }
 
       else if (step === 2) {
+        if (!photos || photos.length === 0) {
+          toast.error('Please upload at least one photo before proceeding');
+          setSaving(false);
+          return;
+        }
         stepPayload = { photos, videoPreview: videos.join(',') };
       }
 
@@ -745,13 +750,6 @@ const ProviderOnboarding: React.FC = () => {
                 ← Back
               </button>
               <div className="flex flex-col-reverse gap-2 w-full sm:w-auto sm:flex-row sm:gap-4 sm:items-center">
-                <button
-                  onClick={() => saveStep()}
-                  disabled={saving}
-                  className="w-full sm:w-auto text-center py-2 text-xs font-bold text-[var(--az-text-secondary)] hover:text-white uppercase tracking-widest cursor-pointer"
-                >
-                  Skip
-                </button>
                 <button
                   onClick={() => saveStep()}
                   disabled={saving}

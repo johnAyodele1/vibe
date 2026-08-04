@@ -10,6 +10,10 @@ const ProviderProfile: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState('basic');
   const [isLoading, setIsLoading] = useState(true);
+  const [savingBasic, setSavingBasic] = useState(false);
+  const [savingServices, setSavingServices] = useState(false);
+  const [savingLocation, setSavingLocation] = useState(false);
+  const [savingSchedule, setSavingSchedule] = useState(false);
   const [profileData, setProfileData] = useState({
     bio: '',
     gender: 'female',
@@ -117,6 +121,7 @@ const ProviderProfile: React.FC = () => {
   };
 
   const handleSaveBasic = async () => {
+    setSavingBasic(true);
     try {
       try {
         const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/profile`, {
@@ -140,10 +145,13 @@ const ProviderProfile: React.FC = () => {
       toast.success('Basic profile details updated successfully!');
     } catch (err: any) {
       toast.error(err.message);
+    } finally {
+      setSavingBasic(false);
     }
   };
 
   const handleSaveServicesAndPricing = async () => {
+    setSavingServices(true);
     try {
       try {
         // update services Offered
@@ -157,7 +165,7 @@ const ProviderProfile: React.FC = () => {
         });
         if (!resSrv.ok) throw new Error('Failed to update services');
 
-        // update rates & tips
+        // update rates & tips (backend expects perMinuteRate, NOT pricePerMinute)
         const resPrice = await fetch(`${API_BASE_URL}/v1/adult/providers/me/pricing`, {
           method: 'PUT',
           headers: {
@@ -165,7 +173,7 @@ const ProviderProfile: React.FC = () => {
             'Authorization': `Bearer ${token}`
           },
           body: JSON.stringify({
-            pricePerMinute: pricing.pricePerMinute,
+            perMinuteRate: pricing.pricePerMinute,
             tonightRate: pricing.tonightRate,
             tipMenu
           })
@@ -180,10 +188,13 @@ const ProviderProfile: React.FC = () => {
       toast.success('Services & Rates configurations saved!');
     } catch (err: any) {
       toast.error(err.message);
+    } finally {
+      setSavingServices(false);
     }
   };
 
   const handleSaveLocation = async () => {
+    setSavingLocation(true);
     try {
       try {
         const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/location`, {
@@ -203,10 +214,13 @@ const ProviderProfile: React.FC = () => {
       toast.success('Coverage location updated successfully!');
     } catch (err: any) {
       toast.error(err.message);
+    } finally {
+      setSavingLocation(false);
     }
   };
 
   const handleSaveSchedule = async () => {
+    setSavingSchedule(true);
     try {
       // Validate schedule format first!
       const timeRegex = /^(0?[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$/;
@@ -234,6 +248,8 @@ const ProviderProfile: React.FC = () => {
       toast.success('Weekly calendar parameters saved successfully!');
     } catch (err: any) {
       toast.error(err.message || 'Failed to save schedule');
+    } finally {
+      setSavingSchedule(false);
     }
   };
 
@@ -298,9 +314,10 @@ const ProviderProfile: React.FC = () => {
 
               <button
                 onClick={handleSaveBasic}
-                className="px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-md"
+                disabled={savingBasic}
+                className="px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 disabled:opacity-50 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-md"
               >
-                Save Basic Info
+                {savingBasic ? 'Processing...' : 'Save Basic Info'}
               </button>
             </div>
           )}
@@ -331,7 +348,7 @@ const ProviderProfile: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-4 border-t border-[var(--az-border)]/30">
                 {services.includes('private_call') && (
                   <div>
-                    <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">Rate per Private Minute ($)</label>
+                    <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">Rate per Private Minute (💎)</label>
                     <input
                       type="number"
                       step="0.01"
@@ -343,7 +360,7 @@ const ProviderProfile: React.FC = () => {
                 )}
                 {services.includes('hookup') && (
                   <div>
-                    <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">Rate for Tonight Arrangement ($)</label>
+                    <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">Rate for Tonight Arrangement (💎)</label>
                     <input
                       type="number"
                       className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white font-mono outline-none"
@@ -356,9 +373,10 @@ const ProviderProfile: React.FC = () => {
 
               <button
                 onClick={handleSaveServicesAndPricing}
-                className="px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-md"
+                disabled={savingServices}
+                className="px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 disabled:opacity-50 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-md"
               >
-                Save Services & Rates
+                {savingServices ? 'Processing...' : 'Save Services & Rates'}
               </button>
             </div>
           )}
@@ -370,9 +388,10 @@ const ProviderProfile: React.FC = () => {
 
               <button
                 onClick={handleSaveLocation}
-                className="px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-md"
+                disabled={savingLocation}
+                className="px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 disabled:opacity-50 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-md"
               >
-                Save Location
+                {savingLocation ? 'Processing...' : 'Save Location'}
               </button>
             </div>
           )}
@@ -425,9 +444,10 @@ const ProviderProfile: React.FC = () => {
 
               <button
                 onClick={handleSaveSchedule}
-                className="px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-md"
+                disabled={savingSchedule}
+                className="px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 disabled:opacity-50 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-md"
               >
-                Save Schedule
+                {savingSchedule ? 'Processing...' : 'Save Schedule'}
               </button>
             </div>
           )}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { io, Socket } from 'socket.io-client';
+import { Avatar } from './Avatar';
 import { API_BASE_URL, SOCKET_URL } from '../../config';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { toast } from 'sonner';
@@ -1051,11 +1052,7 @@ const MessageFeed: React.FC<FeedProps> = ({ roomId, socket, getHeaders, currentU
                 key={msg._id}
                 className="flex items-start gap-3 group relative hover:bg-white/[0.02] p-2 rounded-lg transition-all animate-[slideIn_0.2s_ease-out]"
               >
-                <img
-                  src={msg.senderAvatarUrl || '/placeholder.svg'}
-                  className="w-8 h-8 rounded-full object-cover border border-white/10"
-                  alt="Sender"
-                />
+                <Avatar src={msg.senderAvatarUrl} name={msg.senderName} size={32} className="border border-white/10" />
 
                 <div className="flex-grow">
                   <div className="flex items-center gap-2 mb-1">
@@ -2499,7 +2496,7 @@ const MembersList: React.FC<MembersProps> = ({ roomId, getHeaders }) => {
         {members.map((m, idx) => (
           <div key={idx} className="flex items-center justify-between p-3 bg-black/20 rounded-xl border border-white/5 text-left">
             <div className="flex items-center gap-2.5">
-              <img src={m.avatarUrl || '/placeholder.svg'} className="w-8 h-8 rounded-full object-cover" alt={m.displayName} />
+              <Avatar src={m.avatarUrl} name={m.displayName} size={32} className="border border-white/5" />
               <div>
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs font-bold text-white">{m.displayName}</span>
@@ -2569,7 +2566,7 @@ const WhoHereSidebar: React.FC<{ roomId: string; socket: Socket | null; getHeade
         {members.map((m, idx) => (
           <div key={idx} className="flex items-center justify-between text-xs py-1 hover:bg-white/[0.02] px-1 rounded">
             <div className="flex items-center gap-2">
-              <img src={m.avatarUrl || '/placeholder.svg'} className="w-6 h-6 rounded-full object-cover" alt="" />
+              <Avatar src={m.avatarUrl} name={m.displayName} size={24} className="border border-white/5" />
               <span className="text-gray-300 font-bold truncate max-w-[120px]">{m.displayName}</span>
               {m.badge && (
                 <span className="text-[8px] bg-amber-500 text-black px-1 rounded">{m.badge}</span>
@@ -2680,7 +2677,7 @@ const LeaderboardSidebar: React.FC<{ roomId: string; getHeaders: () => any }> = 
           <div key={idx} className="flex items-center justify-between text-xs py-1 border-b border-white/5 pb-1">
             <div className="flex items-center gap-2">
               <span className="font-bold font-mono text-gray-500 w-4">{idx + 1}st</span>
-              <img src={row.avatarUrl || '/placeholder.svg'} className="w-5 h-5 rounded-full object-cover" alt="" />
+              <Avatar src={row.avatarUrl} name={row.displayName} size={20} className="border border-white/5" />
               <span className="text-gray-300 truncate max-w-[100px]">{row.displayName}</span>
             </div>
             <span className="font-mono text-rose-500 text-[10px] font-bold">💎 {row.score}</span>

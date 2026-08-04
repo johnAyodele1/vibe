@@ -303,7 +303,7 @@ const LiveCams: React.FC = () => {
                 <img
                   src={provider.profilePhoto || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=600&auto=format&fit=crop"}
                   alt={provider.username}
-                  className="w-full h-full object-cover opacity-70 group-hover:scale-110 transition-transform duration-700"
+                  className="absolute inset-0 w-full h-full object-cover object-top opacity-70 group-hover:scale-110 transition-transform duration-700"
                 />
 
                 <div className="absolute top-3 left-3 flex gap-2">
