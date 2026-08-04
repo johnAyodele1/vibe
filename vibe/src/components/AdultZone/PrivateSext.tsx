@@ -500,7 +500,8 @@ const PrivateSext: React.FC = () => {
     });
 
     s.on('sext:new_message', (payload: { message: Message }) => {
-      if (selectedConv && payload.message.senderId !== user?.id) {
+      const myUserId = user?.id || (user as any)?._id;
+      if (selectedConv && payload.message.conversationId === selectedConv.conversationId && payload.message.senderId !== myUserId) {
         // Append message if in current conversation
         setMessages(prev => [...prev, payload.message]);
         markConversationRead(selectedConv.conversationId);
@@ -570,6 +571,7 @@ const PrivateSext: React.FC = () => {
 
     s.on('sext:new_message_notification', (payload: { conversationId: string, messageId: string }) => {
       s.emit('sext:message_delivered', { messageId: payload.messageId });
+      fetchConversations();
     });
 
     s.on('wallet:updated', (payload: { balance: number }) => {
@@ -850,6 +852,11 @@ const PrivateSext: React.FC = () => {
     if (!file) return;
 
     const isVideo = file.type.startsWith('video/');
+    if (user?.role !== 'provider' && isVideo) {
+      toast.error('Only photo attachments are allowed for standard members.');
+      return;
+    }
+
     const maxSize = isVideo ? 100 * 1024 * 1024 : 10 * 1024 * 1024;
     if (file.size > maxSize) {
       toast.error(`File is too large. Max size is ${isVideo ? '100MB' : '10MB'}`);
@@ -868,17 +875,18 @@ const PrivateSext: React.FC = () => {
 
     try {
       const isVideo = uploadFile.type.startsWith('video/');
-      const context = isLockedUpload
+      const finalIsLocked = user?.role === 'provider' ? isLockedUpload : false;
+      const context = finalIsLocked
         ? (isVideo ? 'paid_video' : 'paid_image')
         : (isVideo ? 'chat_video' : 'chat_image');
 
-      const result = await uploadMedia(uploadFile, context, isLockedUpload, (percent) => {
+      const result = await uploadMedia(uploadFile, context, finalIsLocked, (percent) => {
         setUploadProgress(10 + Math.round(percent * 0.7)); // scale from 10 to 80
       });
 
       setUploadProgress(80);
 
-      const mediaType = isLockedUpload
+      const mediaType = finalIsLocked
         ? (isVideo ? 'locked_video' : 'locked_image')
         : (isVideo ? 'video' : 'image');
 
@@ -887,11 +895,11 @@ const PrivateSext: React.FC = () => {
         headers: getHeaders(),
         body: JSON.stringify({
           type: mediaType,
-          content: isLockedUpload ? '[Locked Premium Media]' : '',
+          content: finalIsLocked ? '[Locked Premium Media]' : '',
           mediaUrl: result.url,
           cloudinaryPublicId: result.publicId,
           mediaThumbnailUrl: isVideo ? "https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?q=80&w=300&auto=format&fit=crop" : result.url,
-          creditCost: isLockedUpload ? uploadCost : 0
+          creditCost: finalIsLocked ? uploadCost : 0
         })
       });
 
@@ -2145,19 +2153,21 @@ const PrivateSext: React.FC = () => {
                   <img src={uploadPreview} className="w-12 h-12 rounded object-cover" alt="upload preview" />
                   <div>
                     <span className="text-xs block font-bold text-pink-400">Selected Attachment</span>
-                    <label className="flex items-center gap-2 mt-1 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={isLockedUpload}
-                        onChange={(e) => setIsLockedUpload(e.target.checked)}
-                        className="rounded border-gray-600 text-pink-500 focus:ring-pink-500"
-                      />
-                      <span className="text-[10px] text-gray-300">Lock and charge credits</span>
-                    </label>
+                    {user?.role === 'provider' && (
+                      <label className="flex items-center gap-2 mt-1 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isLockedUpload}
+                          onChange={(e) => setIsLockedUpload(e.target.checked)}
+                          className="rounded border-gray-600 text-pink-500 focus:ring-pink-500"
+                        />
+                        <span className="text-[10px] text-gray-300">Lock and charge credits</span>
+                      </label>
+                    )}
                   </div>
                 </div>
 
-                {isLockedUpload && (
+                {user?.role === 'provider' && isLockedUpload && (
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] text-amber-400 font-bold">Price (💎):</span>
                     <input
@@ -2268,11 +2278,11 @@ const PrivateSext: React.FC = () => {
                   </button>
 
                   {/* Image upload trigger */}
-                  <label className="chat-input__media text-lg opacity-70 hover:opacity-100 transition-opacity cursor-pointer p-1 flex-shrink-0">
+                  <label className="chat-input__media text-lg opacity-70 hover:opacity-100 transition-opacity cursor-pointer p-1 flex-shrink-0" title={user?.role === 'provider' ? "Upload photo or video" : "Upload photo"}>
                     📸
                     <input
                       type="file"
-                      accept="image/*,video/*"
+                      accept={user?.role === 'provider' ? "image/*,video/*" : "image/*"}
                       onChange={handleFileChange}
                       className="hidden"
                     />
@@ -2550,7 +2560,7 @@ const PrivateSext: React.FC = () => {
               <div className="w-32 h-32 rounded-full border-4 border-pink-500 animate-pulse mb-6 flex items-center justify-center overflow-hidden">
                 <Avatar src={selectedConv?.otherUser?.avatarUrl} name={selectedConv?.otherUser?.displayName} size={128} />
               </div>
-              <h2 className="text-3xl font-serif italic mb-2">{selectedConv?.otherUser?.displayName}</h2>
+              <h2 className="text-3xl font-serif italic mb-2 truncate max-w-xs px-4 text-center" title={selectedConv?.otherUser?.displayName}>{selectedConv?.otherUser?.displayName}</h2>
               <p className="text-xs text-pink-400 uppercase tracking-widest animate-pulse">Incoming {callType} Call...</p>
               <p className="text-xs text-yellow-400 mt-2 font-mono">Rate: 💎 {callRate} credits / min</p>
 
@@ -2582,7 +2592,7 @@ const PrivateSext: React.FC = () => {
               <div className="w-32 h-32 rounded-full border-4 border-pink-500 mb-6 flex items-center justify-center overflow-hidden">
                 <Avatar src={selectedConv?.otherUser?.avatarUrl} name={selectedConv?.otherUser?.displayName} size={128} className="animate-pulse" />
               </div>
-              <h2 className="text-3xl font-serif italic mb-2">{selectedConv?.otherUser?.displayName}</h2>
+              <h2 className="text-3xl font-serif italic mb-2 truncate max-w-xs px-4 text-center" title={selectedConv?.otherUser?.displayName}>{selectedConv?.otherUser?.displayName}</h2>
               <p className="text-xs text-gray-400 uppercase tracking-widest animate-pulse">Calling...</p>
 
               <button

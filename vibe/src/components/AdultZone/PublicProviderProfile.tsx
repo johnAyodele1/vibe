@@ -331,9 +331,9 @@ export const PublicProviderProfile: React.FC = () => {
 
         {/* RIGHT — Info & Actions (40% width on Desktop) */}
         <div className="lg:col-span-5 flex flex-col justify-start">
-          <div className="mb-6">
-            <div className="flex items-center gap-3 mb-2">
-              <h1 className="text-4xl font-serif italic text-white tracking-wide">
+          <div className="mb-6 max-w-full">
+            <div className="flex items-center gap-3 mb-2 max-w-full">
+              <h1 className="text-4xl font-serif italic text-white tracking-wide truncate max-w-full" title={provider.stageName}>
                 {provider.stageName}
               </h1>
               {provider.isVerified && (
@@ -406,17 +406,17 @@ export const PublicProviderProfile: React.FC = () => {
 
           {/* PRIMARY CTA: MESSAGE BUTTON */}
           <button
-            className="provider-profile__message-btn"
+            className="provider-profile__message-btn truncate max-w-full"
             onClick={handleStartConversation}
             disabled={isStartingConversation}
           >
             {isStartingConversation ? (
               <span className="animate-spin rounded-full h-5 w-5 border-t-2 border-white"></span>
             ) : (
-              <>
+              <span className="truncate">
                 <span className="message-btn__icon">💬</span>
-                Message {provider.stageName}
-              </>
+                Message {provider.stageName.length > 15 ? `${provider.stageName.slice(0, 15)}...` : provider.stageName}
+              </span>
             )}
           </button>
 

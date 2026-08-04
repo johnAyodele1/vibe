@@ -481,7 +481,8 @@ const ProviderMessages: React.FC = () => {
     });
 
     s.on('sext:new_message', (payload: { message: Message }) => {
-      if (selectedConv && payload.message.senderId !== user?.id) {
+      const myUserId = user?.id || (user as any)?._id;
+      if (selectedConv && payload.message.conversationId === selectedConv.conversationId && payload.message.senderId !== myUserId) {
         setMessages(prev => [...prev, payload.message]);
         markConversationRead(selectedConv.conversationId);
         s.emit('sext:message_delivered', { messageId: payload.message.id });
@@ -562,6 +563,7 @@ const ProviderMessages: React.FC = () => {
 
     s.on('sext:new_message_notification', (payload: { conversationId: string, messageId: string }) => {
       s.emit('sext:message_delivered', { messageId: payload.messageId });
+      fetchConversations();
     });
 
     // Inbound Call signaling for provider
@@ -2506,7 +2508,7 @@ const ProviderMessages: React.FC = () => {
               <div className="w-32 h-32 rounded-full border-4 border-pink-500 animate-pulse mb-6 flex items-center justify-center overflow-hidden">
                 <Avatar src={selectedConv?.otherUser?.avatarUrl} name={selectedConv?.otherUser?.displayName} size={128} />
               </div>
-              <h2 className="text-3xl font-serif italic mb-2">{selectedConv?.otherUser?.displayName}</h2>
+              <h2 className="text-3xl font-serif italic mb-2 truncate max-w-xs px-4 text-center" title={selectedConv?.otherUser?.displayName}>{selectedConv?.otherUser?.displayName}</h2>
               <p className="text-xs text-pink-400 uppercase tracking-widest animate-pulse">Incoming {callType} Call...</p>
               <p className="text-xs text-yellow-400 mt-2 font-mono">Rate: 💎 {callRate} credits / min</p>
 

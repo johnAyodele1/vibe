@@ -425,9 +425,6 @@ const AdultHome: React.FC = () => {
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between mb-10">
             <h2 className="text-3xl font-serif italic text-[var(--az-text-primary)]">Recommended For You</h2>
-            <Link to="/cams" className="text-[10px] font-bold uppercase tracking-widest text-[var(--az-accent-gold)] hover:underline">
-              View All
-            </Link>
           </div>
 
           <div className="flex gap-6 overflow-x-auto pb-8 no-scrollbar snap-x snap-mandatory">

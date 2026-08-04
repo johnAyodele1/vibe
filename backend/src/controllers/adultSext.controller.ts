@@ -1129,7 +1129,7 @@ export const sendMessage = async (req: Request, res: Response) => {
       conversationId,
       senderId: user._id,
       receiverId: otherParticipantId,
-      content: encrypt(content),
+      content: encrypt(content || (type === 'voice_note' || type === 'voice' ? '[Voice Note]' : '[Attachment]')),
       messageType: type,
       mediaUrl,
       mediaThumbnailUrl,
