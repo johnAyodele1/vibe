@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { Avatar } from './Avatar';
 import { detectContactSharing } from '@yourapp/content-filter';
 import { useContentFilter } from '../../hooks/useContentFilter';
 import { ProviderContentWarning } from './ContentFilterWarning';
@@ -1560,21 +1561,22 @@ const ProviderMessages: React.FC = () => {
                   className={`p-4 flex gap-4 cursor-pointer hover:bg-[#1a0c16] transition-colors border-b border-[var(--az-border)]/30 relative ${isSelected ? 'bg-[#1a0c16] border-l-4 border-pink-500' : ''}`}
                 >
                   <div className="relative flex-shrink-0">
-                    <img
-                      src={other.avatarUrl || FALLBACK_AVATAR}
-                      className="w-12 h-12 rounded-full object-cover border border-[var(--az-border)]"
-                      alt={other.displayName}
+                    <Avatar
+                      src={other.avatarUrl}
+                      name={other.displayName}
+                      size={48}
+                      className="border border-[var(--az-border)]"
                     />
                     {other.isOnline && (
-                      <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-[#070406] rounded-full" />
+                      <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-[#070406] rounded-full animate-pulse" />
                     )}
                   </div>
 
                   <div className="flex-grow min-w-0">
-                    <div className="flex justify-between items-center mb-1">
-                      <h4 className="font-bold text-sm truncate">{other.displayName}</h4>
+                    <div className="flex justify-between items-center mb-1 gap-2 min-w-0">
+                      <h4 className="font-bold text-sm truncate flex-1 min-w-0">{other.displayName}</h4>
                       {c.lastMessage && (
-                        <span className="text-[10px] text-gray-400">
+                        <span className="text-[10px] text-gray-400 flex-shrink-0">
                           {new Date(c.lastMessage.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       )}
@@ -1610,10 +1612,11 @@ const ProviderMessages: React.FC = () => {
                   ←
                 </button>
                 <div className="relative flex-shrink-0">
-                  <img
-                    src={selectedConv.otherUser?.avatarUrl || FALLBACK_AVATAR}
-                    className="w-9 h-9 rounded-full object-cover border border-pink-500/50 conversation-header__avatar"
-                    alt={selectedConv.otherUser?.displayName}
+                  <Avatar
+                    src={selectedConv.otherUser?.avatarUrl}
+                    name={selectedConv.otherUser?.displayName}
+                    size={36}
+                    className="border border-pink-500/50 conversation-header__avatar"
                   />
                   {selectedConv.otherUser?.isOnline && (
                     <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full border border-[#140b13]" />
@@ -2500,8 +2503,8 @@ const ProviderMessages: React.FC = () => {
           {/* Incoming Call Layout */}
           {callState === 'ringing' && (
             <div className="flex-grow flex flex-col items-center justify-center">
-              <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-pink-500 animate-pulse mb-6">
-                <img src={selectedConv?.otherUser?.avatarUrl || FALLBACK_AVATAR} className="w-full h-full object-cover" />
+              <div className="w-32 h-32 rounded-full border-4 border-pink-500 animate-pulse mb-6 flex items-center justify-center overflow-hidden">
+                <Avatar src={selectedConv?.otherUser?.avatarUrl} name={selectedConv?.otherUser?.displayName} size={128} />
               </div>
               <h2 className="text-3xl font-serif italic mb-2">{selectedConv?.otherUser?.displayName}</h2>
               <p className="text-xs text-pink-400 uppercase tracking-widest animate-pulse">Incoming {callType} Call...</p>

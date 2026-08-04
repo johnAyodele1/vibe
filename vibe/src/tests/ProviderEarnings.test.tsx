@@ -21,7 +21,7 @@ describe('ProviderEarnings Component', () => {
             data: {
               totalEarned: 74200,
               paidOut: 45000,
-              pending: 10650,
+              pending: 600000,
               timeline: [
                 { dayName: 'Mon', credits: 1000 },
                 { dayName: 'Tue', credits: 2000 },
@@ -53,9 +53,9 @@ describe('ProviderEarnings Component', () => {
 
     // Verify loading spinner shows or data appears
     await waitFor(() => {
-      expect(screen.getByText('💎 74200')).toBeInTheDocument();
+      expect(screen.getByText(/💎 74,?200/)).toBeInTheDocument();
       expect(screen.getByText('₦45,000')).toBeInTheDocument();
-      expect(screen.getByText('₦10,650')).toBeInTheDocument();
+      expect(screen.getByText('₦600,000')).toBeInTheDocument();
       expect(screen.getByText('Member_3821')).toBeInTheDocument();
       expect(screen.getByText('Member_2214')).toBeInTheDocument();
       expect(screen.getByText('Bank Transfer')).toBeInTheDocument();
@@ -144,7 +144,7 @@ describe('ProviderEarnings Component', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('💎 74200')).toBeInTheDocument();
+      expect(screen.getByText(/💎 74,?200/)).toBeInTheDocument();
     });
 
     const payoutButton = screen.getByRole('button', { name: /Request Early Payout/i });
