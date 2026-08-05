@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#f42559" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="manifest" href="/manifest.json" />
+    <title>Vibe - Dating App</title>
+
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/philfung/add-to-homescreen@3.5/dist/add-to-homescreen.min.css"
+    />
+    <script src="https://cdn.jsdelivr.net/gh/philfung/add-to-homescreen@3.5/dist/add-to-homescreen.min.js"></script>
+
+    <style>
+      .hide-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .hide-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+
+      :root {
+        --primary: #f42559;
+        --background-dark: #221014;
+      }
+
+      body {
+        min-height: 100vh;
+        min-height: 100dvh;
+      }
+    </style>
+  </head>
+  <body
+    class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-white antialiased selection:bg-primary selection:text-white relative"
+  >
+    <div id="root">
+      <!-- Initial beautiful loader animation while JS loads -->
+      <div style="
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background-color: #221014;
+        z-index: 99999;
+        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      ">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 1.5rem;">
+          <div style="
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(244, 37, 89, 0.1);
+            border-left-color: #f42559;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+          "></div>
+          <h1 style="
+            font-size: 2.5rem;
+            font-weight: 900;
+            letter-spacing: 0.2em;
+            color: #f42559;
+            margin: 0;
+          ">VIBE</h1>
+        </div>
+      </div>
+      <style>
+        @keyframes spin {
+          to {
+            transform: rotate(360deg);
+          }
+        }
+      </style>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,321 @@
+/* Define theme colors based on the HTML config */
+.wrapper {
+  --primary: #f42559;
+  --bg-dark: #221014;
+  --surface-dark: #2d1b20;
+  --text-white: #ffffff;
+
+  font-family: "Plus Jakarta Sans", sans-serif;
+  background-color: var(--bg-dark);
+  color: var(--text-white);
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  width: 100%;
+  overflow-x: hidden;
+}
+
+.container {
+  width: 100%;
+  max-width: 28rem; /* max-w-md */
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  background-color: var(--bg-dark);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+
+/* Header */
+.header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  padding-top: 3rem;
+  padding-bottom: 1rem;
+  display: flex;
+  justify-content: center;
+  background: linear-gradient(to bottom, rgba(34, 16, 20, 0.8), transparent);
+}
+
+.logo {
+  font-size: 1.875rem;
+  font-weight: 800;
+  letter-spacing: 0.025em;
+  text-shadow: 0 10px 8px rgba(0, 0, 0, 0.04);
+}
+
+/* Hero Section */
+.hero {
+  position: relative;
+  width: 100%;
+  flex: 1;
+  min-height: 50vh;
+}
+
+.heroImage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  /* URL taken from original HTML */
+  background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuCX0-jBI8VeVC5foAUImN__1LQGOFVv-_trmnGFMB8u09qWccwQESxIWZEIdghagZPtZ67-E0pC4w7Q4l7JNZw-76IjByH5J6-XmsVGVoKSd2MDaADlJKchO6urPChGC5kuzyx55LDNDdvrXaAz6NMc1z6G6qD6RxDLWkPDyhehXujuDT3vQbledNfvjPrL_3_bUbjzBqVzdHCqbU0JqguoWjN7qTTsBEhHdploZrMLQjYXFxVkzOYwo9jx7RRDGpHGpMlVCEcU4Oc");
+}
+
+.heroOverlayTop {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(34, 16, 20, 0.2),
+    transparent,
+    var(--bg-dark)
+  );
+}
+
+.heroOverlayBottom {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 75%;
+  background: linear-gradient(
+    to top,
+    var(--bg-dark),
+    rgba(34, 16, 20, 0.8),
+    transparent
+  );
+}
+
+/* Content Sheet */
+.contentSheet {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 0 1.5rem 2rem 1.5rem;
+  margin-top: -5rem;
+}
+
+.headlineGroup {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.title {
+  font-size: 1.875rem;
+  font-weight: 700;
+  line-height: 1.25;
+  margin-bottom: 0.75rem;
+}
+
+.subtitle {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.625;
+}
+
+/* Features */
+.features {
+  display: flex;
+  width: 100%;
+  overflow-x: auto;
+  justify-content: center;
+  margin-bottom: 2rem;
+  scrollbar-width: none; /* Firefox */
+}
+
+.features::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
+}
+
+.featureRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.featureItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  width: 6rem;
+  text-align: center;
+}
+
+.iconCircle {
+  width: 4rem;
+  height: 4rem;
+  border-radius: 9999px;
+  background-color: var(--surface-dark);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary);
+  box-shadow: 0 10px 15px -3px rgba(244, 37, 89, 0.1);
+}
+
+.featureLabel {
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.025em;
+}
+
+/* Buttons */
+.buttonGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.btnBase {
+  width: 100%;
+  height: 3.5rem;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  cursor: pointer;
+  border: none;
+}
+
+.btnBase:active {
+  transform: scale(0.98);
+}
+
+.btnPrimary {
+  background-color: var(--primary);
+  box-shadow: 0 0 20px rgba(244, 37, 89, 0.4);
+  gap: 0.5rem;
+}
+
+.btnPrimary:hover {
+  background-color: rgba(244, 37, 89, 0.9);
+}
+
+.btnText {
+  color: white;
+  font-weight: 700;
+  font-size: 1.125rem;
+}
+
+.btnSecondary {
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.btnSecondary:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.btnSecondaryText {
+  color: white;
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+/* Divider */
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1.5rem 0;
+}
+
+.line {
+  height: 1px;
+  flex: 1;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.dividerText {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Social Buttons */
+.socialRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.socialBtn {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 9999px;
+  background-color: white;
+  color: black;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.socialBtn:hover {
+  background-color: #e5e7eb;
+}
+
+.googleBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  width: 100%;
+  height: 3.5rem;
+  background-color: white;
+  color: black;
+  border-radius: 9999px;
+  font-weight: 600;
+  font-size: 1rem;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.googleBtn:hover {
+  background-color: #f3f4f6;
+}
+
+.googleIcon {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+/* Footer */
+.footer {
+  text-align: center;
+  font-size: 0.625rem;
+  color: rgba(255, 255, 255, 0.3);
+  line-height: 1.5;
+  padding: 0 1rem;
+}
+
+.link {
+  text-decoration: underline;
+  color: inherit;
+}
+
+.link:hover {
+  color: rgba(255, 255, 255, 0.5);
+}

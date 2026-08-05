@@ -1,0 +1,12 @@
+{
+  "name": "vibe-monorepo",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "vibe",
+    "packages/*"
+  ],
+  "devDependencies": {
+    "@types/jest": "^30.0.0"
+  }
+}

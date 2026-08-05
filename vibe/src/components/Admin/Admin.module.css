@@ -1,0 +1,178 @@
+.loginContainer {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #12080a;
+  padding: 20px;
+}
+
+.loginCard {
+  background: #1a1a1c;
+  padding: 40px;
+  border-radius: 20px;
+  width: 100%;
+  max-width: 400px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.loginCard h1 {
+  margin-top: 0;
+  margin-bottom: 30px;
+  text-align: center;
+}
+
+.inputGroup {
+  margin-bottom: 20px;
+}
+
+.inputGroup label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.inputGroup input {
+  width: 100%;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  color: #fff;
+  font-family: inherit;
+}
+
+.loginBtn {
+  width: 100%;
+  padding: 14px;
+  background: #f42559;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 10px;
+}
+
+.dashboardContainer {
+  min-height: 100vh;
+  background: #12080a;
+  color: #fff;
+  padding: 20px;
+  font-family: inherit;
+}
+
+.dashboardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.analyticsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+  margin-bottom: 40px;
+}
+
+.statCard {
+  background: #1a1a1c;
+  padding: 24px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  text-align: center;
+}
+
+.statCard h3 {
+  margin: 0;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.statValue {
+  display: block;
+  font-size: 36px;
+  font-weight: 700;
+  margin-top: 10px;
+  color: #f42559;
+}
+
+.section {
+  margin-bottom: 40px;
+}
+
+.section h2 {
+  margin-bottom: 20px;
+  font-size: 24px;
+}
+
+.tableContainer {
+  background: #1a1a1c;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  padding: 16px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+th {
+  background: rgba(255, 255, 255, 0.02);
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.actionBtn {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+  margin-right: 8px;
+  font-size: 12px;
+}
+
+.blockBtn {
+  background: rgba(244, 37, 89, 0.1);
+  color: #f42559;
+}
+
+.deleteBtn {
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+}
+
+.logoutBtn {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.badge {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.pendingBadge { background: rgba(255, 193, 7, 0.2); color: #ffc107; }
+.resolvedBadge { background: rgba(40, 167, 69, 0.2); color: #28a745; }
+.dismissedBadge { background: rgba(108, 117, 125, 0.2); color: #6c757d; }

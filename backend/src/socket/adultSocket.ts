@@ -1,0 +1,604 @@
+import { Server, Socket } from 'socket.io';
+import jwt from 'jsonwebtoken';
+import AdultUser from '../models/AdultUser';
+import CamSession from '../models/CamSession';
+import CamViewer from '../models/CamViewer';
+import PrivateShowRequest from '../models/PrivateShowRequest';
+import AdultMessage from '../models/AdultMessage';
+import { decrypt } from '../services/encryptionService';
+import mongoose from 'mongoose';
+import { getClientPrice } from '../services/pricingService';
+import app from '../app';
+import Redis from 'ioredis';
+
+let redisClient: Redis | null = null;
+if (process.env.REDIS_URL || process.env.REDIS_HOST) {
+  try {
+    redisClient = new Redis(process.env.REDIS_URL || '');
+  } catch (err) {
+    console.warn('Failed to initialize Redis client inside adultSocket, falling back to in-memory tracking:', err);
+  }
+}
+
+// In-memory fallback
+const inMemoryOnlineSockets = new Map<string, Set<string>>();
+
+export const addActiveConnection = async (userId: string, socketId: string) => {
+  if (redisClient) {
+    try {
+      await redisClient.sadd(`adult:online:${userId}`, socketId);
+      return;
+    } catch (err) {
+      console.warn('Redis sAdd error, falling back to in-memory:', err);
+    }
+  }
+  if (!inMemoryOnlineSockets.has(userId)) {
+    inMemoryOnlineSockets.set(userId, new Set());
+  }
+  inMemoryOnlineSockets.get(userId)!.add(socketId);
+};
+
+export const removeActiveConnection = async (userId: string, socketId: string) => {
+  if (redisClient) {
+    try {
+      await redisClient.srem(`adult:online:${userId}`, socketId);
+      return;
+    } catch (err) {
+      console.warn('Redis sRem error, falling back to in-memory:', err);
+    }
+  }
+  const userSockets = inMemoryOnlineSockets.get(userId);
+  if (userSockets) {
+    userSockets.delete(socketId);
+    if (userSockets.size === 0) {
+      inMemoryOnlineSockets.delete(userId);
+    }
+  }
+};
+
+export const getActiveConnectionCount = async (userId: string): Promise<number> => {
+  if (redisClient) {
+    try {
+      return await redisClient.scard(`adult:online:${userId}`);
+    } catch (err) {
+      console.warn('Redis sCard error, falling back to in-memory:', err);
+    }
+  }
+  return inMemoryOnlineSockets.get(userId)?.size || 0;
+};
+
+export const cleanStalePresence = async () => {
+  if (redisClient) {
+    try {
+      const keys = await redisClient.keys('adult:online:*');
+      if (keys.length > 0) {
+        await redisClient.del(keys);
+      }
+    } catch (err) {
+      console.warn('Redis error during startup cleanup:', err);
+    }
+  }
+
+  // Mark ALL providers as offline on startup
+  await AdultUser.updateMany(
+    { role: 'provider' },
+    { $set: { 'providerProfile.isOnline': false, 'providerProfile.onlineSince': null } }
+  );
+
+  // Mark ALL users as offline on startup
+  await AdultUser.updateMany(
+    { role: 'user' },
+    { $set: { isOnline: false, onlineSince: null } }
+  );
+
+  // End ALL active cam sessions (they cannot survive a server restart)
+  const staleSessions = await CamSession.find({ status: 'live' });
+  for (const session of staleSessions) {
+    await CamSession.findByIdAndUpdate(session._id, {
+      $set: { status: 'ended', endedAt: new Date() },
+    });
+  }
+
+  console.log(`Cleaned up ${staleSessions.length} stale cam sessions on startup`);
+};
+
+export const handleProviderGoesOffline = async (userId: string, namespace: any) => {
+  // 1. Mark provider as offline
+  await AdultUser.findByIdAndUpdate(
+    userId,
+    { $set: { 'providerProfile.isOnline': false, 'providerProfile.onlineSince': null } }
+  );
+
+  // 2. End any active cam session for this provider
+  const activeSession = await CamSession.findOne({
+    providerId: userId,
+    status: 'live',
+  });
+
+  if (activeSession) {
+    await CamSession.findByIdAndUpdate(activeSession._id, {
+      $set: {
+        status: 'ended',
+        endedAt: new Date(),
+      },
+    });
+
+    // 3. Tell all viewers in this cam room that the stream ended
+    namespace.to(`cam:${activeSession._id}`).emit('cam:session_ended', {
+      sessionId: activeSession._id.toString(),
+      reason: 'provider_disconnected',
+    });
+
+    // 4. Remove from the global live list
+    namespace.emit('cam:session_ended', {
+      sessionId: activeSession._id.toString(),
+    });
+
+    console.log(`Auto-ended cam session ${activeSession._id} because provider ${userId} disconnected`);
+  }
+
+  // 5. Tell members browsing that this provider went offline
+  namespace.emit('provider:offline', {
+    providerId: userId,
+    isOnline: false,
+  });
+};
+
+// Centralized map for active call tickers accessible across all socket connections in the adult namespace
+const activeCallTickers = new Map<string, NodeJS.Timeout>();
+
+export const setupAdultSocket = (io: Server) => {
+  const adultNamespace = io.of('/adult');
+
+  // Attach namespace to express app for access in REST controllers
+  app.set('adultNamespace', adultNamespace);
+
+  adultNamespace.use(async (socket, next) => {
+    try {
+      const token = socket.handshake.auth.token;
+      if (!token) return next(new Error('Authentication error'));
+
+      const decoded = jwt.verify(token, process.env.ADULT_JWT_SECRET || 'adult_secret') as { sub: string };
+      const user = await AdultUser.findById(decoded.sub);
+
+      if (!user || !user.isActive || user.isBanned) return next(new Error('Authentication error'));
+
+      socket.data.user = user;
+      next();
+    } catch (err) {
+      next(new Error('Authentication error'));
+    }
+  });
+
+  adultNamespace.on('connection', async (socket: Socket) => {
+    console.log(`Adult Socket connected: ${socket.id}`);
+    const user = socket.data.user;
+    if (!user) return;
+    const userId = user._id.toString();
+    const accountType = user.role; // 'provider' or 'user'
+
+    // Track active connection
+    await addActiveConnection(userId, socket.id);
+
+    // Join personal user room
+    socket.join(`user:${userId}`);
+
+    // Mark user as online
+    if (accountType === 'provider') {
+      await AdultUser.findByIdAndUpdate(
+        userId,
+        { $set: { 'providerProfile.isOnline': true, 'providerProfile.onlineSince': new Date() } }
+      );
+
+      // Notify members that this provider came online
+      adultNamespace.emit('provider:online', {
+        providerId: userId,
+        isOnline: true,
+      });
+    } else {
+      // Standard member
+      await AdultUser.findByIdAndUpdate(
+        userId,
+        { $set: { isOnline: true, onlineSince: new Date() } }
+      );
+    }
+
+    // Broadcast user status change globally in the adult namespace
+    adultNamespace.emit('user:status', {
+      userId,
+      isOnline: true,
+    });
+
+    // Room events (for both standard rooms and naughty rooms)
+    socket.on('room:join', (data: any) => {
+      const roomId = typeof data === 'string' ? data : data?.roomId;
+      if (!roomId) return;
+      socket.join(`room:${roomId}`);
+      adultNamespace.to(`room:${roomId}`).emit('room:userJoined', { userId: socket.data.user._id, count: adultNamespace.adapter.rooms.get(`room:${roomId}`)?.size });
+    });
+
+    socket.on('room:leave', (data: any) => {
+      const roomId = typeof data === 'string' ? data : data?.roomId;
+      if (!roomId) return;
+      socket.leave(`room:${roomId}`);
+      adultNamespace.to(`room:${roomId}`).emit('room:userLeft', { userId: socket.data.user._id, count: adultNamespace.adapter.rooms.get(`room:${roomId}`)?.size });
+    });
+
+    socket.on('room:sendMessage', (data: { roomId: string, content: string }) => {
+        adultNamespace.to(`room:${data.roomId}`).emit('room:message', {
+            senderId: socket.data.user._id,
+            username: socket.data.user.username,
+            content: data.content,
+            createdAt: new Date(),
+        });
+    });
+
+    socket.on('room:typing', (data: { roomId: string }) => {
+      if (!data || !data.roomId) return;
+      const { roomId } = data;
+      socket.to(`room:${roomId}`).emit('room:typing', {
+        userId: socket.data.user._id,
+        displayName: socket.data.user.displayName || socket.data.user.username,
+      });
+    });
+
+    socket.on('room:stop_typing', (data: { roomId: string }) => {
+      // Can be used to clear typing list if needed
+    });
+
+    socket.on('thread:join', (data: { threadId: string }) => {
+      if (!data || !data.threadId) return;
+      const { threadId } = data;
+      socket.join(`thread:${threadId}`);
+    });
+
+    socket.on('thread:leave', (data: { threadId: string }) => {
+      if (!data || !data.threadId) return;
+      const { threadId } = data;
+      socket.leave(`thread:${threadId}`);
+    });
+
+    socket.on('thread:typing', (data: { threadId: string }) => {
+      if (!data || !data.threadId) return;
+      const { threadId } = data;
+      socket.to(`thread:${threadId}`).emit('thread:typing', {
+        userId: socket.data.user._id,
+        displayName: socket.data.user.displayName || socket.data.user.username,
+      });
+    });
+
+    socket.on('thread:stop_typing', (data: { threadId: string }) => {
+      // Thread stop typing
+    });
+
+    // Private Chat events
+    socket.on('chat:typing', (data: { receiverId: string, isTyping: boolean }) => {
+        adultNamespace.to(`user:${data.receiverId}`).emit('chat:typing', {
+            senderId: socket.data.user._id,
+            isTyping: data.isTyping
+        });
+    });
+
+    // Conversation room events
+    socket.on('conv:join', (data: { conversationId: string }) => {
+      if (!data || !data.conversationId) return;
+      socket.join(`conv:${data.conversationId}`);
+    });
+
+    socket.on('conv:leave', (data: { conversationId: string }) => {
+      if (!data || !data.conversationId) return;
+      socket.leave(`conv:${data.conversationId}`);
+    });
+
+    socket.on('sext:typing', (data: { conversationId: string }) => {
+      if (!data || !data.conversationId) return;
+      socket.to(`conv:${data.conversationId}`).emit('sext:typing', {
+        userId: socket.data.user._id,
+        displayName: socket.data.user.displayName || socket.data.user.username
+      });
+    });
+
+    socket.on('sext:stop_typing', (data: { conversationId: string }) => {
+      if (!data || !data.conversationId) return;
+      socket.to(`conv:${data.conversationId}`).emit('sext:stop_typing', {
+        userId: socket.data.user._id
+      });
+    });
+
+    socket.on('sext:message_delivered', async ({ messageId }) => {
+      try {
+        if (!mongoose.Types.ObjectId.isValid(messageId)) return;
+        const msg = await AdultMessage.findByIdAndUpdate(
+          messageId,
+          { $set: { deliveredAt: new Date() } },
+          { new: true }
+        );
+        if (msg) {
+          // Tell the SENDER their message was delivered
+          adultNamespace.to(`user:${msg.senderId}`).emit('sext:message_status_update', {
+            messageId,
+            status: 'delivered',
+            deliveredAt: msg.deliveredAt,
+          });
+        }
+      } catch (err) {
+        console.error('Error handling sext:message_delivered:', err);
+      }
+    });
+
+    // Cam Events
+    socket.on('cam:join', async (data: any) => {
+      try {
+        const sessionId = typeof data === 'string' ? data : data?.sessionId;
+        if (!sessionId) return;
+
+        socket.join(`cam:${sessionId}`);
+
+        const count = adultNamespace.adapter.rooms.get(`cam:${sessionId}`)?.size || 0;
+        adultNamespace.to(`cam:${sessionId}`).emit('cam:viewerCount', count);
+        adultNamespace.to(`cam:${sessionId}`).emit('cam:viewer_count', { count });
+
+        try {
+          await CamViewer.findOneAndUpdate(
+            { sessionId, userId: socket.data.user._id },
+            {
+              $setOnInsert: { joinedAt: new Date() },
+              $set: { deviceType: 'desktop' } // Simplified
+            },
+            { upsert: true }
+          );
+        } catch (dbErr) {
+          console.warn('Non-blocking cam viewer join tracking failed:', dbErr);
+        }
+      } catch (err) {
+        console.error('Cam join error:', err);
+      }
+    });
+
+    socket.on('cam:leave', async (data: any) => {
+      try {
+        const sessionId = typeof data === 'string' ? data : data?.sessionId;
+        if (!sessionId) return;
+
+        socket.leave(`cam:${sessionId}`);
+        const count = adultNamespace.adapter.rooms.get(`cam:${sessionId}`)?.size || 0;
+        adultNamespace.to(`cam:${sessionId}`).emit('cam:viewerCount', count);
+        adultNamespace.to(`cam:${sessionId}`).emit('cam:viewer_count', { count });
+
+        try {
+          await CamViewer.findOneAndUpdate(
+            { sessionId, userId: socket.data.user._id },
+            { leftAt: new Date() }
+          );
+        } catch (dbErr) {
+          console.warn('Non-blocking cam viewer leave tracking failed:', dbErr);
+        }
+      } catch (err) {
+        console.error('Cam leave error:', err);
+      }
+    });
+
+    socket.on('cam:privateRequest', async (data: { sessionId: string }) => {
+      try {
+        const session = await CamSession.findById(data.sessionId);
+        if (!session) return;
+
+        // The user sees/agrees to the marked-up price, but we save the base creditsPerMinute in the show request
+        const request = new PrivateShowRequest({
+          sessionId: session._id,
+          requesterId: socket.data.user._id,
+          providerId: session.providerId,
+          creditsPerMinute: session.privateShowRate,
+          expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 min expiry
+        });
+        await request.save();
+
+        adultNamespace.to(`user:${session.providerId}`).emit('cam:privateRequestReceived', {
+          requestId: request._id,
+          requester: {
+            id: socket.data.user._id,
+            username: socket.data.user.username
+          }
+        });
+      } catch (err) {
+        console.error('Private request error:', err);
+      }
+    });
+
+    socket.on('cam:privateAccept', async (data: { requestId: string }) => {
+      try {
+        const request = await PrivateShowRequest.findById(data.requestId);
+        if (!request || request.providerId.toString() !== socket.data.user._id.toString()) return;
+
+        request.status = 'accepted';
+        request.startedAt = new Date();
+        await request.save();
+
+        adultNamespace.to(`user:${request.requesterId}`).emit('cam:privateAccepted', {
+          requestId: request._id,
+          sessionId: request.sessionId
+        });
+
+        // Start credit deduction ticker with 15% markup
+        const ticker = setInterval(async () => {
+          const session = await PrivateShowRequest.findById(request._id);
+          if (!session || session.status !== 'accepted') {
+            clearInterval(ticker);
+            return;
+          }
+
+          const user = await AdultUser.findById(session.requesterId);
+          const markedUpRate = getClientPrice(session.creditsPerMinute);
+
+          if (!user || user.credits < markedUpRate) {
+            session.status = 'ended';
+            session.endedAt = new Date();
+            await session.save();
+            adultNamespace.to(`user:${session.requesterId}`).emit('cam:privateEnded', { reason: 'insufficient_credits' });
+            adultNamespace.to(`user:${session.providerId}`).emit('cam:privateEnded', { reason: 'insufficient_credits' });
+            clearInterval(ticker);
+            return;
+          }
+
+          // Use transaction for atomic update
+          const mongoSession = await mongoose.startSession();
+          try {
+            mongoSession.startTransaction();
+            await AdultUser.findByIdAndUpdate(user._id, { $inc: { credits: -markedUpRate } }, { session: mongoSession });
+            await AdultUser.findByIdAndUpdate(session.providerId, { $inc: { credits: session.creditsPerMinute, 'providerProfile.totalEarnings': session.creditsPerMinute } }, { session: mongoSession });
+            await PrivateShowRequest.findByIdAndUpdate(session._id, { $inc: { totalCreditsSpent: markedUpRate } }, { session: mongoSession });
+            await mongoSession.commitTransaction();
+
+            adultNamespace.to(`user:${session.requesterId}`).emit('credits:updated', user.credits - markedUpRate);
+          } catch (e) {
+            await mongoSession.abortTransaction();
+          } finally {
+            mongoSession.endSession();
+          }
+        }, 60000); // Every minute
+      } catch (err) {
+        console.error('Private accept error:', err);
+      }
+    });
+
+    // --- Call Signaling & Call Billing ---
+    socket.on('call:request', async (data: { providerId: string, isVideo: boolean }) => {
+      try {
+        const provider = await AdultUser.findById(data.providerId);
+        if (!provider || provider.role !== 'provider' || !provider.providerProfile) {
+          socket.emit('call:error', { message: 'Provider not found or invalid' });
+          return;
+        }
+
+        const rate = data.isVideo ? (provider.providerProfile.videoCallPrice || 0) : (provider.providerProfile.audioCallPrice || 0);
+        const userPrice = getClientPrice(rate);
+
+        if (socket.data.user.credits < userPrice) {
+          socket.emit('call:error', { message: 'Insufficient credits to start this call' });
+          return;
+        }
+
+        adultNamespace.to(`user:${provider._id}`).emit('call:incoming', {
+          callerId: socket.data.user._id,
+          callerUsername: socket.data.user.username,
+          isVideo: data.isVideo,
+          rate: userPrice,
+        });
+      } catch (err) {
+        console.error('Call request error:', err);
+      }
+    });
+
+    socket.on('call:accept', async (data: { callerId: string, isVideo: boolean }) => {
+      try {
+        const provider = socket.data.user;
+        const caller = await AdultUser.findById(data.callerId);
+        if (!caller) return;
+
+        const rate = data.isVideo ? (provider.providerProfile.videoCallPrice || 0) : (provider.providerProfile.audioCallPrice || 0);
+        const userPrice = getClientPrice(rate);
+
+        if (caller.credits < userPrice) {
+          socket.emit('call:error', { message: 'User has insufficient credits' });
+          adultNamespace.to(`user:${data.callerId}`).emit('call:rejected', { reason: 'insufficient_credits' });
+          return;
+        }
+
+        const callId = `${data.callerId}_${provider._id}`;
+
+        adultNamespace.to(`user:${data.callerId}`).emit('call:accepted', {
+          providerId: provider._id,
+          isVideo: data.isVideo,
+          callId
+        });
+
+        socket.join(`call:${callId}`);
+      } catch (err) {
+        console.error('Call accept error:', err);
+      }
+    });
+
+    socket.on('call:reject', (data: { callerId: string }) => {
+      adultNamespace.to(`user:${data.callerId}`).emit('call:rejected', { reason: 'declined' });
+    });
+
+    socket.on('call:end', (data: { callId: string }) => {
+      const ticker = activeCallTickers.get(data.callId);
+      if (ticker) {
+        clearInterval(ticker);
+        activeCallTickers.delete(data.callId);
+      }
+      adultNamespace.to(`call:${data.callId}`).emit('call:ended', { reason: 'ended' });
+    });
+
+    socket.on('call:join', (data: { callId: string }) => {
+      socket.join(`call:${data.callId}`);
+    });
+
+    // EPHEMERAL CAM CHAT ROOM CHAT MESSAGE
+    socket.on('cam:chat_message', ({ sessionId, content }) => {
+      if (!content || content.trim().length === 0) return;
+      if (content.length > 200) return;
+
+      // Contact sharing content filtering check using direct import or shared content filter
+      try {
+        const { detectContactSharing } = require('@yourapp/content-filter');
+        const { detected } = detectContactSharing(content);
+        if (detected) return; // silently drop as specified
+      } catch (err) {
+        console.warn('content-filter package not loaded, skipped checks:', err);
+      }
+
+      const message = {
+        id: `msg_${Date.now()}_${socket.data.user._id}`,
+        senderId: socket.data.user._id,
+        senderName: socket.data.user.displayName || socket.data.user.username || 'Member',
+        senderBadge: socket.data.user.subscriptionTier === 'none' ? null : socket.data.user.subscriptionTier,
+        content: content.trim(),
+        timestamp: Date.now(),
+        type: 'chat',
+      };
+
+      // Broadcast to everyone in the cam room
+      adultNamespace.to(`cam:${sessionId}`).emit('cam:new_message', message);
+    });
+
+    // Individual user room for notifications is already joined above!
+
+    socket.on('disconnect', async (reason) => {
+      console.log(`Adult Socket disconnected: ${socket.id} reason: ${reason}`);
+
+      // Clean up any active tickers associated with this user/provider
+      for (const [callId, ticker] of activeCallTickers.entries()) {
+        if (callId.includes(userId)) {
+          clearInterval(ticker);
+          activeCallTickers.delete(callId);
+          adultNamespace.to(`call:${callId}`).emit('call:ended', { reason: 'participant_disconnected' });
+        }
+      }
+
+      // Remove active connection
+      await removeActiveConnection(userId, socket.id);
+
+      // Check remaining connections
+      const remainingConnections = await getActiveConnectionCount(userId);
+      if (remainingConnections === 0) {
+        if (accountType === 'provider') {
+          await handleProviderGoesOffline(userId, adultNamespace);
+        } else {
+          // Member went offline
+          await AdultUser.findByIdAndUpdate(
+            userId,
+            { $set: { isOnline: false } }
+          );
+        }
+
+        // Broadcast user status change globally in the adult namespace
+        adultNamespace.emit('user:status', {
+          userId,
+          isOnline: false,
+        });
+      }
+    });
+  });
+};
