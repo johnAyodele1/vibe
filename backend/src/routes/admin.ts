@@ -25,6 +25,13 @@ import {
   adminDeleteTask,
   adminGetStats
 } from '../controllers/adultRewards.controller';
+import {
+  adminGetPayouts,
+  adminVerifyPayout,
+  adminProcessPayout,
+  adminCompletePayout,
+  adminRejectPayout
+} from '../controllers/payout.controller';
 
 const router = Router();
 
@@ -58,5 +65,12 @@ router.post('/rewards/tasks', adminCreateTask);
 router.put('/rewards/tasks/:id', adminUpdateTask);
 router.delete('/rewards/tasks/:id', adminDeleteTask);
 router.get('/rewards/stats', adminGetStats);
+
+// Admin Payout management routes
+router.get('/payouts', adminGetPayouts);
+router.put('/payouts/:requestId/verify', adminVerifyPayout);
+router.put('/payouts/:requestId/process', adminProcessPayout);
+router.put('/payouts/:requestId/complete', adminCompletePayout);
+router.put('/payouts/:requestId/reject', adminRejectPayout);
 
 export default router;

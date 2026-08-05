@@ -12,6 +12,7 @@ import MessageTick, { getMessageStatus } from './MessageTick';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { usePricingStore, formatNaira } from '../../lib/pricing';
 import { uploadMedia } from '../../lib/media/uploadMedia';
+import { compressToWebP } from '../../lib/media/compressImage';
 
 const CallRoom = React.lazy(() => import('./CallRoom'));
 
@@ -143,6 +144,7 @@ const PrivateSext: React.FC = () => {
   const [photoRequestNote, setPhotoRequestNote] = useState('');
   const [showServiceRequestModal, setShowServiceRequestModal] = useState(false);
   const [serviceRequestNote, setServiceRequestNote] = useState('');
+  const [serviceRequestError, setServiceRequestError] = useState<{ title: string; message: string; action?: string; actionUrl?: string } | null>(null);
 
   // Double-click / duplicate submission prevention states
   const [isSendingGift, setIsSendingGift] = useState(false);
@@ -876,12 +878,22 @@ const PrivateSext: React.FC = () => {
 
     try {
       const isVideo = uploadFile.type.startsWith('video/');
+      let fileToUpload = uploadFile;
+
+      if (!isVideo) {
+        try {
+          fileToUpload = await compressToWebP(uploadFile);
+        } catch (err) {
+          console.error('Image compression failed, uploading original', err);
+        }
+      }
+
       const finalIsLocked = user?.role === 'provider' ? isLockedUpload : false;
       const context = finalIsLocked
         ? (isVideo ? 'paid_video' : 'paid_image')
         : (isVideo ? 'chat_video' : 'chat_image');
 
-      const result = await uploadMedia(uploadFile, context, finalIsLocked, (percent) => {
+      const result = await uploadMedia(fileToUpload, context, finalIsLocked, (percent) => {
         setUploadProgress(10 + Math.round(percent * 0.7)); // scale from 10 to 80
       });
 
@@ -1006,10 +1018,28 @@ const PrivateSext: React.FC = () => {
         return;
       }
 
+      if (audioChunksRef.current.length === 0) {
+        toast.error('No audio data collected!');
+        handleCancelRecording();
+        return;
+      }
+
+      const mimeType = recorder.mimeType || 'audio/webm';
+      const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+
+      if (audioBlob.size === 0) {
+        toast.error('Empty audio blob!');
+        handleCancelRecording();
+        return;
+      }
+
       setRecState('sending');
       try {
-        const audioBlob = new Blob(audioChunksRef.current, { type: recorder.mimeType });
-        const file = new File([audioBlob], `voice_note_${Date.now()}.webm`, { type: recorder.mimeType });
+        const ext = mimeType.includes('webm') ? 'webm'
+                  : mimeType.includes('mp4')  ? 'm4a'
+                  : mimeType.includes('ogg')  ? 'ogg'
+                  : 'webm';
+        const file = new File([audioBlob], `voice_${Date.now()}.${ext}`, { type: mimeType });
 
         const result = await uploadMedia(file, 'voice_note', false);
 
@@ -1081,6 +1111,11 @@ const PrivateSext: React.FC = () => {
 
   const handleStopAndSend = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try {
+        mediaRecorderRef.current.requestData();
+      } catch (err) {
+        console.error('requestData failed', err);
+      }
       mediaRecorderRef.current.stop();
     }
     if (streamRef.current) {
@@ -1230,6 +1265,7 @@ const PrivateSext: React.FC = () => {
     if (isSendingServiceRequest) return;
 
     setIsSendingServiceRequest(true);
+    setServiceRequestError(null);
     try {
       const res = await fetch(`${API_BASE_URL}/v1/adult/sext/conversations/${selectedConv.conversationId}/request-service`, {
         method: 'POST',
@@ -1237,14 +1273,56 @@ const PrivateSext: React.FC = () => {
         body: JSON.stringify({ note: serviceRequestNote })
       });
       const data = await res.json();
-      if (data.id) {
+
+      if (res.ok && data.id) {
         setMessages(prev => [...prev, data]);
         setShowServiceRequestModal(false);
         setServiceRequestNote('');
         toast.success('Tonight service request sent!');
+      } else {
+        const errorType = data.error || data.code;
+        const errorMessages: Record<string, { title: string; message: string; action?: string; actionUrl?: string }> = {
+          NOT_A_PROVIDER: {
+            title: 'Not Authorised',
+            message: 'Only service providers can perform this operation.'
+          },
+          RECIPIENT_NOT_A_PROVIDER: {
+            title: 'Recipient is Not a Performer',
+            message: 'Services can only be requested from service providers.'
+          },
+          NO_TONIGHT_RATE: {
+            title: 'No Tonight Rate Set',
+            message: 'The provider has not set their tonight arrangement rate yet.',
+            action: 'Go to Settings',
+            actionUrl: '/adult/provider/settings?tab=pricing'
+          },
+          ACTIVE_REQUEST_EXISTS: {
+            title: 'Request Already Pending',
+            message: 'You already have an active tonight arrangement request pending with this provider. Wait for it to be resolved.'
+          }
+        };
+
+        const knownError = errorMessages[errorType];
+        if (knownError) {
+          setServiceRequestError({
+            title: knownError.title,
+            message: knownError.message,
+            action: knownError.action,
+            actionUrl: knownError.actionUrl
+          });
+        } else {
+          setServiceRequestError({
+            title: 'Service Request Failed',
+            message: data.message || 'Could not request tonight service. Please try again later.'
+          });
+        }
       }
     } catch (err) {
-      toast.error('Failed to send service request');
+      console.error('Error requesting tonight service:', err);
+      setServiceRequestError({
+        title: 'Connection Error',
+        message: 'Could not connect to the server. Please try again.'
+      });
     } finally {
       setIsSendingServiceRequest(false);
     }
@@ -2544,6 +2622,31 @@ const PrivateSext: React.FC = () => {
               className="w-full py-2.5 bg-pink-600 hover:bg-pink-700 text-white font-bold text-xs uppercase tracking-widest rounded-full transition-colors disabled:opacity-50"
             >
               {isSendingServiceRequest ? 'Sending...' : 'Send Service Request'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* SERVICE REQUEST ERROR MODAL */}
+      {serviceRequestError && (
+        <div data-testid="service-error-overlay" className="fixed inset-0 bg-black/85 backdrop-blur-sm z-[10000] flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-[#160b13] border border-red-500/40 rounded-2xl p-6 shadow-2xl relative text-center">
+            <div className="text-4xl mb-3">⚠️</div>
+            <h3 data-testid="service-error-title" className="text-xl font-serif italic text-red-500 mb-2">{serviceRequestError.title}</h3>
+            <p data-testid="service-error-message" className="text-xs text-gray-300 mb-6 leading-relaxed">{serviceRequestError.message}</p>
+            {serviceRequestError.action && serviceRequestError.actionUrl && (
+              <a
+                href={serviceRequestError.actionUrl}
+                className="inline-block px-5 py-2 mb-4 bg-red-950/40 border border-red-500/30 text-red-400 hover:bg-red-900/20 text-xs font-bold uppercase tracking-wider rounded-xl transition-all"
+              >
+                {serviceRequestError.action} →
+              </a>
+            )}
+            <button
+              onClick={() => setServiceRequestError(null)}
+              className="block w-full py-2.5 bg-neutral-900 hover:bg-neutral-800 text-gray-400 hover:text-white border border-gray-800 font-medium text-xs rounded-full transition-colors"
+            >
+              Got it
             </button>
           </div>
         </div>

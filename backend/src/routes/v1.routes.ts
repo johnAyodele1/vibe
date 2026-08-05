@@ -16,12 +16,17 @@ import {
   updateSchedule,
   getProviderDashboard,
   getProviderEarnings,
-  requestPayout,
   getOnboardingProgress,
   saveOnboardingStep,
   getHookupNearbyProviders,
   getAdultMemberProfile
 } from '../controllers/providerOnboarding.controller';
+import {
+  getEligiblePayout,
+  requestPayout,
+  getPayoutStatus,
+  getPayoutHistory
+} from '../controllers/payout.controller';
 import {
   getWallet,
   getBundles,
@@ -182,7 +187,14 @@ router.get('/adult/providers/me/onboarding', verifyAdultJWT, getOnboardingProgre
 router.put('/adult/providers/me/onboarding/step/:stepNumber', verifyAdultJWT, saveOnboardingStep);
 router.get('/adult/providers/me/dashboard', verifyAdultJWT, getProviderDashboard);
 router.get('/adult/providers/me/earnings', verifyAdultJWT, getProviderEarnings);
+
+// Payout overhauls
+router.get('/adult/providers/me/payout/eligible', verifyAdultJWT, getEligiblePayout);
+router.post('/adult/providers/me/payout/request', verifyAdultJWT, requestPayout);
+router.get('/adult/providers/me/payout/status', verifyAdultJWT, getPayoutStatus);
+router.get('/adult/providers/me/payout/history', verifyAdultJWT, getPayoutHistory);
 router.post('/adult/providers/me/payout', verifyAdultJWT, requestPayout);
+
 router.get('/adult/providers/me/wheel/stats', verifyAdultJWT, getProviderWheelStats);
 router.put('/adult/providers/me/wheel', verifyAdultJWT, updateProviderWheel);
 router.put('/adult/providers/me/profile', verifyAdultJWT, updateProfile);

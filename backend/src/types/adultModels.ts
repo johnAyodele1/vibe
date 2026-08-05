@@ -119,6 +119,8 @@ export interface ICreditTransaction extends Document {
   status: 'pending' | 'completed' | 'failed' | 'refunded';
   platformFee?: number;
   eligibleForPayout?: boolean;
+  paidOut?: boolean;
+  inPayoutRequest?: Types.ObjectId;
   metadata?: any;
   createdAt: Date;
 }

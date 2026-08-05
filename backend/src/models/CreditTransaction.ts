@@ -74,6 +74,14 @@ const creditTransactionSchema = new Schema<ICreditTransaction>(
       type: Boolean,
       default: true,
     },
+    paidOut: {
+      type: Boolean,
+      default: false,
+    },
+    inPayoutRequest: {
+      type: Schema.Types.ObjectId,
+      ref: 'PayoutRequest',
+    },
     metadata: Schema.Types.Mixed,
   },
   {

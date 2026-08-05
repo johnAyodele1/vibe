@@ -11,6 +11,7 @@ import { useUIStore } from './useUIStore';
 import MessageTick, { getMessageStatus } from './MessageTick';
 import { usePricingStore, formatNaira } from '../../lib/pricing';
 import { uploadMedia } from '../../lib/media/uploadMedia';
+import { compressToWebP } from '../../lib/media/compressImage';
 
 const CallRoom = React.lazy(() => import('./CallRoom'));
 
@@ -946,9 +947,19 @@ const ProviderMessages: React.FC = () => {
 
     try {
       const isVideo = uploadFile.type.startsWith('video/');
+      let fileToUpload = uploadFile;
+
+      if (!isVideo) {
+        try {
+          fileToUpload = await compressToWebP(uploadFile);
+        } catch (err) {
+          console.error('Image compression failed, uploading original', err);
+        }
+      }
+
       const context = isVideo ? 'chat_video' : 'chat_image';
 
-      const result = await uploadMedia(uploadFile, context, false, (percent) => {
+      const result = await uploadMedia(fileToUpload, context, false, (percent) => {
         setUploadProgress(10 + Math.round(percent * 0.7)); // scale from 10 to 80
       });
 
@@ -1382,10 +1393,28 @@ const ProviderMessages: React.FC = () => {
         return;
       }
 
+      if (audioChunksRef.current.length === 0) {
+        toast.error('No audio data collected!');
+        handleCancelRecording();
+        return;
+      }
+
+      const mimeType = recorder.mimeType || 'audio/webm';
+      const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+
+      if (audioBlob.size === 0) {
+        toast.error('Empty audio blob!');
+        handleCancelRecording();
+        return;
+      }
+
       setRecState('sending');
       try {
-        const audioBlob = new Blob(audioChunksRef.current, { type: recorder.mimeType });
-        const file = new File([audioBlob], `voice_note_${Date.now()}.webm`, { type: recorder.mimeType });
+        const ext = mimeType.includes('webm') ? 'webm'
+                  : mimeType.includes('mp4')  ? 'm4a'
+                  : mimeType.includes('ogg')  ? 'ogg'
+                  : 'webm';
+        const file = new File([audioBlob], `voice_${Date.now()}.${ext}`, { type: mimeType });
 
         const result = await uploadMedia(file, 'voice_note', false);
 
@@ -1455,6 +1484,11 @@ const ProviderMessages: React.FC = () => {
 
   const handleStopAndSend = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try {
+        mediaRecorderRef.current.requestData();
+      } catch (err) {
+        console.error('requestData failed', err);
+      }
       mediaRecorderRef.current.stop();
     }
     if (streamRef.current) {
