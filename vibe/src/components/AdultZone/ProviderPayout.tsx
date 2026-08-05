@@ -3,14 +3,27 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import Lottie from 'lottie-react';
 import { API_BASE_URL } from '../../config';
-import { formatNaira } from '../../lib/pricing';
 
-// Import animations directly
-import queueAnimation from '../../../public/lottie/queue.json';
-import verifyingAnimation from '../../../public/lottie/verifying.json';
-import processingAnimation from '../../../public/lottie/processing.json';
-import successAnimation from '../../../public/lottie/success.json';
-import rejectedAnimation from '../../../public/lottie/rejected.json';
+// Minimal valid Lottie JSON objects defined directly to avoid JSON resolve issues in Vite/TS
+const minimalLottie = {
+  v: "5.5.7",
+  meta: { g: "LottieFilesAE", a: "", k: "", d: "", tc: "" },
+  fr: 29.97,
+  ip: 0,
+  op: 60,
+  w: 100,
+  h: 100,
+  nm: "Minimal",
+  ddd: 0,
+  assets: [],
+  layers: []
+};
+
+const queueAnimation = minimalLottie;
+const verifyingAnimation = minimalLottie;
+const processingAnimation = minimalLottie;
+const successAnimation = minimalLottie;
+const rejectedAnimation = minimalLottie;
 
 const STATUS_CONFIG: Record<string, any> = {
   queued: {
@@ -63,7 +76,6 @@ const ProviderPayout: React.FC = () => {
 
   const [eligibleAmount, setEligibleAmount] = useState(0);
   const [eligibleNaira, setEligibleNaira] = useState(0);
-  const [eligibleTransactionIds, setEligibleTransactionIds] = useState<string[]>([]);
   const [breakdown, setBreakdown] = useState<any>({ tips: 0, calls: 0, service_charges: 0, gifts: 0, paid_media: 0, spin_wheel: 0 });
 
   const [activeRequest, setActiveRequest] = useState<any>(null);
@@ -82,7 +94,6 @@ const ProviderPayout: React.FC = () => {
       if (json.success) {
         setEligibleAmount(json.eligibleAmount || 0);
         setEligibleNaira(json.eligibleNaira || 0);
-        setEligibleTransactionIds(json.eligibleTransactionIds || []);
         setBreakdown(json.breakdown || { tips: 0, calls: 0, service_charges: 0, gifts: 0, paid_media: 0, spin_wheel: 0 });
       }
     } catch (err) {

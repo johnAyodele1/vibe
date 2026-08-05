@@ -26,9 +26,8 @@ describe('ProviderPayout Component', () => {
     localStorage.setItem('adultAccessToken', 'mock-token');
 
     // Default mock response: no active request, has eligible balance
-    mockFetch.mockImplementation(async (input: any, options: any = {}) => {
+    mockFetch.mockImplementation(async (input: any) => {
       const url = typeof input === 'string' ? input : input.url;
-      const method = (typeof input === 'object' && input.method) ? input.method : (options?.method || 'GET');
 
       if (url.includes('/v1/adult/providers/me/payout/eligible')) {
         return {
