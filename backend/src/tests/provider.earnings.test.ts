@@ -4,6 +4,8 @@ import { MongoMemoryServer } from 'mongodb-memory-server';
 import app from '../app';
 import AdultUser from '../models/AdultUser';
 import CreditTransaction from '../models/CreditTransaction';
+import PayoutRequest from '../models/PayoutRequest';
+import AppConfig from '../models/AppConfig';
 import jwt from 'jsonwebtoken';
 
 describe('Provider Earnings & Payout API', () => {
@@ -12,11 +14,20 @@ describe('Provider Earnings & Payout API', () => {
   let memberToken: string;
   let providerId: string;
   let memberId: string;
+  let adminToken: string;
+  let activeRequestId: string;
 
   beforeAll(async () => {
     mongoServer = await MongoMemoryServer.create();
     const mongoUri = mongoServer.getUri();
     await mongoose.connect(mongoUri);
+
+    await AppConfig.create({
+      key: 'diamond_naira_rate',
+      value: 100,
+      label: 'Diamond to Naira Rate',
+      description: 'Diamond exchange rate to Nigerian Naira'
+    });
 
     // Create a provider user
     const provider = new AdultUser({
@@ -35,7 +46,7 @@ describe('Provider Earnings & Payout API', () => {
         verificationStatus: 'approved',
         payoutInfo: {
           method: 'bank',
-          details: { routingNumber: '123456789', accountNumber: '987654321' }
+          details: { bankName: 'GTBank', routingNumber: '123456789', accountNumber: '9876543211' }
         }
       }
     });
@@ -58,6 +69,11 @@ describe('Provider Earnings & Payout API', () => {
     memberId = member._id.toString();
 
     memberToken = jwt.sign({ sub: memberId }, process.env.ADULT_JWT_SECRET || 'adult_secret');
+
+    adminToken = jwt.sign(
+      { userId: 'admin123', isAdmin: true },
+      process.env.JWT_SECRET || 'fallback_secret'
+    );
   });
 
   afterAll(async () => {
@@ -80,25 +96,50 @@ describe('Provider Earnings & Payout API', () => {
     expect(res.body.data.transactions).toHaveLength(0);
   });
 
-  it('POST /api/v1/adult/providers/me/payout processes payout successfully and creates CreditTransaction', async () => {
-    // We have 15000 pending credits (1,500,000 Naira), which is over the threshold.
-    // Provider wallet balance starts at 20000 credits.
+  it('POST /api/v1/adult/providers/me/payout creates a queued request successfully', async () => {
+    // Populate an actual eligible transaction for provider
+    await CreditTransaction.create({
+      userId: providerId,
+      type: 'tip_received',
+      amount: 15000,
+      usdAmount: 112.5,
+      nairaAmount: 1500000,
+      description: 'Fan tips',
+      status: 'completed',
+      eligibleForPayout: true,
+      paidOut: false
+    });
+
     const res = await request(app)
       .post('/api/v1/adult/providers/me/payout')
       .set('Authorization', `Bearer ${providerToken}`)
-      .expect(200);
+      .expect(201);
 
     expect(res.body.success).toBe(true);
-    expect(res.body.data.newBalance).toBe(5000); // 20000 - 15000
-
-    // Check that payout transaction was created
-    const tx = await CreditTransaction.findOne({ userId: providerId, type: 'payout' });
-    expect(tx).toBeDefined();
-    expect(tx!.amount).toBe(-15000);
-    expect(tx!.status).toBe('completed');
+    expect(res.body.amount).toBe(15000);
+    expect(res.body.status).toBe('queued');
+    activeRequestId = res.body.requestId;
   });
 
-  it('GET /api/v1/adult/providers/me/earnings reflects paid out and pending changes', async () => {
+  it('GET /api/v1/adult/providers/me/earnings reflects paid out after admin completes the queued request', async () => {
+    // 1. Advance payout status queued -> verifying -> processing -> completed
+    await request(app)
+      .put(`/api/admin/payouts/${activeRequestId}/verify`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    await request(app)
+      .put(`/api/admin/payouts/${activeRequestId}/process`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    await request(app)
+      .put(`/api/admin/payouts/${activeRequestId}/complete`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reference: 'REF-BANK-999' })
+      .expect(200);
+
+    // 2. Now check provider earnings matches expected completed values
     const res = await request(app)
       .get('/api/v1/adult/providers/me/earnings')
       .set('Authorization', `Bearer ${providerToken}`)
@@ -108,20 +149,16 @@ describe('Provider Earnings & Payout API', () => {
     expect(res.body.data.totalEarned).toBe(15000);
     expect(res.body.data.paidOut).toBe(1500000);
     expect(res.body.data.pending).toBe(0);
-    expect(res.body.data.transactions).toHaveLength(1);
-    expect(res.body.data.transactions[0].type).toBe('Payout');
-    expect(res.body.data.transactions[0].from).toBe('Bank Transfer');
-    expect(res.body.data.transactions[0].amount).toBe(-15000);
   });
 
   it('POST /api/v1/adult/providers/me/payout fails if pending payout is below threshold', async () => {
-    // Current pending balance is 0 credits ($0.00)
+    // Now that previous transactions are paid out, eligible is 0
     const res = await request(app)
       .post('/api/v1/adult/providers/me/payout')
       .set('Authorization', `Bearer ${providerToken}`)
       .expect(400);
 
     expect(res.body.success).toBe(false);
-    expect(res.body.error.message).toContain('Minimum payout threshold');
+    expect(res.body.error).toBe('NO_ELIGIBLE_BALANCE');
   });
 });

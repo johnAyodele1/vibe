@@ -186,6 +186,42 @@ export const requestService = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'Recipient not found' });
     }
 
+    // 1. Recipient must be a provider
+    const recipient = await AdultUser.findById(otherParticipantId);
+    if (!recipient || recipient.role !== 'provider') {
+      return res.status(400).json({
+        success: false,
+        error: 'RECIPIENT_NOT_A_PROVIDER',
+        message: 'Services can only be requested from providers.'
+      });
+    }
+
+    // 2. Recipient must have configured tonight rate
+    const tonightRate = recipient.providerProfile?.tonightRate || 0;
+    if (tonightRate <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'NO_TONIGHT_RATE',
+        message: `${recipient.providerProfile?.stageName || recipient.displayName || 'The provider'} has not configured a tonight service rate yet.`,
+        action: 'Go to Settings → Pricing'
+      });
+    }
+
+    // 3. No active request already pending
+    const existing = await AdultMessage.findOne({
+      conversationId,
+      messageType: 'request_service',
+      'serviceTonightRequest.status': 'pending'
+    });
+
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        error: 'ACTIVE_REQUEST_EXISTS',
+        message: 'You already have an active service request pending in this conversation.'
+      });
+    }
+
     const message = new AdultMessage({
       conversationId,
       senderId: user._id,

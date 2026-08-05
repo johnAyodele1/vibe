@@ -162,6 +162,7 @@ const AdultZoneLayout: React.FC = () => {
   const navLinks = isProvider ? [
     { name: 'Dashboard', path: '/adult/provider/dashboard' },
     { name: 'Earnings', path: '/adult/provider/earnings' },
+    { name: 'Payout HQ', path: '/adult/provider/payout' },
     { name: 'Messages', path: '/adult/provider/messages' },
     { name: 'Profile Editor', path: '/adult/provider/profile' },
     { name: 'Settings', path: '/adult/provider/settings' }

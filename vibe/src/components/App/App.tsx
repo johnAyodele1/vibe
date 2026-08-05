@@ -35,6 +35,7 @@ import ProviderMessages from "../AdultZone/ProviderMessages";
 import ProviderLive from "../AdultZone/ProviderLive";
 import ProviderProfile from "../AdultZone/ProviderProfile";
 import ProviderSettings from "../AdultZone/ProviderSettings";
+import ProviderPayout from "../AdultZone/ProviderPayout";
 import { useAuth } from "../../contexts/AuthContext";
 import { useAdultAuth } from "../../contexts/AdultAuthContext";
 import { API_BASE_URL } from "../../config";
@@ -108,6 +109,7 @@ function App() {
           <Route path="adult/provider/live" element={<ProviderLive />} />
           <Route path="adult/provider/profile" element={<ProviderProfile />} />
           <Route path="adult/provider/settings" element={<ProviderSettings />} />
+          <Route path="adult/provider/payout" element={<ProviderPayout />} />
         </Route>
 
         {/* Dating App onboarding and entry path */}
