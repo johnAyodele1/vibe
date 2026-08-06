@@ -33,6 +33,7 @@ export const TipSheet: React.FC = () => {
   const creditBalance     = useWalletStore(s => s.creditBalance);
   const fetchWallet       = () => useWalletStore.getState().fetchWallet();
   const setCreditBalance  = (balance: number) => useWalletStore.getState().setCreditBalance(balance);
+  const rate              = usePricingStore((state) => state.diamondNairaRate);
 
   // Local UI states
   const [showCustomInput, setShowCustomInput] = useState(false);
@@ -257,7 +258,6 @@ export const TipSheet: React.FC = () => {
     }
   };
 
-  const rate = usePricingStore((state) => state.diamondNairaRate);
   const nairaValue = finalAmount * rate;
 
   return (
