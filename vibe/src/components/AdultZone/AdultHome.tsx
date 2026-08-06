@@ -96,7 +96,7 @@ const FALLBACK_PERFORMERS = [
 
 const AdultHome: React.FC = () => {
   const navigate = useNavigate();
-  const openSheet = useTipSheetStore((state) => state.openSheet);
+  const openSheet = (prov: any, amt?: number | null) => useTipSheetStore.getState().openSheet(prov, amt);
   const serviceCardsRef = useRef<HTMLDivElement>(null);
 
   const [performers, setPerformers] = useState<any[]>([]);

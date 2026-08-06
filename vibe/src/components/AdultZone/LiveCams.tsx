@@ -35,7 +35,7 @@ const LiveCams: React.FC = () => {
   const [chatOpen, setChatOpen] = useState(false);
   const [wheelOpen, setWheelOpen] = useState(false);
 
-  const openTipSheet = useTipSheetStore(s => s.openSheet);
+  const openTipSheet = (prov: any, amt?: number | null) => useTipSheetStore.getState().openSheet(prov, amt);
   const socketRef = useRef<Socket | null>(null);
 
   const getHeaders = () => ({
