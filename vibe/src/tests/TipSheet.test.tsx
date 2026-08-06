@@ -8,6 +8,19 @@ import { useWalletStore } from '../components/AdultZone/useWalletStore';
 const mockFetch = vi.fn();
 (globalThis as any).fetch = mockFetch;
 
+vi.mock('socket.io-client', () => {
+  const mSocket = {
+    on: vi.fn(),
+    off: vi.fn(),
+    emit: vi.fn(),
+    disconnect: vi.fn(),
+  };
+  return {
+    io: vi.fn(() => mSocket),
+    default: vi.fn(() => mSocket),
+  };
+});
+
 describe('TipSheet Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
