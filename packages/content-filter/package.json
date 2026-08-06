@@ -13,5 +13,8 @@
   },
   "scripts": {
     "build": "tsc && tsc -p tsconfig.esm.json"
+  },
+  "dependencies": {
+    "ts-jest": "^29.2.5"
   }
 }

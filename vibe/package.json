@@ -25,6 +25,7 @@
     "recharts": "^3.10.1",
     "socket.io-client": "^4.8.3",
     "sonner": "^2.0.7",
+    "ts-jest": "^29.2.5",
     "zego-express-engine-webrtc": "^3.12.0",
     "zustand": "^5.0.14"
   },
