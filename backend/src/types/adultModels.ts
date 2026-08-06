@@ -121,6 +121,10 @@ export interface ICreditTransaction extends Document {
   eligibleForPayout?: boolean;
   paidOut?: boolean;
   inPayoutRequest?: Types.ObjectId;
+  inDispute?: boolean;
+  disputeReason?: string;
+  disputeResolvedAt?: Date;
+  disputeResolution?: 'upheld' | 'dismissed';
   metadata?: any;
   createdAt: Date;
 }

@@ -290,9 +290,9 @@ describe('Adult Zone Backend Production Tests', () => {
       messageId = message._id.toString();
     });
 
-    it('should charge user the marked-up cost (15% added) and credit provider base cost', async () => {
+    it('should charge user the exact base cost and credit provider 85%', async () => {
       // User starts with 700 credits
-      // base cost = 20, markup = Math.ceil(20 * 1.15) = 23
+      // base cost = 20, member pays 20, provider receives 85% (17)
       const res = await request(app)
         .post(`/api/adult/messages/${messageId}/unlock`)
         .set('Authorization', `Bearer ${userToken}`);
@@ -301,7 +301,7 @@ describe('Adult Zone Backend Production Tests', () => {
       expect(res.body.success).toBe(true);
 
       const updatedUser = await AdultUser.findById(userId);
-      expect(updatedUser?.credits).toBe(677); // 700 - 23
+      expect(updatedUser?.credits).toBe(680); // 700 - 20
 
       const updatedProvider = await AdultUser.findById(providerId);
       expect(updatedProvider?.credits).toBe(59); // 42 (from tip) + 17 (base message unlock)

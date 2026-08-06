@@ -24,8 +24,41 @@ const reportSchema = new Schema<IReport>(
     },
     status: {
       type: String,
-      enum: ['pending', 'resolved', 'dismissed'],
+      enum: ['pending', 'resolved', 'dismissed', 'open'],
       default: 'pending',
+    },
+    type: {
+      type: String,
+    },
+    serviceRequestId: {
+      type: Schema.Types.ObjectId,
+      ref: 'AdultMessage',
+    },
+    conversationId: {
+      type: String,
+    },
+    details: {
+      type: String,
+    },
+    amountInDispute: {
+      type: Number,
+    },
+    providerAmountHeld: {
+      type: Number,
+    },
+    resolvedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'AdultUser',
+    },
+    resolvedAt: {
+      type: Date,
+    },
+    resolution: {
+      type: String,
+      enum: ['upheld', 'dismissed'],
+    },
+    adminNotes: {
+      type: String,
     },
   },
   {

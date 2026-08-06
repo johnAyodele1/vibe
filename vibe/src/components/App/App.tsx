@@ -17,6 +17,7 @@ import AdminDashboard from "../Admin/AdminDashboard";
 import AdminLogin from "../Admin/AdminLogin";
 import AdminRewardsPage from "../Admin/AdminRewardsPage";
 import AdminAnalytics from "../Admin/AdminAnalytics";
+import AdminPayoutsPage from "../Admin/AdminPayoutsPage";
 import LoadingScreen from "../LoadingScreen/LoadingScreen";
 import AdultZoneLayout from "../AdultZone/AdultZoneLayout";
 import AdultHome from "../AdultZone/AdultHome";
@@ -124,6 +125,16 @@ function App() {
               )
             ) : (
               <Onboarding />
+            )
+          }
+        />
+        <Route
+          path="/admin/payouts"
+          element={
+            isAdminAuthenticated ? (
+              <AdminPayoutsPage />
+            ) : (
+              <Navigate to="/admin/login" replace />
             )
           }
         />

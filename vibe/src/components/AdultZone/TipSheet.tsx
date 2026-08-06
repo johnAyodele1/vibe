@@ -12,22 +12,23 @@ export const TipSheet: React.FC = () => {
   const navigate = useNavigate();
   const token = localStorage.getItem('adultAccessToken') || '';
 
-  const {
-    isOpen,
-    provider,
-    selectedAmount,
-    customAmount,
-    message,
-    step,
-    result,
-    closeSheet,
-    setSelectedAmount,
-    setCustomAmount,
-    setMessage,
-    setStep,
-    setResult,
-    reset,
-  } = useTipSheetStore();
+  // ✅ Select only values, never call actions in selectors
+  const isOpen          = useTipSheetStore(s => s.isOpen);
+  const provider        = useTipSheetStore(s => s.provider);
+  const selectedAmount  = useTipSheetStore(s => s.selectedAmount);
+  const customAmount    = useTipSheetStore(s => s.customAmount);
+  const message         = useTipSheetStore(s => s.message);
+  const step            = useTipSheetStore(s => s.step);
+  const result          = useTipSheetStore(s => s.result);
+
+  // ✅ Get actions separately — these are stable references
+  const closeSheet        = useTipSheetStore(s => s.closeSheet);
+  const setSelectedAmount = useTipSheetStore(s => s.setSelectedAmount);
+  const setCustomAmount   = useTipSheetStore(s => s.setCustomAmount);
+  const setMessage        = useTipSheetStore(s => s.setMessage);
+  const setStep           = useTipSheetStore(s => s.setStep);
+  const setResult         = useTipSheetStore(s => s.setResult);
+  const reset             = useTipSheetStore(s => s.reset);
 
   const { creditBalance, fetchWallet, setCreditBalance } = useWalletStore();
 

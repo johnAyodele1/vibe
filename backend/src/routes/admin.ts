@@ -30,7 +30,9 @@ import {
   adminVerifyPayout,
   adminProcessPayout,
   adminCompletePayout,
-  adminRejectPayout
+  adminRejectPayout,
+  adminGetDisputes,
+  resolveDispute
 } from '../controllers/payout.controller';
 
 const router = Router();
@@ -72,5 +74,9 @@ router.put('/payouts/:requestId/verify', adminVerifyPayout);
 router.put('/payouts/:requestId/process', adminProcessPayout);
 router.put('/payouts/:requestId/complete', adminCompletePayout);
 router.put('/payouts/:requestId/reject', adminRejectPayout);
+
+// Admin Dispute management routes
+router.get('/disputes', adminGetDisputes);
+router.put('/disputes/:reportId/resolve', resolveDispute);
 
 export default router;

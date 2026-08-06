@@ -2051,8 +2051,16 @@ const PrivateSext: React.FC = () => {
                               🌙 Service Completed
                             </div>
                           ) : (
-                            <div className="text-xs text-red-400 font-bold uppercase tracking-widest text-center py-2 bg-red-950/20 border border-red-500/30 rounded-xl">
-                              ⚠️ Issue Reported
+                            <div className="space-y-2 mt-2">
+                              <div className="text-xs text-red-400 font-bold uppercase tracking-widest text-center py-2 bg-red-950/20 border border-red-500/30 rounded-xl">
+                                ⚠️ Issue Reported — Under Review
+                              </div>
+                              <div className="bg-red-950/20 border border-red-500/30 rounded-xl p-3 text-[11px] text-gray-300 leading-relaxed text-left">
+                                Your payment of 💎 {m.serviceRequest?.totalAmount} is under review. You can still request a full withdrawal — your payment will be held until admin resolves this dispute.
+                              </div>
+                              <a href="/support" onClick={(e) => { e.preventDefault(); alert("Please contact support at support@vibe.com"); }} className="block text-center text-pink-400 hover:underline text-[11px] font-bold mt-2">
+                                Contact Support
+                              </a>
                             </div>
                           )}
                         </div>

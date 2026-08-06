@@ -149,7 +149,17 @@ export interface IReport extends Document {
   reported: Types.ObjectId | IUser;
   reason: string;
   description?: string;
-  status: 'pending' | 'resolved' | 'dismissed';
+  status: 'pending' | 'resolved' | 'dismissed' | 'open';
+  type?: string;
+  serviceRequestId?: Types.ObjectId;
+  conversationId?: string;
+  details?: string;
+  amountInDispute?: number;
+  providerAmountHeld?: number;
+  resolvedBy?: Types.ObjectId;
+  resolvedAt?: Date;
+  resolution?: 'upheld' | 'dismissed';
+  adminNotes?: string;
   createdAt: Date;
   updatedAt: Date;
 }
