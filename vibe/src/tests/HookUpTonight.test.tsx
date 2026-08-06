@@ -3,6 +3,20 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import HookUpTonight from '../components/AdultZone/HookUpTonight';
 
+vi.mock('socket.io-client', () => {
+  const mSocket = {
+    on: vi.fn(),
+    off: vi.fn(),
+    emit: vi.fn(),
+    disconnect: vi.fn(),
+    connect: vi.fn()
+  };
+  return {
+    io: vi.fn(() => mSocket),
+    default: vi.fn(() => mSocket)
+  };
+});
+
 // Mock location hooks
 vi.mock('../hooks/useLocation', () => ({
   useCountries: () => ({ data: [{ code: 'US', name: 'United States', flag: '🇺🇸' }], loading: false }),
