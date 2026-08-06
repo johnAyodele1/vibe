@@ -82,6 +82,20 @@ const creditTransactionSchema = new Schema<ICreditTransaction>(
       type: Schema.Types.ObjectId,
       ref: 'PayoutRequest',
     },
+    inDispute: {
+      type: Boolean,
+      default: false,
+    },
+    disputeReason: {
+      type: String,
+    },
+    disputeResolvedAt: {
+      type: Date,
+    },
+    disputeResolution: {
+      type: String,
+      enum: ['upheld', 'dismissed'],
+    },
     metadata: Schema.Types.Mixed,
   },
   {

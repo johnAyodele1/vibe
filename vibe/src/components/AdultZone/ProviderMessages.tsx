@@ -1807,7 +1807,7 @@ const ProviderMessages: React.FC = () => {
                             {m.serviceRequest?.status === 'pending' && '⏳ Awaiting payment'}
                             {m.serviceRequest?.status === 'paid' && '✅ Payment received'}
                             {(m.serviceRequest?.status === 'completed' || m.serviceRequest?.status === 'auto_completed') && '🌙 Service completed'}
-                            {m.serviceRequest?.status === 'reported' && '⚠️ Reported'}
+                            {m.serviceRequest?.status === 'reported' && '⚠️ Disputed — Under Admin Review'}
                           </span>
                         </div>
 
@@ -1815,6 +1815,12 @@ const ProviderMessages: React.FC = () => {
                           <p className="text-[10px] text-gray-500 italic mt-2 text-center">
                             Payment is held until member confirms completion or 72 hours after payment.
                           </p>
+                        )}
+
+                        {m.serviceRequest?.status === 'reported' && (
+                          <div className="bg-red-950/20 border border-red-500/30 rounded-xl p-3 text-[11px] text-gray-300 leading-relaxed mt-2 text-left">
+                            A dispute has been raised on this service charge. Your payout for 💎 {m.serviceRequest ? Math.floor(m.serviceRequest.totalAmount * 0.85) : 0} is on hold pending review.
+                          </div>
                         )}
                       </div>
                     ) : m.mediaType === 'request_photo' ? (

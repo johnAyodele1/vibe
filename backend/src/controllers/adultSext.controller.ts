@@ -8,6 +8,7 @@ import AdultConversation from '../models/AdultConversation';
 import AdultCall from '../models/AdultCall';
 import AdultGift from '../models/AdultGift';
 import CreditTransaction from '../models/CreditTransaction';
+import Report from '../models/Report';
 import { encrypt, decrypt } from '../services/encryptionService';
 import { getClientPrice } from '../services/pricingService';
 import { calculateFees, recordPlatformEarning } from '../shared/fees';
@@ -413,6 +414,7 @@ export const payServiceRequest = async (req: Request, res: Response) => {
     }
 
     const { messageId } = req.params;
+
     const message = await AdultMessage.findById(messageId);
     if (!message || message.messageType !== 'service_request') {
       return res.status(404).json({ success: false, error: 'Service request not found' });
@@ -533,6 +535,7 @@ export const completeServiceRequest = async (req: Request, res: Response) => {
     }
 
     const { messageId } = req.params;
+
     const message = await AdultMessage.findById(messageId);
     if (!message || message.messageType !== 'service_request') {
       return res.status(404).json({ success: false, error: 'Service request not found' });
@@ -578,6 +581,8 @@ export const reportServiceRequest = async (req: Request, res: Response) => {
     }
 
     const { messageId } = req.params;
+    const { reason = 'Service dispute', details = '' } = req.body;
+
     const message = await AdultMessage.findById(messageId);
     if (!message || message.messageType !== 'service_request') {
       return res.status(404).json({ success: false, error: 'Service request not found' });
@@ -587,8 +592,44 @@ export const reportServiceRequest = async (req: Request, res: Response) => {
       return res.status(403).json({ success: false, error: 'Forbidden' });
     }
 
-    message.serviceRequest!.status = 'reported';
+    if (!message.serviceRequest) {
+      return res.status(400).json({ success: false, error: 'Service request details missing' });
+    }
+
+    message.serviceRequest.status = 'reported';
+    message.serviceRequest.reportedAt = new Date().toISOString();
     await message.save();
+
+    // Mark provider's transaction as inDispute
+    await CreditTransaction.updateOne(
+      {
+        userId: message.senderId,
+        type: 'service_payment_received',
+        'metadata.serviceRequestId': message._id
+      },
+      {
+        $set: {
+          eligibleForPayout: false,
+          inDispute: true,
+          disputeReason: reason,
+        }
+      }
+    );
+
+    // Create a Report document
+    const report = await Report.create({
+      reporter: user._id,
+      reported: message.senderId,
+      reason,
+      description: details,
+      type: 'service_dispute',
+      serviceRequestId: message._id,
+      conversationId: message.conversationId,
+      details,
+      amountInDispute: message.serviceRequest.totalAmount,
+      providerAmountHeld: Math.floor(message.serviceRequest.totalAmount * 0.85),
+      status: 'open',
+    });
 
     const ns = req.app.get('adultNamespace');
     if (ns) {
@@ -596,9 +637,21 @@ export const reportServiceRequest = async (req: Request, res: Response) => {
         messageId: message._id,
         serviceRequest: message.serviceRequest
       });
+      // Emit socket notification to admin
+      ns.emit('admin:service_dispute', {
+        reportId: report._id,
+        providerId: message.senderId,
+        memberId: user._id,
+        amount: message.serviceRequest.totalAmount,
+      });
     }
 
-    return res.json({ success: true, serviceRequest: message.serviceRequest });
+    return res.json({
+      success: true,
+      serviceRequest: message.serviceRequest,
+      reportId: report._id,
+      amountHeld: Math.floor(message.serviceRequest.totalAmount * 0.85)
+    });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
   }

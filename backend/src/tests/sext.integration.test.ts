@@ -216,13 +216,13 @@ describe('Private Messaging (Sext) Integration Tests', () => {
     expect(unlockRes.body.success).toBe(true);
     expect(unlockRes.body.mediaUrl).toBe('https://ex.com/pic.png');
 
-    // Balance checks: cost 40 tipped: 40 * 1.15 = 46. Remaining: 200 - 46 = 154
+    // Balance checks: cost 40 (no markup). Remaining: 200 - 40 = 160
     const walletRes = await request(app)
       .get('/api/v1/adult/wallet')
       .set('Authorization', `Bearer ${memberToken}`)
       .expect(200);
 
-    expect(walletRes.body.creditBalance).toBe(154);
+    expect(walletRes.body.creditBalance).toBe(160);
   });
 
   it('unlock with insufficient credits returns 402', async () => {
@@ -233,7 +233,7 @@ describe('Private Messaging (Sext) Integration Tests', () => {
         content: 'VVIP video',
         mediaUrl: 'https://ex.com/vvip.mp4',
         mediaType: 'image',
-        creditCost: 150, // client cost is 173, user has 154 remaining
+        creditCost: 250, // client cost is 250, user has 160 remaining
       })
       .expect(201);
 
@@ -331,7 +331,7 @@ describe('Private Messaging (Sext) Integration Tests', () => {
   });
 
   it('can send a gift and deduct credits', async () => {
-    // Member balance before: 154 credits. Selected gift costs 15 credits.
+    // Member balance before: 160 credits. Selected gift costs 15 credits.
     const res = await request(app)
       .post(`/api/v1/adult/sext/conversations/${conversationId}/send-gift`)
       .set('Authorization', `Bearer ${memberToken}`)
@@ -342,7 +342,7 @@ describe('Private Messaging (Sext) Integration Tests', () => {
       .expect(200);
 
     expect(res.body.message).toBeDefined();
-    expect(res.body.senderNewBalance).toBe(139); // 154 - 15
+    expect(res.body.senderNewBalance).toBe(145); // 160 - 15 = 145
   });
 
   // Photo Requests
@@ -519,12 +519,12 @@ describe('Private Messaging (Sext) Integration Tests', () => {
         .set('Authorization', `Bearer ${memberToken}`)
         .expect(200);
 
-      // perMinuteRate is 5, client price with markup is Math.ceil(5 * 1.15) = 6
-      expect(res.body.creditsDeducted).toBe(6);
+      // perMinuteRate is 5, no markup
+      expect(res.body.creditsDeducted).toBe(5);
       expect(res.body.wasBilled).toBe(true);
 
       const member = await AdultUser.findById(memberId);
-      expect(member?.credits).toBe(194); // 200 - 6
+      expect(member?.credits).toBe(195); // 200 - 5 = 195
     });
 
     it('charges for 2 minutes when connected duration is 61 seconds', async () => {
@@ -542,7 +542,7 @@ describe('Private Messaging (Sext) Integration Tests', () => {
         .set('Authorization', `Bearer ${memberToken}`)
         .expect(200);
 
-      expect(res.body.creditsDeducted).toBe(12); // 2 minutes * 6 = 12
+      expect(res.body.creditsDeducted).toBe(10); // 2 minutes * 5 = 10
       expect(res.body.wasBilled).toBe(true);
     });
   });
@@ -616,9 +616,9 @@ describe('Private Messaging (Sext) Integration Tests', () => {
     });
 
     it('member can pay for the service request', async () => {
-      // Member balance before: 185. Total charge is 180 credits.
-      // Wait, is there markup/client price? Yes: getClientPrice(180) = Math.ceil(180 * 1.15) = 207.
-      // 185 is not enough for clientPrice 207! It should return 402 or 400.
+      // Set credits to 150 first to ensure 402 (150 < 180)
+      await AdultUser.findByIdAndUpdate(memberId, { credits: 150 });
+
       await request(app)
         .post(`/api/v1/adult/sext/service-requests/${serviceMsgId}/pay`)
         .set('Authorization', `Bearer ${memberToken}`)
@@ -636,7 +636,7 @@ describe('Private Messaging (Sext) Integration Tests', () => {
       expect(res.body.serviceRequest.status).toBe('paid');
 
       const member = await AdultUser.findById(memberId);
-      expect(member?.credits).toBe(93); // 300 - 207 = 93
+      expect(member?.credits).toBe(120); // 300 - 180 = 120
     });
 
     it('member can confirm service completed', async () => {

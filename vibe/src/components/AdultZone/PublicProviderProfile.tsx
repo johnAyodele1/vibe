@@ -17,7 +17,7 @@ export const PublicProviderProfile: React.FC = () => {
   const { providerId } = useParams<{ providerId: string }>();
   const navigate = useNavigate();
   const { isAuthenticated } = useAdultAuth();
-  const openTipSheet = useTipSheetStore((state) => state.openSheet);
+  const openTipSheet = (prov: any, amt?: number | null) => useTipSheetStore.getState().openSheet(prov, amt);
 
   const [provider, setProvider] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);

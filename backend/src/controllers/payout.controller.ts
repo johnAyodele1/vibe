@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import AdultUser from '../models/AdultUser';
 import CreditTransaction from '../models/CreditTransaction';
 import PayoutRequest from '../models/PayoutRequest';
+import Report from '../models/Report';
 import { getDiamondNairaRate } from '../shared/pricing';
 
 /**
@@ -56,12 +57,22 @@ export const getEligiblePayout = async (req: Request, res: Response) => {
       status: 'completed',
       eligibleForPayout: true,
       paidOut: { $ne: true },
-      inPayoutRequest: { $exists: false }
+      inPayoutRequest: { $exists: false },
+      inDispute: { $ne: true }
+    });
+
+    const disputedTxs = await CreditTransaction.find({
+      userId: user._id,
+      inDispute: true,
+      paidOut: { $ne: true }
     });
 
     const eligibleTotal = eligibleTxs.reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
     const rate = await getDiamondNairaRate();
     const eligibleNaira = eligibleTotal * rate;
+
+    const disputedAmount = disputedTxs.reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+    const disputedNaira = disputedAmount * rate;
 
     // Breakdown calculation
     const breakdown = {
@@ -95,9 +106,125 @@ export const getEligiblePayout = async (req: Request, res: Response) => {
       success: true,
       eligibleAmount: eligibleTotal,
       eligibleNaira,
+      disputedAmount,
+      disputedNaira,
+      disputeCount: disputedTxs.length,
       eligibleTransactionIds: eligibleTxs.map(tx => tx._id),
       breakdown,
     });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/**
+ * GET /api/v1/admin/disputes
+ */
+export const adminGetDisputes = async (req: Request, res: Response) => {
+  try {
+    const disputes = await Report.find({ type: 'service_dispute' }).sort({ createdAt: -1 });
+
+    const disputesWithParties = await Promise.all(disputes.map(async (dispute) => {
+      const provider = await AdultUser.findById(dispute.reported);
+      const member = await AdultUser.findById(dispute.reporter);
+
+      return {
+        ...dispute.toObject(),
+        providerName: provider?.providerProfile?.stageName || provider?.displayName || 'Provider',
+        memberName: member?.displayName || member?.username || 'Member',
+      };
+    }));
+
+    return res.json({ success: true, disputes: disputesWithParties });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/**
+ * PUT /api/v1/admin/disputes/:reportId/resolve
+ */
+export const resolveDispute = async (req: Request, res: Response) => {
+  try {
+    const { reportId } = req.params;
+    const { resolution, adminNotes } = req.body;
+    const adminId = (req as any).adminId || (req as any).userId;
+
+    if (!['upheld', 'dismissed'].includes(resolution)) {
+      return res.status(400).json({ success: false, error: 'Invalid resolution status' });
+    }
+
+    const report = await Report.findById(reportId);
+    if (!report || report.status !== 'open') {
+      return res.status(404).json({ success: false, error: 'Dispute not found or already resolved' });
+    }
+
+    if (resolution === 'upheld') {
+      // Refund the member
+      await AdultUser.findOneAndUpdate(
+        { _id: report.reporter },
+        { $inc: { credits: report.amountInDispute || 0 } }
+      );
+
+      // Deduct from provider
+      await AdultUser.findOneAndUpdate(
+        { _id: report.reported },
+        { $inc: { credits: -(report.providerAmountHeld || 0) } }
+      );
+
+      // Mark transaction as inDispute = false, resolution = upheld
+      await CreditTransaction.updateOne(
+        { userId: report.reported, 'metadata.serviceRequestId': report.serviceRequestId, type: 'service_payment_received' },
+        {
+          $set: {
+            eligibleForPayout: false,
+            inDispute: false,
+            disputeResolution: 'upheld',
+            disputeResolvedAt: new Date(),
+          }
+        }
+      );
+    } else {
+      // Release payment to provider: make transaction eligible for payout again
+      await CreditTransaction.updateOne(
+        { userId: report.reported, 'metadata.serviceRequestId': report.serviceRequestId, type: 'service_payment_received' },
+        {
+          $set: {
+            eligibleForPayout: true,
+            inDispute: false,
+            disputeResolution: 'dismissed',
+            disputeResolvedAt: new Date(),
+          }
+        }
+      );
+    }
+
+    // Update report
+    report.status = 'resolved';
+    report.resolution = resolution;
+    report.adminNotes = adminNotes;
+    report.resolvedBy = adminId;
+    report.resolvedAt = new Date();
+    await report.save();
+
+    // Sockets emission
+    const ns = req.app.get('adultNamespace');
+    if (ns) {
+      ns.to(`user:${report.reporter.toString()}`).emit('dispute:resolved', {
+        resolution,
+        message: resolution === 'upheld'
+          ? 'Dispute resolved in your favour — refund applied'
+          : 'The dispute was reviewed and dismissed.',
+      });
+      ns.to(`user:${report.reported.toString()}`).emit('dispute:resolved', {
+        resolution,
+        message: resolution === 'upheld'
+          ? 'The dispute was upheld. The service charge was refunded to the member.'
+          : 'The dispute was dismissed. Your earnings have been released for payout.',
+      });
+    }
+
+    return res.json({ success: true, resolution });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
   }
@@ -160,7 +287,8 @@ export const requestPayout = async (req: Request, res: Response) => {
       status: 'completed',
       eligibleForPayout: true,
       paidOut: { $ne: true },
-      inPayoutRequest: { $exists: false }
+      inPayoutRequest: { $exists: false },
+      inDispute: { $ne: true }
     });
 
     const eligibleTotal = eligibleTxs.reduce((sum, tx) => sum + Math.abs(tx.amount), 0);

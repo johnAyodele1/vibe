@@ -1,7 +1,7 @@
 /**
- * Calculates the marked-up price for the user.
- * Adds 15% on top of the provider's base price and rounds up to the nearest integer credit.
+ * Calculates the price for the user.
+ * Member always pays exactly the amount shown (no markup).
  */
 export const getClientPrice = (basePrice: number): number => {
-  return Math.ceil(basePrice * 1.15);
+  return basePrice;
 };
