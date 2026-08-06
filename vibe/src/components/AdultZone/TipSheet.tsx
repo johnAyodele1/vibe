@@ -21,16 +21,18 @@ export const TipSheet: React.FC = () => {
   const step            = useTipSheetStore(s => s.step);
   const result          = useTipSheetStore(s => s.result);
 
-  // ✅ Get actions separately — these are stable references
-  const closeSheet        = useTipSheetStore(s => s.closeSheet);
-  const setSelectedAmount = useTipSheetStore(s => s.setSelectedAmount);
-  const setCustomAmount   = useTipSheetStore(s => s.setCustomAmount);
-  const setMessage        = useTipSheetStore(s => s.setMessage);
-  const setStep           = useTipSheetStore(s => s.setStep);
-  const setResult         = useTipSheetStore(s => s.setResult);
-  const reset             = useTipSheetStore(s => s.reset);
+  // ✅ Get actions directly from state dynamically (completely bypassing rendering hooks)
+  const closeSheet        = () => useTipSheetStore.getState().closeSheet();
+  const setSelectedAmount = (amount: number | null) => useTipSheetStore.getState().setSelectedAmount(amount);
+  const setCustomAmount   = (amount: string) => useTipSheetStore.getState().setCustomAmount(amount);
+  const setMessage        = (msg: string) => useTipSheetStore.getState().setMessage(msg);
+  const setStep           = (s: 'select' | 'processing' | 'success' | 'error') => useTipSheetStore.getState().setStep(s);
+  const setResult         = (res: any) => useTipSheetStore.getState().setResult(res);
+  const reset             = () => useTipSheetStore.getState().reset();
 
-  const { creditBalance, fetchWallet, setCreditBalance } = useWalletStore();
+  const creditBalance     = useWalletStore(s => s.creditBalance);
+  const fetchWallet       = () => useWalletStore.getState().fetchWallet();
+  const setCreditBalance  = (balance: number) => useWalletStore.getState().setCreditBalance(balance);
 
   // Local UI states
   const [showCustomInput, setShowCustomInput] = useState(false);
