@@ -10,6 +10,7 @@ import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { TipSheet } from './TipSheet';
 import { useUIStore } from './useUIStore';
 import { usePricingStore } from '../../lib/pricing';
+import { InstallPrompt } from '../pwa/InstallPrompt/InstallPrompt';
 
 const AdultZoneLayout: React.FC = () => {
   const { hideGlobalHeader, hideFooter } = useUIStore();
@@ -252,6 +253,8 @@ const AdultZoneLayout: React.FC = () => {
       />
 
       <TipSheet />
+
+      <InstallPrompt />
 
       {incomingCall && (
         <div className="fixed inset-0 bg-black/90 z-[11000] flex flex-col items-center justify-center p-8 text-white">
