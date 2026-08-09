@@ -7,11 +7,12 @@ interface AdultAuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   defaultMode?: 'login' | 'signup';
+  defaultRole?: 'user' | 'provider';
 }
 
-const AdultAuthModal: React.FC<AdultAuthModalProps> = ({ isOpen, onClose, defaultMode = 'login' }) => {
+const AdultAuthModal: React.FC<AdultAuthModalProps> = ({ isOpen, onClose, defaultMode = 'login', defaultRole = 'user' }) => {
   const [mode, setMode] = useState<'login' | 'signup'>(defaultMode);
-  const [role, setRole] = useState<'user' | 'provider'>('user');
+  const [role, setRole] = useState<'user' | 'provider'>(defaultRole);
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     email: '',

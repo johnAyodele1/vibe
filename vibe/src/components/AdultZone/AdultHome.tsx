@@ -258,11 +258,11 @@ const AdultHome: React.FC = () => {
         if (data.success && data.data.providers && data.data.providers.length > 0) {
           setPerformers(data.data.providers.slice(0, 6));
         } else {
-          setPerformers(FALLBACK_PERFORMERS);
+          setPerformers([]);
         }
       } catch (err) {
         console.error('Failed to fetch performers for home page:', err);
-        setPerformers(FALLBACK_PERFORMERS);
+        setPerformers([]);
       } finally {
         setLoading(false);
       }
@@ -299,7 +299,7 @@ const AdultHome: React.FC = () => {
     },
     {
       id: 'sext',
-      title: 'Private Sext',
+      title: 'Private Inbox',
       tagline: 'One-on-one explicit text & photo exchange',
       icon: '💬',
       stats: `🔴 ${formatK(stats.sextChatting)} chatting`,
@@ -432,7 +432,7 @@ const AdultHome: React.FC = () => {
               [1, 2, 3, 4].map(i => (
                 <div key={i} className="min-w-[280px] aspect-[3/4] bg-[var(--az-bg-secondary)] rounded-xl border border-[var(--az-border)] overflow-hidden snap-start flex-shrink-0 animate-pulse" />
               ))
-            ) : (
+            ) : performers.length > 0 ? (
               performers.map((p) => {
                 const photoUrl = p.profilePhoto || p.photos?.[0]?.url || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=600&auto=format&fit=crop";
                 const isLiveNow = p.providerProfile?.isLive;
@@ -490,6 +490,13 @@ const AdultHome: React.FC = () => {
                   </div>
                 );
               })
+            ) : (
+              <div className="w-full py-12 px-4 flex flex-col items-center justify-center text-center border border-dashed border-[var(--az-border)] rounded-2xl bg-[var(--az-bg-secondary)]/20">
+                <span className="text-4xl mb-3">🔍</span>
+                <p className="text-[var(--az-text-secondary)] text-sm max-w-md">
+                  No recommendation for you at the moment. Check your internet connection or come back later.
+                </p>
+              </div>
             )}
           </div>
         </div>

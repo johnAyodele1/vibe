@@ -28,6 +28,15 @@ const AdultZoneLayout: React.FC = () => {
   });
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login');
+  const [authModalRole, setAuthModalRole] = useState<'user' | 'provider'>('user');
+
+  const handleOpenAuthModal = (mode: 'login' | 'signup' = 'login', role: 'user' | 'provider' = 'user') => {
+    setAuthModalMode(mode);
+    setAuthModalRole(role);
+    setIsAuthModalOpen(true);
+  };
+
   const { isAuthenticated, logout, user, loading } = useAdultAuth();
 
   useEffect(() => {
@@ -143,8 +152,11 @@ const AdultZoneLayout: React.FC = () => {
   };
 
   useEffect(() => {
-    const handleOpenAuth = () => {
-      setIsAuthModalOpen(true);
+    const handleOpenAuth = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const mode = customEvent.detail?.mode || 'login';
+      const role = customEvent.detail?.role || 'user';
+      handleOpenAuthModal(mode, role);
     };
     window.addEventListener('open-adult-auth-modal', handleOpenAuth);
     return () => window.removeEventListener('open-adult-auth-modal', handleOpenAuth);
@@ -170,7 +182,7 @@ const AdultZoneLayout: React.FC = () => {
   ] : [
     { name: 'Live Cams', path: '/cams' },
     { name: 'Naughty Rooms', path: '/rooms' },
-    { name: 'Private Sext', path: '/sext' },
+    { name: 'Private Inbox', path: '/sext' },
     { name: 'Random Stranger', path: '/random' },
     { name: 'Hook Up Tonight', path: '/hookup' },
   ];
@@ -232,7 +244,7 @@ const AdultZoneLayout: React.FC = () => {
               </>
             ) : (
               <button
-                onClick={() => setIsAuthModalOpen(true)}
+                onClick={() => handleOpenAuthModal('login', 'user')}
                 className="px-6 py-2 bg-[var(--az-accent-primary)] text-white text-xs font-bold uppercase tracking-widest rounded-full shadow-[0_0_10px_var(--az-glow)]"
               >
                 Login
@@ -250,6 +262,8 @@ const AdultZoneLayout: React.FC = () => {
       <AdultAuthModal
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
+        defaultMode={authModalMode}
+        defaultRole={authModalRole}
       />
 
       <TipSheet />
@@ -309,7 +323,7 @@ const AdultZoneLayout: React.FC = () => {
           )) : [
             { icon: '🔴', path: '/', label: 'Home' },
             { icon: '📹', path: '/cams', label: 'Live' },
-            { icon: '💬', path: '/sext', label: 'Sext' },
+            { icon: '💬', path: '/sext', label: 'Inbox' },
             { icon: '🎲', path: '/random', label: 'Random' },
             { icon: '🌙', path: '/hookup', label: 'Hook Up' },
           ].map((item) => (
@@ -338,11 +352,16 @@ const AdultZoneLayout: React.FC = () => {
             All performers are 18+ years of age. Age verification records are maintained in compliance with applicable law.
             The "Adult Zone" is a premium, restricted area of the application. Please use responsibly.
           </p>
-          <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-[10px] text-[var(--az-text-muted)] uppercase tracking-widest font-bold">
+          <div className="flex flex-wrap justify-center items-center gap-x-6 gap-y-2 text-[10px] text-[var(--az-text-muted)] uppercase tracking-widest font-bold">
             <Link to="#" className="hover:text-[var(--az-text-secondary)]">Terms</Link>
             <Link to="#" className="hover:text-[var(--az-text-secondary)]">Privacy</Link>
             <Link to="#" className="hover:text-[var(--az-text-secondary)]">DMCA</Link>
-            <Link to="#" className="hover:text-[var(--az-text-secondary)]">2257 Statement</Link>
+            <button
+              onClick={() => handleOpenAuthModal('signup', 'provider')}
+              className="hover:text-[var(--az-text-secondary)] cursor-pointer text-[10px] uppercase tracking-widest font-bold bg-transparent border-none p-0 text-inherit leading-none"
+            >
+              Join as a Provider
+            </button>
             <Link to="#" className="hover:text-[var(--az-text-secondary)]">Support</Link>
           </div>
         </div>

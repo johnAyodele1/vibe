@@ -2473,7 +2473,7 @@ const PrivateSext: React.FC = () => {
         ) : (
           <div className="flex flex-col items-center justify-center flex-grow p-8 text-center text-gray-500">
             <span className="text-6xl mb-4 text-pink-500/30">💌</span>
-            <h3 className="text-lg font-serif italic text-[var(--az-text-primary)]">Sexting Inbox</h3>
+            <h3 className="text-lg font-serif italic text-[var(--az-text-primary)]">Private Inbox</h3>
             <p className="text-xs max-w-xs mt-2">Choose an ongoing conversation from the sidebar or select a provider to start high-heat private messages.</p>
           </div>
         )}
