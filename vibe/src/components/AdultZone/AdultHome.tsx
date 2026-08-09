@@ -7,93 +7,6 @@ import { DatingCrossPromo } from './DatingCrossPromo';
 import { RewardsButton } from './RewardsButton';
 import { io } from 'socket.io-client';
 
-const FALLBACK_PERFORMERS = [
-  {
-    _id: "mock-1",
-    firstName: "Amara Lux",
-    providerProfile: {
-      isLive: true,
-      rating: { average: 4.9, count: 120 },
-      viewerCount: 245,
-      country: "🇬🇧",
-      tags: ["sensual", "brunette", "tattooed"],
-    },
-    photos: [{ url: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=600&auto=format&fit=crop" }],
-    age: 23,
-    country: "London, UK"
-  },
-  {
-    _id: "mock-2",
-    firstName: "Elena Rostova",
-    providerProfile: {
-      isLive: true,
-      rating: { average: 4.8, count: 85 },
-      viewerCount: 189,
-      country: "🇫🇷",
-      tags: ["petite", "blonde", "elegant"],
-    },
-    photos: [{ url: "https://images.unsplash.com/photo-1517841905240-472988babdf9?q=80&w=600&auto=format&fit=crop" }],
-    age: 22,
-    country: "Paris, FR"
-  },
-  {
-    _id: "mock-3",
-    firstName: "Zara Brooks",
-    providerProfile: {
-      isLive: false,
-      rating: { average: 4.7, count: 50 },
-      viewerCount: 0,
-      country: "🇯🇵",
-      tags: ["exotic", "cosplay", "gaming"],
-    },
-    photos: [{ url: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=600&auto=format&fit=crop" }],
-    age: 24,
-    country: "Tokyo, JP"
-  },
-  {
-    _id: "mock-4",
-    firstName: "Sasha Grey",
-    providerProfile: {
-      isLive: true,
-      rating: { average: 4.9, count: 210 },
-      viewerCount: 312,
-      country: "🇩🇪",
-      tags: ["goth", "alt", "ebony"],
-    },
-    photos: [{ url: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?q=80&w=600&auto=format&fit=crop" }],
-    age: 26,
-    country: "Berlin, DE"
-  },
-  {
-    _id: "mock-5",
-    firstName: "Marcus Vance",
-    providerProfile: {
-      isLive: true,
-      rating: { average: 4.9, count: 42 },
-      viewerCount: 94,
-      country: "🇺🇸",
-      tags: ["muscle", "charismatic", "dominant"],
-    },
-    photos: [{ url: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=600&auto=format&fit=crop" }],
-    age: 25,
-    country: "New York, US"
-  },
-  {
-    _id: "mock-6",
-    firstName: "Dominic Cruz",
-    providerProfile: {
-      isLive: false,
-      rating: { average: 4.6, count: 31 },
-      viewerCount: 0,
-      country: "🇺🇸",
-      tags: ["athletic", "charming", "sensual"],
-    },
-    photos: [{ url: "https://images.unsplash.com/photo-1501196354995-cbb51c65aaea?q=80&w=600&auto=format&fit=crop" }],
-    age: 27,
-    country: "Miami, US"
-  }
-];
-
 const AdultHome: React.FC = () => {
   const navigate = useNavigate();
   const openSheet = (prov: any, amt?: number | null) => useTipSheetStore.getState().openSheet(prov, amt);
@@ -427,7 +340,7 @@ const AdultHome: React.FC = () => {
             <h2 className="text-3xl font-serif italic text-[var(--az-text-primary)]">Recommended For You</h2>
           </div>
 
-          <div className="flex gap-6 overflow-x-auto pb-8 no-scrollbar snap-x snap-mandatory">
+          <div className="flex gap-6 overflow-x-auto pb-8 no-scrollbar snap-x snap-mandatory w-full">
             {loading ? (
               [1, 2, 3, 4].map(i => (
                 <div key={i} className="min-w-[280px] aspect-[3/4] bg-[var(--az-bg-secondary)] rounded-xl border border-[var(--az-border)] overflow-hidden snap-start flex-shrink-0 animate-pulse" />
@@ -491,11 +404,8 @@ const AdultHome: React.FC = () => {
                 );
               })
             ) : (
-              <div className="w-full py-12 px-4 flex flex-col items-center justify-center text-center border border-dashed border-[var(--az-border)] rounded-2xl bg-[var(--az-bg-secondary)]/20">
-                <span className="text-4xl mb-3">🔍</span>
-                <p className="text-[var(--az-text-secondary)] text-sm max-w-md">
-                  No recommendation for you at the moment. Check your internet connection or come back later.
-                </p>
+              <div className="w-full text-center py-10 text-[var(--az-text-muted)] font-serif italic text-sm">
+                No recommendation for you at the moment. Check your internet connection or come back later.
               </div>
             )}
           </div>
