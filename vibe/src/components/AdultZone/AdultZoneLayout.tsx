@@ -362,7 +362,7 @@ const AdultZoneLayout: React.FC = () => {
                   })
                 );
               }}
-              className="hover:text-[var(--az-text-secondary)] cursor-pointer focus:outline-none"
+              className="text-[10px] text-[var(--az-text-muted)] uppercase tracking-widest font-bold hover:text-[var(--az-text-secondary)] cursor-pointer focus:outline-none bg-transparent border-none p-0 font-sans"
             >
               Join as a provider
             </button>
