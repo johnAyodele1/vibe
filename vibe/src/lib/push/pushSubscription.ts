@@ -1,13 +1,28 @@
 import { API_BASE_URL } from '../../config';
 
-const PUBLIC_VAPID_KEY = (import.meta.env.VITE_VAPID_PUBLIC_KEY as string) || 'BEl62v7sS7635AsZ5gTv98e578A62v6A38e55AsE_S_As7E38S68e_e-e8s';
-
 // Convert VAPID public key string to Uint8Array
 const urlBase64ToUint8Array = (base64String: string): Uint8Array => {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
   const base64  = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
   const raw     = window.atob(base64);
   return new Uint8Array(Array.from(raw).map(char => char.charCodeAt(0)));
+};
+
+export const fetchVapidPublicKey = async (): Promise<string | null> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/v1/adult/push/public-key`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch VAPID public key: ${response.status}`);
+    }
+    const data = await response.json();
+    if (data && data.success && data.publicKey) {
+      return data.publicKey;
+    }
+    return null;
+  } catch (err) {
+    console.error('[Push] Error fetching dynamic VAPID public key:', err);
+    return null;
+  }
 };
 
 export const registerServiceWorker = async (): Promise<ServiceWorkerRegistration | null> => {
@@ -35,14 +50,33 @@ export const subscribeToPush = async (
       return false;
     }
 
+    // Dynamic key retrieval
+    const activeVapidKey = await fetchVapidPublicKey();
+    if (!activeVapidKey) {
+      console.error('[Push] Dynamic VAPID public key is empty or missing. Aborting subscription.');
+      return false;
+    }
+
     // Get or create subscription
     let subscription = await registration.pushManager.getSubscription();
 
     if (!subscription) {
-      subscription = await registration.pushManager.subscribe({
-        userVisibleOnly:      true,
-        applicationServerKey: urlBase64ToUint8Array(PUBLIC_VAPID_KEY),
-      });
+      try {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly:      true,
+          applicationServerKey: urlBase64ToUint8Array(activeVapidKey),
+        });
+      } catch (subErr) {
+        console.warn('[Push] Direct subscription failed, attempting to unsubscribe first:', subErr);
+        const existingSub = await registration.pushManager.getSubscription();
+        if (existingSub) {
+          await existingSub.unsubscribe();
+        }
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly:      true,
+          applicationServerKey: urlBase64ToUint8Array(activeVapidKey),
+        });
+      }
     }
 
     // Send subscription to backend

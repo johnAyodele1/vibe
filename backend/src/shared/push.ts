@@ -1,18 +1,58 @@
 import webpush from 'web-push';
 import PushSubscription from '../models/PushSubscription';
+import VapidKey from '../models/VapidKey';
 
-if (process.env.VAPID_SUBJECT && process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
-  webpush.setVapidDetails(
-    process.env.VAPID_SUBJECT,
-    process.env.VAPID_PUBLIC_KEY,
-    process.env.VAPID_PRIVATE_KEY
-  );
-} else {
-  console.warn('[Push] VAPID keys are not completely set in environment variables. Web push may not work properly.');
-}
+let isVapidInitialized = false;
+
+export const ensureVapidKeys = async () => {
+  if (isVapidInitialized) {
+    return;
+  }
+
+  // 1. Check if configured in environment variables
+  if (process.env.VAPID_SUBJECT && process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+    webpush.setVapidDetails(
+      process.env.VAPID_SUBJECT,
+      process.env.VAPID_PUBLIC_KEY,
+      process.env.VAPID_PRIVATE_KEY
+    );
+    isVapidInitialized = true;
+    console.log('[Push] VAPID keys initialized from environment variables.');
+    return;
+  }
+
+  try {
+    // 2. Check if keys exist in the Database
+    const defaultSubject = process.env.VAPID_SUBJECT || 'mailto:admin@vibe.com';
+    let dbKey = await VapidKey.findOne();
+
+    if (!dbKey) {
+      console.log('[Push] No VAPID keys found in DB or environment. Generating new ones...');
+      const generated = webpush.generateVAPIDKeys();
+      dbKey = new VapidKey({
+        publicKey: generated.publicKey,
+        privateKey: generated.privateKey,
+        subject: defaultSubject
+      });
+      await dbKey.save();
+      console.log('[Push] Generated and saved new VAPID keys to DB.');
+    }
+
+    webpush.setVapidDetails(
+      dbKey.subject,
+      dbKey.publicKey,
+      dbKey.privateKey
+    );
+    isVapidInitialized = true;
+    console.log('[Push] VAPID keys successfully initialized dynamically.');
+  } catch (err) {
+    console.error('[Push] Failed to initialize dynamic VAPID keys:', err);
+  }
+};
 
 export const sendPushToUser = async (userId: any, payload: any) => {
   try {
+    await ensureVapidKeys();
     const subscriptions = await PushSubscription.find({ userId });
     if (!subscriptions.length) {
       console.log(`[Push] No subscriptions found for user ${userId}`);
