@@ -329,7 +329,7 @@ const ProviderProfile: React.FC = () => {
                 {[
                   { id: 'live_cam', name: '📹 Live Webcam shows' },
                   { id: 'private_call', name: '📞 Private Video Calls' },
-                  { id: 'sext', name: '💬 Messaging / Sext' },
+                  { id: 'sext', name: '💬 Messaging / Inbox' },
                   { id: 'hookup', name: '🌙 Available for Tonight' }
                 ].map(srv => {
                   const active = services.includes(srv.id);

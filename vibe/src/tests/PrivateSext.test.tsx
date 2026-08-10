@@ -86,7 +86,7 @@ describe('PrivateSext Frontend Component', () => {
       </MemoryRouter>
     );
     await waitFor(() => {
-      expect(screen.getByText(/Sexting Inbox/i)).toBeInTheDocument();
+      expect(screen.getByText(/Private Inbox/i)).toBeInTheDocument();
       expect(screen.getByText(/Choose an ongoing conversation from the sidebar/i)).toBeInTheDocument();
     });
   });

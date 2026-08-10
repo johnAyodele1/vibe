@@ -28,6 +28,8 @@ const AdultZoneLayout: React.FC = () => {
   });
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login');
+  const [authModalRole, setAuthModalRole] = useState<'user' | 'provider'>('user');
   const { isAuthenticated, logout, user, loading } = useAdultAuth();
 
   useEffect(() => {
@@ -143,7 +145,15 @@ const AdultZoneLayout: React.FC = () => {
   };
 
   useEffect(() => {
-    const handleOpenAuth = () => {
+    const handleOpenAuth = (e?: Event) => {
+      const customEvent = e as CustomEvent<{ mode?: 'login' | 'signup'; role?: 'user' | 'provider' }>;
+      if (customEvent?.detail) {
+        if (customEvent.detail.mode) setAuthModalMode(customEvent.detail.mode);
+        if (customEvent.detail.role) setAuthModalRole(customEvent.detail.role);
+      } else {
+        setAuthModalMode('login');
+        setAuthModalRole('user');
+      }
       setIsAuthModalOpen(true);
     };
     window.addEventListener('open-adult-auth-modal', handleOpenAuth);
@@ -170,7 +180,7 @@ const AdultZoneLayout: React.FC = () => {
   ] : [
     { name: 'Live Cams', path: '/cams' },
     { name: 'Naughty Rooms', path: '/rooms' },
-    { name: 'Private Sext', path: '/sext' },
+    { name: 'Private Inbox', path: '/sext' },
     { name: 'Random Stranger', path: '/random' },
     { name: 'Hook Up Tonight', path: '/hookup' },
   ];
@@ -250,6 +260,8 @@ const AdultZoneLayout: React.FC = () => {
       <AdultAuthModal
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
+        defaultMode={authModalMode}
+        defaultRole={authModalRole}
       />
 
       <TipSheet />
@@ -309,7 +321,7 @@ const AdultZoneLayout: React.FC = () => {
           )) : [
             { icon: '🔴', path: '/', label: 'Home' },
             { icon: '📹', path: '/cams', label: 'Live' },
-            { icon: '💬', path: '/sext', label: 'Sext' },
+            { icon: '💬', path: '/sext', label: 'Inbox' },
             { icon: '🎲', path: '/random', label: 'Random' },
             { icon: '🌙', path: '/hookup', label: 'Hook Up' },
           ].map((item) => (
@@ -342,7 +354,18 @@ const AdultZoneLayout: React.FC = () => {
             <Link to="#" className="hover:text-[var(--az-text-secondary)]">Terms</Link>
             <Link to="#" className="hover:text-[var(--az-text-secondary)]">Privacy</Link>
             <Link to="#" className="hover:text-[var(--az-text-secondary)]">DMCA</Link>
-            <Link to="#" className="hover:text-[var(--az-text-secondary)]">2257 Statement</Link>
+            <button
+              onClick={() => {
+                window.dispatchEvent(
+                  new CustomEvent('open-adult-auth-modal', {
+                    detail: { mode: 'signup', role: 'provider' }
+                  })
+                );
+              }}
+              className="text-[10px] text-[var(--az-text-muted)] uppercase tracking-widest font-bold hover:text-[var(--az-text-secondary)] cursor-pointer focus:outline-none bg-transparent border-none p-0 font-sans"
+            >
+              Join as a provider
+            </button>
             <Link to="#" className="hover:text-[var(--az-text-secondary)]">Support</Link>
           </div>
         </div>

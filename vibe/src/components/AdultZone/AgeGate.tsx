@@ -25,9 +25,9 @@ const AgeGate: React.FC<AgeGateProps> = ({ onVerified }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#0a0608] az-grain">
+    <div className="fixed inset-0 h-screen min-h-[100dvh] w-screen z-[9999] flex items-center justify-center bg-[#0a0608] az-grain overflow-y-auto">
       {/* Background Blur Overlay */}
-      <div className="absolute inset-0 bg-gradient-to-br from-[#0a0608] via-[#1a0f12] to-[#0a0608] opacity-90" />
+      <div className="absolute inset-0 min-h-[100dvh] bg-gradient-to-br from-[#0a0608] via-[#1a0f12] to-[#0a0608] opacity-90" />
 
       <div className="relative w-full max-w-md p-8 mx-4 az-glass border border-[var(--az-border)] rounded-2xl shadow-2xl text-center">
         {/* Logo Variant */}

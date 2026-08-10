@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 const SERVICE_LABELS: Record<string, { icon: string; label: string; color: string }> = {
   live_cam:       { icon: '📹', label: 'Live Webcam Shows',   color: '#e8496a' },
   private_call:   { icon: '📞', label: 'Private Video Calls', color: '#c9a84c' },
-  sext:           { icon: '💬', label: 'Private Messaging',   color: '#a78bfa' },
+  sext:           { icon: '💬', label: 'Private Inbox',       color: '#a78bfa' },
   hookup:         { icon: '🌙', label: 'Available Tonight',   color: '#c8102e' },
   random:         { icon: '🎲', label: 'Random Sessions',     color: '#64748b' },
 };

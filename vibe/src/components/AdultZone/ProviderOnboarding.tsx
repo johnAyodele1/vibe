@@ -780,7 +780,7 @@ const ProviderOnboarding: React.FC = () => {
               {[
                 { id: 'live_cam', icon: '📹', title: 'Live Webcam Shows', desc: 'Go live on the open cams feeds and earn tips from spectators.' },
                 { id: 'private_call', icon: '📞', title: 'Private Video Calls', desc: 'Accept direct video calls for an automated per-minute pricing rate.' },
-                { id: 'sext', icon: '💬', title: 'Private Messaging / Sext', desc: 'Charge for direct messages, exclusive text chats, and locked media payloads.' },
+                { id: 'sext', icon: '💬', title: 'Private Messaging / Inbox', desc: 'Charge for direct messages, exclusive text chats, and locked media payloads.' },
                 { id: 'hookup', icon: '🌙', title: 'Available for Tonight', desc: 'Inform members nearby that you can meet for local agreements.' },
                 { id: 'random', icon: '🎲', title: 'Random Stranger Sessions', desc: 'Enter matching directories for live dynamic encounters.' }
               ].map(srv => {
