@@ -1,23 +1,8 @@
-import nodemailer from 'nodemailer';
-
-// Use a mock transporter for testing if SMTP_HOST is not set or in test env
-const isTest = process.env.NODE_ENV === 'test';
-
-const transporter = isTest
-  ? { sendMail: async () => ({ messageId: 'test-id' }) }
-  : nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    });
+import { sendEmail } from '../shared/email/brevoClient';
 
 export const sendVerificationEmail = async (email: string, token: string) => {
-  const url = `${process.env.FRONTEND_URL}/adult/verify-email?token=${token}`;
-  await (transporter as any).sendMail({
-    from: process.env.FROM_EMAIL || 'noreply@adultzone.app',
+  const url = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/adult/verify-email?token=${token}`;
+  await sendEmail({
     to: email,
     subject: 'Verify your email - Adult Zone',
     html: `
@@ -29,9 +14,8 @@ export const sendVerificationEmail = async (email: string, token: string) => {
 };
 
 export const sendPasswordResetEmail = async (email: string, token: string) => {
-  const url = `${process.env.FRONTEND_URL}/adult/reset-password?token=${token}`;
-  await (transporter as any).sendMail({
-    from: process.env.FROM_EMAIL || 'noreply@adultzone.app',
+  const url = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/adult/reset-password?token=${token}`;
+  await sendEmail({
     to: email,
     subject: 'Reset your password - Adult Zone',
     html: `
@@ -43,10 +27,10 @@ export const sendPasswordResetEmail = async (email: string, token: string) => {
 };
 
 export const sendAdminNotification = async (subject: string, message: string) => {
-    await (transporter as any).sendMail({
-      from: process.env.FROM_EMAIL || 'noreply@adultzone.app',
-      to: process.env.ADMIN_EMAIL,
-      subject: `Admin Alert: ${subject}`,
-      text: message,
-    });
+  const adminEmail = process.env.ADMIN_EMAIL || 'admin@zippo.com.ng';
+  await sendEmail({
+    to: adminEmail,
+    subject: `Admin Alert: ${subject}`,
+    html: `<p>${message}</p>`,
+  });
 };

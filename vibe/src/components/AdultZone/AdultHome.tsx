@@ -367,6 +367,24 @@ const AdultHome: React.FC = () => {
                         <div className="cursor-pointer" onClick={() => navigate(`/adult/providers/${p.userId || p._id}`)}>
                           <h4 className="font-serif italic text-white text-lg hover:underline">{displayName}</h4>
                           <p className="text-[10px] text-[var(--az-text-secondary)] uppercase tracking-tighter">{p.age || 23} • {p.country || 'London, UK'}</p>
+                          {(() => {
+                            const totalCount = p.providerProfile?.totalResponseCount || 0;
+                            const totalMinutes = p.providerProfile?.totalResponseMinutes || 0;
+                            const avgResponseMinutes = totalCount > 0 ? totalMinutes / totalCount : null;
+                            const responseBadge = avgResponseMinutes !== null ? (
+                              avgResponseMinutes < 5 ? { label: 'Responds in minutes', color: '#22c55e' } :
+                              avgResponseMinutes < 60 ? { label: 'Responds within 1 hr', color: '#22c55e' } :
+                              avgResponseMinutes < 240 ? { label: 'Responds within 4 hrs', color: '#c9a84c' } :
+                              avgResponseMinutes < 1440 ? { label: 'Responds same day', color: '#f97316' } :
+                              { label: 'Responds slowly', color: '#a08898' }
+                            ) : null;
+                            if (!responseBadge) return null;
+                            return (
+                              <span className="inline-block mt-1 text-[8px] font-bold border rounded px-1.5 py-0.5 leading-none" style={{ borderColor: responseBadge.color, color: responseBadge.color }}>
+                                ⚡ {responseBadge.label}
+                              </span>
+                            );
+                          })()}
                         </div>
                         <div className="text-[var(--az-accent-gold)] text-sm">⭐ {ratingVal || 4.9}</div>
                       </div>

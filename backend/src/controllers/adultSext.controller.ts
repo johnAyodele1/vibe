@@ -13,6 +13,8 @@ import { encrypt, decrypt } from '../services/encryptionService';
 import { getClientPrice } from '../services/pricingService';
 import { calculateFees, recordPlatformEarning } from '../shared/fees';
 import { getSignedUrl } from '../shared/media/cloudinaryUpload';
+import { sendPushToUser } from '../shared/push';
+import { sendNewMessageEmail } from '../shared/email/providerEmail';
 
 // Backwards compatibility startConversation route
 export const startConversation = async (req: Request, res: Response) => {
@@ -917,6 +919,30 @@ export const getConversations = async (req: Request, res: Response) => {
   }
 };
 
+// GET /api/v1/adult/sext/conversations/unread-count
+export const getUnreadCount = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const userIdStr = user._id.toString();
+    const conversations = await AdultConversation.find({
+      participants: user._id
+    });
+
+    let totalUnread = 0;
+    for (const conv of conversations) {
+      totalUnread += conv.unreadCounts?.get(userIdStr) || 0;
+    }
+
+    return res.json({ success: true, total: totalUnread });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 // GET /api/v1/adult/sext/conversations/:conversationId
 export const getConversationById = async (req: Request, res: Response) => {
   try {
@@ -1241,6 +1267,45 @@ export const sendMessage = async (req: Request, res: Response) => {
 
     await message.save();
 
+    // Response time tracking for providers
+    if (user.role === 'provider') {
+      try {
+        // Check if there's an unanswered message from the member
+        const unansweredMsg = await AdultMessage.findOne({
+          conversationId,
+          senderId: otherParticipantId,
+          repliedAt: null
+        }).sort({ createdAt: -1 });
+
+        if (unansweredMsg) {
+          const responseTimeMs = Date.now() - new Date(unansweredMsg.createdAt).getTime();
+          const responseTimeMins = Math.floor(responseTimeMs / 60000);
+
+          // Update provider's rolling average response stats
+          await AdultUser.findOneAndUpdate(
+            { _id: user._id },
+            {
+              $inc: {
+                'providerProfile.totalResponseCount': 1,
+                'providerProfile.totalResponseMinutes': responseTimeMins
+              }
+            }
+          );
+
+          // Mark message as replied
+          await AdultMessage.findByIdAndUpdate(unansweredMsg._id, {
+            $set: {
+              repliedAt: new Date(),
+              replyTimeMinutes: responseTimeMins
+            }
+          });
+          console.log(`[Retention] Provider response tracked: ${responseTimeMins} mins`);
+        }
+      } catch (err: any) {
+        console.error('[Retention] Error calculating response time:', err.message);
+      }
+    }
+
     const receiverIdStr = otherParticipantId.toString();
     let currentUnread = conversation.unreadCounts.get(receiverIdStr) || 0;
 
@@ -1327,6 +1392,73 @@ export const sendMessage = async (req: Request, res: Response) => {
           messageId: message._id,
           preview: content ? content.slice(0, 50) : '',
         });
+      }
+    }
+
+    if (!isFlagged) {
+      // Send push notification if recipient is offline
+      let recipientOnline = false;
+      if (ns) {
+        try {
+          const recipientSockets = await ns.in(`user:${receiverIdStr}`).fetchSockets();
+          recipientOnline = recipientSockets.length > 0;
+        } catch (err) {
+          console.error('[Push] Error checking sockets for user status:', err);
+        }
+      }
+
+      if (!recipientOnline) {
+        // Calculate total unread count across all conversations
+        let unreadCount = 0;
+        try {
+          const conversations = await AdultConversation.find({
+            participants: otherParticipantId
+          });
+          for (const conv of conversations) {
+            unreadCount += conv.unreadCounts?.get(receiverIdStr) || 0;
+          }
+        } catch (err) {
+          console.error('[Push] Error calculating unread count:', err);
+        }
+
+        const senderName = user.providerProfile?.stageName || user.displayName || 'Someone';
+
+        const pushPayload = {
+          title: `New message from ${senderName}`,
+          body: type === 'text'
+            ? content.slice(0, 80)
+            : type === 'voice_note' || type === 'voice'
+            ? '🎤 Sent you a voice message'
+            : '📸 Sent you a photo',
+          icon: user.profilePhoto || '',
+          tag: `msg_${conversationId}`,
+          url: `/adult/sext?conversation=${conversationId}`,
+          unreadCount,
+          type: 'new_message',
+        };
+
+        sendPushToUser(otherParticipantId, pushPayload).catch((err) => {
+          console.error('[Push] Failed to send push:', err);
+        });
+
+        // Trigger email notification if recipient is an offline provider
+        try {
+          const recipientUser = await AdultUser.findById(otherParticipantId);
+          if (recipientUser && recipientUser.role === 'provider' && type !== 'system' && type !== 'voice_note' && type !== 'voice') {
+            const providerName = recipientUser.providerProfile?.stageName || recipientUser.displayName || 'Provider';
+            const memberName = user.displayName || user.username || 'A member';
+            const previewText = type === 'text' ? content : '[Sent a media message]';
+
+            sendNewMessageEmail({
+              providerId: receiverIdStr,
+              providerName,
+              memberName,
+              messagePreview: previewText,
+            }).catch(err => console.error('[Email] sendNewMessageEmail fire-and-forget error:', err));
+          }
+        } catch (emailErr) {
+          console.error('[Email] Failed to trigger sendNewMessageEmail check:', emailErr);
+        }
       }
     }
 

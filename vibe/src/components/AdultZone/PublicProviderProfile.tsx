@@ -354,6 +354,27 @@ export const PublicProviderProfile: React.FC = () => {
               <span>·</span>
               <span>{provider.memberSince}</span>
             </div>
+
+            {(() => {
+              const totalCount = provider.totalResponseCount || 0;
+              const totalMinutes = provider.totalResponseMinutes || 0;
+              const avgResponseMinutes = totalCount > 0 ? totalMinutes / totalCount : null;
+              const responseBadge = avgResponseMinutes !== null ? (
+                avgResponseMinutes < 5 ? { label: 'Responds in minutes', color: '#22c55e' } :
+                avgResponseMinutes < 60 ? { label: 'Responds within 1 hr', color: '#22c55e' } :
+                avgResponseMinutes < 240 ? { label: 'Responds within 4 hrs', color: '#c9a84c' } :
+                avgResponseMinutes < 1440 ? { label: 'Responds same day', color: '#f97316' } :
+                { label: 'Responds slowly', color: '#a08898' }
+              ) : null;
+              if (!responseBadge) return null;
+              return (
+                <div className="mt-3">
+                  <span className="inline-block text-[10px] font-bold border rounded-full px-2.5 py-0.5 leading-none" style={{ borderColor: responseBadge.color, color: responseBadge.color }}>
+                    ⚡ {responseBadge.label}
+                  </span>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Bio section */}

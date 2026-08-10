@@ -40,6 +40,7 @@ import {
 import {
   startConversation,
   getConversations,
+  getUnreadCount,
   getMessages as getSextMessages,
   sendMessage as sendSextMessage,
   unlockMedia,
@@ -76,6 +77,7 @@ import {
 import { getRooms, createRoom as createAdultRoom, getRoom as getAdultRoom, joinRoom as joinAdultRoom, leaveRoom as leaveAdultRoom, getRoomMembers, getRoomLeaderboard, getThreads, createThread, getThread, reactThread, pinThread, lockThread, getMessages as getAdultRoomMessages, sendMessage as sendAdultRoomMessage, reactMessage as reactAdultRoomMessage, deleteMessage as deleteAdultRoomMessage, getReplies, postReply, reactReply, getActivePolls, createPoll, votePoll, reportRoom, muteUser, kickUser } from '../controllers/adultRooms.controller';
 
 import { getProviderPublicProfile, unlockProviderPhoto } from '../controllers/adultProviders.controller';
+import { savePushSubscription, removePushSubscription } from '../controllers/adultPush.controller';
 import { getUserTasks, completeTask, dailyCheckin } from '../controllers/adultRewards.controller';
 import {
   getProviderWheel,
@@ -91,6 +93,10 @@ import { trackDailyActive } from '../middleware/trackDailyActive';
 
 const router = express.Router();
 router.use(trackDailyActive);
+
+// Push Subscription routes
+router.post('/adult/push/subscribe', verifyAdultJWT, savePushSubscription);
+router.delete('/adult/push/subscribe', verifyAdultJWT, removePushSubscription);
 
 // Zego Token Route
 router.get('/adult/zego/token', verifyAdultJWT, getZegoToken);
@@ -130,6 +136,7 @@ router.post('/adult/wallet/tip', verifyAdultJWT, directTip);
 router.get('/adult/sext/conversations', verifyAdultJWT, getConversations);
 router.post('/adult/sext/conversations', verifyAdultJWT, startConversation);
 router.post('/adult/sext/conversations/:userId/start', verifyAdultJWT, startConversation);
+router.get('/adult/sext/conversations/unread-count', verifyAdultJWT, getUnreadCount);
 router.get('/adult/sext/conversations/:conversationId', verifyAdultJWT, getConversationById);
 router.delete('/adult/sext/conversations/:conversationId', verifyAdultJWT, deleteConversation);
 router.put('/adult/sext/conversations/:conversationId/mute', verifyAdultJWT, muteConversation);

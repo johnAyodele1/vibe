@@ -3,18 +3,34 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { WheelEditor } from './WheelEditor';
 
+interface NotificationPrefs {
+  emailMessages: boolean;
+  emailWeeklySummary: boolean;
+  pushMessages: boolean;
+  pushTips: boolean;
+  pushPayouts: boolean;
+}
+
 const ProviderSettings: React.FC = () => {
   const navigate = useNavigate();
   const token = localStorage.getItem('adultAccessToken');
 
   const [activeTab, setActiveTab] = useState<'preferences' | 'wheel'>('preferences');
 
-  const [notifications, setNotifications] = useState({
-    newMessage: true,
-    newLike: true,
-    newTip: true,
-    payoutProcessed: true,
-    weeklySummary: false
+  const [notifications, setNotifications] = useState<NotificationPrefs>(() => {
+    const stored = localStorage.getItem('provider_notification_prefs');
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch (e) {}
+    }
+    return {
+      emailMessages: true,
+      emailWeeklySummary: true,
+      pushMessages: true,
+      pushTips: true,
+      pushPayouts: true
+    };
   });
 
   const [privacy, setPrivacy] = useState({
@@ -38,6 +54,7 @@ const ProviderSettings: React.FC = () => {
   const handleToggleNotification = (key: keyof typeof notifications) => {
     setNotifications(prev => {
       const next = { ...prev, [key]: !prev[key] };
+      localStorage.setItem('provider_notification_prefs', JSON.stringify(next));
       toast.success('Notification preferences updated!');
       return next;
     });
@@ -118,18 +135,21 @@ const ProviderSettings: React.FC = () => {
 
               <div className="space-y-4">
                 {[
-                  { id: 'newMessage', label: 'New message from a member' },
-                  { id: 'newLike', label: 'Someone liked your profile' },
-                  { id: 'newTip', label: 'New tip received' },
-                  { id: 'payoutProcessed', label: 'Payout processed successfully' },
-                  { id: 'weeklySummary', label: 'Weekly earnings summary email' }
+                  { id: 'emailMessages', label: 'Email when I get a new message', desc: "Receive an email when you get a message and you're offline (max 1 per hour)" },
+                  { id: 'emailWeeklySummary', label: 'Weekly earnings summary', desc: "A Sunday email showing your week's earnings" },
+                  { id: 'pushMessages', label: 'Push notification for new messages', desc: "Get notified on your device even when app is closed" },
+                  { id: 'pushTips', label: 'Push notification for tips', desc: "Get notified when someone sends you a tip" },
+                  { id: 'pushPayouts', label: 'Push notification for payout updates', desc: "Be notified when your payout status changes" }
                 ].map(opt => (
-                  <div key={opt.id} className="flex items-center justify-between">
-                    <span className="text-xs text-[var(--az-text-primary)]">{opt.label}</span>
+                  <div key={opt.id} className="flex items-start justify-between gap-4 p-3 bg-[var(--az-bg-tertiary)]/30 border border-[var(--az-border)]/50 rounded-2xl">
+                    <div className="flex flex-col">
+                      <span className="text-xs font-bold text-[var(--az-text-primary)]">{opt.label}</span>
+                      <span className="text-[10px] text-[var(--az-text-secondary)] mt-0.5">{opt.desc}</span>
+                    </div>
                     <input
                       type="checkbox"
                       checked={notifications[opt.id as keyof typeof notifications]}
-                      className="accent-[var(--az-accent-rose)] h-4 w-4 cursor-pointer"
+                      className="accent-[var(--az-accent-rose)] h-4 w-4 cursor-pointer mt-1"
                       onChange={() => handleToggleNotification(opt.id as keyof typeof notifications)}
                     />
                   </div>

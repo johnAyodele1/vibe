@@ -143,6 +143,8 @@ const adultUserSchema = new Schema<IAdultUser, IAdultUserModel>(
       privateSextPrice: { type: Number, default: 0 },
       totalEarnings: { type: Number, default: 0 },
       pendingPayout: { type: Number, default: 0 },
+      totalResponseCount: { type: Number, default: 0 },
+      totalResponseMinutes: { type: Number, default: 0 },
       verificationStatus: {
         type: String,
         enum: ['pending', 'approved', 'rejected'],

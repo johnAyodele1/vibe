@@ -108,7 +108,9 @@ export const getProviderPublicProfile = async (req: Request, res: Response) => {
       rating: provider.providerProfile?.rating?.average || 0,
       reviewCount: provider.providerProfile?.rating?.count || 0,
       isVerified: provider.isVerified || false,
-      memberSince
+      memberSince,
+      totalResponseCount: provider.providerProfile?.totalResponseCount || 0,
+      totalResponseMinutes: provider.providerProfile?.totalResponseMinutes || 0,
     };
 
     return res.json({ success: true, data: publicProfile });
