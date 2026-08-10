@@ -34,6 +34,12 @@ import {
   adminGetDisputes,
   resolveDispute
 } from '../controllers/payout.controller';
+import {
+  listErrors,
+  getError,
+  resolveError,
+  clearResolvedErrors
+} from '../controllers/adminErrors.controller';
 
 const router = Router();
 
@@ -78,5 +84,11 @@ router.put('/payouts/:requestId/reject', adminRejectPayout);
 // Admin Dispute management routes
 router.get('/disputes', adminGetDisputes);
 router.put('/disputes/:reportId/resolve', resolveDispute);
+
+// Admin Error Monitoring routes
+router.get('/errors', listErrors);
+router.get('/errors/:errorId', getError);
+router.put('/errors/:errorId/resolve', resolveError);
+router.delete('/errors/resolved', clearResolvedErrors);
 
 export default router;

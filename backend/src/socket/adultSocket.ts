@@ -536,31 +536,41 @@ export const setupAdultSocket = (io: Server) => {
     });
 
     // EPHEMERAL CAM CHAT ROOM CHAT MESSAGE
-    socket.on('cam:chat_message', ({ sessionId, content }) => {
-      if (!content || content.trim().length === 0) return;
-      if (content.length > 200) return;
-
-      // Contact sharing content filtering check using direct import or shared content filter
+    socket.on('cam:chat_message', async ({ sessionId, content }) => {
       try {
-        const { detectContactSharing } = require('@yourapp/content-filter');
-        const { detected } = detectContactSharing(content);
-        if (detected) return; // silently drop as specified
-      } catch (err) {
-        console.warn('content-filter package not loaded, skipped checks:', err);
+        if (!content || content.trim().length === 0) return;
+        if (content.length > 200) return;
+
+        // Contact sharing content filtering check using direct import or shared content filter
+        try {
+          const { detectContactSharing } = require('@yourapp/content-filter');
+          const { detected } = detectContactSharing(content);
+          if (detected) return; // silently drop as specified
+        } catch (err) {
+          console.warn('content-filter package not loaded, skipped checks:', err);
+        }
+
+        const message = {
+          id: `msg_${Date.now()}_${socket.data.user._id}`,
+          senderId: socket.data.user._id,
+          senderName: socket.data.user.displayName || socket.data.user.username || 'Member',
+          senderBadge: socket.data.user.subscriptionTier === 'none' ? null : socket.data.user.subscriptionTier,
+          content: content.trim(),
+          timestamp: Date.now(),
+          type: 'chat',
+        };
+
+        // Broadcast to everyone in the cam room
+        adultNamespace.to(`cam:${sessionId}`).emit('cam:new_message', message);
+      } catch (err: any) {
+        const { captureError } = require('../utils/captureError');
+        await captureError(err, {
+          operation: 'socket_cam_chat',
+          userId: socket.data.user?._id?.toString() || null,
+          zone: 'adult',
+          data: { sessionId },
+        });
       }
-
-      const message = {
-        id: `msg_${Date.now()}_${socket.data.user._id}`,
-        senderId: socket.data.user._id,
-        senderName: socket.data.user.displayName || socket.data.user.username || 'Member',
-        senderBadge: socket.data.user.subscriptionTier === 'none' ? null : socket.data.user.subscriptionTier,
-        content: content.trim(),
-        timestamp: Date.now(),
-        type: 'chat',
-      };
-
-      // Broadcast to everyone in the cam room
-      adultNamespace.to(`cam:${sessionId}`).emit('cam:new_message', message);
     });
 
     // Individual user room for notifications is already joined above!

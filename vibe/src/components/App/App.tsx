@@ -18,6 +18,7 @@ import AdminLogin from "../Admin/AdminLogin";
 import AdminRewardsPage from "../Admin/AdminRewardsPage";
 import AdminAnalytics from "../Admin/AdminAnalytics";
 import AdminPayoutsPage from "../Admin/AdminPayoutsPage";
+import AdminErrorsPage from "../Admin/AdminErrorsPage";
 import LoadingScreen from "../LoadingScreen/LoadingScreen";
 import AdultZoneLayout from "../AdultZone/AdultZoneLayout";
 import AdultHome from "../AdultZone/AdultHome";
@@ -125,6 +126,16 @@ function App() {
               )
             ) : (
               <Onboarding />
+            )
+          }
+        />
+        <Route
+          path="/admin/errors"
+          element={
+            isAdminAuthenticated ? (
+              <AdminErrorsPage />
+            ) : (
+              <Navigate to="/admin/login" replace />
             )
           }
         />

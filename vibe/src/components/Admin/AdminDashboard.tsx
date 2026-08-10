@@ -114,8 +114,11 @@ const AdminDashboard: React.FC = () => {
           <Link to="/admin/rewards" style={{ marginRight: '8px', display: 'inline-block', backgroundColor: '#c8102e', color: 'white', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', textDecoration: 'none' }}>
             🎁 Reward Tasks
           </Link>
-          <Link to="/admin/payouts" style={{ marginRight: '16px', display: 'inline-block', backgroundColor: '#7c3aed', color: 'white', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', textDecoration: 'none' }}>
+          <Link to="/admin/payouts" style={{ marginRight: '8px', display: 'inline-block', backgroundColor: '#7c3aed', color: 'white', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', textDecoration: 'none' }}>
             💸 Payouts & Disputes
+          </Link>
+          <Link to="/admin/errors" style={{ marginRight: '16px', display: 'inline-block', backgroundColor: '#dc2626', color: 'white', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', textDecoration: 'none' }}>
+            🔴 Error Monitor
           </Link>
           <button onClick={handleLogout} className={styles.logoutBtn}>Logout</button>
         </div>

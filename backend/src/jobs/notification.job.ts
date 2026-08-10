@@ -4,6 +4,7 @@ import Message from '../models/Message';
 import { sendEmail } from '../services/email.service';
 import { sendPushNotification } from '../services/notification.service';
 import dotenv from 'dotenv';
+import { captureError } from '../utils/captureError';
 
 dotenv.config();
 
@@ -116,8 +117,9 @@ export const initNotificationJob = () => {
           }
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error in notification cron job:', error);
+      await captureError(error, { operation: 'cron_notification_job', priority: 'high' });
     }
   });
 
