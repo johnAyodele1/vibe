@@ -54,7 +54,7 @@ const initFirebaseInSW = async () => {
 initFirebaseInSW();
 
 // ── Custom PWA / Web Push Integration ────────────────────────────────
-const CACHE_NAME = 'zippo-v2'; // Bumped version
+const CACHE_NAME = 'zippo-v3'; // Bumped version
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -169,8 +169,8 @@ self.addEventListener('push', (event) => {
       self.registration.showNotification(title, notificationOptions),
       // Update the home screen icon badge
       unreadCount > 0
-        ? self.registration.setAppBadge(unreadCount).catch(() => {})
-        : self.registration.clearAppBadge().catch(() => {}),
+        ? (navigator.setAppBadge ? navigator.setAppBadge(unreadCount).catch(() => {}) : Promise.resolve())
+        : (navigator.clearAppBadge ? navigator.clearAppBadge().catch(() => {}) : Promise.resolve()),
     ])
   );
 });
@@ -231,9 +231,13 @@ self.addEventListener('message', (event) => {
   if (event.data?.type === 'UPDATE_BADGE') {
     const count = event.data.count;
     if (count > 0) {
-      self.registration.setAppBadge(count).catch(() => {});
+      if (navigator.setAppBadge) {
+        navigator.setAppBadge(count).catch(() => {});
+      }
     } else {
-      self.registration.clearAppBadge().catch(() => {});
+      if (navigator.clearAppBadge) {
+        navigator.clearAppBadge().catch(() => {});
+      }
     }
   }
 });
