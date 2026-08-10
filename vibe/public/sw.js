@@ -54,7 +54,7 @@ const initFirebaseInSW = async () => {
 initFirebaseInSW();
 
 // ── Custom PWA / Web Push Integration ────────────────────────────────
-const CACHE_NAME = 'zippo-v3'; // Bumped version
+const CACHE_NAME = 'zippo-v4'; // Bumped version
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
