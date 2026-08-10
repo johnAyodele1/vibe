@@ -147,66 +147,9 @@ interface MongooseError extends Error {
     keyValue?: Record<string, string>;
 }
 
-// Global error handler
-app.use((error: any, req: Request, res: Response, next: NextFunction) => {
-  if (process.env.NODE_ENV !== 'test') {
-    console.error('Global error:', error);
-  }
+import { errorCaptureMiddleware } from './middleware/errorCapture';
 
-  // Mongoose validation error
-  if (error.name === 'ValidationError' && error.errors) {
-    const messages = Object.values(error.errors).map((val: any) => val.message);
-    return res.status(400).json({
-      success: false,
-      message: 'Validation Error',
-      errors: messages,
-    });
-  }
-
-  // Mongoose duplicate key error
-  if (error.code === 11000 && error.keyValue) {
-    const field = Object.keys(error.keyValue)[0];
-    return res.status(400).json({
-      success: false,
-      message: `${field} already exists`,
-    });
-  }
-
-  // JWT errors
-  if (error.name === 'JsonWebTokenError') {
-    return res.status(401).json({
-      success: false,
-      message: 'Invalid token',
-    });
-  }
-
-  if (error.name === 'TokenExpiredError') {
-    return res.status(401).json({
-      success: false,
-      message: 'Token expired',
-    });
-  }
-
-  // Multer errors
-  if (error.code === 'LIMIT_FILE_SIZE') {
-    return res.status(400).json({
-      success: false,
-      message: 'File too large. Maximum size is 10MB.',
-    });
-  }
-
-  if (error.message === 'Only image files are allowed!') {
-    return res.status(400).json({
-      success: false,
-      message: error.message,
-    });
-  }
-
-  // Default error
-  return res.status(500).json({
-    success: false,
-    message: error.message || 'Internal server error',
-  });
-});
+// Global error handler - LAST
+app.use(errorCaptureMiddleware);
 
 export default app;

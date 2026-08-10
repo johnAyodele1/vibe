@@ -42,8 +42,9 @@ export const setupSocket = (server: HttpServer): Server => {
       const decoded = jwt.verify(
         token,
         process.env.JWT_SECRET || 'fallback_secret',
-      ) as { userId: string };
+      ) as { userId: string; isAdmin?: boolean };
       socket.userId = decoded.userId;
+      (socket as any).isAdmin = decoded.isAdmin || decoded.userId === 'admin_user_id';
       console.log('Socket authenticated for user:', socket.userId);
       next();
     } catch (err) {
@@ -59,6 +60,11 @@ export const setupSocket = (server: HttpServer): Server => {
 
     // Join user room
     socket.join(userId);
+
+    if ((socket as any).isAdmin) {
+      socket.join('admin');
+      console.log(`Socket joined 'admin' room for admin user: ${userId}`);
+    }
 
     // Update user status to online
     if (!userSocketMap.has(userId)) {
