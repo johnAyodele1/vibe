@@ -5,6 +5,7 @@ import CreditTransaction from '../models/CreditTransaction';
 import { socketService } from '../services/socketService';
 import { getDiamondNairaRate } from '../shared/pricing';
 import { calculateFees, recordPlatformEarning } from '../shared/fees';
+import { sendPushToUser } from '../shared/push';
 
 export const getDiamondRate = async (req: Request, res: Response) => {
   try {
@@ -379,6 +380,17 @@ export const directTip = async (req: Request, res: Response) => {
         message,
         context
       });
+
+      // Send push notification for tip
+      const memberName = sender.displayName || sender.username || 'A member';
+      sendPushToUser(recipientId, {
+        title: `💎 New tip from ${memberName}!`,
+        body: `${memberName} tipped you 💎 ${providerAmount} diamonds`,
+        tag: 'tip',
+        url: '/adult/provider/earnings',
+        type: 'new_tip',
+        unreadCount: 0,
+      }).catch(err => console.error('[Push] Error sending tip push notification:', err));
 
       // Broadcast tip notification to any active live cam room if context or active sessions exist
       const activeSession = await mongoose.model('CamSession').findOne({ providerId: recipient._id, status: 'live' });

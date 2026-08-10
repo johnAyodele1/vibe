@@ -155,6 +155,14 @@ const adultMessageSchema = new Schema<IMessage>(
       type: String,
       select: false,
     },
+    repliedAt: {
+      type: Date,
+      default: null,
+    },
+    replyTimeMinutes: {
+      type: Number,
+      default: null,
+    },
   },
   {
     timestamps: { createdAt: true, updatedAt: false },

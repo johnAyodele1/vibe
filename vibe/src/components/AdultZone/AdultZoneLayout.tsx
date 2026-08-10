@@ -11,6 +11,19 @@ import { TipSheet } from './TipSheet';
 import { useUIStore } from './useUIStore';
 import { usePricingStore } from '../../lib/pricing';
 import { InstallPrompt } from '../pwa/InstallPrompt/InstallPrompt';
+import { registerServiceWorker, subscribeToPush, updateBadgeCount } from '../../lib/push/pushSubscription';
+import { useUnreadStore } from '../../store/unreadStore';
+
+const NavBadge: React.FC = () => {
+  const totalUnread = useUnreadStore(s => s.totalUnread);
+  if (totalUnread === 0) return null;
+
+  return (
+    <span className="absolute -top-1 -right-2 bg-red-600 text-white text-[8px] font-bold h-3.5 min-w-[14px] px-1 rounded-full flex items-center justify-center border border-[var(--az-bg-primary)] leading-none animate-pulse z-20">
+      {totalUnread > 99 ? '99+' : totalUnread}
+    </span>
+  );
+};
 
 const AdultZoneLayout: React.FC = () => {
   const { hideGlobalHeader, hideFooter } = useUIStore();
@@ -31,6 +44,7 @@ const AdultZoneLayout: React.FC = () => {
   const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login');
   const [authModalRole, setAuthModalRole] = useState<'user' | 'provider'>('user');
   const { isAuthenticated, logout, user, loading } = useAdultAuth();
+  const { setUnread, increment } = useUnreadStore();
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/v1/adult/config/diamond-rate`)
@@ -73,6 +87,32 @@ const AdultZoneLayout: React.FC = () => {
 
     s.on('sext:new_message_notification', (payload: any) => {
       s.emit('sext:message_delivered', { messageId: payload.messageId });
+    });
+
+    s.on('sext:new_message', (payload: any) => {
+      if (payload.message?.receiverId === user.id) {
+        const isViewingChat = window.location.pathname.includes(`/sext/${payload.message.conversationId}`) || window.location.pathname.includes(`/adult/sext/${payload.message.conversationId}`);
+        if (!isViewingChat) {
+          increment();
+          updateBadgeCount(useUnreadStore.getState().totalUnread + 1);
+        }
+      }
+    });
+
+    s.on('sext:messages_read', () => {
+      fetch(`${API_BASE_URL}/v1/adult/sext/conversations/unread-count`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data && typeof data.total === 'number') {
+            setUnread(data.total);
+            updateBadgeCount(data.total);
+          }
+        })
+        .catch(err => console.error('Failed to fetch unread count:', err));
     });
 
     s.on('call:incoming', (payload: any) => {
@@ -160,6 +200,59 @@ const AdultZoneLayout: React.FC = () => {
     return () => window.removeEventListener('open-adult-auth-modal', handleOpenAuth);
   }, []);
 
+  useEffect(() => {
+    const userId = user?.id;
+    if (!isAuthenticated || !userId) return;
+
+    const setupPush = async () => {
+      const registration = await registerServiceWorker();
+      if (!registration) return;
+
+      const alreadyAsked = localStorage.getItem('push_permission_asked');
+      if (!alreadyAsked) {
+        setTimeout(async () => {
+          const success = await subscribeToPush(registration, userId);
+          localStorage.setItem('push_permission_asked', 'true');
+          if (success) localStorage.setItem('push_subscribed', 'true');
+        }, 30000);
+      } else if (localStorage.getItem('push_subscribed') === 'true') {
+        await subscribeToPush(registration, userId);
+      }
+
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.addEventListener('message', (event) => {
+          if (event.data?.type === 'NAVIGATE') {
+            navigate(event.data.url);
+          }
+        });
+      }
+    };
+
+    setupPush();
+  }, [user, isAuthenticated]);
+
+  // Load initial unread count
+  useEffect(() => {
+    if (!isAuthenticated || !user?.id) return;
+
+    const token = localStorage.getItem('adultAccessToken');
+    if (!token) return;
+
+    fetch(`${API_BASE_URL}/v1/adult/sext/conversations/unread-count`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data && typeof data.total === 'number') {
+          setUnread(data.total);
+          updateBadgeCount(data.total);
+        }
+      })
+      .catch(err => console.error('Failed to fetch unread count:', err));
+  }, [user?.id, isAuthenticated]);
+
   if (loading) {
     return <LoadingScreen />;
   }
@@ -208,11 +301,12 @@ const AdultZoneLayout: React.FC = () => {
               <Link
                 key={link.path}
                 to={link.path}
-                className={`text-sm font-medium tracking-wide transition-colors hover:text-[var(--az-accent-rose)] ${
-                  location.pathname === link.path ? 'text-[var(--az-accent-primary)] relative' : 'text-[var(--az-text-secondary)]'
+                className={`text-sm font-medium tracking-wide transition-colors hover:text-[var(--az-accent-rose)] relative ${
+                  location.pathname === link.path ? 'text-[var(--az-accent-primary)]' : 'text-[var(--az-text-secondary)]'
                 }`}
               >
                 {link.name}
+                {(link.path === '/sext' || link.path === '/adult/provider/messages') && <NavBadge />}
                 {location.pathname === link.path && (
                   <span className="absolute -bottom-[1.1rem] left-0 right-0 h-0.5 bg-[var(--az-accent-primary)] shadow-[0_0_8px_var(--az-glow)]" />
                 )}
@@ -309,11 +403,14 @@ const AdultZoneLayout: React.FC = () => {
             <Link
               key={item.path}
               to={item.path}
-              className={`flex flex-col items-center gap-1 p-2 min-w-[64px] transition-all ${
+              className={`flex flex-col items-center gap-1 p-2 min-w-[64px] transition-all relative ${
                 location.pathname === item.path ? 'scale-110' : 'opacity-60'
               }`}
             >
-              <span className="text-xl">{item.icon}</span>
+              <span className="text-xl relative">
+                {item.icon}
+                {item.path === '/adult/provider/messages' && <NavBadge />}
+              </span>
               <span className={`text-[10px] uppercase tracking-tighter ${location.pathname === item.path ? 'text-[var(--az-accent-rose)] font-bold' : ''}`}>
                 {item.label}
               </span>
@@ -328,11 +425,14 @@ const AdultZoneLayout: React.FC = () => {
             <Link
               key={item.path}
               to={item.path}
-              className={`flex flex-col items-center gap-1 p-2 min-w-[64px] transition-all ${
+              className={`flex flex-col items-center gap-1 p-2 min-w-[64px] transition-all relative ${
                 location.pathname === item.path ? 'scale-110' : 'opacity-60'
               }`}
             >
-              <span className="text-xl">{item.icon}</span>
+              <span className="text-xl relative">
+                {item.icon}
+                {item.path === '/sext' && <NavBadge />}
+              </span>
               <span className={`text-[10px] uppercase tracking-tighter ${location.pathname === item.path ? 'text-[var(--az-accent-primary)] font-bold' : ''}`}>
                 {item.label}
               </span>

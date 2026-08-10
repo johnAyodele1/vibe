@@ -5,6 +5,7 @@ import CreditTransaction from '../models/CreditTransaction';
 import PayoutRequest from '../models/PayoutRequest';
 import Report from '../models/Report';
 import { getDiamondNairaRate } from '../shared/pricing';
+import { sendPushToUser } from '../shared/push';
 
 /**
  * Helper to construct payout details snapshot from provider profile.
@@ -626,6 +627,16 @@ export const adminCompletePayout = async (req: Request, res: Response) => {
       });
     }
 
+    // 6. Send push notification
+    sendPushToUser(payout.providerId, {
+      title: '✅ Payout Sent!',
+      body: `Your payout of ₦${payout.amountNaira.toLocaleString('en-NG')} has been sent!`,
+      tag: 'payout',
+      url: '/adult/provider/payout',
+      type: 'payout_update',
+      unreadCount: 0,
+    }).catch(err => console.error('[Push] Error sending completed payout push:', err));
+
     return res.json({ success: true, data: payout });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
@@ -674,6 +685,16 @@ export const adminRejectPayout = async (req: Request, res: Response) => {
         reason,
       });
     }
+
+    // 4. Send push notification
+    sendPushToUser(payout.providerId, {
+      title: '⚠️ Payout Update',
+      body: `Your payout request status has been updated.`,
+      tag: 'payout',
+      url: '/adult/provider/payout',
+      type: 'payout_update',
+      unreadCount: 0,
+    }).catch(err => console.error('[Push] Error sending rejected payout push:', err));
 
     return res.json({ success: true, data: payout });
   } catch (error: any) {

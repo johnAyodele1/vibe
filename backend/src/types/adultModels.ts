@@ -67,6 +67,8 @@ export interface IAdultUser extends Document {
     privateSextPrice?: number;
     totalEarnings: number;
     pendingPayout: number;
+    totalResponseCount?: number;
+    totalResponseMinutes?: number;
     verificationStatus: 'pending' | 'approved' | 'rejected';
     idVerificationDocUrl?: string;
     contentTags: string[];
@@ -307,6 +309,8 @@ export interface IMessage extends Document {
   isFlagged?: boolean;
   flagReason?: string;
   flaggedText?: string;
+  repliedAt?: Date;
+  replyTimeMinutes?: number;
   createdAt: Date;
 }
 
