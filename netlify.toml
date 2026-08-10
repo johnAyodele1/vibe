@@ -1,6 +1,7 @@
 [build]
-  command = "npm run build --workspace=vibe"
-  publish = "vibe/dist"
+  base = "vibe"
+  command = "npm run build"
+  publish = "dist"
 
 [[headers]]
   for = "/*.html"
