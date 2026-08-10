@@ -77,7 +77,7 @@ import {
 import { getRooms, createRoom as createAdultRoom, getRoom as getAdultRoom, joinRoom as joinAdultRoom, leaveRoom as leaveAdultRoom, getRoomMembers, getRoomLeaderboard, getThreads, createThread, getThread, reactThread, pinThread, lockThread, getMessages as getAdultRoomMessages, sendMessage as sendAdultRoomMessage, reactMessage as reactAdultRoomMessage, deleteMessage as deleteAdultRoomMessage, getReplies, postReply, reactReply, getActivePolls, createPoll, votePoll, reportRoom, muteUser, kickUser } from '../controllers/adultRooms.controller';
 
 import { getProviderPublicProfile, unlockProviderPhoto } from '../controllers/adultProviders.controller';
-import { savePushSubscription, removePushSubscription } from '../controllers/adultPush.controller';
+import { savePushSubscription, removePushSubscription, getVapidPublicKey } from '../controllers/adultPush.controller';
 import { getUserTasks, completeTask, dailyCheckin } from '../controllers/adultRewards.controller';
 import {
   getProviderWheel,
@@ -95,6 +95,7 @@ const router = express.Router();
 router.use(trackDailyActive);
 
 // Push Subscription routes
+router.get('/adult/push/public-key', getVapidPublicKey);
 router.post('/adult/push/subscribe', verifyAdultJWT, savePushSubscription);
 router.delete('/adult/push/subscribe', verifyAdultJWT, removePushSubscription);
 

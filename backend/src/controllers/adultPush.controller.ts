@@ -1,5 +1,28 @@
 import { Request, Response } from 'express';
 import PushSubscription from '../models/PushSubscription';
+import { ensureVapidKeys } from '../shared/push';
+import VapidKey from '../models/VapidKey';
+
+export const getVapidPublicKey = async (req: Request, res: Response) => {
+  try {
+    await ensureVapidKeys();
+
+    // Check if configured in environment variables first
+    if (process.env.VAPID_PUBLIC_KEY) {
+      return res.json({ success: true, publicKey: process.env.VAPID_PUBLIC_KEY });
+    }
+
+    const keyDoc = await VapidKey.findOne();
+    if (!keyDoc) {
+      return res.status(404).json({ success: false, error: 'VAPID public key not generated' });
+    }
+
+    return res.json({ success: true, publicKey: keyDoc.publicKey });
+  } catch (error: any) {
+    console.error('[Push] getVapidPublicKey error:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
 
 export const savePushSubscription = async (req: Request, res: Response) => {
   try {
