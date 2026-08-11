@@ -123,9 +123,9 @@ export const sendPushToUser = async (userId: any, payload: any, zone = 'adult') 
       });
       failed++;
 
-      if (err.statusCode === 410 || err.statusCode === 404) {
+      if (err.statusCode === 410 || err.statusCode === 404 || err.statusCode === 403) {
         await PushSubscription.deleteOne({ _id: sub._id });
-        console.log('[Push] Removed dead subscription:', { userId, subId: sub._id });
+        console.log('[Push] Removed dead or mismatched subscription:', { userId, subId: sub._id });
       }
     }
   }
