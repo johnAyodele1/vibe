@@ -93,9 +93,9 @@ export const sendTestPush = async (req: Request, res: Response) => {
         });
 
         // Clean up dead subscriptions
-        if (err.statusCode === 410 || err.statusCode === 404) {
+        if (err.statusCode === 410 || err.statusCode === 404 || err.statusCode === 403) {
           await PushSubscription.deleteOne({ _id: sub._id });
-          console.log('[Push][Test] Removed dead subscription:', sub._id);
+          console.log('[Push][Test] Removed dead or mismatched subscription:', sub._id);
         }
       }
     }
