@@ -55,6 +55,7 @@ const Settings: React.FC = () => {
   // Local state for sliders to ensure smooth dragging
   const [localMaxDistance, setLocalMaxDistance] = useState<number>(50);
   const [localAgeRange, setLocalAgeRange] = useState({ min: 18, max: 50 });
+  const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
 
   const fetchUserProfile = async () => {
     try {
@@ -317,6 +318,68 @@ const Settings: React.FC = () => {
               <div className={styles.itemValue}>
                 <span className="capitalize">{notificationPermission}</span>
                 <Icon name="arrow_forward_ios" className="text-lg opacity-50" />
+              </div>
+            </div>
+            {/* Push notification test button */}
+            <div className={styles.listItem} style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: '8px', padding: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'between', alignItems: 'center', width: '100%' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                  <p className={styles.itemLabel} style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                    <Icon name="developer_board" className="text-gray-400 dark:text-[#ba9ca3]" />
+                    Test push notification
+                  </p>
+                  <p className={styles.subText} style={{ margin: '4px 0 0 28px' }}>Send a test notification to this device</p>
+                </div>
+                <button
+                  disabled={testStatus === 'sending'}
+                  onClick={async () => {
+                    setTestStatus('sending');
+
+                    try {
+                      const response = await fetch(`${API_BASE_URL}/v1/adult/push/test`, {
+                        method: 'POST',
+                        headers: {
+                          'Authorization': `Bearer ${localStorage.getItem('adultAccessToken') || localStorage.getItem('accessToken')}`,
+                          'Content-Type': 'application/json'
+                        }
+                      });
+                      const data = await response.json();
+                      console.log('[Settings] Push test result:', data);
+
+                      if (data.results?.some((r: any) => r.success)) {
+                        setTestStatus('sent');
+                        toast.success('Test notification sent successfully!');
+                      } else {
+                        setTestStatus('failed');
+                        toast.error(data.reason || 'Failed to send test. Check permissions.');
+                      }
+                    } catch (err) {
+                      setTestStatus('failed');
+                      toast.error('Failed to connect to the push test endpoint.');
+                    }
+
+                    setTimeout(() => {
+                      setTestStatus('idle');
+                    }, 5000);
+                  }}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    backgroundColor: testStatus === 'sent' ? '#16a34a' : testStatus === 'failed' ? '#b91c1c' : '#f42559',
+                    border: 'none',
+                    color: 'white',
+                    fontSize: '12px',
+                    fontWeight: 'bold',
+                    cursor: testStatus === 'sending' ? 'default' : 'pointer',
+                    whiteSpace: 'nowrap',
+                    opacity: testStatus === 'sending' ? 0.7 : 1
+                  }}
+                >
+                  {testStatus === 'idle' && 'Send Test'}
+                  {testStatus === 'sending' && 'Sending...'}
+                  {testStatus === 'sent' && '✅ Sent!'}
+                  {testStatus === 'failed' && '❌ Failed'}
+                </button>
               </div>
             </div>
           </div>

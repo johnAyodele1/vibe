@@ -42,14 +42,19 @@ export const subscribeToPush = async (
   registration: ServiceWorkerRegistration,
   userId: string
 ): Promise<boolean> => {
-  try {
-    // Check permission
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') {
-      console.log('[Push] Permission denied');
-      return false;
-    }
+  console.log('[Push] subscribeToPush called:', {
+    userId,
+    currentPermission: Notification.permission,
+  });
 
+  // At this point permission must already be 'granted'
+  // (requestPermission was called in the button click handler)
+  if (Notification.permission !== 'granted') {
+    console.warn('[Push] subscribeToPush called without granted permission — aborting');
+    return false;
+  }
+
+  try {
     // Dynamic key retrieval
     const activeVapidKey = await fetchVapidPublicKey();
     if (!activeVapidKey) {
@@ -57,14 +62,44 @@ export const subscribeToPush = async (
       return false;
     }
 
+    const targetKeyBytes = urlBase64ToUint8Array(activeVapidKey);
+
     // Get or create subscription
     let subscription = await registration.pushManager.getSubscription();
+
+    if (subscription) {
+      // Self-healing check: verify if the existing subscription key matches the current active server key
+      const keyBuffer = subscription.options.applicationServerKey;
+      let keysMatch = false;
+      if (keyBuffer) {
+        const subKeyBytes = new Uint8Array(keyBuffer);
+        if (subKeyBytes.length === targetKeyBytes.length) {
+          keysMatch = true;
+          for (let i = 0; i < subKeyBytes.length; i++) {
+            if (subKeyBytes[i] !== targetKeyBytes[i]) {
+              keysMatch = false;
+              break;
+            }
+          }
+        }
+      }
+
+      if (!keysMatch) {
+        console.warn('[Push] Existing subscription key mismatches current active VAPID key. Unsubscribing to force renewal...');
+        try {
+          await subscription.unsubscribe();
+        } catch (unsubErr) {
+          console.error('[Push] Unsubscribing mismatched key failed:', unsubErr);
+        }
+        subscription = null;
+      }
+    }
 
     if (!subscription) {
       try {
         subscription = await registration.pushManager.subscribe({
           userVisibleOnly:      true,
-          applicationServerKey: urlBase64ToUint8Array(activeVapidKey),
+          applicationServerKey: targetKeyBytes,
         });
       } catch (subErr) {
         console.warn('[Push] Direct subscription failed, attempting to unsubscribe first:', subErr);
