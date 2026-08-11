@@ -4,6 +4,7 @@ import Conversation from '../models/Conversation';
 import User from '../models/User';
 import { getIO } from '../socket';
 import { sendPushNotification } from '../services/notification.service';
+import { sendPushToUser } from '../shared/push';
 import { IConversation, IMessage } from '../types/models';
 import { Types } from 'mongoose';
 import { IExpressRequest } from '../types/express';
@@ -190,6 +191,22 @@ export const sendMessage = async (req: IExpressRequest, res: Response): Promise<
         senderId: currentUserId,
       },
     }).catch(err => console.error('Push notification failed:', err));
+
+    // Also send Custom VAPID push notification
+    const unreadCount = conversation.unreadCount?.get(receiverId.toString()) || 0;
+
+    sendPushToUser(receiverId, {
+      title: `💬 ${req.user.firstName}`,
+      body: messageType === 'text' ? content.slice(0, 100) : `Sent a ${messageType}`,
+      icon: req.user.photos?.[0]?.url || '',
+      badge: '/icons/badge-72x72.png',
+      tag: `msg_${(conversation._id as Types.ObjectId).toString()}`,
+      renotify: true,
+      url: `/chat/${(conversation._id as Types.ObjectId).toString()}`,
+      unreadCount,
+      type: 'new_message',
+      conversationId: (conversation._id as Types.ObjectId).toString(),
+    }, 'dating').catch(err => console.error('[Push] sendPushToUser failed for dating:', err));
 
     return res.status(201).json({ success: true, data: { message } });
   } catch (error) {

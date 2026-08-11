@@ -17,7 +17,10 @@ export const ensureVapidKeys = async () => {
       process.env.VAPID_PRIVATE_KEY
     );
     isVapidInitialized = true;
-    console.log('[Push] VAPID keys initialized from environment variables.');
+    console.log('[Push] VAPID initialized:', {
+      subject:    process.env.VAPID_SUBJECT,
+      publicKey:  process.env.VAPID_PUBLIC_KEY.slice(0, 20) + '...',
+    });
     return;
   }
 
@@ -44,51 +47,89 @@ export const ensureVapidKeys = async () => {
       dbKey.privateKey
     );
     isVapidInitialized = true;
-    console.log('[Push] VAPID keys successfully initialized dynamically.');
+    console.log('[Push] VAPID initialized dynamically:', {
+      subject: dbKey.subject,
+      publicKey: dbKey.publicKey.slice(0, 20) + '...',
+    });
   } catch (err) {
     console.error('[Push] Failed to initialize dynamic VAPID keys:', err);
   }
 };
 
-export const sendPushToUser = async (userId: any, payload: any) => {
+export const sendPushToUser = async (userId: any, payload: any, zone = 'adult') => {
+  console.log('[Push] Attempting to send:', {
+    userId,
+    type:    payload.type,
+    title:   payload.title,
+    zone,
+  });
+
   try {
     await ensureVapidKeys();
-    const subscriptions = await PushSubscription.find({ userId });
-    if (!subscriptions.length) {
-      console.log(`[Push] No subscriptions found for user ${userId}`);
-      return [];
-    }
-
-    const results = await Promise.allSettled(
-      subscriptions.map(sub => {
-        const pushSubscription = {
-          endpoint: sub.endpoint,
-          keys: {
-            p256dh: sub.keys.p256dh,
-            auth: sub.keys.auth
-          }
-        };
-        return webpush.sendNotification(
-          pushSubscription,
-          JSON.stringify(payload)
-        ).then(async (res) => {
-          // Update lastUsed
-          await PushSubscription.updateOne({ _id: sub._id }, { $set: { lastUsed: new Date() } });
-          return res;
-        }).catch(async (err: any) => {
-          // Subscription expired or invalid — remove it
-          if (err.statusCode === 410 || err.statusCode === 404) {
-            console.log(`[Push] Subscription expired (${err.statusCode}) for user ${userId}, removing endpoint:`, sub.endpoint);
-            await PushSubscription.deleteOne({ _id: sub._id });
-          }
-          throw err;
-        });
-      })
-    );
-
-    return results;
-  } catch (error) {
-    console.error(`[Push] Error in sendPushToUser for user ${userId}:`, error);
-    return [];
+  } catch (err: any) {
+    console.error('[Push] VAPID initialization failed in sendPushToUser:', err.message);
   }
+
+  const subscriptions = await PushSubscription.find({ userId });
+
+  if (!subscriptions.length) {
+    console.log('[Push] No subscriptions found for user — notification not delivered:', {
+      userId,
+      payloadType: payload.type,
+      hint: 'User may not have granted push permission, or has not added app to home screen',
+    });
+    return { sent: 0, failed: 0, reason: 'no_subscriptions' };
+  }
+
+  console.log('[Push] Found subscriptions:', { userId, count: subscriptions.length });
+
+  const payloadStr = JSON.stringify(payload);
+  let sent = 0, failed = 0;
+
+  for (const sub of subscriptions) {
+    try {
+      console.log('[Push] Attempting to send to endpoint:', sub.endpoint.slice(0, 60) + '...');
+      const result = await webpush.sendNotification(
+        {
+          endpoint: sub.endpoint,
+          keys:     { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
+        },
+        payloadStr,
+        {
+          TTL: 60 * 60 * 24,   // 24 hours — message survives if device offline
+          urgency: payload.type === 'new_message' ? 'normal' : 'low',
+        }
+      );
+
+      console.log('[Push] Delivered:', {
+        userId,
+        type:       payload.type,
+        statusCode: result.statusCode,
+        endpoint:   sub.endpoint.slice(0, 60) + '...',
+      });
+
+      // Update lastUsed
+      await PushSubscription.updateOne({ _id: sub._id }, { $set: { lastUsed: new Date() } });
+      sent++;
+
+    } catch (err: any) {
+      console.error('[Push] FAILED to deliver:', {
+        userId,
+        type:       payload.type,
+        statusCode: err.statusCode,
+        body:       err.body,
+        endpoint:   sub.endpoint.slice(0, 60) + '...',
+        headers:    err.headers,
+      });
+      failed++;
+
+      if (err.statusCode === 410 || err.statusCode === 404) {
+        await PushSubscription.deleteOne({ _id: sub._id });
+        console.log('[Push] Removed dead subscription:', { userId, subId: sub._id });
+      }
+    }
+  }
+
+  console.log('[Push] Send complete:', { userId, type: payload.type, sent, failed });
+  return { sent, failed };
 };

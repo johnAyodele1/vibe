@@ -5,6 +5,7 @@ import CreditTransaction from '../models/CreditTransaction';
 import { createPaymentIntent } from '../services/stripeService';
 import { getDiamondNairaRate } from '../shared/pricing';
 import { calculateFees, recordPlatformEarning } from '../shared/fees';
+import { sendPushToUser } from '../shared/push';
 
 const BUNDLES: any = {
   'bundle_100': { credits: 100, usdCents: 499 },
@@ -104,6 +105,18 @@ export const tip = async (req: Request, res: Response) => {
       ns.to(`user:${sender._id.toString()}`).emit('wallet:updated', { balance: sender.credits });
       ns.emit('cam:tip_received', { amount: amount, fromName: sender.username, recipientId });
     }
+
+    // Send push notification for cam tip received
+    await sendPushToUser(recipientId, {
+      title:       `💎 ${sender.displayName || sender.username} tipped during your stream!`,
+      body:        `💎 ${providerAmount} diamonds`,
+      icon:        sender.profilePhoto || '',
+      tag:         `cam_tip_${Date.now()}`,
+      renotify:    true,
+      url:         `/adult/provider/live`,
+      unreadCount: 0,
+      type:        'cam_tip_received',
+    });
 
     res.json({ success: true, data: { newBalance: sender.credits } });
   } catch (err) {
