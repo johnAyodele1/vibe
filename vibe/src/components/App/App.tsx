@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { Toaster } from "sonner";
 import Onboarding from "../Onboarding/Onboarding";
 import ProfileCreation from "../ProfileCreation/ProfileCreation";
@@ -44,6 +44,7 @@ import { API_BASE_URL } from "../../config";
 import ScrollToTop from "./ScrollToTop";
 
 function App() {
+  const navigate = useNavigate();
   const { user, isAuthenticated, loading } = useAuth();
   const { user: adultUser, isAuthenticated: adultIsAuthenticated } = useAdultAuth();
   const isAdminAuthenticated =
@@ -77,6 +78,42 @@ function App() {
       .then(() => sessionStorage.setItem('siteVisitTracked', 'true'))
       .catch((error) => console.error('Visit tracking failed:', error));
   }, []);
+
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+
+    // Listen for SW telling us it updated
+    const handleServiceWorkerMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'SW_UPDATED') {
+        console.log('[App] New service worker version:', event.data.version);
+        // Reload the page to get fresh assets
+        // In PWA this is the only way to get the new version
+        window.location.reload();
+      }
+
+      if (event.data?.type === 'NAVIGATE' && event.data.url) {
+        navigate(event.data.url);
+      }
+    };
+
+    navigator.serviceWorker.addEventListener('message', handleServiceWorkerMessage);
+
+    // Also check for updates when app comes to foreground
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        navigator.serviceWorker.ready.then(registration => {
+          registration.update().catch(err => console.warn('[App] SW update check failed:', err));
+        });
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      navigator.serviceWorker.removeEventListener('message', handleServiceWorkerMessage);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [navigate]);
 
   if (loading) {
     return <LoadingScreen />;

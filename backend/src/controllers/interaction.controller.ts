@@ -3,6 +3,7 @@ import mongoose, { Types } from 'mongoose';
 import User from '../models/User';
 import Conversation from '../models/Conversation';
 import { sendPushNotification } from '../services/notification.service';
+import { sendPushToUser } from '../shared/push';
 import { IUser } from '../types/models';
 
 // @desc    Like a user
@@ -140,6 +141,30 @@ export const like = async (req: Request, res: Response): Promise<Response> => {
           conversationId,
         },
       }).catch(err => console.error('Push notification failed:', err));
+
+      // Send VAPID push notifications for mutual match to both users
+      Promise.all([
+        sendPushToUser(targetUserId, {
+          title:       `❤️ You have a new match!`,
+          body:        `You and ${currentUser.firstName} matched. Start chatting!`,
+          icon:        currentUser.photos?.[0]?.url || '',
+          tag:         `match_${conversationId}`,
+          renotify:    true,
+          url:         `/chat/${conversationId}`,
+          unreadCount: 0,
+          type:        'new_match',
+        }, 'dating'),
+        sendPushToUser(currentUserId, {
+          title:       `❤️ You have a new match!`,
+          body:        `You and ${targetUser.firstName} matched. Start chatting!`,
+          icon:        targetUser.photos?.[0]?.url || '',
+          tag:         `match_${conversationId}`,
+          renotify:    true,
+          url:         `/chat/${conversationId}`,
+          unreadCount: 0,
+          type:        'new_match',
+        }, 'dating')
+      ]).catch(err => console.error('[Push] Match sendPushToUser failed:', err));
     }
 
     return res.json({

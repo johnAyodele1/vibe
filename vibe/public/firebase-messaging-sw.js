@@ -1,4 +1,4 @@
-// public/firebase-messaging-sw.js
+// vibe/public/firebase-messaging-sw.js
 
 // ── Firebase Cloud Messaging (FCM) Integration ───────────────────────
 importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js');
@@ -53,132 +53,202 @@ const initFirebaseInSW = async () => {
 // Initialize FCM in background
 initFirebaseInSW();
 
-// ── Custom PWA / Web Push Integration ────────────────────────────────
-const CACHE_NAME = 'zippo-v4'; // Bumped version
-const ASSETS_TO_CACHE = [
+// ── Custom PWA / Web Push Cache versioning & update management ───────
+const SW_VERSION  = 'zippo-v5';      // INCREMENTED VERSION
+const CACHE_NAME  = `${SW_VERSION}-static`;
+
+// Assets to pre-cache on install
+const PRECACHE_ASSETS = [
   '/',
-  '/index.html',
+  '/offline.html',    // fallback page
   '/manifest.json',
   '/favicon.svg',
 ];
 
-// ── Install ────────────────────────────────────────────────────────
+// ── Install: cache only essential assets ─────────────────────────────
 self.addEventListener('install', (event) => {
-  console.log('[SW] Service Worker installed');
-  self.skipWaiting();
+  console.log('[SW] Installing version:', SW_VERSION);
+
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE);
+      console.log('[SW] Caching essential assets...');
+      return cache.addAll(PRECACHE_ASSETS)
+        .then(() => console.log('[SW] Assets cached successfully'))
+        .catch(err => console.error('[SW] Cache pre-fill failed:', err.message));
+    }).then(() => {
+      // CRITICAL: skip waiting so new SW takes over immediately
+      return self.skipWaiting();
     })
   );
 });
 
-// ── Activate ───────────────────────────────────────────────────────
+// ── Activate: delete old caches immediately ───────────────────────────
 self.addEventListener('activate', (event) => {
-  console.log('[SW] Service Worker activated');
+  console.log('[SW] Activating version:', SW_VERSION);
+
   event.waitUntil(
-    Promise.all([
-      clients.claim(),
-      caches.keys().then((cacheNames) => {
-        return Promise.all(
-          cacheNames.map((cacheName) => {
-            if (cacheName !== CACHE_NAME) {
-              console.log('[SW] Deleting old cache:', cacheName);
-              return caches.delete(cacheName);
-            }
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames
+          .filter(name => name !== CACHE_NAME)
+          .map(name => {
+            console.log('[SW] Deleting old cache:', name);
+            return caches.delete(name);
           })
-        );
-      })
-    ])
-  );
-});
-
-// ── Fetch (Caching) ──────────────────────────────────────────────────
-self.addEventListener('fetch', (event) => {
-  // Only intercept same-origin GET requests
-  const url = new URL(event.request.url);
-  if (event.request.method !== 'GET' || url.origin !== self.location.origin) {
-    return;
-  }
-
-  // Only intercept specific core assets to avoid interfering with the main bundle or other dynamic content
-  const isAssetToCache = ASSETS_TO_CACHE.some(asset =>
-    url.pathname === asset || (asset === '/' && url.pathname === '/index.html')
-  );
-
-  if (!isAssetToCache) {
-    return;
-  }
-
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      return cachedResponse || fetch(event.request).catch(() => {
-        return new Response('Network error occurred', { status: 408, headers: { 'Content-Type': 'text/plain' } });
+      );
+    }).then(() => {
+      console.log('[SW] Old caches cleared. Taking control of clients...');
+      return self.clients.claim();  // take control of all open pages NOW
+    }).then(() => {
+      // Tell all open clients to reload with the new version
+      return self.clients.matchAll({ type: 'window' }).then(clientsList => {
+        console.log('[SW] Notifying', clientsList.length, 'client(s) to reload');
+        clientsList.forEach(client => {
+          client.postMessage({ type: 'SW_UPDATED', version: SW_VERSION });
+        });
       });
     })
   );
 });
 
-// ── Push notification received ──────────────────────────────────────
+// ── Fetch: Network First strategy for app assets ──────────────────────
+// NEVER serve stale JS/CSS for the app — always try network first
+self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+
+  // Skip non-GET requests
+  if (event.request.method !== 'GET') return;
+
+  // Skip API calls — always go to network
+  if (url.pathname.startsWith('/api/') || url.pathname.includes('/api/v1/')) return;
+
+  // Skip socket.io connections
+  if (url.pathname.startsWith('/socket.io/')) return;
+
+  // For app assets (JS/CSS/fonts): Network First, fall back to cache
+  if (
+    url.pathname.startsWith('/assets/') ||
+    url.pathname.endsWith('.js') ||
+    url.pathname.endsWith('.css') ||
+    url.pathname.endsWith('.woff2')
+  ) {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          if (response.ok) {
+            const cloned = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(event.request, cloned));
+          }
+          return response;
+        })
+        .catch(() => {
+          console.log('[SW] Network failed for asset, trying cache:', url.pathname);
+          return caches.match(event.request);
+        })
+    );
+    return;
+  }
+
+  // For HTML pages: Network First, fall back to '/' cached, then offline.html
+  if (event.request.headers.get('accept')?.includes('text/html')) {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          if (response.ok) {
+            const cloned = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(event.request, cloned));
+          }
+          return response;
+        })
+        .catch(async () => {
+          console.log('[SW] Network failed for HTML, serving offline fallback');
+          const cached = await caches.match(event.request)
+                      || await caches.match('/')
+                      || await caches.match('/offline.html');
+          return cached;
+        })
+    );
+    return;
+  }
+});
+
+// ── Custom Push event listener with proper options ──────────────────
 self.addEventListener('push', (event) => {
-  if (!event.data) return;
+  console.log('[SW][Push] Push event received');
+
+  if (!event.data) {
+    console.warn('[SW][Push] No data in push event');
+    return;
+  }
 
   let data;
   try {
     data = event.data.json();
+    console.log('[SW][Push] Parsed push data:', data);
   } catch (err) {
-    console.warn('[SW] Push event data was not JSON:', err);
+    console.error('[SW][Push] Failed to parse push data:', err.message);
     return;
   }
 
   // If this push event is from FCM, let FCM SDK handle it.
-  // FCM payloads typically contain `from` or have nested structures like `notification` or `collapse_key`.
-  // Our custom notifications have `type` or `unreadCount` at root level.
   if (data.from || data.collapse_key || (!data.type && !data.title && !data.body)) {
-    console.log('[SW] FCM push event detected, letting FCM SDK handle');
+    console.log('[SW][Push] FCM push event detected, letting FCM SDK handle');
     return;
   }
 
-  const {
-    title,
-    body,
-    icon,
-    badge,
-    tag,
-    url,            // where to navigate on click
-    unreadCount,    // total unread messages
-    type,           // 'new_message' | 'new_tip' | 'new_booking' | 'payout_update'
-  } = data;
-
-  const notificationOptions = {
-    body,
-    icon:   icon  || '/favicon.svg',
-    badge:  badge || '/favicon.svg',   // fallback to favicon if badge-72x72 is not present
-    tag:    tag   || type,                        // replaces previous notification of same type
-    renotify: type === 'new_message',             // ring again for each new message
-    data:   { url, unreadCount, isCustomPush: true },
-    actions: type === 'new_message' ? [
+  const title   = data.title   || 'Zippo';
+  const options = {
+    body:    data.body    || '',
+    icon:    data.icon    || '/favicon.svg',
+    badge:   data.badge   || '/favicon.svg',
+    tag:     data.tag     || data.type || 'zippo',
+    renotify: true,   // MUST be true to show a new notification when same tag
+    data:    {
+      url:         data.url || '/adult',
+      unreadCount: data.unreadCount || 0,
+      isCustomPush: true
+    },
+    vibrate: [200, 100, 200],
+    actions: data.type === 'new_message' ? [
       { action: 'open',    title: '💬 Reply' },
       { action: 'dismiss', title: 'Dismiss' },
     ] : [],
-    vibrate: [200, 100, 200],    // vibration pattern (Android)
   };
+
+  console.log('[SW][Push] Showing notification:', { title, tag: options.tag });
 
   event.waitUntil(
     Promise.all([
-      self.registration.showNotification(title, notificationOptions),
-      // Update the home screen icon badge
-      unreadCount > 0
-        ? (navigator.setAppBadge ? navigator.setAppBadge(unreadCount).catch(() => {}) : Promise.resolve())
-        : (navigator.clearAppBadge ? navigator.clearAppBadge().catch(() => {}) : Promise.resolve()),
+      self.registration.showNotification(title, options)
+        .then(() => console.log('[SW][Push] Notification shown successfully'))
+        .catch(err => console.error('[SW][Push] showNotification failed:', err.message)),
+
+      // Update home screen badge
+      (() => {
+        const count = data.unreadCount;
+        if (count > 0) {
+          return navigator.setAppBadge
+            ? navigator.setAppBadge(count).catch(e => console.warn('[SW][Badge] setAppBadge failed:', e.message))
+            : Promise.resolve();
+        } else {
+          return navigator.clearAppBadge
+            ? navigator.clearAppBadge().catch(e => console.warn('[SW][Badge] clearAppBadge failed:', e.message))
+            : Promise.resolve();
+        }
+      })(),
     ])
   );
 });
 
-// ── Notification click ──────────────────────────────────────────────
+// ── Custom Notificationclick event listener ─────────────────────────
 self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
+  console.log('[SW][Click] Notification clicked:', {
+    tag:    event.notification.tag,
+    action: event.action,
+    url:    event.notification.data?.url,
+  });
 
+  event.notification.close();
   if (event.action === 'dismiss') return;
 
   const data = event.notification.data;
@@ -212,15 +282,18 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // If app is already open, focus it and navigate
+      console.log('[SW][Click] Open clients:', clientList.length);
+
       for (const client of clientList) {
         if (client.url.includes(self.location.origin) && 'focus' in client) {
+          console.log('[SW][Click] Focusing existing window and navigating to:', url);
           client.focus();
           client.postMessage({ type: 'NAVIGATE', url });
           return;
         }
       }
-      // Otherwise open a new window
+
+      console.log('[SW][Click] Opening new window:', url);
       return clients.openWindow(url);
     })
   );

@@ -162,6 +162,18 @@ export const sendGiftRequest = async (req: Request, res: Response) => {
       ns.to(`conv:${conversationId}`).emit('sext:new_message', { message: responsePayload });
     }
 
+    // Send push notification for gift request
+    await sendPushToUser(receiverId, {
+      title:       `🎁 ${user.providerProfile?.stageName || user.displayName || user.username} is wishing for a gift`,
+      body:        `${gift.name} · 💎 ${gift.creditCost}`,
+      icon:        user.profilePhoto || '',
+      tag:         `gift_req_${conversationId}`,
+      renotify:    true,
+      url:         `/adult/sext?conversation=${conversationId}`,
+      unreadCount: 0,
+      type:        'gift_request_received',
+    });
+
     return res.status(201).json(responsePayload);
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
@@ -264,6 +276,18 @@ export const requestService = async (req: Request, res: Response) => {
     if (ns) {
       ns.to(`conv:${conversationId}`).emit('sext:new_message', { message: responsePayload });
     }
+
+    // Send push notification for service tonight request
+    await sendPushToUser(otherParticipantId, {
+      title:       `🌙 Service Tonight request from ${user.displayName || user.username}`,
+      body:        note || `Requested a tonight arrangement`,
+      icon:        user.profilePhoto || '',
+      tag:         `service_req_${conversationId}`,
+      renotify:    true,
+      url:         `/adult/sext?conversation=${conversationId}`,
+      unreadCount: 0,
+      type:        'service_tonight_request_received',
+    });
 
     return res.status(201).json(responsePayload);
   } catch (error: any) {
