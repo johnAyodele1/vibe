@@ -13,7 +13,6 @@ import { usePricingStore } from '../../lib/pricing';
 import { InstallPrompt } from '../pwa/InstallPrompt/InstallPrompt';
 import { registerServiceWorker, subscribeToPush, updateBadgeCount } from '../../lib/push/pushSubscription';
 import { useUnreadStore } from '../../store/unreadStore';
-import NotificationPrompt from '../pwa/NotificationPrompt';
 
 const NavBadge: React.FC = () => {
   const totalUnread = useUnreadStore(s => s.totalUnread);
@@ -209,13 +208,15 @@ const AdultZoneLayout: React.FC = () => {
       const registration = await registerServiceWorker();
       if (!registration) return;
 
-      console.log('[App] SW registered silently on login');
-
-      // If permission is already granted, silently subscribe/re-register
-      if (Notification.permission === 'granted') {
-        subscribeToPush(registration, userId).catch(err => {
-          console.error('[App] Silent re-subscribe failed:', err.message || err);
-        });
+      const alreadyAsked = localStorage.getItem('push_permission_asked');
+      if (!alreadyAsked) {
+        setTimeout(async () => {
+          const success = await subscribeToPush(registration, userId);
+          localStorage.setItem('push_permission_asked', 'true');
+          if (success) localStorage.setItem('push_subscribed', 'true');
+        }, 30000);
+      } else if (localStorage.getItem('push_subscribed') === 'true') {
+        await subscribeToPush(registration, userId);
       }
 
       if ('serviceWorker' in navigator) {
@@ -228,7 +229,7 @@ const AdultZoneLayout: React.FC = () => {
     };
 
     setupPush();
-  }, [user?.id, isAuthenticated]);
+  }, [user, isAuthenticated]);
 
   // Load initial unread count
   useEffect(() => {
@@ -360,8 +361,6 @@ const AdultZoneLayout: React.FC = () => {
       <TipSheet />
 
       <InstallPrompt />
-
-      {user?.id && <NotificationPrompt userId={user.id} />}
 
       {incomingCall && (
         <div className="fixed inset-0 bg-black/90 z-[11000] flex flex-col items-center justify-center p-8 text-white">
