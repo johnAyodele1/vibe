@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { WheelEditor } from './WheelEditor';
+import { API_BASE_URL } from '../../config';
 
 interface NotificationPrefs {
   emailMessages: boolean;
@@ -90,6 +91,35 @@ const ProviderSettings: React.FC = () => {
     }
   };
 
+  const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
+
+  const handleTestPush = async () => {
+    setTestStatus('sending');
+    try {
+      const response = await fetch(`${API_BASE_URL}/v1/adult/push/test`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      const data = await response.json();
+      console.log('[Settings] Push test result:', data);
+
+      if (data.results?.some((r: any) => r.success)) {
+        setTestStatus('sent');
+        toast.success('Test notification sent successfully!');
+      } else {
+        setTestStatus('failed');
+        toast.error(data.reason || 'Failed to send test notification. Check subscription.');
+      }
+    } catch (err) {
+      setTestStatus('failed');
+      toast.error('Network or subscription error while testing push.');
+    }
+    setTimeout(() => setTestStatus('idle'), 5000);
+  };
+
   return (
     <div className="min-h-screen bg-[var(--az-bg-primary)] text-white font-sans az-grain py-24 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto space-y-10">
@@ -154,6 +184,28 @@ const ProviderSettings: React.FC = () => {
                     />
                   </div>
                 ))}
+              </div>
+
+              {/* Push notification test button */}
+              <div className="mt-6 pt-6 border-t border-[var(--az-border)]/30 flex items-center justify-between gap-4">
+                <div>
+                  <h4 className="text-xs font-bold text-white uppercase tracking-wider">Test push notification</h4>
+                  <p className="text-[10px] text-[var(--az-text-secondary)] mt-1">Send a test push alert to verify notifications function correctly on this device.</p>
+                </div>
+                <button
+                  onClick={handleTestPush}
+                  disabled={testStatus === 'sending'}
+                  className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-xl transition-all cursor-pointer ${
+                    testStatus === 'idle' ? 'bg-[var(--az-accent-primary)] hover:bg-red-700 text-white' :
+                    testStatus === 'sending' ? 'bg-[var(--az-bg-tertiary)] text-[var(--az-text-secondary)] cursor-not-allowed' :
+                    testStatus === 'sent' ? 'bg-green-600 text-white' : 'bg-red-900/50 text-red-200'
+                  }`}
+                >
+                  {testStatus === 'idle' && 'Send Test'}
+                  {testStatus === 'sending' && 'Sending...'}
+                  {testStatus === 'sent' && '✅ Sent!'}
+                  {testStatus === 'failed' && '❌ Failed'}
+                </button>
               </div>
             </div>
 

@@ -42,14 +42,19 @@ export const subscribeToPush = async (
   registration: ServiceWorkerRegistration,
   userId: string
 ): Promise<boolean> => {
-  try {
-    // Check permission
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') {
-      console.log('[Push] Permission denied');
-      return false;
-    }
+  console.log('[Push] subscribeToPush called:', {
+    userId,
+    currentPermission: Notification.permission,
+  });
 
+  // At this point permission must already be 'granted'
+  // (requestPermission was called in the button click handler)
+  if (Notification.permission !== 'granted') {
+    console.warn('[Push] subscribeToPush called without granted permission — aborting');
+    return false;
+  }
+
+  try {
     // Dynamic key retrieval
     const activeVapidKey = await fetchVapidPublicKey();
     if (!activeVapidKey) {
