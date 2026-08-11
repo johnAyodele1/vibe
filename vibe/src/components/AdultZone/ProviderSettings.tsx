@@ -3,6 +3,23 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { WheelEditor } from './WheelEditor';
 import { API_BASE_URL } from '../../config';
+import { useAdultAuth } from '../../contexts/AdultAuthContext';
+import { registerServiceWorker, subscribeToPush } from '../../lib/push/pushSubscription';
+
+const getAdultUserId = () => {
+  const token = localStorage.getItem('adultAccessToken');
+  if (!token) return null;
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(c) {
+        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+    }).join(''));
+    return JSON.parse(jsonPayload).sub;
+  } catch (e) {
+    return null;
+  }
+};
 
 interface NotificationPrefs {
   emailMessages: boolean;
@@ -15,6 +32,7 @@ interface NotificationPrefs {
 const ProviderSettings: React.FC = () => {
   const navigate = useNavigate();
   const token = localStorage.getItem('adultAccessToken');
+  const { user } = useAdultAuth();
 
   const [activeTab, setActiveTab] = useState<'preferences' | 'wheel'>('preferences');
 
@@ -96,6 +114,35 @@ const ProviderSettings: React.FC = () => {
   const handleTestPush = async () => {
     setTestStatus('sending');
     try {
+      // 1. Check if browser supports notifications
+      if (!('Notification' in window)) {
+        toast.error('This browser does not support notifications.');
+        setTestStatus('failed');
+        return;
+      }
+
+      // 2. Request permission if not already granted
+      let permission = Notification.permission;
+      if (permission !== 'granted') {
+        permission = await Notification.requestPermission();
+      }
+
+      if (permission !== 'granted') {
+        setTestStatus('failed');
+        toast.error('Notification permission denied. Please allow notifications in your browser settings.');
+        return;
+      }
+
+      // 3. Register service worker and subscribe to push
+      const reg = await registerServiceWorker();
+      if (reg) {
+        const userId = user?.id || getAdultUserId();
+        if (userId) {
+          await subscribeToPush(reg, userId);
+        }
+      }
+
+      // 4. Send test push request
       const response = await fetch(`${API_BASE_URL}/v1/adult/push/test`, {
         method: 'POST',
         headers: {

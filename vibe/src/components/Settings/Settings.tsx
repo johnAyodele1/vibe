@@ -4,6 +4,22 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { API_BASE_URL } from "../../config";
 import { usePWA } from "../../contexts/PWAContext";
+import { registerServiceWorker, subscribeToPush } from "../../lib/push/pushSubscription";
+
+const getAdultUserId = () => {
+  const token = localStorage.getItem('adultAccessToken');
+  if (!token) return null;
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(c) {
+        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+    }).join(''));
+    return JSON.parse(jsonPayload).sub;
+  } catch (e) {
+    return null;
+  }
+};
 
 const Icon = ({
   name,
@@ -336,10 +352,47 @@ const Settings: React.FC = () => {
                     setTestStatus('sending');
 
                     try {
+                      // 1. Check if browser supports notifications
+                      if (!('Notification' in window)) {
+                        toast.error('This browser does not support notifications.');
+                        setTestStatus('failed');
+                        return;
+                      }
+
+                      // 2. Request permission if not already granted
+                      let permission = Notification.permission;
+                      if (permission !== 'granted') {
+                        permission = await Notification.requestPermission();
+                      }
+
+                      if (permission !== 'granted') {
+                        setTestStatus('failed');
+                        toast.error('Notification permission denied. Please allow notifications in your browser settings.');
+                        return;
+                      }
+
+                      // 3. Register service worker and subscribe to push
+                      const adultToken = localStorage.getItem('adultAccessToken');
+                      const standardToken = localStorage.getItem('accessToken');
+
+                      if (adultToken) {
+                        const reg = await registerServiceWorker();
+                        if (reg) {
+                          const adultUserId = getAdultUserId();
+                          if (adultUserId) {
+                            await subscribeToPush(reg, adultUserId);
+                          }
+                        }
+                      } else if (standardToken) {
+                        // Standard user flow: requestNotificationPermission already calls syncPushToken
+                        await requestNotificationPermission();
+                      }
+
+                      // 4. Send test push request
                       const response = await fetch(`${API_BASE_URL}/v1/adult/push/test`, {
                         method: 'POST',
                         headers: {
-                          'Authorization': `Bearer ${localStorage.getItem('adultAccessToken') || localStorage.getItem('accessToken')}`,
+                          'Authorization': `Bearer ${adultToken || standardToken}`,
                           'Content-Type': 'application/json'
                         }
                       });
