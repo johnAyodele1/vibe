@@ -83,7 +83,6 @@ export const usePWAInstall = () => {
           // The browser's native install prompt runs.
           // PWAContext sets isStandalone upon completion, which auto-updates.
           // But if user cancelled/dismissed, let's apply temporary cooldown so we don't harass them.
-          // We'll wait a bit then check standalone state.
           setTimeout(() => {
             const isNowStandalone =
               window.matchMedia('(display-mode: standalone)').matches ||
@@ -93,24 +92,22 @@ export const usePWAInstall = () => {
               dismissTemporary();
             }
           }, 1000);
-        } else {
-          // Native install not available, show Android instructions instead!
-          setShowInstructions(true);
         }
       } catch (err) {
         console.error('PWA install error:', err);
-        setShowInstructions(true);
       }
     }
   };
 
+  // Android MUST only show CTA if isInstallable is true (meaning native prompt is ready and cached)
+  // And Android MUST never show manual instruction fallbacks!
   const shouldShowCTA =
     showInstallPrompt &&
     !isStandalone &&
     !isDismissed &&
     isMobile &&
     delayElapsed &&
-    (platform === 'ios' || platform === 'android');
+    (platform === 'ios' || (platform === 'android' && isInstallable));
 
   return {
     platform,
