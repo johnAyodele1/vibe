@@ -12,6 +12,7 @@ interface PWAPromptState {
   showNotifPrompt: boolean;
   setShowInstallPrompt: (show: boolean) => void;
   setShowNotifPrompt: (show: boolean) => void;
+  dismissInstallPrompt: () => void;
   shouldShowInstallPrompt: () => boolean;
   shouldShowNotifPrompt: () => boolean;
   recordInstallPromptShown: () => void;
@@ -23,21 +24,22 @@ export const usePWAPromptStore = create<PWAPromptState>((set) => ({
   setShowInstallPrompt: (show) => set({ showInstallPrompt: show }),
   setShowNotifPrompt: (show) => set({ showNotifPrompt: show }),
 
+  dismissInstallPrompt: () => {
+    set({ showInstallPrompt: false });
+    // Show notification prompt immediately after install prompt is dismissed
+    const ctx = getInstallContext();
+    const canPromptNotif = ctx.notificationPermission === 'default';
+    if (canPromptNotif) {
+      set({ showNotifPrompt: true });
+    }
+  },
+
   shouldShowInstallPrompt: () => {
     const ctx = getInstallContext();
     if (ctx.isStandalone) return false;
 
-    // Check permanent dismissal or temporary dismissal (cooldown)
-    const permanent = localStorage.getItem('zippo_pwa_dismiss_permanent') === 'true';
-    const until = localStorage.getItem('zippo_pwa_dismiss_until');
-    const cooldownActive = until ? Date.now() < parseInt(until, 10) : false;
-
-    if (permanent || cooldownActive) return false;
-
-    // Only show on mobile
-    const isMobile = window.innerWidth < 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    if (!isMobile) return false;
-
+    // NO MORE COOLDOWNS OR PERSISTENT LOCAL STORAGE DISMISSALS ON LOAD!
+    // It must show on every load/reload.
     // Platform detection: standard iOS or Android or installable browser
     const ua = navigator.userAgent;
     const isIOSDevice = ctx.isIOS;
@@ -58,18 +60,7 @@ export const usePWAPromptStore = create<PWAPromptState>((set) => ({
     // Must be supported on this device
     if (!ctx.pushSupportedOnThisDevice) return false;
 
-    // Check if dismissed or shown this session
-    const dismissed = localStorage.getItem(NOTIF_KEYS.dismissed) === '1';
-    const shownThisSession = sessionStorage.getItem(NOTIF_KEYS.shownThisSession) === '1';
-    if (dismissed || shownThisSession) return false;
-
-    // Cooldown check: 24h since last shown
-    const lastShownAt = localStorage.getItem(NOTIF_KEYS.lastShownAt);
-    if (lastShownAt) {
-      const timeDiff = Date.now() - parseInt(lastShownAt, 10);
-      if (timeDiff < 24 * 60 * 60 * 1000) return false; // 24 hours cooldown
-    }
-
+    // NO MORE COOLDOWNS OR PERSISTENT LOCAL STORAGE DISMISSALS ON LOAD!
     return true;
   },
 

@@ -6,10 +6,10 @@ export type InstallPlatform = 'ios' | 'android' | 'desktop' | 'unsupported';
 
 export const usePWAInstall = () => {
   const { isInstallable, isStandalone, isIOS, installApp } = usePWA();
-  const { showInstallPrompt, setShowInstallPrompt } = usePWAPromptStore();
+  const { showInstallPrompt, dismissInstallPrompt } = usePWAPromptStore();
 
   const [platform, setPlatform] = useState<InstallPlatform>('unsupported');
-  const [isDismissed, setIsDismissed] = useState(true);
+  const [isDismissed, setIsDismissed] = useState(false);
   const [showInstructions, setShowInstructions] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [delayElapsed, setDelayElapsed] = useState(false);
@@ -48,21 +48,7 @@ export const usePWAInstall = () => {
     };
   }, [isInstallable, isStandalone, isIOS]);
 
-  // 2. Check dismissal persistence in localStorage
-  useEffect(() => {
-    const checkDismissal = () => {
-      const permanent = localStorage.getItem('zippo_pwa_dismiss_permanent') === 'true';
-      const until = localStorage.getItem('zippo_pwa_dismiss_until');
-      const cooldownActive = until ? Date.now() < parseInt(until, 10) : false;
-
-      setIsDismissed(permanent || cooldownActive);
-    };
-
-    checkDismissal();
-    // Periodically re-check or just check on load/state changes
-  }, []);
-
-  // 3. Defensive non-intrusive 2-second delay on first load
+  // 2. Defensive non-intrusive 2-second delay on first load
   useEffect(() => {
     const timer = setTimeout(() => {
       setDelayElapsed(true);
@@ -71,19 +57,19 @@ export const usePWAInstall = () => {
     return () => clearTimeout(timer);
   }, []);
 
-  // 4. Temporary dismissal (3 days cooldown)
+  // 3. Temporary dismissal (3 days cooldown)
   const dismissTemporary = () => {
     const cooldownMs = 3 * 24 * 60 * 60 * 1000; // 3 days
     localStorage.setItem('zippo_pwa_dismiss_until', (Date.now() + cooldownMs).toString());
     setIsDismissed(true);
-    setShowInstallPrompt(false);
+    dismissInstallPrompt();
   };
 
-  // 5. Permanent dismissal
+  // 4. Permanent dismissal
   const dismissPermanent = () => {
     localStorage.setItem('zippo_pwa_dismiss_permanent', 'true');
     setIsDismissed(true);
-    setShowInstallPrompt(false);
+    dismissInstallPrompt();
   };
 
   // 6. Handle CTA action tap

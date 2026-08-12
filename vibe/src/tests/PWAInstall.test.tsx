@@ -20,6 +20,9 @@ vi.mock('../contexts/PWAContext', () => ({
 const mockStore = {
   showInstallPrompt: true, // Allow CTA to show in tests
   setShowInstallPrompt: vi.fn(),
+  dismissInstallPrompt: vi.fn().mockImplementation(() => {
+    mockStore.showInstallPrompt = false;
+  }),
 };
 
 vi.mock('../store/pwaPromptStore', () => ({
@@ -43,6 +46,7 @@ describe('PWA Installation Flow', () => {
     mockPwaState.isInstallable = false;
     mockPwaState.isStandalone = false;
     mockPwaState.isIOS = false;
+    mockStore.showInstallPrompt = true;
 
     // Fast-forward timers
     vi.useFakeTimers();
