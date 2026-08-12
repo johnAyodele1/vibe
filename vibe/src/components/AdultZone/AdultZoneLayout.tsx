@@ -340,15 +340,17 @@ const AdultZoneLayout: React.FC = () => {
       className={`bg-[var(--az-bg-primary)] text-[var(--az-text-primary)] font-sans az-grain flex flex-col ${
         hideGlobalHeader ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'
       }`}
-      style={{
-        paddingTop: 'env(safe-area-inset-top, 0px)',
-        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-      }}
     >
       {/* Top Navigation */}
-      <nav data-testid="global-header" className={`sticky top-0 z-50 az-glass border-b border-[var(--az-border)] px-4 py-3 md:px-8 ${
-        hideGlobalHeader ? 'hidden md:block' : 'block'
-      }`}>
+      <nav
+        data-testid="global-header"
+        className={`sticky top-0 z-50 az-glass border-b border-[var(--az-border)] px-4 py-3 md:px-8 ${
+          hideGlobalHeader ? 'hidden md:block' : 'block'
+        }`}
+        style={{
+          paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))',
+        }}
+      >
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2 group">
             <div className="w-8 h-8 bg-[var(--az-accent-primary)] rounded flex items-center justify-center text-white font-bold text-lg shadow-[0_0_10px_var(--az-glow)] group-hover:scale-110 transition-transform">
