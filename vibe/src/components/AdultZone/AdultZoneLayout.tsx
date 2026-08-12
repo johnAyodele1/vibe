@@ -11,7 +11,7 @@ import { TipSheet } from './TipSheet';
 import { useUIStore } from './useUIStore';
 import { usePricingStore } from '../../lib/pricing';
 import { InstallPrompt } from '../pwa/InstallPrompt/InstallPrompt';
-import { registerServiceWorker, subscribeToPush, updateBadgeCount } from '../../lib/push/pushSubscription';
+import { updateBadgeCount } from '../../lib/push/pushSubscription';
 import { useUnreadStore } from '../../store/unreadStore';
 import NotificationPrompt from '../pwa/NotificationPrompt';
 import { getInstallContext } from '../../lib/pwa/context';
