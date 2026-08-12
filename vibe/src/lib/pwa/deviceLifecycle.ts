@@ -100,10 +100,10 @@ export const initializeDevice = async (userId: string): Promise<void> => {
 // Ensure this device has a valid subscription when permission is already granted
 // SPEC section 17: "permission = granted, device_id exists, backend registration = missing/invalid → register silently"
 export const ensureSubscriptionRegistered = async (
-  userId: string,
+  _userId: string,
   deviceId: string,
   ctx: any,
-  backendDevice: any
+  _backendDevice: any
 ): Promise<void> => {
   console.log('[DeviceInit] Permission granted — ensuring subscription exists');
   const token = localStorage.getItem('adultAccessToken');
