@@ -11,7 +11,7 @@ const SELF_TEST_KEYS = {
 const TEST_INTERVAL_MS = 24 * 60 * 60 * 1000;  // test once per day max
 const MAX_FAIL_COUNT   = 3;
 
-export const runPushSelfTest = async (userId: string): Promise<'success' | 'failed' | 'skipped'> => {
+export const runPushSelfTest = async (_userId: string): Promise<'success' | 'failed' | 'skipped'> => {
   const ctx = getInstallContext();
 
   // Only run in standalone PWA

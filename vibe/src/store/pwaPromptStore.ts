@@ -17,7 +17,7 @@ interface PWAPromptState {
   recordInstallPromptShown: () => void;
 }
 
-export const usePWAPromptStore = create<PWAPromptState>((set, get) => ({
+export const usePWAPromptStore = create<PWAPromptState>((set) => ({
   showInstallPrompt: false,
   showNotifPrompt: false,
   setShowInstallPrompt: (show) => set({ showInstallPrompt: show }),
