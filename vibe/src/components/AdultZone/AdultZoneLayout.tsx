@@ -53,10 +53,11 @@ const AdultZoneLayout: React.FC = () => {
   const [authModalRole, setAuthModalRole] = useState<'user' | 'provider'>('user');
   const { isAuthenticated, logout, user, loading } = useAdultAuth();
   const { setUnread, increment } = useUnreadStore();
+  const location = useLocation();
+  const navigate = useNavigate();
 
   // Centralized PWA and Notification Prompts sequencing
   const {
-    showInstallPrompt,
     showNotifPrompt,
     setShowInstallPrompt,
     setShowNotifPrompt,
@@ -65,24 +66,35 @@ const AdultZoneLayout: React.FC = () => {
     recordInstallPromptShown,
   } = usePWAPromptStore();
 
+  // Reset any previous PWA dismissals on page reload/mount
   useEffect(() => {
-    if (!user?.id) return;
+    localStorage.removeItem('zippo_pwa_dismiss_until');
+    localStorage.removeItem('zippo_pwa_dismiss_permanent');
+  }, []);
 
+  // PWA Install Prompt trigger hook (shows on every navigate to '/' of the adult zone)
+  useEffect(() => {
     const ctx = getInstallContext();
 
-    if (!ctx.isStandalone) {
-      // Not installed as PWA
+    if (!ctx.isStandalone && location.pathname === '/') {
       if (shouldShowInstallPrompt()) {
         setShowInstallPrompt(true);
         recordInstallPromptShown();
       }
-      // Do not show notif prompt when not in standalone
-      // (see Fix 3 — web context redirects to install first)
-      return;
+    } else {
+      setShowInstallPrompt(false);
     }
+  }, [location.pathname]);
+
+  // Standalone PWA notification permission sequencing hook
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const ctx = getInstallContext();
+    if (!ctx.isStandalone) return;
 
     // IS standalone PWA — show notif prompt if needed
-    if (ctx.pushSupportedOnThisDevice && shouldShowNotifPrompt()) {
+    if (ctx.pushSupportedOnThisDevice && shouldShowNotifPrompt() && !showNotifPrompt) {
       // Delay slightly so page loads first
       const t = setTimeout(() => {
         setShowNotifPrompt(true);
@@ -91,7 +103,7 @@ const AdultZoneLayout: React.FC = () => {
       }, 3000);
       return () => clearTimeout(t);
     }
-  }, [user?.id, showInstallPrompt, showNotifPrompt]);
+  }, [user?.id, showNotifPrompt]);
 
   // Auto-test trigger in root layout (PWA standalone only)
   useEffect(() => {
@@ -148,8 +160,6 @@ const AdultZoneLayout: React.FC = () => {
       })
       .catch(err => console.error('Failed to fetch diamond rate config:', err));
   }, []);
-  const location = useLocation();
-  const navigate = useNavigate();
 
   const [incomingCall, setIncomingCall] = useState<{
     callId: string;

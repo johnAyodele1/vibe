@@ -1,15 +1,17 @@
 import React, { useEffect, useRef } from 'react';
 
-interface IOSInstallInstructionsProps {
+interface PWAInstallInstructionsProps {
   isOpen: boolean;
   onClose: () => void;
   onDismissPermanent: () => void;
+  platform: 'ios' | 'android' | 'desktop' | 'unsupported';
 }
 
-export const IOSInstallInstructions: React.FC<IOSInstallInstructionsProps> = ({
+export const PWAInstallInstructions: React.FC<PWAInstallInstructionsProps> = ({
   isOpen,
   onClose,
   onDismissPermanent,
+  platform,
 }) => {
   const modalRef = useRef<HTMLDivElement>(null);
   const closeBtnRef = useRef<HTMLButtonElement>(null);
@@ -70,7 +72,7 @@ export const IOSInstallInstructions: React.FC<IOSInstallInstructionsProps> = ({
     <div
       role="dialog"
       aria-modal="true"
-      aria-labelledby="ios-install-title"
+      aria-labelledby="pwa-install-title"
       className="fixed inset-0 z-[10000] flex items-end justify-center bg-black/60 backdrop-blur-sm p-4 transition-opacity duration-300 animate-[pwaFadeIn_0.3s_ease-out]"
       onClick={onClose}
     >
@@ -83,7 +85,7 @@ export const IOSInstallInstructions: React.FC<IOSInstallInstructionsProps> = ({
         <div className="flex justify-between items-center">
           <div className="w-5" /> {/* spacer to center title */}
           <h3
-            id="ios-install-title"
+            id="pwa-install-title"
             className="font-serif italic text-lg text-[var(--az-text-primary)] font-bold tracking-wide"
           >
             Install App
@@ -126,51 +128,87 @@ export const IOSInstallInstructions: React.FC<IOSInstallInstructionsProps> = ({
 
         {/* Step-by-Step Instructions */}
         <div className="text-left flex flex-col gap-3.5 bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-2xl p-4">
-          {/* Step 1 */}
-          <div className="flex items-start gap-3">
-            <span className="w-5 h-5 rounded-full bg-[var(--az-accent-rose)]/20 text-[var(--az-accent-rose)] text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
-              1
-            </span>
-            <p className="text-xs text-[var(--az-text-primary)] leading-relaxed">
-              Tap the Share icon{' '}
-              <svg
-                aria-hidden="true"
-                className="w-4 h-4 inline-block text-[var(--az-accent-rose)] mx-0.5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                viewBox="0 0 24 24"
-                style={{ verticalAlign: 'text-bottom' }}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M12 12V3m0 0l-3 3m3-3l3 3"
-                />
-              </svg>{' '}
-              at the bottom of your Safari browser.
-            </p>
-          </div>
+          {platform === 'android' ? (
+            <>
+              {/* Step 1 */}
+              <div className="flex items-start gap-3">
+                <span className="w-5 h-5 rounded-full bg-[var(--az-accent-rose)]/20 text-[var(--az-accent-rose)] text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                  1
+                </span>
+                <p className="text-xs text-[var(--az-text-primary)] leading-relaxed">
+                  Tap the menu icon (three dots <span className="font-bold">⋮</span>) in the top-right corner of Chrome.
+                </p>
+              </div>
 
-          {/* Step 2 */}
-          <div className="flex items-start gap-3">
-            <span className="w-5 h-5 rounded-full bg-[var(--az-accent-rose)]/20 text-[var(--az-accent-rose)] text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
-              2
-            </span>
-            <p className="text-xs text-[var(--az-text-primary)] leading-relaxed">
-              Scroll down and select <span className="font-semibold text-white">"Add to Home Screen"</span>.
-            </p>
-          </div>
+              {/* Step 2 */}
+              <div className="flex items-start gap-3">
+                <span className="w-5 h-5 rounded-full bg-[var(--az-accent-rose)]/20 text-[var(--az-accent-rose)] text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                  2
+                </span>
+                <p className="text-xs text-[var(--az-text-primary)] leading-relaxed">
+                  Select <span className="font-semibold text-white">"Install app"</span> or <span className="font-semibold text-white">"Add to Home screen"</span>.
+                </p>
+              </div>
 
-          {/* Step 3 */}
-          <div className="flex items-start gap-3">
-            <span className="w-5 h-5 rounded-full bg-[var(--az-accent-rose)]/20 text-[var(--az-accent-rose)] text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
-              3
-            </span>
-            <p className="text-xs text-[var(--az-text-primary)] leading-relaxed">
-              Tap <span className="font-semibold text-white">"Add"</span> in the upper-right corner.
-            </p>
-          </div>
+              {/* Step 3 */}
+              <div className="flex items-start gap-3">
+                <span className="w-5 h-5 rounded-full bg-[var(--az-accent-rose)]/20 text-[var(--az-accent-rose)] text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                  3
+                </span>
+                <p className="text-xs text-[var(--az-text-primary)] leading-relaxed">
+                  Confirm by tapping <span className="font-semibold text-white">"Install"</span> or <span className="font-semibold text-white">"Add"</span>.
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Step 1 */}
+              <div className="flex items-start gap-3">
+                <span className="w-5 h-5 rounded-full bg-[var(--az-accent-rose)]/20 text-[var(--az-accent-rose)] text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                  1
+                </span>
+                <p className="text-xs text-[var(--az-text-primary)] leading-relaxed">
+                  Tap the Share icon{' '}
+                  <svg
+                    aria-hidden="true"
+                    className="w-4 h-4 inline-block text-[var(--az-accent-rose)] mx-0.5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    viewBox="0 0 24 24"
+                    style={{ verticalAlign: 'text-bottom' }}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M12 12V3m0 0l-3 3m3-3l3 3"
+                    />
+                  </svg>{' '}
+                  at the bottom of your Safari browser.
+                </p>
+              </div>
+
+              {/* Step 2 */}
+              <div className="flex items-start gap-3">
+                <span className="w-5 h-5 rounded-full bg-[var(--az-accent-rose)]/20 text-[var(--az-accent-rose)] text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                  2
+                </span>
+                <p className="text-xs text-[var(--az-text-primary)] leading-relaxed">
+                  Scroll down and select <span className="font-semibold text-white">"Add to Home Screen"</span>.
+                </p>
+              </div>
+
+              {/* Step 3 */}
+              <div className="flex items-start gap-3">
+                <span className="w-5 h-5 rounded-full bg-[var(--az-accent-rose)]/20 text-[var(--az-accent-rose)] text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                  3
+                </span>
+                <p className="text-xs text-[var(--az-text-primary)] leading-relaxed">
+                  Tap <span className="font-semibold text-white">"Add"</span> in the upper-right corner.
+                </p>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Action / Dismiss Buttons */}

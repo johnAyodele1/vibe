@@ -8,7 +8,7 @@ interface PWAContextType {
   isInstallable: boolean;
   isStandalone: boolean;
   isIOS: boolean;
-  installApp: () => Promise<void>;
+  installApp: () => Promise<boolean>;
   notificationPermission: NotificationPermission;
   requestNotificationPermission: () => Promise<void>;
 }
@@ -215,14 +215,20 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  const installApp = async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      console.log('User accepted the install prompt');
-      setIsInstallable(false);
-      setDeferredPrompt(null);
+  const installApp = async (): Promise<boolean> => {
+    if (!deferredPrompt) return false;
+    try {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        console.log('User accepted the install prompt');
+        setIsInstallable(false);
+        setDeferredPrompt(null);
+      }
+      return true;
+    } catch (err) {
+      console.error('PWA install prompt error:', err);
+      return false;
     }
   };
 
