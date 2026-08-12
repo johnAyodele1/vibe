@@ -3,10 +3,11 @@
 
 import { useState, useEffect } from 'react';
 import { getInstallContext } from '../../lib/pwa/context';
-import { registerServiceWorker, subscribeToPush } from '../../lib/push/pushSubscription';
+import { registerServiceWorker } from '../../lib/push/pushSubscription';
 import AddToHomeScreenHint from './AddToHomeScreenHint';
 import { usePWAPromptStore, NOTIF_KEYS } from '../../store/pwaPromptStore';
 import { runPushSelfTest } from '../../lib/pwa/pushSelfTest';
+import { syncPushSubscription } from '../../lib/pwa/subscriptionSync';
 import { toast } from 'sonner';
 
 const NotificationPrompt = ({ userId }: { userId: string }) => {
@@ -20,9 +21,11 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
     const context = getInstallContext();
     setCtx(context);
 
-    if (context.alreadyGranted) {
-      // Already have permission — just (re)register subscription silently
-      reRegisterSubscription();
+    if (Notification.permission === 'granted') {
+      const failCount = parseInt(localStorage.getItem('zippo_push_test_fail_count') || '0', 10);
+      if (failCount >= 3) {
+        window.dispatchEvent(new CustomEvent('zippo:show_notif_settings'));
+      }
     }
   }, []);
 
@@ -33,15 +36,6 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
       setVisible(false);
     }
   }, [showNotifPrompt]);
-
-  const reRegisterSubscription = async () => {
-    try {
-      const reg = await registerServiceWorker();
-      if (reg) await subscribeToPush(reg, userId);
-    } catch (err) {
-      console.error('[NotifPrompt] Re-registration failed:', err);
-    }
-  };
 
   const handleEnable = async () => {
     if (!ctx) return;
@@ -96,18 +90,16 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
       console.log('[NotifPrompt] Permission result:', permission);
 
       if (permission === 'granted') {
-        const success = await subscribeToPush(reg, userId);
-        console.log('[NotifPrompt] Push subscription:', success ? 'SUCCESS' : 'FAILED');
+        // Sync subscription silently using complete lifecycle flow
+        await syncPushSubscription(userId);
+        setResult('granted');
 
-        if (success) {
-          setResult('granted');
-          // Immediately run auto-test (Fix 4)
-          await runPushSelfTest(userId);
-          setTimeout(() => {
-            setVisible(false);
-            setShowNotifPrompt(false);
-          }, 2000);
-        }
+        // Immediately run auto-test (Fix 4)
+        await runPushSelfTest(userId);
+        setTimeout(() => {
+          setVisible(false);
+          setShowNotifPrompt(false);
+        }, 2000);
       } else {
         console.warn('[NotifPrompt] Permission denied by user');
         setResult('denied');

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom';
 import { Avatar } from './Avatar';
 import { io } from 'socket.io-client';
@@ -18,6 +18,9 @@ import { getInstallContext } from '../../lib/pwa/context';
 import { usePWAPromptStore, NOTIF_KEYS } from '../../store/pwaPromptStore';
 import { runPushSelfTest } from '../../lib/pwa/pushSelfTest';
 import { NotifSettingsDialog } from '../pwa/NotifSettingsDialog';
+import { syncPushSubscription } from '../../lib/pwa/subscriptionSync';
+import { removePushSubscriptionOnLogout } from '../../lib/pwa/pushSubscriptionLogout';
+import { tryWelcomeBack } from '../../lib/pwa/welcomeBack';
 
 const NavBadge: React.FC = () => {
   const totalUnread = useUnreadStore(s => s.totalUnread);
@@ -103,6 +106,36 @@ const AdultZoneLayout: React.FC = () => {
     }, 4000);
 
     return () => clearTimeout(t);
+  }, [user?.id]);
+
+  const lastActiveRef = useRef<number>(Date.now());
+  const AWAY_THRESHOLD = 5 * 60 * 1000;  // 5 minutes = "came back"
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        // Record when user left
+        lastActiveRef.current = Date.now();
+        console.log('[Visibility] App hidden at:', new Date().toISOString());
+        return;
+      }
+
+      if (document.visibilityState === 'visible') {
+        const awayDuration = Date.now() - lastActiveRef.current;
+        console.log('[Visibility] App visible — was away for:', Math.round(awayDuration / 1000), 'seconds');
+
+        // Only treat as "welcome back" if away for more than 5 minutes
+        if (awayDuration > AWAY_THRESHOLD) {
+          console.log('[Visibility] Away long enough — running welcome back');
+          tryWelcomeBack(user.id);
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [user?.id]);
 
   useEffect(() => {
@@ -264,17 +297,10 @@ const AdultZoneLayout: React.FC = () => {
     if (!isAuthenticated || !userId) return;
 
     const setupPush = async () => {
-      const registration = await registerServiceWorker();
-      if (!registration) return;
-
-      console.log('[App] SW registered silently on login');
-
-      // If permission is already granted, silently subscribe/re-register
-      if (Notification.permission === 'granted') {
-        subscribeToPush(registration, userId).catch(err => {
-          console.error('[App] Silent re-subscribe failed:', err.message || err);
-        });
-      }
+      console.log('[App] Syncing push subscription silently on login/load');
+      syncPushSubscription(userId).catch((err) => {
+        console.error('[App] Push sync failed (non-fatal):', err.message);
+      });
 
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.addEventListener('message', (event) => {
@@ -340,6 +366,9 @@ const AdultZoneLayout: React.FC = () => {
       className={`bg-[var(--az-bg-primary)] text-[var(--az-text-primary)] font-sans az-grain flex flex-col ${
         hideGlobalHeader ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'
       }`}
+      style={{
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+      }}
     >
       {/* Top Navigation */}
       <nav
@@ -396,7 +425,16 @@ const AdultZoneLayout: React.FC = () => {
                   <Link to="/wallet" className="w-8 h-8 rounded-full bg-[var(--az-bg-secondary)] border border-[var(--az-border)] flex items-center justify-center overflow-hidden hover:scale-110 active:scale-95 transition-transform" title="Wallet">
                     <span className="text-base select-none">💎</span>
                   </Link>
-                  <button onClick={logout} className="text-xs text-[var(--az-text-muted)] hover:text-white uppercase font-bold">Logout</button>
+                  <button
+                    onClick={async () => {
+                      console.log('[Auth] Logging out...');
+                      await removePushSubscriptionOnLogout();
+                      logout();
+                    }}
+                    className="text-xs text-[var(--az-text-muted)] hover:text-white uppercase font-bold"
+                  >
+                    Logout
+                  </button>
                 </div>
               </>
             ) : (
