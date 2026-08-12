@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { usePWA } from '../../../contexts/PWAContext';
 import { usePWAPromptStore } from '../../../store/pwaPromptStore';
+import { toast } from 'sonner';
 
 export type InstallPlatform = 'ios' | 'android' | 'desktop' | 'unsupported';
 
@@ -92,6 +93,9 @@ export const usePWAInstall = () => {
               dismissTemporary();
             }
           }, 1000);
+        } else {
+          // If native prompt is not ready yet because Chrome is still preparing, we show a nice toast!
+          toast.info('Installation is preparing. Please tap Install again in a moment!', { duration: 3000 });
         }
       } catch (err) {
         console.error('PWA install error:', err);
@@ -99,15 +103,14 @@ export const usePWAInstall = () => {
     }
   };
 
-  // Android MUST only show CTA if isInstallable is true (meaning native prompt is ready and cached)
-  // And Android MUST never show manual instruction fallbacks!
+  // Keep the prompt showing on the home page whenever the user navigates there
   const shouldShowCTA =
     showInstallPrompt &&
     !isStandalone &&
     !isDismissed &&
     isMobile &&
     delayElapsed &&
-    (platform === 'ios' || (platform === 'android' && isInstallable));
+    (platform === 'ios' || platform === 'android');
 
   return {
     platform,
