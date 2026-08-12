@@ -77,23 +77,28 @@ export const usePWAInstall = () => {
     if (platform === 'ios') {
       setShowInstructions(true);
     } else if (platform === 'android') {
-      try {
-        await installApp();
-        // The browser's native install prompt runs.
-        // PWAContext sets isStandalone upon completion, which auto-updates.
-        // But if user cancelled/dismissed, let's apply temporary cooldown so we don't harass them.
-        // We'll wait a bit then check standalone state.
-        setTimeout(() => {
-          const isNowStandalone =
-            window.matchMedia('(display-mode: standalone)').matches ||
-            (navigator as any).standalone;
-          if (!isNowStandalone) {
-            // User cancelled/dismissed native prompt, apply 3 day cooldown
-            dismissTemporary();
-          }
-        }, 1000);
-      } catch (err) {
-        console.error('PWA install error:', err);
+      if (isInstallable) {
+        try {
+          await installApp();
+          // The browser's native install prompt runs.
+          // PWAContext sets isStandalone upon completion, which auto-updates.
+          // But if user cancelled/dismissed, let's apply temporary cooldown so we don't harass them.
+          // We'll wait a bit then check standalone state.
+          setTimeout(() => {
+            const isNowStandalone =
+              window.matchMedia('(display-mode: standalone)').matches ||
+              (navigator as any).standalone;
+            if (!isNowStandalone) {
+              // User cancelled/dismissed native prompt, apply 3 day cooldown
+              dismissTemporary();
+            }
+          }, 1000);
+        } catch (err) {
+          console.error('PWA install error:', err);
+        }
+      } else {
+        // Show Android instructions!
+        setShowInstructions(true);
       }
     }
   };
@@ -104,7 +109,7 @@ export const usePWAInstall = () => {
     !isDismissed &&
     isMobile &&
     delayElapsed &&
-    (platform === 'ios' || (platform === 'android' && isInstallable));
+    (platform === 'ios' || platform === 'android');
 
   return {
     platform,

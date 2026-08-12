@@ -1,9 +1,10 @@
 import React from 'react';
 import { usePWAInstall } from './usePWAInstall';
-import { IOSInstallInstructions } from './IOSInstallInstructions';
+import { PWAInstallInstructions } from './PWAInstallInstructions';
 
 export const InstallPrompt: React.FC = () => {
   const {
+    platform,
     shouldShowCTA,
     showInstructions,
     setShowInstructions,
@@ -15,10 +16,11 @@ export const InstallPrompt: React.FC = () => {
   if (!shouldShowCTA) {
     if (showInstructions) {
       return (
-        <IOSInstallInstructions
+        <PWAInstallInstructions
           isOpen={showInstructions}
           onClose={() => setShowInstructions(false)}
           onDismissPermanent={dismissPermanent}
+          platform={platform}
         />
       );
     }
@@ -94,12 +96,13 @@ export const InstallPrompt: React.FC = () => {
         }
       `}</style>
 
-      {/* iOS Safari Instructions modal */}
+      {/* PWA Instructions modal */}
       {showInstructions && (
-        <IOSInstallInstructions
+        <PWAInstallInstructions
           isOpen={showInstructions}
           onClose={() => setShowInstructions(false)}
           onDismissPermanent={dismissPermanent}
+          platform={platform}
         />
       )}
     </>
