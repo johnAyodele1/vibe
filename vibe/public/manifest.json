@@ -1,26 +1,16 @@
 {
   "name": "Zippo",
   "short_name": "Zippo",
-  "start_url": "/",
-  "gcm_sender_id": "455173170033",
+  "description": "Premium connections",
+  "start_url": "/adult",
   "display": "standalone",
-  "background_color": "#221014",
-  "theme_color": "#f42559",
+  "background_color": "#0a0608",
+  "theme_color": "#c8102e",
   "orientation": "portrait",
   "icons": [
-    {
-      "src": "/favicon.svg",
-      "sizes": "48x48 72x72 96x96 128x128 256x256 512x512",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/vite.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    }
+    { "src": "/icons/icon-192x192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icons/icon-512x512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ],
-  "description": "Zippo - Dating App",
-  "categories": ["social", "lifestyle"]
+  "categories": ["lifestyle", "social"],
+  "lang": "en"
 }

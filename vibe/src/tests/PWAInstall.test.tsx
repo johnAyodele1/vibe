@@ -16,6 +16,16 @@ vi.mock('../contexts/PWAContext', () => ({
   usePWA: () => mockPwaState,
 }));
 
+// Mock usePWAPromptStore
+const mockStore = {
+  showInstallPrompt: true, // Allow CTA to show in tests
+  setShowInstallPrompt: vi.fn(),
+};
+
+vi.mock('../store/pwaPromptStore', () => ({
+  usePWAPromptStore: () => mockStore,
+}));
+
 describe('PWA Installation Flow', () => {
   const originalUserAgent = navigator.userAgent;
 

@@ -196,47 +196,80 @@ self.addEventListener('push', (event) => {
     return;
   }
 
-  const title   = data.title   || 'Zippo';
-  const options = {
-    body:    data.body    || '',
-    icon:    data.icon    || '/favicon.svg',
-    badge:   data.badge   || '/favicon.svg',
-    tag:     data.tag     || data.type || 'zippo',
-    renotify: true,   // MUST be true to show a new notification when same tag
-    data:    {
+  const isCall = data.type === 'incoming_call';
+
+  const notificationOptions = {
+    body:    data.body || '',
+    icon:    data.icon || '/icons/icon-192x192.png',
+
+    // ── BADGE: must be a monochrome PNG (white on transparent) ────
+    badge:   '/icons/badge-72x72.png',
+
+    // ── TAG: group same-conversation messages ─────────────────────
+    tag:     data.tag || `zippo-${data.type}`,
+
+    // ── RENOTIFY: always true so lock screen lights up ─────────────
+    renotify: true,
+
+    // ── REQUIRE INTERACTION: for calls — notification stays until tapped ──
+    requireInteraction: isCall,
+
+    // ── SILENT: never silent ──────────────────────────────────────
+    silent: false,
+
+    // ── VIBRATE: pattern in milliseconds [vibrate, pause, vibrate] ─
+    vibrate: isCall ? [500, 200, 500, 200, 500] : [200, 100, 200],
+
+    // ── TIMESTAMP: when the event happened ────────────────────────
+    timestamp: data.timestamp || Date.now(),
+
+    // ── DATA: for click handler ───────────────────────────────────
+    data: {
       url:         data.url || '/adult',
       unreadCount: data.unreadCount || 0,
+      type:        data.type,
       isCustomPush: true
     },
-    vibrate: [200, 100, 200],
+
+    // ── ACTIONS: quick reply options (Android only) ───────────────
     actions: data.type === 'new_message' ? [
-      { action: 'open',    title: '💬 Reply' },
-      { action: 'dismiss', title: 'Dismiss' },
+      { action: 'open',    title: 'Reply' },
+    ] : data.type === 'incoming_call' ? [
+      { action: 'open',    title: '📞 Answer' },
+      { action: 'dismiss', title: 'Decline' },
     ] : [],
   };
 
-  console.log('[SW][Push] Showing notification:', { title, tag: options.tag });
-
   event.waitUntil(
-    Promise.all([
-      self.registration.showNotification(title, options)
-        .then(() => console.log('[SW][Push] Notification shown successfully'))
-        .catch(err => console.error('[SW][Push] showNotification failed:', err.message)),
+    self.registration.getNotifications({ tag: notificationOptions.tag }).then(existing => {
+      // If there's already a notification for this conversation
+      // and more than 1 unread — update the title to show count
+      const title = existing.length > 0 && data.unreadCount > 1
+        ? `${data.title || 'Zippo'} (${data.unreadCount} messages)`
+        : (data.title || 'Zippo');
 
-      // Update home screen badge
-      (() => {
-        const count = data.unreadCount;
-        if (count > 0) {
-          return navigator.setAppBadge
-            ? navigator.setAppBadge(count).catch(e => console.warn('[SW][Badge] setAppBadge failed:', e.message))
-            : Promise.resolve();
-        } else {
-          return navigator.clearAppBadge
-            ? navigator.clearAppBadge().catch(e => console.warn('[SW][Badge] clearAppBadge failed:', e.message))
-            : Promise.resolve();
-        }
-      })(),
-    ])
+      console.log('[SW][Push] Showing notification:', { title, tag: notificationOptions.tag });
+
+      return Promise.all([
+        self.registration.showNotification(title, notificationOptions)
+          .then(() => console.log('[SW][Push] Notification shown successfully'))
+          .catch(err => console.error('[SW][Push] showNotification failed:', err.message)),
+
+        // Update home screen badge safely
+        (() => {
+          const count = data.unreadCount;
+          if (count > 0) {
+            return navigator.setAppBadge
+              ? navigator.setAppBadge(count).catch(e => console.warn('[SW][Badge] setAppBadge failed:', e.message))
+              : Promise.resolve();
+          } else {
+            return navigator.clearAppBadge
+              ? navigator.clearAppBadge().catch(e => console.warn('[SW][Badge] clearAppBadge failed:', e.message))
+              : Promise.resolve();
+          }
+        })(),
+      ]);
+    })
   );
 });
 

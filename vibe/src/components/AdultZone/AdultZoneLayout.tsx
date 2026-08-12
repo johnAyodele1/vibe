@@ -14,6 +14,10 @@ import { InstallPrompt } from '../pwa/InstallPrompt/InstallPrompt';
 import { registerServiceWorker, subscribeToPush, updateBadgeCount } from '../../lib/push/pushSubscription';
 import { useUnreadStore } from '../../store/unreadStore';
 import NotificationPrompt from '../pwa/NotificationPrompt';
+import { getInstallContext } from '../../lib/pwa/context';
+import { usePWAPromptStore, NOTIF_KEYS } from '../../store/pwaPromptStore';
+import { runPushSelfTest } from '../../lib/pwa/pushSelfTest';
+import { NotifSettingsDialog } from '../pwa/NotifSettingsDialog';
 
 const NavBadge: React.FC = () => {
   const totalUnread = useUnreadStore(s => s.totalUnread);
@@ -46,6 +50,60 @@ const AdultZoneLayout: React.FC = () => {
   const [authModalRole, setAuthModalRole] = useState<'user' | 'provider'>('user');
   const { isAuthenticated, logout, user, loading } = useAdultAuth();
   const { setUnread, increment } = useUnreadStore();
+
+  // Centralized PWA and Notification Prompts sequencing
+  const {
+    showInstallPrompt,
+    showNotifPrompt,
+    setShowInstallPrompt,
+    setShowNotifPrompt,
+    shouldShowInstallPrompt,
+    shouldShowNotifPrompt,
+    recordInstallPromptShown,
+  } = usePWAPromptStore();
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const ctx = getInstallContext();
+
+    if (!ctx.isStandalone) {
+      // Not installed as PWA
+      if (shouldShowInstallPrompt()) {
+        setShowInstallPrompt(true);
+        recordInstallPromptShown();
+      }
+      // Do not show notif prompt when not in standalone
+      // (see Fix 3 — web context redirects to install first)
+      return;
+    }
+
+    // IS standalone PWA — show notif prompt if needed
+    if (ctx.pushSupportedOnThisDevice && shouldShowNotifPrompt()) {
+      // Delay slightly so page loads first
+      const t = setTimeout(() => {
+        setShowNotifPrompt(true);
+        sessionStorage.setItem(NOTIF_KEYS.shownThisSession, '1');
+        localStorage.setItem(NOTIF_KEYS.lastShownAt, String(Date.now()));
+      }, 3000);
+      return () => clearTimeout(t);
+    }
+  }, [user?.id, showInstallPrompt, showNotifPrompt]);
+
+  // Auto-test trigger in root layout (PWA standalone only)
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const ctx = getInstallContext();
+    if (!ctx.isStandalone) return;    // only for PWA
+
+    // Run after a short delay so app UI loads first
+    const t = setTimeout(() => {
+      runPushSelfTest(user.id);
+    }, 4000);
+
+    return () => clearTimeout(t);
+  }, [user?.id]);
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/v1/adult/config/diamond-rate`)
@@ -278,9 +336,15 @@ const AdultZoneLayout: React.FC = () => {
   ];
 
   return (
-    <div className={`bg-[var(--az-bg-primary)] text-[var(--az-text-primary)] font-sans az-grain flex flex-col ${
-      hideGlobalHeader ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'
-    }`}>
+    <div
+      className={`bg-[var(--az-bg-primary)] text-[var(--az-text-primary)] font-sans az-grain flex flex-col ${
+        hideGlobalHeader ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'
+      }`}
+      style={{
+        paddingTop: 'env(safe-area-inset-top, 0px)',
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+      }}
+    >
       {/* Top Navigation */}
       <nav data-testid="global-header" className={`sticky top-0 z-50 az-glass border-b border-[var(--az-border)] px-4 py-3 md:px-8 ${
         hideGlobalHeader ? 'hidden md:block' : 'block'
@@ -362,6 +426,8 @@ const AdultZoneLayout: React.FC = () => {
       <InstallPrompt />
 
       {user?.id && <NotificationPrompt userId={user.id} />}
+
+      {user?.id && <NotifSettingsDialog userId={user.id} />}
 
       {incomingCall && (
         <div className="fixed inset-0 bg-black/90 z-[11000] flex flex-col items-center justify-center p-8 text-white">

@@ -195,12 +195,23 @@ export const sendMessage = async (req: IExpressRequest, res: Response): Promise<
     // Also send Custom VAPID push notification
     const unreadCount = conversation.unreadCount?.get(receiverId.toString()) || 0;
 
+    const getMessagePreview = (t: string, c: string) => {
+      switch (t) {
+        case 'text':       return c?.slice(0, 100) || 'Sent a message';
+        case 'image':      return '📸 Sent you a photo';
+        case 'video':      return '🎥 Sent you a video';
+        case 'voice_note':
+        case 'voice':      return '🎤 Sent a voice message';
+        default:           return 'Sent you a message';
+      }
+    };
+
     sendPushToUser(receiverId, {
       title: `💬 ${req.user.firstName}`,
-      body: messageType === 'text' ? content.slice(0, 100) : `Sent a ${messageType}`,
+      body: getMessagePreview(messageType, content),
       icon: req.user.photos?.[0]?.url || '',
       badge: '/icons/badge-72x72.png',
-      tag: `msg_${(conversation._id as Types.ObjectId).toString()}`,
+      tag: `conv_${(conversation._id as Types.ObjectId).toString()}`,
       renotify: true,
       url: `/chat/${(conversation._id as Types.ObjectId).toString()}`,
       unreadCount,

@@ -54,6 +54,30 @@ export const sendTestPush = async (req: Request, res: Response) => {
     }
 
     const results = [];
+    const isReopen = req.body?.isReopen === true;
+
+    const payload = isReopen ? {
+      title:       '👋 Welcome back to Zippo',
+      body:        'You\'re all set — notifications are working.',
+      icon:        '/icons/icon-192x192.png',
+      badge:       '/icons/badge-72x72.png',
+      tag:         'welcome-back',
+      renotify:    false,     // don't re-alert if they already saw the welcome
+      silent:      false,
+      url:         '/adult',
+      unreadCount: 0,
+      type:        'test',
+    } : {
+      title:       '✅ Test Notification',
+      body:        'Push notifications are working on this device!',
+      icon:        '/icons/icon-192x192.png',
+      badge:       '/icons/badge-72x72.png',
+      tag:         'notif-test',
+      renotify:    true,
+      url:         '/adult',
+      unreadCount: 0,
+      type:        'test',
+    };
 
     for (const sub of subscriptions) {
       try {
@@ -61,16 +85,7 @@ export const sendTestPush = async (req: Request, res: Response) => {
 
         await webpush.sendNotification(
           { endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth } },
-          JSON.stringify({
-            title:       '✅ Push Test — Zippo',
-            body:        'Push notifications are working! You will now receive message alerts.',
-            icon:        '/icons/icon-192x192.png',
-            badge:       '/icons/badge-72x72.png',
-            tag:         'push-test',
-            url:         '/adult',
-            unreadCount: 0,
-            type:        'test',
-          })
+          JSON.stringify(payload)
         );
 
         console.log('[Push][Test] SUCCESS for endpoint:', sub.endpoint.slice(0, 60));

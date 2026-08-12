@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import NotificationPrompt from '../components/pwa/NotificationPrompt';
+import { toast } from 'sonner';
 
 // Mock getInstallContext
 const mockCtx = {
@@ -21,17 +22,51 @@ vi.mock('../lib/pwa/context', () => ({
   getInstallContext: () => mockCtx,
 }));
 
+// Mock usePWAPromptStore
+const mockStore = {
+  showNotifPrompt: false,
+  showInstallPrompt: false,
+  setShowNotifPrompt: vi.fn(),
+  setShowInstallPrompt: vi.fn(),
+  shouldShowInstallPrompt: vi.fn().mockReturnValue(true),
+  shouldShowNotifPrompt: vi.fn().mockReturnValue(true),
+  recordInstallPromptShown: vi.fn(),
+};
+
+vi.mock('../store/pwaPromptStore', () => ({
+  usePWAPromptStore: () => mockStore,
+  NOTIF_KEYS: {
+    shownThisSession: 'zippo_notif_prompt_shown_session',
+    lastShownAt:      'zippo_notif_prompt_last_shown_at',
+    dismissed:        'zippo_notif_prompt_dismissed',
+  },
+}));
+
 // Mock pushSubscription functions
 vi.mock('../lib/push/pushSubscription', () => ({
   registerServiceWorker: vi.fn().mockResolvedValue({}),
   subscribeToPush: vi.fn().mockResolvedValue(true),
 }));
 
+// Mock pushSelfTest
+vi.mock('../lib/pwa/pushSelfTest', () => ({
+  runPushSelfTest: vi.fn().mockResolvedValue('success'),
+}));
+
+// Mock sonner toast
+vi.mock('sonner', () => ({
+  toast: {
+    info: vi.fn(),
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
 describe('NotificationPrompt Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     sessionStorage.clear();
-    vi.useFakeTimers();
+    localStorage.clear();
 
     // Default clean state
     mockCtx.isStandalone = false;
@@ -46,20 +81,8 @@ describe('NotificationPrompt Component', () => {
     mockCtx.alreadyGranted = false;
     mockCtx.denied = false;
 
-    // Mock window.matchMedia
-    Object.defineProperty(window, 'matchMedia', {
-      writable: true,
-      value: vi.fn().mockImplementation(query => ({
-        matches: false,
-        media: query,
-        onchange: null,
-        addListener: vi.fn(), // deprecated
-        removeListener: vi.fn(), // deprecated
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-      })),
-    });
+    mockStore.showNotifPrompt = false;
+    mockStore.showInstallPrompt = false;
 
     // Mock window.Notification object
     (window as any).Notification = {
@@ -68,59 +91,37 @@ describe('NotificationPrompt Component', () => {
     };
   });
 
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it('does not render initially (before the 5 seconds delay)', () => {
+  it('does not render when showNotifPrompt is false', () => {
     render(<NotificationPrompt userId="user-123" />);
     expect(screen.queryByTestId('notification-prompt')).not.toBeInTheDocument();
   });
 
-  it('renders correctly after the 5 seconds delay when eligible', () => {
+  it('renders correctly when showNotifPrompt is true', () => {
+    mockStore.showNotifPrompt = true;
     render(<NotificationPrompt userId="user-123" />);
-
-    act(() => {
-      vi.advanceTimersByTime(5000);
-    });
 
     expect(screen.getByTestId('notification-prompt')).toBeInTheDocument();
     expect(screen.getByText('Stay in the loop')).toBeInTheDocument();
     expect(screen.getByText('Enable')).toBeInTheDocument();
   });
 
-  it('does not render if already dismissed in session storage', () => {
-    sessionStorage.setItem('zippo_notif_prompt_dismissed', '1');
-    render(<NotificationPrompt userId="user-123" />);
-
-    act(() => {
-      vi.advanceTimersByTime(5000);
-    });
-
-    expect(screen.queryByTestId('notification-prompt')).not.toBeInTheDocument();
-  });
-
   it('shows the iOS Add to Home Screen hint on iOS when NOT in standalone mode', () => {
+    mockStore.showNotifPrompt = true;
     mockCtx.isIOS = true;
     mockCtx.isStandalone = false;
     mockCtx.pushSupportedOnThisDevice = false;
 
     render(<NotificationPrompt userId="user-123" />);
 
-    act(() => {
-      vi.advanceTimersByTime(5000);
-    });
-
     expect(screen.getByTestId('aths-hint')).toBeInTheDocument();
     expect(screen.getByText('Add Zippo to your Home Screen')).toBeInTheDocument();
   });
 
-  it('requests notification permission synchronously when the user clicks Enable', async () => {
-    render(<NotificationPrompt userId="user-123" />);
+  it('requests notification permission when the user clicks Enable in standalone', async () => {
+    mockStore.showNotifPrompt = true;
+    mockCtx.isStandalone = true;
 
-    act(() => {
-      vi.advanceTimersByTime(5000);
-    });
+    render(<NotificationPrompt userId="user-123" />);
 
     const enableBtn = screen.getByText('Enable');
     await act(async () => {
@@ -128,5 +129,37 @@ describe('NotificationPrompt Component', () => {
     });
 
     expect((window as any).Notification.requestPermission).toHaveBeenCalled();
+  });
+
+  it('dismisses correctly when close is clicked on iOS Add to Home Screen hint', async () => {
+    mockStore.showNotifPrompt = true;
+    mockCtx.isIOS = true;
+    mockCtx.isStandalone = false;
+
+    render(<NotificationPrompt userId="user-123" />);
+
+    const closeBtn = screen.getByLabelText('Close add to home screen hint');
+    fireEvent.click(closeBtn);
+
+    expect(mockStore.setShowNotifPrompt).toHaveBeenCalledWith(false);
+  });
+
+  it('handles non-standalone Android users with toast suggestion on Enable click', async () => {
+    mockStore.showNotifPrompt = true;
+    mockCtx.isAndroid = true;
+    mockCtx.isStandalone = false;
+
+    render(<NotificationPrompt userId="user-123" />);
+
+    const enableBtn = screen.getByText('Enable');
+    await act(async () => {
+      fireEvent.click(enableBtn);
+    });
+
+    expect((window as any).Notification.requestPermission).toHaveBeenCalled();
+    expect(toast.info).toHaveBeenCalledWith(
+      'Install Zippo to your home screen for the best experience',
+      { duration: 3000 }
+    );
   });
 });

@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { usePWA } from '../../../contexts/PWAContext';
+import { usePWAPromptStore } from '../../../store/pwaPromptStore';
 
 export type InstallPlatform = 'ios' | 'android' | 'desktop' | 'unsupported';
 
 export const usePWAInstall = () => {
   const { isInstallable, isStandalone, isIOS, installApp } = usePWA();
+  const { showInstallPrompt, setShowInstallPrompt } = usePWAPromptStore();
 
   const [platform, setPlatform] = useState<InstallPlatform>('unsupported');
   const [isDismissed, setIsDismissed] = useState(true);
@@ -74,12 +76,14 @@ export const usePWAInstall = () => {
     const cooldownMs = 3 * 24 * 60 * 60 * 1000; // 3 days
     localStorage.setItem('zippo_pwa_dismiss_until', (Date.now() + cooldownMs).toString());
     setIsDismissed(true);
+    setShowInstallPrompt(false);
   };
 
   // 5. Permanent dismissal
   const dismissPermanent = () => {
     localStorage.setItem('zippo_pwa_dismiss_permanent', 'true');
     setIsDismissed(true);
+    setShowInstallPrompt(false);
   };
 
   // 6. Handle CTA action tap
@@ -109,6 +113,7 @@ export const usePWAInstall = () => {
   };
 
   const shouldShowCTA =
+    showInstallPrompt &&
     !isStandalone &&
     !isDismissed &&
     isMobile &&

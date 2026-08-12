@@ -1,14 +1,16 @@
 // vibe/src/components/pwa/NotificationPrompt.tsx
-// Show this card ONCE, inside the installed PWA, after the user is settled
+// Show this card inside the installed PWA, after the user is settled
 
 import { useState, useEffect } from 'react';
 import { getInstallContext } from '../../lib/pwa/context';
 import { registerServiceWorker, subscribeToPush } from '../../lib/push/pushSubscription';
 import AddToHomeScreenHint from './AddToHomeScreenHint';
-
-const DISMISSED_KEY = 'zippo_notif_prompt_dismissed';
+import { usePWAPromptStore, NOTIF_KEYS } from '../../store/pwaPromptStore';
+import { runPushSelfTest } from '../../lib/pwa/pushSelfTest';
+import { toast } from 'sonner';
 
 const NotificationPrompt = ({ userId }: { userId: string }) => {
+  const { showNotifPrompt, setShowNotifPrompt, setShowInstallPrompt } = usePWAPromptStore();
   const [ctx,       setCtx]       = useState<ReturnType<typeof getInstallContext> | null>(null);
   const [visible,   setVisible]   = useState(false);
   const [loading,   setLoading]   = useState(false);
@@ -18,31 +20,19 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
     const context = getInstallContext();
     setCtx(context);
 
-    console.log('[NotifPrompt] Evaluating whether to show prompt:', context);
-
-    // Only show if:
-    // 1. Push is supported on this device OR it's iOS (so we can show the "Add to Home Screen" hint if not standalone)
-    // 2. Permission not yet granted
-    // 3. Not already dismissed this session
-    const dismissed = sessionStorage.getItem(DISMISSED_KEY);
-
-    const isIOSNonStandalone = context.isIOS && !context.isStandalone;
-    const isEligibleForPrompt = context.pushSupportedOnThisDevice && context.notificationPermission === 'default';
-
-    if (
-      (isEligibleForPrompt || isIOSNonStandalone) &&
-      !dismissed
-    ) {
-      // Show prompt after 5 seconds (let user settle in)
-      const t = setTimeout(() => setVisible(true), 5000);
-      return () => clearTimeout(t);
-    }
-
     if (context.alreadyGranted) {
       // Already have permission — just (re)register subscription silently
       reRegisterSubscription();
     }
   }, []);
+
+  useEffect(() => {
+    if (showNotifPrompt) {
+      setVisible(true);
+    } else {
+      setVisible(false);
+    }
+  }, [showNotifPrompt]);
 
   const reRegisterSubscription = async () => {
     try {
@@ -53,11 +43,44 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
     }
   };
 
-  // ── THIS IS THE KEY: called directly from a button tap ──────────────
   const handleEnable = async () => {
-    console.log('[NotifPrompt] User tapped Enable Notifications button');
-    setLoading(true);
+    if (!ctx) return;
+    console.log('[NotifPrompt] Enable tapped:', {
+      isStandalone: ctx.isStandalone,
+      isIOS:        ctx.isIOS,
+      isAndroid:    ctx.isAndroid,
+    });
 
+    // ── iOS Safari NON-STANDALONE ────────────────────────────────────
+    if (ctx.isIOS && !ctx.isStandalone) {
+      console.log('[NotifPrompt] iOS non-standalone — redirecting to install flow');
+
+      // Close notification prompt
+      setVisible(false);
+      setShowNotifPrompt(false);
+
+      // Show install prompt immediately
+      setShowInstallPrompt(true);
+
+      // Show an explanatory toast
+      toast.info(
+        'Add Zippo to your Home Screen first, then you can enable notifications.',
+        { duration: 5000 }
+      );
+      return;
+    }
+
+    // ── ANDROID WEB (NON-STANDALONE) ────────────────────────────────
+    if (ctx.isAndroid && !ctx.isStandalone) {
+      console.log('[NotifPrompt] Android web — proceeding with permission request');
+      // Android Chrome supports push even without PWA install
+      // Fall through to permission request below
+      // But also suggest installing
+      toast.info('Install Zippo to your home screen for the best experience', { duration: 3000 });
+    }
+
+    // ── REQUEST PERMISSION (works for standalone + Android web) ─────
+    setLoading(true);
     try {
       // Step 1: register service worker
       const reg = await registerServiceWorker();
@@ -67,31 +90,43 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
         return;
       }
 
-      // Step 2: request permission — MUST be in this synchronous click handler
+      // Step 2: request permission
       console.log('[NotifPrompt] Requesting notification permission...');
       const permission = await Notification.requestPermission();
       console.log('[NotifPrompt] Permission result:', permission);
 
       if (permission === 'granted') {
-        // Step 3: subscribe to push
         const success = await subscribeToPush(reg, userId);
         console.log('[NotifPrompt] Push subscription:', success ? 'SUCCESS' : 'FAILED');
-        setResult('granted');
-        setTimeout(() => setVisible(false), 2000);
+
+        if (success) {
+          setResult('granted');
+          // Immediately run auto-test (Fix 4)
+          await runPushSelfTest(userId);
+          setTimeout(() => {
+            setVisible(false);
+            setShowNotifPrompt(false);
+          }, 2000);
+        }
       } else {
         console.warn('[NotifPrompt] Permission denied by user');
         setResult('denied');
-        setTimeout(() => setVisible(false), 3000);
+        setTimeout(() => {
+          setVisible(false);
+          setShowNotifPrompt(false);
+        }, 3000);
       }
-    } catch (err) {
-      console.error('[NotifPrompt] Error during permission request:', err);
+    } catch (err: any) {
+      console.error('[NotifPrompt] Permission request error:', err.message || err);
     } finally {
       setLoading(false);
     }
   };
 
   const handleDismiss = () => {
-    sessionStorage.setItem(DISMISSED_KEY, '1');
+    localStorage.setItem(NOTIF_KEYS.dismissed, '1');
+    sessionStorage.setItem(NOTIF_KEYS.shownThisSession, '1');
+    setShowNotifPrompt(false);
     setVisible(false);
   };
 
