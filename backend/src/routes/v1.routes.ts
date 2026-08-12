@@ -77,7 +77,14 @@ import {
 import { getRooms, createRoom as createAdultRoom, getRoom as getAdultRoom, joinRoom as joinAdultRoom, leaveRoom as leaveAdultRoom, getRoomMembers, getRoomLeaderboard, getThreads, createThread, getThread, reactThread, pinThread, lockThread, getMessages as getAdultRoomMessages, sendMessage as sendAdultRoomMessage, reactMessage as reactAdultRoomMessage, deleteMessage as deleteAdultRoomMessage, getReplies, postReply, reactReply, getActivePolls, createPoll, votePoll, reportRoom, muteUser, kickUser } from '../controllers/adultRooms.controller';
 
 import { getProviderPublicProfile, unlockProviderPhoto } from '../controllers/adultProviders.controller';
-import { savePushSubscription, removePushSubscription, getVapidPublicKey, sendTestPush } from '../controllers/adultPush.controller';
+import {
+  savePushSubscription,
+  removePushSubscription,
+  getVapidPublicKey,
+  sendTestPush,
+  getCurrentDevice,
+  updatePushToken
+} from '../controllers/adultPush.controller';
 import { getUserTasks, completeTask, dailyCheckin } from '../controllers/adultRewards.controller';
 import {
   getProviderWheel,
@@ -98,6 +105,8 @@ router.use(trackDailyActive);
 router.get('/adult/push/public-key', getVapidPublicKey);
 router.post('/adult/push/subscribe', verifyAdultJWT, savePushSubscription);
 router.delete('/adult/push/subscribe', verifyAdultJWT, removePushSubscription);
+router.get('/adult/push/current', verifyAdultJWT, getCurrentDevice);
+router.patch('/adult/push/token', verifyAdultJWT, updatePushToken);
 router.post('/adult/push/test', verifyAdultJWT, sendTestPush);
 
 // Zego Token Route

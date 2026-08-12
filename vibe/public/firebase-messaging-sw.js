@@ -54,7 +54,7 @@ const initFirebaseInSW = async () => {
 initFirebaseInSW();
 
 // ── Custom PWA / Web Push Cache versioning & update management ───────
-const SW_VERSION  = 'zippo-v5';      // INCREMENTED VERSION
+const SW_VERSION  = 'zippo-v6';      // INCREMENTED VERSION
 const CACHE_NAME  = `${SW_VERSION}-static`;
 
 // Assets to pre-cache on install

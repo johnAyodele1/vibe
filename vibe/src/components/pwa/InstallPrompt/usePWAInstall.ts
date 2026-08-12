@@ -78,39 +78,28 @@ export const usePWAInstall = () => {
       setShowInstructions(true);
     } else if (platform === 'android') {
       try {
-        const nativePromptTriggered = await installApp();
-        if (nativePromptTriggered) {
-          // The browser's native install prompt runs.
-          // PWAContext sets isStandalone upon completion, which auto-updates.
-          // But if user cancelled/dismissed, let's apply temporary cooldown so we don't harass them.
-          // We'll wait a bit then check standalone state.
-          setTimeout(() => {
-            const isNowStandalone =
-              window.matchMedia('(display-mode: standalone)').matches ||
-              (navigator as any).standalone;
-            if (!isNowStandalone) {
-              // User cancelled/dismissed native prompt, apply 3 day cooldown
-              dismissTemporary();
-            }
-          }, 1000);
-        } else {
-          // Native install not available, show Android instructions instead!
-          setShowInstructions(true);
+        const result = await installApp();
+        if (result.status === 'accepted') {
+          // Success! State is fully updated by PWAContext's appinstalled event
+        } else if (result.status === 'dismissed') {
+          // User dismissed native prompt, apply temporary cooldown so we don't harass them.
+          dismissTemporary();
         }
       } catch (err) {
         console.error('PWA install error:', err);
-        setShowInstructions(true);
       }
     }
   };
 
+  // Android MUST only show CTA if isInstallable is true (meaning native prompt is ready and cached)
+  // Objective 6: platform === 'android' && isInstallable
   const shouldShowCTA =
     showInstallPrompt &&
     !isStandalone &&
     !isDismissed &&
     isMobile &&
     delayElapsed &&
-    (platform === 'ios' || platform === 'android');
+    (platform === 'ios' || (platform === 'android' && isInstallable));
 
   return {
     platform,

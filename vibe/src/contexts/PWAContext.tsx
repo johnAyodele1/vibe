@@ -4,11 +4,17 @@ import { API_BASE_URL } from '../config';
 import { useAuth } from './AuthContext';
 import { toast } from 'sonner';
 
+export type InstallResult =
+  | { status: 'accepted' }
+  | { status: 'dismissed' }
+  | { status: 'unavailable' }
+  | { status: 'error' };
+
 interface PWAContextType {
   isInstallable: boolean;
   isStandalone: boolean;
   isIOS: boolean;
-  installApp: () => Promise<boolean>;
+  installApp: () => Promise<InstallResult>;
   notificationPermission: NotificationPermission;
   requestNotificationPermission: () => Promise<void>;
 }
@@ -27,7 +33,40 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       : 'default' as NotificationPermission
   );
 
+  // Development Diagnostics & Console helper
+  const getDiagnostics = () => {
+    return {
+      protocol: typeof window !== 'undefined' ? window.location.protocol : '',
+      userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+      isStandalone,
+      displayModeStandalone: typeof window !== 'undefined' ? window.matchMedia('(display-mode: standalone)').matches : false,
+      serviceWorkerSupported: typeof navigator !== 'undefined' && 'serviceWorker' in navigator,
+      serviceWorkerController: typeof navigator !== 'undefined' && !!navigator.serviceWorker?.controller,
+      manifestUrl: '/manifest.json',
+      notificationPermission,
+      isInstallable,
+      hasDeferredPrompt: !!(deferredPrompt || (typeof window !== 'undefined' && (window as any)._deferredInstallPrompt))
+    };
+  };
+
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).getPwaDiagnostics = getDiagnostics;
+    }
+  }, [isStandalone, isInstallable, deferredPrompt, notificationPermission]);
+
+  useEffect(() => {
+    // 1. Log initialization diagnostics as requested in Objective 1
+    console.log('[PWA] Initializing PWA detection');
+    console.log('[PWA] User agent:', typeof navigator !== 'undefined' ? navigator.userAgent : '');
+    console.log('[PWA] Current URL:', typeof window !== 'undefined' ? window.location.href : '');
+    console.log('[PWA] Is standalone:', isStandalone);
+    console.log('[PWA] Service worker supported:', typeof navigator !== 'undefined' && 'serviceWorker' in navigator);
+    console.log('[PWA] Service worker controller:', typeof navigator !== 'undefined' && !!navigator.serviceWorker?.controller);
+    console.log('[PWA] Manifest: /manifest.json');
+    console.log('[PWA] Notification permission:', notificationPermission);
+    console.log('[PWA] isInstallable:', isInstallable);
+
     // Detect if running in standalone mode
     const checkStandalone = () => {
       const isStandaloneMode =
@@ -46,17 +85,27 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     checkStandalone();
     checkIOS();
 
+    // Check if the event already fired globally before React loaded (Objective 5)
+    if ((window as any)._deferredInstallPrompt) {
+      console.log('[PWA] Restoring pre-hydration captured beforeinstallprompt event');
+      setDeferredPrompt((window as any)._deferredInstallPrompt);
+      setIsInstallable(true);
+    }
+
     const handleBeforeInstallPrompt = (e: Event) => {
+      console.log('[PWA] beforeinstallprompt FIRED');
+      console.log('[PWA] Captured install prompt');
       e.preventDefault();
       setDeferredPrompt(e);
       setIsInstallable(true);
     };
 
     const handleAppInstalled = () => {
-      console.log('App was successfully installed');
+      console.log('[PWA] appinstalled FIRED');
       setIsStandalone(true);
       setIsInstallable(false);
       setDeferredPrompt(null);
+      (window as any)._deferredInstallPrompt = null;
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -77,10 +126,8 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const hasToken = user.fcmTokens && user.fcmTokens.length > 0;
 
       if (notificationPermission === 'granted') {
-        // Even if we have a token, we sync periodically or if forced
         syncPushToken();
       } else if (notificationPermission === 'default') {
-        // Prioritize: if they haven't decided, prompt them every time until they do
         toast("Enable push notifications to get matches and messages on your phone!", {
           action: {
             label: "Enable Now",
@@ -89,7 +136,6 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           duration: 15000,
         });
       } else if (notificationPermission === 'denied' && !hasToken) {
-        // If denied and we have no tokens, show a helpful message once per session
         const hasWarned = sessionStorage.getItem('notificationDeniedWarned');
         if (!hasWarned) {
           toast.error("Push notifications are blocked in your browser settings. You'll miss out on instant match alerts!", {
@@ -105,7 +151,6 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => {
     if (isAuthenticated && user) {
       const checkAndUpdateLocation = async () => {
-        // Check if we already requested location this session to avoid nagging
         const hasRequested = sessionStorage.getItem('locationRequestedThisSession');
 
         if ('permissions' in navigator && (navigator.permissions as any).query) {
@@ -123,7 +168,6 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             console.error('Error checking geolocation permission:', e);
           }
         } else if (hasRequested) {
-          // Fallback for browsers without permissions API
           return;
         }
 
@@ -131,8 +175,8 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         sessionStorage.setItem('locationRequestedThisSession', 'true');
       };
 
-      const interval = setInterval(checkAndUpdateLocation, 1000 * 60 * 15); // Every 15 minutes
-      checkAndUpdateLocation(); // Initial check/update
+      const interval = setInterval(checkAndUpdateLocation, 1000 * 60 * 15);
+      checkAndUpdateLocation();
       return () => clearInterval(interval);
     }
   }, [isAuthenticated]);
@@ -149,10 +193,9 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, []);
 
   const syncPushToken = async () => {
-    // Avoid redundant syncs if already done recently
     const lastSync = localStorage.getItem('lastPushTokenSync');
     const now = Date.now();
-    if (lastSync && now - parseInt(lastSync) < 1000 * 60 * 60 * 24) { // Sync at most once every 24h if token hasn't changed
+    if (lastSync && now - parseInt(lastSync) < 1000 * 60 * 60 * 24) {
       console.log('[PWA] Push token synced recently, skipping periodic sync');
       return;
     }
@@ -215,20 +258,37 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  const installApp = async (): Promise<boolean> => {
-    if (!deferredPrompt) return false;
+  // Implement the strict install result contract (Objective 7)
+  const installApp = async (): Promise<InstallResult> => {
+    console.log('[PWA] Install button clicked');
+    const promptObj = deferredPrompt || (typeof window !== 'undefined' && (window as any)._deferredInstallPrompt);
+    console.log('[PWA] Deferred install prompt exists:', !!promptObj);
+
+    if (!promptObj) {
+      console.log('[PWA] No deferred prompt available — cannot trigger native install');
+      return { status: 'unavailable' };
+    }
+
     try {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
+      console.log('[PWA] Calling deferredPrompt.prompt()');
+      promptObj.prompt();
+
+      const { outcome } = await promptObj.userChoice;
+      console.log('[PWA] Install prompt outcome:', outcome);
+
       if (outcome === 'accepted') {
-        console.log('User accepted the install prompt');
         setIsInstallable(false);
         setDeferredPrompt(null);
+        if (typeof window !== 'undefined') {
+          (window as any)._deferredInstallPrompt = null;
+        }
+        return { status: 'accepted' };
+      } else {
+        return { status: 'dismissed' };
       }
-      return true;
     } catch (err) {
-      console.error('PWA install prompt error:', err);
-      return false;
+      console.error('[PWA] PWA install prompt error:', err);
+      return { status: 'error' };
     }
   };
 
