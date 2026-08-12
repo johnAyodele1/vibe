@@ -5,8 +5,8 @@ export interface IPushSubscription extends Document {
   deviceId: string;
   accountType?: string;
   zone?: 'adult' | 'dating' | 'both';
-  endpoint: string;
-  keys: {
+  endpoint?: string;
+  keys?: {
     p256dh: string;
     auth: string;
   };
@@ -16,6 +16,10 @@ export interface IPushSubscription extends Document {
   updatedAt: Date;
   lastUsed?: Date;
   failCount?: number;
+  notificationsEnabled?: boolean;
+  lastSeenAt?: Date;
+  isActive?: boolean;
+  deactivatedAt?: Date;
 }
 
 const pushSubscriptionSchema = new Schema<IPushSubscription>(
@@ -24,15 +28,19 @@ const pushSubscriptionSchema = new Schema<IPushSubscription>(
     deviceId:    { type: String, required: true },
     accountType: { type: String },
     zone:        { type: String, enum: ['adult', 'dating', 'both'], default: 'adult' },
-    endpoint:    { type: String, required: true },
+    endpoint:    { type: String },
     keys: {
-      p256dh: { type: String, required: true },
-      auth:   { type: String, required: true },
+      p256dh: { type: String },
+      auth:   { type: String },
     },
     platform:    { type: String },
     isStandalone:{ type: Boolean },
     lastUsed:    { type: Date },
     failCount:   { type: Number, default: 0 },
+    notificationsEnabled: { type: Boolean, default: false },
+    lastSeenAt:   { type: Date, default: Date.now },
+    isActive:     { type: Boolean, default: true },
+    deactivatedAt:{ type: Date },
   },
   { timestamps: true }
 );

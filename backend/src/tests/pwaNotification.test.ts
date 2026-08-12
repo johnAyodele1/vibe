@@ -64,6 +64,8 @@ describe('PWA Push Notifications & Provider Retention Tests', () => {
   describe('Subscription endpoints', () => {
     it('POST /api/v1/adult/push/subscribe saves subscription to DB', async () => {
       const payload = {
+        deviceId: 'mock-device-id',
+        notificationPermission: 'granted',
         subscription: {
           endpoint: 'https://updates.push.com/mock-endpoint-123',
           keys: {
@@ -82,13 +84,15 @@ describe('PWA Push Notifications & Provider Retention Tests', () => {
       const sub = await PushSubscription.findOne({ userId });
       expect(sub).toBeDefined();
       expect(sub?.endpoint).toBe('https://updates.push.com/mock-endpoint-123');
-      expect(sub?.keys.p256dh).toBe('mock-p256dh');
-      expect(sub?.keys.auth).toBe('mock-auth');
+      expect(sub?.keys?.p256dh).toBe('mock-p256dh');
+      expect(sub?.keys?.auth).toBe('mock-auth');
       expect(sub?.accountType).toBe('member');
     });
 
     it('POST /api/v1/adult/push/subscribe upserts on same endpoint', async () => {
       const payload = {
+        deviceId: 'mock-device-id',
+        notificationPermission: 'granted',
         subscription: {
           endpoint: 'https://updates.push.com/mock-endpoint-123',
           keys: {
@@ -106,13 +110,14 @@ describe('PWA Push Notifications & Provider Retention Tests', () => {
 
       const subs = await PushSubscription.find({ userId });
       expect(subs.length).toBe(1);
-      expect(subs[0].keys.p256dh).toBe('updated-p256dh');
+      expect(subs[0].keys?.p256dh).toBe('updated-p256dh');
     });
 
-    it('DELETE /api/v1/adult/push/subscribe removes all user subscriptions', async () => {
+    it('DELETE /api/v1/adult/push/subscribe removes user subscription for device', async () => {
       await request(app)
         .delete('/api/v1/adult/push/subscribe')
         .set('Authorization', `Bearer ${userToken}`)
+        .send({ deviceId: 'mock-device-id' })
         .expect(200);
 
       const subs = await PushSubscription.find({ userId });

@@ -29,7 +29,7 @@ export const ensureVapidKeys = async () => {
     const defaultSubject = process.env.VAPID_SUBJECT || 'mailto:admin@vibe.com';
     let dbKey = await VapidKey.findOne();
 
-    if (!dbKey) {
+    if (!dbKey || !dbKey.publicKey) {
       console.log('[Push] No VAPID keys found in DB or environment. Generating new ones...');
       const generated = webpush.generateVAPIDKeys();
       dbKey = new VapidKey({
@@ -70,10 +70,16 @@ export const sendPushToUser = async (userId: any, payload: any, zone = 'adult') 
     console.error('[Push] VAPID initialization failed in sendPushToUser:', err.message);
   }
 
-  const subscriptions = await PushSubscription.find({ userId });
+  // SPEC: Find ALL active, enabled registrations for the user
+  const subscriptions = await PushSubscription.find({
+    userId,
+    isActive: true,
+    notificationsEnabled: true,
+    endpoint: { $exists: true, $ne: null }
+  });
 
   if (!subscriptions.length) {
-    console.log('[Push] No subscriptions found for user — notification not delivered:', {
+    console.log('[Push] No active subscriptions found for user — notification not delivered:', {
       userId,
       payloadType: payload.type,
       hint: 'User may not have granted push permission, or has not added app to home screen',
@@ -81,12 +87,15 @@ export const sendPushToUser = async (userId: any, payload: any, zone = 'adult') 
     return { sent: 0, failed: 0, reason: 'no_subscriptions' };
   }
 
-  console.log('[Push] Found subscriptions:', { userId, count: subscriptions.length });
+  console.log('[Push] Found active subscriptions:', { userId, count: subscriptions.length });
 
   const payloadStr = JSON.stringify(payload);
   let sent = 0, failed = 0;
 
   for (const sub of subscriptions) {
+    if (!sub.endpoint || !sub.keys?.p256dh || !sub.keys?.auth) {
+      continue;
+    }
     try {
       console.log('[Push] Attempting to send to endpoint:', sub.endpoint.slice(0, 60) + '...');
       const result = await webpush.sendNotification(
@@ -108,11 +117,21 @@ export const sendPushToUser = async (userId: any, payload: any, zone = 'adult') 
         endpoint:   sub.endpoint.slice(0, 60) + '...',
       });
 
-      // Update lastUsed
-      await PushSubscription.updateOne({ _id: sub._id }, { $set: { lastUsed: new Date() } });
+      // Update lastUsed / lastSeenAt / reset failCount
+      await PushSubscription.updateOne(
+        { _id: sub._id },
+        {
+          $set: {
+            lastUsed: new Date(),
+            lastSeenAt: new Date(),
+            failCount: 0,
+          }
+        }
+      );
       sent++;
 
     } catch (err: any) {
+      console.error('[Push] FAILED to deliver error message:', err.message, err.stack);
       console.error('[Push] FAILED to deliver:', {
         userId,
         type:       payload.type,
@@ -123,9 +142,36 @@ export const sendPushToUser = async (userId: any, payload: any, zone = 'adult') 
       });
       failed++;
 
+      // SPEC: Mark invalid/expired push tokens as inactive
       if (err.statusCode === 410 || err.statusCode === 404 || err.statusCode === 403) {
-        await PushSubscription.deleteOne({ _id: sub._id });
-        console.log('[Push] Removed dead or mismatched subscription:', { userId, subId: sub._id });
+        await PushSubscription.updateOne(
+          { _id: sub._id },
+          {
+            $set: {
+              isActive: false,
+              notificationsEnabled: false,
+              deactivatedAt: new Date(),
+            }
+          }
+        );
+        console.log('[Push] Deactivated dead/expired subscription:', { userId, subId: sub._id });
+      } else {
+        // Temporary failure — increment failCount
+        const currentFailCount = (sub.failCount || 0) + 1;
+        const updateFields: any = {
+          failCount: currentFailCount,
+          lastFailedAt: new Date(),
+        };
+
+        // If 5 consecutive failures, deactivate the device
+        if (currentFailCount >= 5) {
+          updateFields.isActive = false;
+          updateFields.notificationsEnabled = false;
+          updateFields.deactivatedAt = new Date();
+          console.warn('[Push] Deactivating device after 5 consecutive failures:', { userId, subId: sub._id });
+        }
+
+        await PushSubscription.updateOne({ _id: sub._id }, { $set: updateFields });
       }
     }
   }
