@@ -6,7 +6,7 @@ interface MockPWAState {
   isInstallable: boolean;
   isStandalone: boolean;
   isIOS: boolean;
-  installApp: () => Promise<boolean>;
+  installApp: () => Promise<{ status: 'accepted' | 'dismissed' | 'unavailable' | 'error' }>;
   notificationPermission: string;
   requestNotificationPermission: () => void;
 }
@@ -16,7 +16,7 @@ const mockPwaState: MockPWAState = {
   isInstallable: false,
   isStandalone: false,
   isIOS: false,
-  installApp: vi.fn().mockImplementation(() => Promise.resolve(mockPwaState.isInstallable)),
+  installApp: vi.fn().mockImplementation(() => Promise.resolve({ status: 'accepted' as const })),
   notificationPermission: 'default',
   requestNotificationPermission: vi.fn(),
 };
@@ -148,7 +148,7 @@ describe('PWA Installation Flow', () => {
     expect(mockPwaState.installApp).toHaveBeenCalled();
   });
 
-  it('shows manual Chrome installation instructions on Android if isInstallable is false', async () => {
+  it('does not show native install CTA on Android merely because of Android agent (requires isInstallable)', () => {
     mockUserAgent('Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Mobile Safari/537.36');
     mockPwaState.isInstallable = false;
 
@@ -158,25 +158,8 @@ describe('PWA Installation Flow', () => {
       vi.advanceTimersByTime(2000);
     });
 
-    // Floating banner shows up
-    expect(screen.getByTestId('pwa-install-cta')).toBeInTheDocument();
-
-    // Click Install
-    const installBtn = screen.getByText('Install');
-    await act(async () => {
-      fireEvent.click(installBtn);
-    });
-
-    // Floating banner is hidden or instructions are displayed
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByText('Add Zippo to your Home Screen')).toBeInTheDocument();
-    expect(screen.getByText(/Tap the menu icon/)).toBeInTheDocument();
-
-    // Click 'Got it' to dismiss
-    const gotItBtn = screen.getByText('Got it');
-    fireEvent.click(gotItBtn);
-
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    // Should NOT show CTA banner because isInstallable is false
+    expect(screen.queryByTestId('pwa-install-cta')).not.toBeInTheDocument();
   });
 
   it('shows detailed Safari Add to Home Screen instructions on iOS/Safari platform', async () => {

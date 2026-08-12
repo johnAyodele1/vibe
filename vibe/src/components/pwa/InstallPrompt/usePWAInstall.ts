@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { usePWA } from '../../../contexts/PWAContext';
 import { usePWAPromptStore } from '../../../store/pwaPromptStore';
-import { toast } from 'sonner';
 
 export type InstallPlatform = 'ios' | 'android' | 'desktop' | 'unsupported';
 
@@ -79,23 +78,12 @@ export const usePWAInstall = () => {
       setShowInstructions(true);
     } else if (platform === 'android') {
       try {
-        const nativePromptTriggered = await installApp();
-        if (nativePromptTriggered) {
-          // The browser's native install prompt runs.
-          // PWAContext sets isStandalone upon completion, which auto-updates.
-          // But if user cancelled/dismissed, let's apply temporary cooldown so we don't harass them.
-          setTimeout(() => {
-            const isNowStandalone =
-              window.matchMedia('(display-mode: standalone)').matches ||
-              (navigator as any).standalone;
-            if (!isNowStandalone) {
-              // User cancelled/dismissed native prompt, apply 3 day cooldown
-              dismissTemporary();
-            }
-          }, 1000);
-        } else {
-          // If native prompt is not ready yet because Chrome is still preparing, we show a nice toast!
-          toast.info('Installation is preparing. Please tap Install again in a moment!', { duration: 3000 });
+        const result = await installApp();
+        if (result.status === 'accepted') {
+          // Success! State is fully updated by PWAContext's appinstalled event
+        } else if (result.status === 'dismissed') {
+          // User dismissed native prompt, apply temporary cooldown so we don't harass them.
+          dismissTemporary();
         }
       } catch (err) {
         console.error('PWA install error:', err);
@@ -103,14 +91,15 @@ export const usePWAInstall = () => {
     }
   };
 
-  // Keep the prompt showing on the home page whenever the user navigates there
+  // Android MUST only show CTA if isInstallable is true (meaning native prompt is ready and cached)
+  // Objective 6: platform === 'android' && isInstallable
   const shouldShowCTA =
     showInstallPrompt &&
     !isStandalone &&
     !isDismissed &&
     isMobile &&
     delayElapsed &&
-    (platform === 'ios' || platform === 'android');
+    (platform === 'ios' || (platform === 'android' && isInstallable));
 
   return {
     platform,
