@@ -1447,15 +1447,23 @@ export const sendMessage = async (req: Request, res: Response) => {
 
         const senderName = user.providerProfile?.stageName || user.displayName || 'Someone';
 
+        const getMessagePreview = (t: string, c: string) => {
+          switch (t) {
+            case 'text':       return c?.slice(0, 100) || 'Sent a message';
+            case 'image':      return '📸 Sent you a photo';
+            case 'video':      return '🎥 Sent you a video';
+            case 'voice_note':
+            case 'voice':      return '🎤 Sent a voice message';
+            default:           return 'Sent you a message';
+          }
+        };
+
         const pushPayload = {
-          title: `New message from ${senderName}`,
-          body: type === 'text'
-            ? content.slice(0, 80)
-            : type === 'voice_note' || type === 'voice'
-            ? '🎤 Sent you a voice message'
-            : '📸 Sent you a photo',
+          title: `💬 ${senderName}`,
+          body: getMessagePreview(type, content),
           icon: user.profilePhoto || '',
-          tag: `msg_${conversationId}`,
+          tag: `conv_${conversationId}`,
+          renotify: true,
           url: `/adult/sext?conversation=${conversationId}`,
           unreadCount,
           type: 'new_message',

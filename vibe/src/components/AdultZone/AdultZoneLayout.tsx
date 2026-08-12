@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom';
 import { Avatar } from './Avatar';
 import { io } from 'socket.io-client';
@@ -11,9 +11,16 @@ import { TipSheet } from './TipSheet';
 import { useUIStore } from './useUIStore';
 import { usePricingStore } from '../../lib/pricing';
 import { InstallPrompt } from '../pwa/InstallPrompt/InstallPrompt';
-import { registerServiceWorker, subscribeToPush, updateBadgeCount } from '../../lib/push/pushSubscription';
+import { updateBadgeCount } from '../../lib/push/pushSubscription';
 import { useUnreadStore } from '../../store/unreadStore';
 import NotificationPrompt from '../pwa/NotificationPrompt';
+import { getInstallContext } from '../../lib/pwa/context';
+import { usePWAPromptStore, NOTIF_KEYS } from '../../store/pwaPromptStore';
+import { runPushSelfTest } from '../../lib/pwa/pushSelfTest';
+import { NotifSettingsDialog } from '../pwa/NotifSettingsDialog';
+import { syncPushSubscription } from '../../lib/pwa/subscriptionSync';
+import { removePushSubscriptionOnLogout } from '../../lib/pwa/pushSubscriptionLogout';
+import { tryWelcomeBack } from '../../lib/pwa/welcomeBack';
 
 const NavBadge: React.FC = () => {
   const totalUnread = useUnreadStore(s => s.totalUnread);
@@ -46,6 +53,90 @@ const AdultZoneLayout: React.FC = () => {
   const [authModalRole, setAuthModalRole] = useState<'user' | 'provider'>('user');
   const { isAuthenticated, logout, user, loading } = useAdultAuth();
   const { setUnread, increment } = useUnreadStore();
+
+  // Centralized PWA and Notification Prompts sequencing
+  const {
+    showInstallPrompt,
+    showNotifPrompt,
+    setShowInstallPrompt,
+    setShowNotifPrompt,
+    shouldShowInstallPrompt,
+    shouldShowNotifPrompt,
+    recordInstallPromptShown,
+  } = usePWAPromptStore();
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const ctx = getInstallContext();
+
+    if (!ctx.isStandalone) {
+      // Not installed as PWA
+      if (shouldShowInstallPrompt()) {
+        setShowInstallPrompt(true);
+        recordInstallPromptShown();
+      }
+      // Do not show notif prompt when not in standalone
+      // (see Fix 3 — web context redirects to install first)
+      return;
+    }
+
+    // IS standalone PWA — show notif prompt if needed
+    if (ctx.pushSupportedOnThisDevice && shouldShowNotifPrompt()) {
+      // Delay slightly so page loads first
+      const t = setTimeout(() => {
+        setShowNotifPrompt(true);
+        sessionStorage.setItem(NOTIF_KEYS.shownThisSession, '1');
+        localStorage.setItem(NOTIF_KEYS.lastShownAt, String(Date.now()));
+      }, 3000);
+      return () => clearTimeout(t);
+    }
+  }, [user?.id, showInstallPrompt, showNotifPrompt]);
+
+  // Auto-test trigger in root layout (PWA standalone only)
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const ctx = getInstallContext();
+    if (!ctx.isStandalone) return;    // only for PWA
+
+    // Run after a short delay so app UI loads first
+    const t = setTimeout(() => {
+      runPushSelfTest(user.id);
+    }, 4000);
+
+    return () => clearTimeout(t);
+  }, [user?.id]);
+
+  const lastActiveRef = useRef<number>(Date.now());
+  const AWAY_THRESHOLD = 5 * 60 * 1000;  // 5 minutes = "came back"
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        // Record when user left
+        lastActiveRef.current = Date.now();
+        console.log('[Visibility] App hidden at:', new Date().toISOString());
+        return;
+      }
+
+      if (document.visibilityState === 'visible') {
+        const awayDuration = Date.now() - lastActiveRef.current;
+        console.log('[Visibility] App visible — was away for:', Math.round(awayDuration / 1000), 'seconds');
+
+        // Only treat as "welcome back" if away for more than 5 minutes
+        if (awayDuration > AWAY_THRESHOLD) {
+          console.log('[Visibility] Away long enough — running welcome back');
+          tryWelcomeBack(user.id);
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [user?.id]);
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/v1/adult/config/diamond-rate`)
@@ -206,17 +297,10 @@ const AdultZoneLayout: React.FC = () => {
     if (!isAuthenticated || !userId) return;
 
     const setupPush = async () => {
-      const registration = await registerServiceWorker();
-      if (!registration) return;
-
-      console.log('[App] SW registered silently on login');
-
-      // If permission is already granted, silently subscribe/re-register
-      if (Notification.permission === 'granted') {
-        subscribeToPush(registration, userId).catch(err => {
-          console.error('[App] Silent re-subscribe failed:', err.message || err);
-        });
-      }
+      console.log('[App] Syncing push subscription silently on login/load');
+      syncPushSubscription(userId).catch((err) => {
+        console.error('[App] Push sync failed (non-fatal):', err.message);
+      });
 
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.addEventListener('message', (event) => {
@@ -278,13 +362,24 @@ const AdultZoneLayout: React.FC = () => {
   ];
 
   return (
-    <div className={`bg-[var(--az-bg-primary)] text-[var(--az-text-primary)] font-sans az-grain flex flex-col ${
-      hideGlobalHeader ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'
-    }`}>
+    <div
+      className={`bg-[var(--az-bg-primary)] text-[var(--az-text-primary)] font-sans az-grain flex flex-col ${
+        hideGlobalHeader ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'
+      }`}
+      style={{
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+      }}
+    >
       {/* Top Navigation */}
-      <nav data-testid="global-header" className={`sticky top-0 z-50 az-glass border-b border-[var(--az-border)] px-4 py-3 md:px-8 ${
-        hideGlobalHeader ? 'hidden md:block' : 'block'
-      }`}>
+      <nav
+        data-testid="global-header"
+        className={`sticky top-0 z-50 az-glass border-b border-[var(--az-border)] px-4 py-3 md:px-8 ${
+          hideGlobalHeader ? 'hidden md:block' : 'block'
+        }`}
+        style={{
+          paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))',
+        }}
+      >
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2 group">
             <div className="w-8 h-8 bg-[var(--az-accent-primary)] rounded flex items-center justify-center text-white font-bold text-lg shadow-[0_0_10px_var(--az-glow)] group-hover:scale-110 transition-transform">
@@ -330,7 +425,16 @@ const AdultZoneLayout: React.FC = () => {
                   <Link to="/wallet" className="w-8 h-8 rounded-full bg-[var(--az-bg-secondary)] border border-[var(--az-border)] flex items-center justify-center overflow-hidden hover:scale-110 active:scale-95 transition-transform" title="Wallet">
                     <span className="text-base select-none">💎</span>
                   </Link>
-                  <button onClick={logout} className="text-xs text-[var(--az-text-muted)] hover:text-white uppercase font-bold">Logout</button>
+                  <button
+                    onClick={async () => {
+                      console.log('[Auth] Logging out...');
+                      await removePushSubscriptionOnLogout();
+                      logout();
+                    }}
+                    className="text-xs text-[var(--az-text-muted)] hover:text-white uppercase font-bold"
+                  >
+                    Logout
+                  </button>
                 </div>
               </>
             ) : (
@@ -362,6 +466,8 @@ const AdultZoneLayout: React.FC = () => {
       <InstallPrompt />
 
       {user?.id && <NotificationPrompt userId={user.id} />}
+
+      {user?.id && <NotifSettingsDialog userId={user.id} />}
 
       {incomingCall && (
         <div className="fixed inset-0 bg-black/90 z-[11000] flex flex-col items-center justify-center p-8 text-white">

@@ -54,6 +54,30 @@ export const sendTestPush = async (req: Request, res: Response) => {
     }
 
     const results = [];
+    const isReopen = req.body?.isReopen === true;
+
+    const payload = isReopen ? {
+      title:       '👋 Welcome back to Zippo',
+      body:        'You\'re all set — notifications are working.',
+      icon:        '/icons/icon-192x192.png',
+      badge:       '/icons/badge-72x72.png',
+      tag:         'welcome-back',
+      renotify:    false,     // don't re-alert if they already saw the welcome
+      silent:      false,
+      url:         '/adult',
+      unreadCount: 0,
+      type:        'test',
+    } : {
+      title:       '✅ Test Notification',
+      body:        'Push notifications are working on this device!',
+      icon:        '/icons/icon-192x192.png',
+      badge:       '/icons/badge-72x72.png',
+      tag:         'notif-test',
+      renotify:    true,
+      url:         '/adult',
+      unreadCount: 0,
+      type:        'test',
+    };
 
     for (const sub of subscriptions) {
       try {
@@ -61,16 +85,7 @@ export const sendTestPush = async (req: Request, res: Response) => {
 
         await webpush.sendNotification(
           { endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth } },
-          JSON.stringify({
-            title:       '✅ Push Test — Zippo',
-            body:        'Push notifications are working! You will now receive message alerts.',
-            icon:        '/icons/icon-192x192.png',
-            badge:       '/icons/badge-72x72.png',
-            tag:         'push-test',
-            url:         '/adult',
-            unreadCount: 0,
-            type:        'test',
-          })
+          JSON.stringify(payload)
         );
 
         console.log('[Push][Test] SUCCESS for endpoint:', sub.endpoint.slice(0, 60));
@@ -114,56 +129,79 @@ export const savePushSubscription = async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: 'Auth required' });
     }
 
-    const { subscription } = req.body;
+    const { subscription, deviceId, platform, isStandalone } = req.body;
     const userId = user._id;
     const accountType = user.role === 'provider' ? 'service_provider' : 'member';
 
-    // Log everything about the incoming subscription
-    console.log('[Push][Subscribe] Incoming subscription:', {
+    console.log('[Push][Subscribe] Sync request:', {
       userId,
-      endpoint:    subscription?.endpoint?.slice(0, 80) + '...',
-      hasP256dh:   !!subscription?.keys?.p256dh,
-      hasAuth:     !!subscription?.keys?.auth,
-      p256dhLen:   subscription?.keys?.p256dh?.length,
-      authLen:     subscription?.keys?.auth?.length,
-      bodyKeys:    Object.keys(subscription || {}),
+      deviceId,
+      platform,
+      isStandalone,
+      endpoint: subscription?.endpoint?.slice(0, 60) + '...',
     });
 
+    // Validate
     if (!subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) {
-      console.error('[Push][Subscribe] INVALID subscription — missing fields:', {
-        hasEndpoint: !!subscription?.endpoint,
-        hasP256dh:   !!subscription?.keys?.p256dh,
-        hasAuth:     !!subscription?.keys?.auth,
-      });
-      return res.status(400).json({ success: false, error: 'Invalid subscription object' });
+      console.error('[Push][Subscribe] Invalid subscription object');
+      return res.status(400).json({ error: 'Invalid subscription' });
     }
 
+    if (!deviceId) {
+      console.warn('[Push][Subscribe] No deviceId provided');
+      return res.status(400).json({ error: 'deviceId required' });
+    }
+
+    // Check if this device previously had a subscription for a DIFFERENT user
+    const existingForDevice = await PushSubscription.findOne({ deviceId });
+
+    let replaced = false;
+    if (existingForDevice && existingForDevice.userId.toString() !== userId.toString()) {
+      // Different user was subscribed on this device — remove their subscription
+      console.log('[Push][Subscribe] Removing old user subscription from this device:', {
+        oldUserId: existingForDevice.userId,
+        newUserId: userId,
+        deviceId,
+      });
+      await PushSubscription.deleteOne({ deviceId });
+      replaced = true;
+    }
+
+    // Upsert subscription for current user + device
+    const existing = await PushSubscription.findOne({ userId, deviceId });
+    const isNew = !existing;
+
     const saved = await PushSubscription.findOneAndUpdate(
-      { userId, endpoint: subscription.endpoint },
+      { userId, deviceId },
       {
         $set: {
           userId,
+          deviceId,
           accountType,
-          endpoint:    subscription.endpoint,
-          keys: {
+          endpoint:     subscription.endpoint,
+          keys:         {
             p256dh: subscription.keys.p256dh,
             auth:   subscription.keys.auth,
           },
-          updatedAt: new Date(),
+          platform:     platform || 'unknown',
+          isStandalone: isStandalone || false,
+          updatedAt:    new Date(),
+          failCount:    0,   // reset fail count on successful sync
         },
         $setOnInsert: { createdAt: new Date() },
       },
       { upsert: true, new: true }
     );
 
-    console.log('[Push][Subscribe] Saved to DB:', {
+    console.log('[Push][Subscribe] Saved:', {
       userId,
-      docId:       saved._id,
-      accountType: saved.accountType,
-      endpoint:    saved.endpoint.slice(0, 80) + '...',
+      deviceId,
+      isNew,
+      replaced,
+      docId: saved._id,
     });
 
-    return res.json({ success: true, subId: saved._id });
+    return res.json({ success: true, isNew, replaced, subId: saved._id });
   } catch (error: any) {
     console.error('[Push][Subscribe] DB save failed:', error.message);
     return res.status(500).json({ success: false, error: error.message });
@@ -177,8 +215,25 @@ export const removePushSubscription = async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: 'Auth required' });
     }
 
+    const { deviceId } = req.body;
     const userId = user._id;
-    await PushSubscription.deleteMany({ userId });
+
+    console.log('[Push][Unsubscribe]', { userId, deviceId });
+
+    if (deviceId) {
+      const result = await PushSubscription.deleteOne({ userId, deviceId });
+      console.log('[Push][Unsubscribe] Removed by deviceId:', {
+        deviceId,
+        deleted: result.deletedCount,
+      });
+    } else {
+      // Fallback: remove all subscriptions for this user
+      const result = await PushSubscription.deleteMany({ userId });
+      console.log('[Push][Unsubscribe] Removed all for user:', {
+        userId,
+        deleted: result.deletedCount,
+      });
+    }
 
     return res.json({ success: true });
   } catch (error: any) {
