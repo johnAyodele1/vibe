@@ -47,6 +47,7 @@ const pushSubscriptionSchema = new Schema<IPushSubscription>(
 
 // Compound index: one subscription per device per user
 pushSubscriptionSchema.index({ userId: 1, deviceId: 1 }, { unique: true });
+pushSubscriptionSchema.index({ userId: 1, isActive: 1 });
 pushSubscriptionSchema.index({ endpoint: 1 });
 pushSubscriptionSchema.index({ deviceId: 1 }); // for logout cleanup
 

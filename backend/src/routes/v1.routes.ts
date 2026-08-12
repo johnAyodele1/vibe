@@ -83,7 +83,10 @@ import {
   getVapidPublicKey,
   sendTestPush,
   getCurrentDevice,
-  updatePushToken
+  updatePushToken,
+  registerDevice,
+  removeDevice,
+  diagnosePush
 } from '../controllers/adultPush.controller';
 import { getUserTasks, completeTask, dailyCheckin } from '../controllers/adultRewards.controller';
 import {
@@ -108,6 +111,14 @@ router.delete('/adult/push/subscribe', verifyAdultJWT, removePushSubscription);
 router.get('/adult/push/current', verifyAdultJWT, getCurrentDevice);
 router.patch('/adult/push/token', verifyAdultJWT, updatePushToken);
 router.post('/adult/push/test', verifyAdultJWT, sendTestPush);
+
+// Spec Device Registration routes
+router.post('/adult/devices/register', verifyAdultJWT, registerDevice);
+router.delete('/adult/devices/current', verifyAdultJWT, removeDevice);
+router.get('/adult/devices/current', verifyAdultJWT, getCurrentDevice);
+
+// Spec Push Diagnostic route
+router.get('/adult/push/diagnose', verifyAdultJWT, diagnosePush);
 
 // Zego Token Route
 router.get('/adult/zego/token', verifyAdultJWT, getZegoToken);

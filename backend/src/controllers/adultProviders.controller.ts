@@ -4,8 +4,10 @@ import AdultUser from '../models/AdultUser';
 import { sendAdminNotification } from '../services/emailService';
 import Redis from 'ioredis';
 import CreditTransaction from '../models/CreditTransaction';
+import { sendPushToUser } from '../shared/push';
 
 let redisClient: Redis | null = null;
+const memoryProfileViews = new Map<string, number>();
 if (process.env.REDIS_URL || process.env.REDIS_HOST) {
   try {
     redisClient = new Redis(process.env.REDIS_URL || '');
@@ -35,6 +37,54 @@ export const getProviderPublicProfile = async (req: Request, res: Response) => {
 
     if (!provider) {
       return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Provider not found' } });
+    }
+
+    // Profile view tracking and rate-limited push trigger
+    const viewerId = req.adultUser?._id;
+    if (viewerId && viewerId.toString() !== providerId) {
+      const viewKey = `profile_view:${providerId}:${viewerId.toString()}`;
+      let alreadyNotified = false;
+
+      if (redisClient) {
+        try {
+          alreadyNotified = (await redisClient.exists(viewKey)) === 1;
+        } catch (err) {
+          console.error('Redis exists profile_view error:', err);
+        }
+      } else {
+        const lastNotified = memoryProfileViews.get(viewKey);
+        if (lastNotified && Date.now() - lastNotified < 3600000) {
+          alreadyNotified = true;
+        }
+      }
+
+      if (!alreadyNotified) {
+        if (redisClient) {
+          try {
+            await redisClient.setex(viewKey, 3600, '1');
+          } catch (err) {
+            console.error('Redis setex profile_view error:', err);
+          }
+        } else {
+          memoryProfileViews.set(viewKey, Date.now());
+        }
+
+        // Send push notification to provider
+        const viewer = await AdultUser.findById(viewerId);
+        if (viewer) {
+          sendPushToUser(providerId, {
+            title:    `👀 ${viewer.displayName || viewer.username || 'Someone'} viewed your profile`,
+            body:     'Check who stopped by',
+            icon:     viewer.profilePhoto || '/icons/icon-192x192.png',
+            badge:    '/icons/badge-72x72.png',
+            tag:      `profile_view_${providerId}`,
+            renotify: false,
+            url:      '/adult/provider/dashboard',
+            unreadCount: 0,
+            type:     'profile_view',
+          }).catch(err => console.error('[Push][View] Failed:', err));
+        }
+      }
     }
 
     const date = new Date(provider.createdAt);

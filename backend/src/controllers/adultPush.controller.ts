@@ -25,6 +25,49 @@ export const getVapidPublicKey = async (req: Request, res: Response) => {
   }
 };
 
+export const diagnosePush = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const userId = user._id;
+    const deviceId = req.query.deviceId as string;
+
+    const allDevices = await PushSubscription.find({ userId });
+    const thisDevice = allDevices.find(d => d.deviceId === deviceId);
+
+    const diagnosis = {
+      userId,
+      deviceId,
+      allDevicesCount:        allDevices.length,
+      activeDevicesCount:     allDevices.filter(d => d.isActive).length,
+      thisDevice: thisDevice ? {
+        exists:               true,
+        isActive:             thisDevice.isActive,
+        hasEndpoint:          !!thisDevice.endpoint,
+        notificationsEnabled: thisDevice.notificationsEnabled,
+        platform:             thisDevice.platform,
+        failCount:            thisDevice.failCount,
+        lastSeenAt:           thisDevice.lastSeenAt,
+      } : {
+        exists: false,
+        hint:   'Call POST /adult/devices/register to create it',
+      },
+      vapidConfigured: !!((process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) || (await VapidKey.findOne())),
+      vapidKeyPrefix:  process.env.VAPID_PUBLIC_KEY?.slice(0, 20) + '...',
+      envFrontendKey:  '(check NEXT_PUBLIC_VAPID_PUBLIC_KEY in frontend .env)',
+    };
+
+    console.log('[Diagnose]', diagnosis);
+    return res.json(diagnosis);
+  } catch (error: any) {
+    console.error('[Diagnose] Error:', error.message);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 export const sendTestPush = async (req: Request, res: Response) => {
   try {
     const user = req.adultUser;
@@ -125,7 +168,7 @@ export const sendTestPush = async (req: Request, res: Response) => {
   }
 };
 
-export const savePushSubscription = async (req: Request, res: Response) => {
+export const registerDevice = async (req: Request, res: Response) => {
   try {
     const user = req.adultUser;
     if (!user) {
@@ -136,7 +179,7 @@ export const savePushSubscription = async (req: Request, res: Response) => {
     const userId = user._id;
     const accountType = user.role === 'provider' ? 'service_provider' : 'member';
 
-    console.log('[Push][Subscribe] Sync request:', {
+    console.log('[Device] Register:', {
       userId,
       deviceId,
       platform,
@@ -146,32 +189,25 @@ export const savePushSubscription = async (req: Request, res: Response) => {
     });
 
     if (!deviceId) {
-      console.warn('[Push][Subscribe] No deviceId provided');
       return res.status(400).json({ error: 'deviceId required' });
     }
 
-    // Check if this device previously had a subscription/registration for a DIFFERENT user
+    // Reassign device if it belonged to a different user
     const existingForDevice = await PushSubscription.findOne({ deviceId });
-
     let replaced = false;
     if (existingForDevice && existingForDevice.userId.toString() !== userId.toString()) {
-      // Different user was registered on this device — remove their registration
-      console.log('[Push][Subscribe] Removing old user subscription from this device:', {
-        oldUserId: existingForDevice.userId,
-        newUserId: userId,
-        deviceId,
-      });
       await PushSubscription.deleteOne({ deviceId });
+      console.log('[Device] Reassigned from user:', existingForDevice.userId, 'to:', userId);
       replaced = true;
     }
 
-    // Prepare fields to update
-    const updateFields: any = {
+    const update: any = {
       userId,
       deviceId,
       accountType,
       platform: platform || 'unknown',
-      isStandalone: isStandalone || false,
+      isStandalone: !!isStandalone,
+      notificationPermission: notificationPermission || 'unknown',
       notificationsEnabled: notificationPermission === 'granted' && !!subscription?.endpoint,
       isActive: true,
       failCount: 0,
@@ -180,8 +216,8 @@ export const savePushSubscription = async (req: Request, res: Response) => {
     };
 
     if (subscription?.endpoint) {
-      updateFields.endpoint = subscription.endpoint;
-      updateFields.keys = {
+      update.endpoint = subscription.endpoint;
+      update.keys = {
         p256dh: subscription.keys?.p256dh || '',
         auth: subscription.keys?.auth || '',
       };
@@ -190,35 +226,56 @@ export const savePushSubscription = async (req: Request, res: Response) => {
     const existing = await PushSubscription.findOne({ userId, deviceId });
     const isNew = !existing;
 
-    const saved = await PushSubscription.findOneAndUpdate(
+    const device = await PushSubscription.findOneAndUpdate(
       { userId, deviceId },
       {
-        $set: updateFields,
+        $set: update,
         $setOnInsert: { createdAt: new Date() },
       },
       { upsert: true, new: true }
     );
 
-    console.log('[Push][Subscribe] Saved:', {
-      userId,
-      deviceId,
-      isNew,
-      replaced,
-      docId: saved._id,
-    });
-
     return res.json({
       success: true,
       isNew,
       replaced,
-      subId: saved._id,
-      notificationsEnabled: saved.notificationsEnabled
+      subId: device._id,
+      deviceId: device._id,
+      notificationsEnabled: device.notificationsEnabled
     });
   } catch (error: any) {
-    console.error('[Push][Subscribe] DB save failed:', error.message);
+    console.error('[Device] Register error:', error.message);
     return res.status(500).json({ success: false, error: error.message });
   }
 };
+
+export const savePushSubscription = registerDevice;
+
+export const removeDevice = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const userId = user._id;
+    const { deviceId } = req.body;
+
+    if (!deviceId) {
+      return res.status(400).json({ error: 'deviceId required' });
+    }
+
+    // SPEC requirement — always include deviceId in WHERE clause
+    const result = await PushSubscription.deleteOne({ userId, deviceId });
+    console.log('[Device] Removed device on logout:', { userId, deviceId, deleted: result.deletedCount });
+    return res.json({ success: true, deleted: result.deletedCount });
+  } catch (error: any) {
+    console.error('[Device] Remove device error:', error.message);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const removePushSubscription = removeDevice;
 
 export const getCurrentDevice = async (req: Request, res: Response) => {
   try {
@@ -295,35 +352,6 @@ export const updatePushToken = async (req: Request, res: Response) => {
     return res.json({ success: true });
   } catch (error: any) {
     console.error('[Device] Token update error:', error.message);
-    return res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-export const removePushSubscription = async (req: Request, res: Response) => {
-  try {
-    const user = req.adultUser;
-    if (!user) {
-      return res.status(401).json({ success: false, error: 'Auth required' });
-    }
-
-    const { deviceId } = req.body;
-    const userId = user._id;
-
-    console.log('[Push][Unsubscribe]', { userId, deviceId });
-
-    if (!deviceId) {
-      return res.status(400).json({ error: 'deviceId required' });
-    }
-
-    const result = await PushSubscription.deleteOne({ userId, deviceId });
-    console.log('[Push][Unsubscribe] Removed by deviceId:', {
-      deviceId,
-      deleted: result.deletedCount,
-    });
-
-    return res.json({ success: true, deleted: result.deletedCount });
-  } catch (error: any) {
-    console.error('[Push] removePushSubscription error:', error);
     return res.status(500).json({ success: false, error: error.message });
   }
 };
