@@ -3,8 +3,6 @@ import { API_BASE_URL } from '../../config';
 import { getInstallContext } from './context';
 import { getOrCreateDeviceId, clearDeviceId } from './deviceId';
 
-const DEVICE_ID_KEY = 'zippo_device_id';
-
 const urlBase64ToUint8Array = (base64String: string): Uint8Array => {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
   const base64  = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
