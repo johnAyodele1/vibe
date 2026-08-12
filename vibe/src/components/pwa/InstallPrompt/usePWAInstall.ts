@@ -77,9 +77,9 @@ export const usePWAInstall = () => {
     if (platform === 'ios') {
       setShowInstructions(true);
     } else if (platform === 'android') {
-      if (isInstallable) {
-        try {
-          await installApp();
+      try {
+        const nativePromptTriggered = await installApp();
+        if (nativePromptTriggered) {
           // The browser's native install prompt runs.
           // PWAContext sets isStandalone upon completion, which auto-updates.
           // But if user cancelled/dismissed, let's apply temporary cooldown so we don't harass them.
@@ -93,11 +93,12 @@ export const usePWAInstall = () => {
               dismissTemporary();
             }
           }, 1000);
-        } catch (err) {
-          console.error('PWA install error:', err);
+        } else {
+          // Native install not available, show Android instructions instead!
+          setShowInstructions(true);
         }
-      } else {
-        // Show Android instructions!
+      } catch (err) {
+        console.error('PWA install error:', err);
         setShowInstructions(true);
       }
     }

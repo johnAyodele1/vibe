@@ -2,12 +2,21 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { InstallPrompt } from '../components/pwa/InstallPrompt/InstallPrompt';
 
+interface MockPWAState {
+  isInstallable: boolean;
+  isStandalone: boolean;
+  isIOS: boolean;
+  installApp: () => Promise<boolean>;
+  notificationPermission: string;
+  requestNotificationPermission: () => void;
+}
+
 // Mock the PWA Context
-const mockPwaState = {
+const mockPwaState: MockPWAState = {
   isInstallable: false,
   isStandalone: false,
   isIOS: false,
-  installApp: vi.fn().mockResolvedValue(undefined),
+  installApp: vi.fn().mockImplementation(() => Promise.resolve(mockPwaState.isInstallable)),
   notificationPermission: 'default',
   requestNotificationPermission: vi.fn(),
 };
