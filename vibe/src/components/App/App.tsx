@@ -41,6 +41,7 @@ import ProviderPayout from "../AdultZone/ProviderPayout";
 import { useAuth } from "../../contexts/AuthContext";
 import { useAdultAuth } from "../../contexts/AdultAuthContext";
 import { API_BASE_URL } from "../../config";
+import { getOrCreateDeviceId } from "../../lib/pwa/deviceId";
 import ScrollToTop from "./ScrollToTop";
 
 function App() {
@@ -93,6 +94,27 @@ function App() {
 
       if (event.data?.type === 'NAVIGATE' && event.data.url) {
         navigate(event.data.url);
+      }
+
+      if (event.data?.type === 'PUSH_SUBSCRIPTION_CHANGED') {
+        const token = localStorage.getItem('adultAccessToken') || localStorage.getItem('accessToken');
+        if (token) {
+          const deviceId = getOrCreateDeviceId();
+          fetch(`${API_BASE_URL}/v1/adult/push/token`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              deviceId,
+              subscription: event.data.subscription,
+            })
+          })
+            .then(res => res.json())
+            .then(data => console.log('[Push] Token refreshed after SW change:', data))
+            .catch(err => console.error('[Push] Token refresh failed:', err.message));
+        }
       }
     };
 

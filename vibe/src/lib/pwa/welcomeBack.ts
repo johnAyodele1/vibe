@@ -7,8 +7,19 @@ const WELCOME_KEYS = {
 };
 const WELCOME_INTERVAL_MS = 8 * 60 * 60 * 1000;  // 8 hours between welcomes
 
+let lastTestCallTime = 0;
+const MIN_TEST_INTERVAL_MS = 5000; // 5 seconds debounce
+
 export const tryWelcomeBack = async (_userId: string): Promise<void> => {
   const ctx = getInstallContext();
+
+  // Debounce check — 5s minimum between actual test calls to prevent spamming
+  const now = Date.now();
+  if (now - lastTestCallTime < MIN_TEST_INTERVAL_MS) {
+    console.log('[Welcome] Debounced — less than 5 seconds since last call');
+    return;
+  }
+  lastTestCallTime = now;
 
   // Only in standalone PWA
   if (!ctx.isStandalone) return;

@@ -99,7 +99,7 @@ export const sendNewMessageEmail = async ({
 
     const loginUrl = process.env.FRONTEND_ADULT_URL || `${process.env.FRONTEND_URL || 'http://localhost:3000'}`;
 
-    await sendEmail({
+    const result = await sendEmail({
       to: emailToUse,
       toName: providerName,
       subject: `💬 ${memberName} sent you a message on Zippo`,
@@ -111,11 +111,15 @@ export const sendNewMessageEmail = async ({
       })
     });
 
+    if (!result) {
+      throw new Error('Email sending failed via Brevo');
+    }
+
     // Set cooldown
     await setCache(EMAIL_COOLDOWN_KEY(providerId), COOLDOWN_SECONDS, '1');
 
-    console.log(`[Email] Sent new message notification to provider ${providerId}`);
+    console.log(`[Email] ✅ Sent new message notification to provider ${providerId}`);
   } catch (err: any) {
-    console.error(`[Email] Failed to send to provider ${providerId}:`, err.message);
+    console.error(`[Email] ❌ Failed to send to provider ${providerId}:`, err.message);
   }
 };
