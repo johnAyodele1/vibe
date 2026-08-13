@@ -1,427 +1,190 @@
 // vibe/public/sw.js
 
-// ── Firebase Cloud Messaging (FCM) Integration ───────────────────────
-importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js');
+const API_BASE_URL = self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1'
+  ? 'http://localhost:5000/api'
+  : 'https://zippo-r8hk.onrender.com/api';
 
-// Helper to get the correct API URL based on environment
-const getApiUrl = () => {
-  if (self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1') {
-    return 'http://localhost:5000/api';
-  }
-  return 'https://zippo-r8hk.onrender.com/api';
-};
+const SW_VERSION = 'zippo-v7';
+const CACHE_NAME = `${SW_VERSION}-static`;
+const PRECACHE_ASSETS = ['/', '/offline.html', '/manifest.json', '/favicon.svg'];
 
-const API_BASE_URL = getApiUrl();
+self.addEventListener('install', event => {
+  event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(PRECACHE_ASSETS).catch(err => console.warn('[SW] Precache failed:', err)).then(() => self.skipWaiting())));
+});
 
-const initFirebaseInSW = async () => {
-  try {
-    console.log('[SW] Fetching firebase config from:', `${API_BASE_URL}/config/firebase`);
-    const response = await fetch(`${API_BASE_URL}/config/firebase`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch firebase config: ${response.status} ${response.statusText}`);
-    }
-    const firebaseConfig = await response.json();
-    console.log('[SW] Initializing Firebase with config');
-    firebase.initializeApp(firebaseConfig);
-
-    const messaging = firebase.messaging();
-
-    messaging.onBackgroundMessage((payload) => {
-      console.log('[SW] Received background FCM message ', payload);
-
-      const title = payload.notification?.title || payload.data?.title || 'New Notification';
-      const body = payload.notification?.body || payload.data?.body || 'You have a new update';
-
-      const notificationOptions = {
-        body: body,
-        icon: '/favicon.svg',
-        badge: '/favicon.svg',
-        data: payload.data,
-        vibrate: [100, 50, 100],
-        tag: payload.data?.type || 'general',
-        renotify: true
-      };
-
-      return self.registration.showNotification(title, notificationOptions);
-    });
-  } catch (error) {
-    console.error('[SW] Error initializing Firebase in Service Worker:', error);
-  }
-};
-
-// Initialize FCM in background
-initFirebaseInSW();
-
-// ── Custom PWA / Web Push Cache versioning & update management ───────
-const SW_VERSION  = 'zippo-v6';      // INCREMENTED VERSION
-const CACHE_NAME  = `${SW_VERSION}-static`;
-
-// Assets to pre-cache on install
-const PRECACHE_ASSETS = [
-  '/',
-  '/offline.html',    // fallback page
-  '/manifest.json',
-  '/favicon.svg',
-];
-
-// ── Install: cache only essential assets ─────────────────────────────
-self.addEventListener('install', (event) => {
-  console.log('[SW] Installing version:', SW_VERSION);
-
+self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      console.log('[SW] Caching essential assets...');
-      return cache.addAll(PRECACHE_ASSETS)
-        .then(() => console.log('[SW] Assets cached successfully'))
-        .catch(err => console.error('[SW] Cache pre-fill failed:', err.message));
-    }).then(() => {
-      // CRITICAL: skip waiting so new SW takes over immediately
-      return self.skipWaiting();
-    })
+    caches.keys()
+      .then(names => Promise.all(names.filter(name => name !== CACHE_NAME).map(name => caches.delete(name))))
+      .then(() => self.clients.claim())
+      .then(() => self.clients.matchAll({ type: 'window' }))
+      .then(clients => clients.forEach(client => client.postMessage({ type: 'SW_UPDATED', version: SW_VERSION })))
   );
 });
 
-// ── Activate: delete old caches immediately ───────────────────────────
-self.addEventListener('activate', (event) => {
-  console.log('[SW] Activating version:', SW_VERSION);
-
-  event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames
-          .filter(name => name !== CACHE_NAME)
-          .map(name => {
-            console.log('[SW] Deleting old cache:', name);
-            return caches.delete(name);
-          })
-      );
-    }).then(() => {
-      console.log('[SW] Old caches cleared. Taking control of clients...');
-      return self.clients.claim();  // take control of all open pages NOW
-    }).then(() => {
-      // Tell all open clients to reload with the new version
-      return self.clients.matchAll({ type: 'window' }).then(clientsList => {
-        console.log('[SW] Notifying', clientsList.length, 'client(s) to reload');
-        clientsList.forEach(client => {
-          client.postMessage({ type: 'SW_UPDATED', version: SW_VERSION });
-        });
-      });
-    })
-  );
-});
-
-// ── Fetch: Network First strategy for app assets ──────────────────────
-// NEVER serve stale JS/CSS for the app — always try network first
-self.addEventListener('fetch', (event) => {
+self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
-
-  // Skip non-GET requests
   if (event.request.method !== 'GET') return;
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/socket.io/')) return;
 
-  // Skip API calls — always go to network
-  if (url.pathname.startsWith('/api/') || url.pathname.includes('/api/v1/')) return;
-
-  // Skip socket.io connections
-  if (url.pathname.startsWith('/socket.io/')) return;
-
-  // For app assets (JS/CSS/fonts): Network First, fall back to cache
-  if (
-    url.pathname.startsWith('/assets/') ||
-    url.pathname.endsWith('.js') ||
-    url.pathname.endsWith('.css') ||
-    url.pathname.endsWith('.woff2')
-  ) {
-    event.respondWith(
-      fetch(event.request)
-        .then(response => {
-          if (response.ok) {
-            const cloned = response.clone();
-            caches.open(CACHE_NAME).then(cache => cache.put(event.request, cloned));
-          }
-          return response;
-        })
-        .catch(() => {
-          console.log('[SW] Network failed for asset, trying cache:', url.pathname);
-          return caches.match(event.request);
-        })
-    );
+  if (url.pathname.startsWith('/assets/') || /\.(js|css|woff2)$/.test(url.pathname)) {
+    event.respondWith(fetch(event.request).then(response => {
+      if (response.ok) caches.open(CACHE_NAME).then(cache => cache.put(event.request, response.clone()));
+      return response;
+    }).catch(() => caches.match(event.request)));
     return;
   }
 
-  // For HTML pages: Network First, fall back to '/' cached, then offline.html
   if (event.request.headers.get('accept')?.includes('text/html')) {
-    event.respondWith(
-      fetch(event.request)
-        .then(response => {
-          if (response.ok) {
-            const cloned = response.clone();
-            caches.open(CACHE_NAME).then(cache => cache.put(event.request, cloned));
-          }
-          return response;
-        })
-        .catch(async () => {
-          console.log('[SW] Network failed for HTML, serving offline fallback');
-          const cached = await caches.match(event.request)
-                      || await caches.match('/')
-                      || await caches.match('/offline.html');
-          return cached;
-        })
-    );
-    return;
+    event.respondWith(fetch(event.request).then(response => {
+      if (response.ok) caches.open(CACHE_NAME).then(cache => cache.put(event.request, response.clone()));
+      return response;
+    }).catch(async () => (await caches.match(event.request)) || (await caches.match('/')) || caches.match('/offline.html')));
   }
 });
 
-// ── Custom Push event listener with proper options ──────────────────
-self.addEventListener('push', (event) => {
-  console.log('[SW][Push] Push event received');
+const acknowledgePushTest = async data => {
+  if (data.type !== 'push_test' || !data.testId) return;
+  try {
+    const cache = await caches.open('zippo-device-v1');
+    const deviceResponse = await cache.match('deviceId');
+    const tokenResponse = await cache.match('token');
+    const deviceId = deviceResponse ? await deviceResponse.text() : null;
+    const token = tokenResponse ? await tokenResponse.text() : null;
+    if (!deviceId || !token) return;
 
-  if (!event.data) {
-    console.warn('[SW][Push] No data in push event');
-    return;
+    const response = await fetch(`${API_BASE_URL}/v1/adult/push/health-test/ack`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ deviceId, testId: data.testId, status: 'received' }),
+    });
+    if (!response.ok) console.warn('[SW][PushTest] Acknowledgement failed:', response.status);
+  } catch (error) {
+    console.error('[SW][PushTest] Acknowledgement error:', error);
   }
+};
+
+self.addEventListener('push', event => {
+  if (!event.data) return;
 
   let data;
-  try {
-    data = event.data.json();
-    console.log('[SW][Push] Parsed push data:', data);
-  } catch (err) {
-    console.error('[SW][Push] Failed to parse push data:', err.message);
-    return;
-  }
-
-  // If this push event is from FCM, let FCM SDK handle it.
-  if (data.from || data.collapse_key || (!data.type && !data.title && !data.body)) {
-    console.log('[SW][Push] FCM push event detected, letting FCM SDK handle');
-    return;
-  }
+  try { data = event.data.json(); } catch { data = { title: 'Zippo', body: event.data.text(), type: 'general' }; }
 
   const isCall = data.type === 'incoming_call';
-
   const notificationOptions = {
-    body:    data.body || '',
-    icon:    data.icon || '/icons/icon-192x192.png',
-
-    // ── BADGE: must be a monochrome PNG (white on transparent) ────
-    badge:   '/icons/badge-72x72.png',
-
-    // ── TAG: group same-conversation messages ─────────────────────
-    tag:     data.tag || `zippo-${data.type}`,
-
-    // ── RENOTIFY: always true so lock screen lights up ─────────────
+    body: data.body || '',
+    icon: data.icon || '/icons/icon-192x192.png',
+    badge: '/icons/badge-72x72.png',
+    tag: data.tag || `zippo-${data.type || 'general'}`,
     renotify: true,
-
-    // ── REQUIRE INTERACTION: for calls — notification stays until tapped ──
     requireInteraction: isCall,
-
-    // ── SILENT: never silent ──────────────────────────────────────
     silent: false,
-
-    // ── VIBRATE: pattern in milliseconds [vibrate, pause, vibrate] ─
     vibrate: isCall ? [500, 200, 500, 200, 500] : [200, 100, 200],
-
-    // ── TIMESTAMP: when the event happened ────────────────────────
     timestamp: data.timestamp || Date.now(),
-
-    // ── DATA: for click handler ───────────────────────────────────
     data: {
-      url:         data.url || '/adult',
+      url: data.url || '/adult',
       unreadCount: data.unreadCount || 0,
-      type:        data.type,
-      isCustomPush: true
+      type: data.type,
+      testId: data.testId,
+      callId: data.callId,
+      callType: data.callType,
+      token: data.token,
+      isCustomPush: true,
     },
-
-    // ── ACTIONS: quick reply options (Android only) ───────────────
-    actions: data.type === 'new_message' ? [
-      { action: 'open',    title: 'Reply' },
-    ] : data.type === 'incoming_call' ? [
-      { action: 'open',    title: '📞 Answer' },
-      { action: 'dismiss', title: 'Decline' },
-    ] : [],
+    actions: data.type === 'new_message'
+      ? [{ action: 'open', title: 'Reply' }]
+      : data.type === 'incoming_call'
+        ? [{ action: 'open', title: 'Answer' }, { action: 'decline', title: 'Decline' }]
+        : [],
   };
 
-  event.waitUntil(
-    self.registration.getNotifications({ tag: notificationOptions.tag }).then(existing => {
-      // If there's already a notification for this conversation
-      // and more than 1 unread — update the title to show count
-      const title = existing.length > 0 && data.unreadCount > 1
-        ? `${data.title || 'Zippo'} (${data.unreadCount} messages)`
-        : (data.title || 'Zippo');
-
-      console.log('[SW][Push] Showing notification:', { title, tag: notificationOptions.tag });
-
-      return Promise.all([
-        self.registration.showNotification(title, notificationOptions)
-          .then(() => console.log('[SW][Push] Notification shown successfully'))
-          .catch(err => console.error('[SW][Push] showNotification failed:', err.message)),
-
-        // Update home screen badge safely
-        (() => {
-          const count = data.unreadCount;
-          if (count > 0) {
-            return navigator.setAppBadge
-              ? navigator.setAppBadge(count).catch(e => console.warn('[SW][Badge] setAppBadge failed:', e.message))
-              : Promise.resolve();
-          } else {
-            return navigator.clearAppBadge
-              ? navigator.clearAppBadge().catch(e => console.warn('[SW][Badge] clearAppBadge failed:', e.message))
-              : Promise.resolve();
-          }
-        })(),
-      ]);
-    })
-  );
+  event.waitUntil((async () => {
+    await acknowledgePushTest(data);
+    const existing = await self.registration.getNotifications({ tag: notificationOptions.tag });
+    const title = existing.length > 0 && data.unreadCount > 1
+      ? `${data.title || 'Zippo'} (${data.unreadCount} messages)`
+      : (data.title || 'Zippo');
+    await self.registration.showNotification(title, notificationOptions);
+    if (data.unreadCount > 0 && navigator.setAppBadge) await navigator.setAppBadge(data.unreadCount).catch(() => {});
+  })());
 });
 
-// ── Custom Notificationclick event listener ─────────────────────────
-self.addEventListener('notificationclick', (event) => {
+self.addEventListener('notificationclick', event => {
   const { action, notification } = event;
   const data = notification.data || {};
-
-  console.log('[SW][Click] Custom click handler:', {
-    tag:    notification.tag,
-    action,
-    url:    data.url,
-    type:   data.type
-  });
-
   notification.close();
 
   if (action === 'decline' && data.type === 'incoming_call') {
-    // Tell backend to decline the call
-    event.waitUntil(
-      fetch(`/api/v1/adult/sext/calls/${data.callId}/decline`, {
-        method:  'PUT',
-        headers: { 'Authorization': `Bearer ${data.token}` },
-      }).catch(console.error)
-    );
+    event.waitUntil(fetch(`/api/v1/adult/sext/calls/${data.callId}/decline`, {
+      method: 'PUT', headers: { Authorization: `Bearer ${data.token}` },
+    }).catch(console.error));
     return;
   }
 
   const url = data.url || '/adult';
-
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
-      for (const client of clientList) {
-        if (client.url.includes(self.location.origin) && 'focus' in client) {
-          client.focus();
-          client.postMessage({ type: 'NAVIGATE', url });
-          // Also pass call data so the app can open the call UI immediately
-          if (data.type === 'incoming_call') {
-            client.postMessage({ type: 'INCOMING_CALL', callId: data.callId, callType: data.callType });
-          }
-          return;
-        }
-      }
-      return clients.openWindow(url);
-    })
-  );
-});
-
-// ── Message from app (for badge updates when app is open) ───────────
-self.addEventListener('message', (event) => {
-  if (event.data?.type === 'UPDATE_BADGE') {
-    const count = event.data.count;
-    if (count > 0) {
-      if (navigator.setAppBadge) {
-        navigator.setAppBadge(count).catch(() => {});
-      }
-    } else {
-      if (navigator.clearAppBadge) {
-        navigator.clearAppBadge().catch(() => {});
+  event.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+    for (const client of clientList) {
+      if (client.url.includes(self.location.origin) && 'focus' in client) {
+        client.focus();
+        client.postMessage({ type: 'NAVIGATE', url });
+        if (data.type === 'incoming_call') client.postMessage({ type: 'INCOMING_CALL', callId: data.callId, callType: data.callType });
+        return;
       }
     }
+    return clients.openWindow(url);
+  }));
+});
+
+self.addEventListener('message', event => {
+  if (event.data?.type === 'UPDATE_BADGE') {
+    const count = event.data.count;
+    if (count > 0 && navigator.setAppBadge) navigator.setAppBadge(count).catch(() => {});
+    if (!count && navigator.clearAppBadge) navigator.clearAppBadge().catch(() => {});
   }
 });
 
-// Helper to convert VAPID base64 key to Uint8Array inside SW
-const urlBase64ToUint8Array = (base64String) => {
+const urlBase64ToUint8Array = base64String => {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
-  const base64  = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const raw     = atob(base64);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
   return new Uint8Array(Array.from(raw).map(char => char.charCodeAt(0)));
 };
 
-// Helper to fetch dynamic VAPID public key
 const fetchVapidKeyInSW = async () => {
   try {
     const response = await fetch(`${API_BASE_URL}/v1/adult/push/public-key`);
     if (!response.ok) return null;
     const data = await response.json();
     return data.publicKey || null;
-  } catch (err) {
-    console.error('[SW] Error fetching dynamic VAPID key:', err);
-    return null;
-  }
+  } catch { return null; }
 };
 
-// Helper to retrieve deviceId and token from SW cache
 const getDeviceDetailsFromCache = async () => {
   try {
     const cache = await caches.open('zippo-device-v1');
-    const devIdResp = await cache.match('deviceId').catch(() => null);
-    const tokenResp = await cache.match('token').catch(() => null);
-
-    const deviceId = devIdResp ? await devIdResp.text() : null;
-    const token = tokenResp ? await tokenResp.text() : null;
-
-    return { deviceId, token };
-  } catch (err) {
-    console.error('[SW] Error reading device details from cache:', err.message);
-    return { deviceId: null, token: null };
-  }
+    const devIdResp = await cache.match('deviceId');
+    const tokenResp = await cache.match('token');
+    return { deviceId: devIdResp ? await devIdResp.text() : null, token: tokenResp ? await tokenResp.text() : null };
+  } catch { return { deviceId: null, token: null }; }
 };
 
-// ── Custom pushsubscriptionchange (token rotation) handler ───────────
-self.addEventListener('pushsubscriptionchange', (event) => {
-  console.log('[SW] Push subscription changed — refreshing');
-
-  event.waitUntil(
-    (async () => {
-      const activeVapidKey = await fetchVapidKeyInSW();
-      if (!activeVapidKey) {
-        console.error('[SW] Dynamic VAPID public key missing. Aborting silent subscription.');
-        return;
-      }
-      try {
-        const newSubscription = await self.registration.pushManager.subscribe({
-          userVisibleOnly:      true,
-          applicationServerKey: urlBase64ToUint8Array(activeVapidKey),
-        });
-
-        // Get deviceId and token from cache
-        const { deviceId, token } = await getDeviceDetailsFromCache();
-
-        // Broadcast to any active client windows
-        const clientsList = await self.clients.matchAll();
-        for (const client of clientsList) {
-          client.postMessage({
-            type:         'PUSH_SUBSCRIPTION_CHANGED',
-            subscription: newSubscription.toJSON(),
-          });
-        }
-
-        // Also try to update directly if we have both cached
-        if (deviceId && token) {
-          await fetch(`${API_BASE_URL}/v1/adult/push/token`, {
-            method:  'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body:    JSON.stringify({
-              deviceId,
-              subscription: newSubscription.toJSON(),
-            }),
-          }).then(res => {
-            console.log('[SW] Token refreshed directly after change, status:', res.status);
-          }).catch(err => {
-            console.error('[SW] Failed to patch refreshed token directly:', err.message);
-          });
-        }
-      } catch (err) {
-        console.error('[SW] pushsubscriptionchange failed:', err.message);
-      }
-    })()
-  );
+self.addEventListener('pushsubscriptionchange', event => {
+  event.waitUntil((async () => {
+    const vapidKey = await fetchVapidKeyInSW();
+    if (!vapidKey) return;
+    try {
+      const subscription = await self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(vapidKey) });
+      const { deviceId, token } = await getDeviceDetailsFromCache();
+      if (!deviceId || !token) return;
+      await fetch(`${API_BASE_URL}/v1/adult/push/token`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ deviceId, subscription: subscription.toJSON() }),
+      });
+      const clientsList = await self.clients.matchAll();
+      clientsList.forEach(client => client.postMessage({ type: 'PUSH_SUBSCRIPTION_CHANGED', subscription: subscription.toJSON() }));
+    } catch (error) {
+      console.error('[SW] pushsubscriptionchange failed:', error);
+    }
+  })());
 });
