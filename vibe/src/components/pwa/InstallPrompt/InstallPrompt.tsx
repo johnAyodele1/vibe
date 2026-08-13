@@ -8,16 +8,8 @@ import { PWAInstallInstructions } from './PWAInstallInstructions';
 export const InstallPrompt: React.FC = () => {
   const location = useLocation();
   const { user } = useAdultAuth();
-  const { setShowInstallPrompt, shouldShowInstallPrompt, showInstallPrompt } = usePWAPromptStore();
-  const {
-    platform,
-    shouldShowCTA,
-    showInstructions,
-    setShowInstructions,
-    dismissTemporary,
-    dismissPermanent,
-    handleInstallClick,
-  } = usePWAInstall();
+  const { setShowInstallPrompt, shouldShowInstallPrompt } = usePWAPromptStore();
+  const { platform, shouldShowCTA, showInstructions, setShowInstructions, dismissTemporary, dismissPermanent, handleInstallClick } = usePWAInstall();
 
   useEffect(() => {
     if (location.pathname !== '/adult/provider/dashboard' || user?.role !== 'provider') return;
@@ -27,25 +19,14 @@ export const InstallPrompt: React.FC = () => {
 
   if (!shouldShowCTA) {
     if (showInstructions) {
-      return (
-        <PWAInstallInstructions
-          isOpen={showInstructions}
-          onClose={() => setShowInstructions(false)}
-          onDismissPermanent={dismissPermanent}
-          platform={platform}
-        />
-      );
+      return <PWAInstallInstructions isOpen={showInstructions} onClose={() => setShowInstructions(false)} onDismissPermanent={dismissPermanent} platform={platform} />;
     }
     return null;
   }
 
   return (
     <>
-      <div
-        data-testid="pwa-install-cta"
-        className="fixed left-4 right-4 z-[9999] az-glass border border-[var(--az-border)] shadow-[0_0_20px_var(--az-glow)] rounded-2xl p-4 flex flex-col gap-3 max-w-md mx-auto transition-all duration-300 ease-out animate-[pwaSlideIn_0.4s_cubic-bezier(0.34,1.56,0.64,1)]"
-        style={{ bottom: 'calc(64px + env(safe-area-inset-bottom) + 12px)' }}
-      >
+      <div data-testid="pwa-install-cta" className="fixed left-4 right-4 z-[9999] az-glass border border-[var(--az-border)] shadow-[0_0_20px_var(--az-glow)] rounded-2xl p-4 flex flex-col gap-3 max-w-md mx-auto transition-all duration-300 ease-out animate-[pwaSlideIn_0.4s_cubic-bezier(0.34,1.56,0.64,1)]" style={{ bottom: 'calc(64px + env(safe-area-inset-bottom) + 12px)' }}>
         <div className="flex items-start gap-3">
           <div className="w-10 h-10 bg-[var(--az-accent-primary)] rounded-xl flex items-center justify-center text-white font-extrabold text-xl shadow-[0_0_12px_var(--az-glow)] flex-shrink-0 select-none">Z</div>
           <div className="flex-grow min-w-0">
