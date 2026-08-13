@@ -4,16 +4,7 @@ import { getInstallContext } from './context';
 import { getOrCreateDeviceId, clearDeviceId, cacheDeviceIdForSW } from './deviceId';
 import { toast } from 'sonner';
 
-export type PushHealthStatus =
-  | 'unsupported'
-  | 'permission_required'
-  | 'permission_denied'
-  | 'service_worker_unavailable'
-  | 'missing_subscription'
-  | 'backend_missing'
-  | 'unhealthy'
-  | 'healthy'
-  | 'error';
+export type PushHealthStatus = 'unsupported' | 'permission_required' | 'permission_denied' | 'service_worker_unavailable' | 'missing_subscription' | 'backend_missing' | 'unhealthy' | 'healthy' | 'error';
 
 export interface PushHealthResult {
   status: PushHealthStatus;
@@ -28,7 +19,7 @@ export interface PushHealthResult {
 const urlBase64ToUint8Array = (base64String: string): Uint8Array => {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const raw = window.atob(base64);
+  const raw = window.atob(base64String ? base64 : '');
   return new Uint8Array(Array.from(raw).map(char => char.charCodeAt(0)));
 };
 
@@ -49,11 +40,7 @@ const getPlatform = () => { const ctx = getInstallContext(); return ctx.isIOS ? 
 
 const registerDevice = async (token: string, deviceId: string, notificationPermission: NotificationPermission | 'unsupported', subscription?: PushSubscription): Promise<boolean> => {
   const ctx = getInstallContext();
-  const response = await fetch(`${API_BASE_URL}/v1/adult/devices/register`, {
-    method: 'POST',
-    headers: authHeaders(token),
-    body: JSON.stringify({ deviceId, platform: getPlatform(), isStandalone: ctx.isStandalone, notificationPermission, ...(subscription ? { subscription: subscription.toJSON() } : {}) }),
-  });
+  const response = await fetch(`${API_BASE_URL}/v1/adult/devices/register`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ deviceId, platform: getPlatform(), isStandalone: ctx.isStandalone, notificationPermission, ...(subscription ? { subscription: subscription.toJSON() } : {}) }) });
   if (!response.ok) throw new Error(`Device registration failed: ${response.status}`);
   return true;
 };
@@ -113,7 +100,6 @@ export const checkPushHealth = async (userId: string): Promise<PushHealthResult>
   const deviceId = getOrCreateDeviceId();
   const permission: PushHealthResult['permission'] = 'Notification' in window ? Notification.permission : 'unsupported';
   const base = { deviceId, permission, hasBrowserSubscription: false, backendRegistered: false, repaired: false };
-
   if (permission === 'unsupported') return { ...base, status: 'unsupported' };
   if (permission === 'denied') return { ...base, status: 'permission_denied' };
   if (permission === 'default') return { ...base, status: 'permission_required' };
@@ -143,7 +129,6 @@ export const checkPushHealth = async (userId: string): Promise<PushHealthResult>
       if (!refreshed || refreshedEndpoint !== sub.endpoint) return { ...base, status: 'backend_missing', hasBrowserSubscription: true, backendRegistered: false, repaired };
       if (refreshed.pushHealthStatus === 'unhealthy') return { ...base, status: 'unhealthy', hasBrowserSubscription: true, backendRegistered: true, repaired };
     }
-
     if (device?.pushHealthStatus === 'unhealthy') return { ...base, status: 'unhealthy', hasBrowserSubscription: true, backendRegistered: true, repaired };
     return { ...base, status: 'healthy', hasBrowserSubscription: true, backendRegistered: true, repaired };
   } catch (err: any) {
@@ -171,12 +156,10 @@ export const sendPushTest = async (userId: string): Promise<{ success: boolean; 
   if (health.status !== 'healthy') return { success: false, status: health.status, deliveredToProvider: false, reason: health.detail || `Push is not healthy: ${health.status}` };
   const token = localStorage.getItem('adultAccessToken');
   if (!token) return { success: false, status: 'error', deliveredToProvider: false, reason: 'Authentication required' };
-
   try {
     const response = await fetch(`${API_BASE_URL}/v1/adult/push/health-test`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ deviceId: health.deviceId }) });
     const data = await response.json();
     if (!response.ok || !data?.deliveredToProvider || !data?.testId) return { success: false, status: 'error', deliveredToProvider: false, reason: data?.reason || 'Push provider rejected the notification' };
-
     const deviceReceived = await waitForPushTestReceipt(token, health.deviceId, data.testId);
     if (!deviceReceived) return { success: false, status: 'unhealthy', deliveredToProvider: true, deviceReceived: false, reason: 'The push provider accepted the notification, but this device did not confirm receipt within 25 seconds.' };
     return { success: true, status: 'healthy', deliveredToProvider: true, deviceReceived: true };
@@ -196,7 +179,8 @@ export const syncStandardUserPushRegistration = async (): Promise<void> => {
   if (!vapidKey) return;
   let subscription = await reg.pushManager.getSubscription();
   if (!subscription) subscription = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(vapidKey) });
-  await fetch(`${API_BASE_URL}/users/push/subscribe`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ deviceId, subscription: subscription.toJSON(), platform: getPlatform(), isStandalone: getInstallContext().isStandalone, notificationPermission: Notification.permission }) });
+  const response = await fetch(`${API_BASE_URL}/users/push/subscribe`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ deviceId, subscription: subscription.toJSON(), platform: getPlatform(), isStandalone: getInstallContext().isStandalone, notificationPermission: Notification.permission }) });
+  if (!response.ok) throw new Error(`Push registration failed: ${response.status}`);
 };
 
 export const deregisterDevice = async (): Promise<void> => {
@@ -212,6 +196,13 @@ export const requestAndSubscribe = async (userId: string): Promise<boolean> => {
   if (!('Notification' in window)) return false;
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') { await syncDeviceRegistration(userId); return false; }
+
+  const token = localStorage.getItem('adultAccessToken');
+  const deviceId = getOrCreateDeviceId();
+  if (token) {
+    await fetch(`${API_BASE_URL}/v1/adult/push/health`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ deviceId, status: 'unknown' }) }).catch(() => {});
+  }
+
   await syncDeviceRegistration(userId);
   return (await checkPushHealth(userId)).status === 'healthy';
 };
