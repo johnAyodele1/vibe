@@ -41,7 +41,7 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     manifestUrl: '/manifest.json',
     notificationPermission,
     isInstallable,
-    hasDeferredPrompt: !!(deferredPrompt || (typeof window !== 'undefined' && (window as any)._deferredInstallPrompt))
+    hasDeferredPrompt: !!(deferredPrompt || (typeof window !== 'undefined' && (window as any)._deferredInstallPrompt)),
   });
 
   useEffect(() => {
@@ -89,9 +89,10 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => {
     if (!isAuthenticated || !user) return;
 
+    const userId = user._id;
     const adultToken = localStorage.getItem('adultAccessToken');
     if (adultToken) {
-      void syncDeviceRegistration(String(user.id)).catch(err => console.error('[PWA] Adult push sync failed:', err));
+      void syncDeviceRegistration(String(userId)).catch(err => console.error('[PWA] Adult push sync failed:', err));
       return;
     }
 
@@ -105,11 +106,11 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } else {
       const hasWarned = sessionStorage.getItem('notificationDeniedWarned');
       if (!hasWarned) {
-        toast.error("Push notifications are blocked in your browser settings.", { duration: 6000 });
+        toast.error('Push notifications are blocked in your browser settings.', { duration: 6000 });
         sessionStorage.setItem('notificationDeniedWarned', 'true');
       }
     }
-  }, [isAuthenticated, user?.id, notificationPermission]);
+  }, [isAuthenticated, user?._id, notificationPermission]);
 
   useEffect(() => {
     if (!isAuthenticated || !user) return;
@@ -184,7 +185,7 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     try {
       const adultToken = localStorage.getItem('adultAccessToken');
       if (adultToken && user) {
-        await syncDeviceRegistration(String(user.id));
+        await syncDeviceRegistration(String(user._id));
       } else {
         await syncStandardUserPushRegistration();
       }
