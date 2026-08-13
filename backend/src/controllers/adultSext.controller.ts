@@ -2316,6 +2316,29 @@ export const initiateCall = async (req: Request, res: Response) => {
       });
     }
 
+    // Trigger call push notification
+    sendPushToUser(receiver._id, {
+      title:    type === 'video'
+                  ? `📹 Incoming video call from ${user.displayName || user.username}`
+                  : `📞 Incoming call from ${user.displayName || user.username}`,
+      body:     'Tap to answer',
+      icon:     user.profilePhoto || '/icons/icon-192x192.png',
+      badge:    '/icons/badge-72x72.png',
+      tag:      `call_${call._id}`,
+      renotify: true,
+      vibrate:  [500, 200, 500, 200, 500],
+      requireInteraction: true,
+      url:      `/adult/sext?conversation=${conversationId}&call=${call._id}`,
+      unreadCount: 0,
+      type:     'incoming_call',
+      callId:   call._id.toString(),
+      callType: type,
+      actions:  [
+        { action: 'answer',  title: '📞 Answer' },
+        { action: 'decline', title: 'Decline'  },
+      ],
+    }).catch(err => console.error('[Push][Call] Failed:', err));
+
     // Setup 45s timeout in background
     setTimeout(async () => {
       // Check if mongoose is connected before performing database operations to avoid errors during test teardown or server shutdown

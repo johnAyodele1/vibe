@@ -57,12 +57,7 @@ export const ensureVapidKeys = async () => {
 };
 
 export const sendPushToUser = async (userId: any, payload: any, zone = 'adult') => {
-  console.log('[Push] Attempting to send:', {
-    userId,
-    type:    payload.type,
-    title:   payload.title,
-    zone,
-  });
+  console.log('[Push] Fan-out:', { userId, type: payload.type });
 
   try {
     await ensureVapidKeys();
@@ -70,112 +65,89 @@ export const sendPushToUser = async (userId: any, payload: any, zone = 'adult') 
     console.error('[Push] VAPID initialization failed in sendPushToUser:', err.message);
   }
 
-  // SPEC: Find ALL active, enabled registrations for the user
-  const subscriptions = await PushSubscription.find({
+  // Query: Find ALL active, enabled registrations for the user (NOT scoped to deviceId)
+  const devices = await PushSubscription.find({
     userId,
-    isActive: true,
+    isActive:             true,
     notificationsEnabled: true,
-    endpoint: { $exists: true, $ne: null }
+    endpoint:             { $exists: true, $ne: null }
   });
 
-  if (!subscriptions.length) {
-    console.log('[Push] No active subscriptions found for user — notification not delivered:', {
-      userId,
-      payloadType: payload.type,
-      hint: 'User may not have granted push permission, or has not added app to home screen',
-    });
+  if (!devices.length) {
+    console.log('[Push] No active devices:', { userId });
     return { sent: 0, failed: 0, reason: 'no_subscriptions' };
   }
 
-  console.log('[Push] Found active subscriptions:', { userId, count: subscriptions.length });
+  console.log('[Push] Devices to notify:', {
+    userId,
+    count:     devices.length,
+    platforms: devices.map(d => d.platform),
+  });
 
-  const payloadStr = JSON.stringify(payload);
   let sent = 0, failed = 0;
+  const payloadStr = JSON.stringify(payload);
 
-  for (const sub of subscriptions) {
-    if (!sub.endpoint || !sub.keys?.p256dh || !sub.keys?.auth) {
+  for (const device of devices) {
+    if (!device.endpoint || !device.keys?.p256dh || !device.keys?.auth) {
       continue;
     }
     try {
-      console.log('[Push] Attempting to send to endpoint:', sub.endpoint.slice(0, 60) + '...');
-      const result = await webpush.sendNotification(
+      await webpush.sendNotification(
         {
-          endpoint: sub.endpoint,
-          keys:     { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
+          endpoint: device.endpoint,
+          keys:     { p256dh: device.keys.p256dh, auth: device.keys.auth }
         },
         payloadStr,
         {
-          TTL: 60 * 60 * 24,   // 24 hours — message survives if device offline
-          urgency: payload.type === 'new_message' ? 'normal' : 'low',
+          TTL: 86400, // 24 hours
+          urgency: 'normal'
         }
       );
 
-      console.log('[Push] Delivered:', {
-        userId,
-        type:       payload.type,
-        statusCode: result.statusCode,
-        endpoint:   sub.endpoint.slice(0, 60) + '...',
+      await PushSubscription.findByIdAndUpdate(device._id, {
+        $set: { lastSeenAt: new Date(), failCount: 0, lastUsed: new Date() },
       });
-
-      // Update lastUsed / lastSeenAt / reset failCount
-      await PushSubscription.updateOne(
-        { _id: sub._id },
-        {
-          $set: {
-            lastUsed: new Date(),
-            lastSeenAt: new Date(),
-            failCount: 0,
-          }
-        }
-      );
+      console.log('[Push] ✅ Delivered:', { userId, platform: device.platform });
       sent++;
-
     } catch (err: any) {
-      console.error('[Push] FAILED to deliver error message:', err.message, err.stack);
-      console.error('[Push] FAILED to deliver:', {
+      console.error('[Push] ❌ Failed:', {
         userId,
-        type:       payload.type,
+        platform:   device.platform,
         statusCode: err.statusCode,
-        body:       err.body,
-        endpoint:   sub.endpoint.slice(0, 60) + '...',
-        headers:    err.headers,
+        endpoint:   device.endpoint?.slice(0, 50),
       });
       failed++;
 
-      // SPEC: Mark invalid/expired push tokens as inactive
       if (err.statusCode === 410 || err.statusCode === 404 || err.statusCode === 403) {
-        await PushSubscription.updateOne(
-          { _id: sub._id },
-          {
-            $set: {
-              isActive: false,
-              notificationsEnabled: false,
-              deactivatedAt: new Date(),
-            }
-          }
-        );
-        console.log('[Push] Deactivated dead/expired subscription:', { userId, subId: sub._id });
+        await PushSubscription.findByIdAndUpdate(device._id, {
+          $set: {
+            isActive: false,
+            notificationsEnabled: false,
+            deactivatedAt: new Date(),
+          },
+        });
+        console.log('[Push] Device deactivated (expired token):', device.deviceId);
       } else {
-        // Temporary failure — increment failCount
-        const currentFailCount = (sub.failCount || 0) + 1;
+        const currentFailCount = (device.failCount || 0) + 1;
         const updateFields: any = {
           failCount: currentFailCount,
-          lastFailedAt: new Date(),
+          lastFailedAt: new Date()
         };
 
-        // If 5 consecutive failures, deactivate the device
         if (currentFailCount >= 5) {
           updateFields.isActive = false;
           updateFields.notificationsEnabled = false;
           updateFields.deactivatedAt = new Date();
-          console.warn('[Push] Deactivating device after 5 consecutive failures:', { userId, subId: sub._id });
+          console.warn('[Push] Device deactivated after 5 failures:', device.deviceId);
         }
 
-        await PushSubscription.updateOne({ _id: sub._id }, { $set: updateFields });
+        await PushSubscription.findByIdAndUpdate(device._id, {
+          $set: updateFields
+        });
       }
     }
   }
 
-  console.log('[Push] Send complete:', { userId, type: payload.type, sent, failed });
+  console.log('[Push] Complete:', { userId, sent, failed });
   return { sent, failed };
 };

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { API_BASE_URL } from '../config';
 import { toast } from 'sonner';
+import { syncDeviceRegistration, deregisterDevice } from '../lib/pwa/subscriptionManager';
 
 export function extractErrorMessage(data: any): string {
   if (!data) return 'An unknown error occurred';
@@ -88,6 +89,7 @@ export const AdultAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           window.dispatchEvent(new CustomEvent('open-adult-auth-modal'));
         } else if (data.success) {
           setUser(data.data.user);
+          syncDeviceRegistration(data.data.user.id).catch(console.error);
         } else {
           localStorage.removeItem('adultAccessToken');
         }
@@ -137,6 +139,7 @@ export const AdultAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (data.success) {
       localStorage.setItem('adultAccessToken', data.data.tokens.accessToken);
       setUser(data.data.user);
+      syncDeviceRegistration(data.data.user.id).catch(console.error);
       return data.data.user;
     } else {
       const errMsg = extractErrorMessage(data);
@@ -154,6 +157,7 @@ export const AdultAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (result.success) {
       localStorage.setItem('adultAccessToken', result.data.tokens.accessToken);
       setUser(result.data.user);
+      syncDeviceRegistration(result.data.user.id).catch(console.error);
       return result.data.user;
     } else {
       const errMsg = extractErrorMessage(result);
@@ -162,6 +166,7 @@ export const AdultAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const logout = () => {
+    deregisterDevice().catch(console.error);
     localStorage.removeItem('adultAccessToken');
     setUser(null);
   };

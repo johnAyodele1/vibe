@@ -41,6 +41,10 @@ setupSocket(server);
 // Initialize Firebase
 initFirebase();
 
+// Validate and initialize VAPID on startup
+import { initVAPID } from './config/vapid';
+initVAPID();
+
 // Initialize background jobs
 initNotificationJob();
 initAnalyticsJob();

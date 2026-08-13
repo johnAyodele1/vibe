@@ -275,58 +275,44 @@ self.addEventListener('push', (event) => {
 
 // ── Custom Notificationclick event listener ─────────────────────────
 self.addEventListener('notificationclick', (event) => {
-  console.log('[SW][Click] Notification clicked:', {
-    tag:    event.notification.tag,
-    action: event.action,
-    url:    event.notification.data?.url,
+  const { action, notification } = event;
+  const data = notification.data || {};
+
+  console.log('[SW][Click] Custom click handler:', {
+    tag:    notification.tag,
+    action,
+    url:    data.url,
+    type:   data.type
   });
 
-  event.notification.close();
-  if (event.action === 'dismiss') return;
+  notification.close();
 
-  const data = event.notification.data;
-
-  // If it's FCM notification
-  if (data && !data.isCustomPush) {
-    let targetUrl = '/';
-    if (data.type === 'message' && data.conversationId) {
-      targetUrl = `/chat/${data.conversationId}`;
-    } else if (data.type === 'match') {
-      targetUrl = '/chat';
-    }
-
+  if (action === 'decline' && data.type === 'incoming_call') {
+    // Tell backend to decline the call
     event.waitUntil(
-      clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-        for (const client of clientList) {
-          if (client.url.includes(self.location.origin) && 'focus' in client) {
-            return client.focus().then((c) => c.navigate(targetUrl));
-          }
-        }
-        if (clients.openWindow) {
-          return clients.openWindow(targetUrl);
-        }
-      })
+      fetch(`/api/v1/adult/sext/calls/${data.callId}/decline`, {
+        method:  'PUT',
+        headers: { 'Authorization': `Bearer ${data.token}` },
+      }).catch(console.error)
     );
     return;
   }
 
-  // Else it's our custom VAPID push
-  const url = data?.url || '/adult/sext';
+  const url = data.url || '/adult';
 
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      console.log('[SW][Click] Open clients:', clientList.length);
-
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
       for (const client of clientList) {
         if (client.url.includes(self.location.origin) && 'focus' in client) {
-          console.log('[SW][Click] Focusing existing window and navigating to:', url);
           client.focus();
           client.postMessage({ type: 'NAVIGATE', url });
+          // Also pass call data so the app can open the call UI immediately
+          if (data.type === 'incoming_call') {
+            client.postMessage({ type: 'INCOMING_CALL', callId: data.callId, callType: data.callType });
+          }
           return;
         }
       }
-
-      console.log('[SW][Click] Opening new window:', url);
       return clients.openWindow(url);
     })
   );
