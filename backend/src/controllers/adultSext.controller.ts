@@ -1458,16 +1458,32 @@ export const sendMessage = async (req: Request, res: Response) => {
           }
         };
 
-        const pushPayload = {
-          title: `💬 ${senderName}`,
-          body: getMessagePreview(type, content),
-          icon: user.profilePhoto || '',
-          tag: `conv_${conversationId}`,
-          renotify: true,
-          url: `/adult/sext?conversation=${conversationId}`,
-          unreadCount,
-          type: 'new_message',
-        };
+        const isLockedMessage = type === 'paid_media' || finalIsLocked;
+        let pushPayload: any;
+        if (isLockedMessage && user.role === 'provider') {
+          pushPayload = {
+            title:    `🔒 ${senderName} sent you exclusive content`,
+            body:     `Unlock to view · 💎 ${finalCreditCost || 1}`,
+            icon:     user.profilePhoto || '',
+            badge:    '/icons/badge-72x72.png',
+            tag:      `conv_${conversationId}`,
+            renotify: true,
+            url:      `/adult/sext?conversation=${conversationId}`,
+            unreadCount,
+            type:     'paid_media_received',
+          };
+        } else {
+          pushPayload = {
+            title: `💬 ${senderName}`,
+            body: getMessagePreview(type, content),
+            icon: user.profilePhoto || '',
+            tag: `conv_${conversationId}`,
+            renotify: true,
+            url: `/adult/sext?conversation=${conversationId}`,
+            unreadCount,
+            type: 'new_message',
+          };
+        }
 
         sendPushToUser(otherParticipantId, pushPayload).catch((err) => {
           console.error('[Push] Failed to send push:', err);
