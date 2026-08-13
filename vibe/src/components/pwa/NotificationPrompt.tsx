@@ -1,115 +1,66 @@
-// vibe/src/components/pwa/NotificationPrompt.tsx
-// Show this card inside the installed PWA, after the user is settled
-
 import { useState, useEffect } from 'react';
 import { getInstallContext } from '../../lib/pwa/context';
-import { registerServiceWorker } from '../../lib/push/pushSubscription';
 import AddToHomeScreenHint from './AddToHomeScreenHint';
 import { usePWAPromptStore, NOTIF_KEYS } from '../../store/pwaPromptStore';
-import { runPushSelfTest } from '../../lib/pwa/pushSelfTest';
-import { syncPushSubscription } from '../../lib/pwa/subscriptionSync';
+import { checkPushHealth, requestAndSubscribe, type PushHealthResult } from '../../lib/pwa/subscriptionManager';
 import { toast } from 'sonner';
 
 const NotificationPrompt = ({ userId }: { userId: string }) => {
   const { showNotifPrompt, setShowNotifPrompt, setShowInstallPrompt } = usePWAPromptStore();
-  const [ctx,       setCtx]       = useState<ReturnType<typeof getInstallContext> | null>(null);
-  const [visible,   setVisible]   = useState(false);
-  const [loading,   setLoading]   = useState(false);
-  const [result,    setResult]    = useState<'granted' | 'denied' | null>(null);
+  const [ctx, setCtx] = useState<ReturnType<typeof getInstallContext> | null>(null);
+  const [visible, setVisible] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<'granted' | 'denied' | null>(null);
+  const [health, setHealth] = useState<PushHealthResult | null>(null);
+
+  useEffect(() => setCtx(getInstallContext()), []);
+  useEffect(() => setVisible(showNotifPrompt), [showNotifPrompt]);
 
   useEffect(() => {
-    const context = getInstallContext();
-    setCtx(context);
-
-    if (Notification.permission === 'granted') {
-      const failCount = parseInt(localStorage.getItem('zippo_push_test_fail_count') || '0', 10);
-      if (failCount >= 3) {
-        window.dispatchEvent(new CustomEvent('zippo:show_notif_settings'));
+    let cancelled = false;
+    checkPushHealth(userId).then(currentHealth => {
+      if (cancelled) return;
+      setHealth(currentHealth);
+      if (currentHealth.status === 'permission_required' || currentHealth.status === 'missing_subscription' || currentHealth.status === 'backend_missing' || currentHealth.status === 'unhealthy') {
+        setShowNotifPrompt(true);
       }
-    }
-  }, []);
-
-  useEffect(() => {
-    if (showNotifPrompt) {
-      setVisible(true);
-    } else {
-      setVisible(false);
-    }
-  }, [showNotifPrompt]);
+      if (currentHealth.status === 'healthy') setShowNotifPrompt(false);
+    }).catch(error => console.error('[NotifPrompt] Health check failed:', error));
+    return () => { cancelled = true; };
+  }, [userId, setShowNotifPrompt]);
 
   const handleEnable = async () => {
     if (!ctx) return;
-    console.log('[NotifPrompt] Enable tapped:', {
-      isStandalone: ctx.isStandalone,
-      isIOS:        ctx.isIOS,
-      isAndroid:    ctx.isAndroid,
-    });
 
-    // ── iOS Safari NON-STANDALONE ────────────────────────────────────
     if (ctx.isIOS && !ctx.isStandalone) {
-      console.log('[NotifPrompt] iOS non-standalone — redirecting to install flow');
-
-      // Close notification prompt
       setVisible(false);
       setShowNotifPrompt(false);
-
-      // Show install prompt immediately
       setShowInstallPrompt(true);
-
-      // Show an explanatory toast
-      toast.info(
-        'Add Zippo to your Home Screen first, then you can enable notifications.',
-        { duration: 5000 }
-      );
+      toast.info('Add Zippo to your Home Screen first, then enable notifications.', { duration: 5000 });
       return;
     }
 
-    // ── ANDROID WEB (NON-STANDALONE) ────────────────────────────────
-    if (ctx.isAndroid && !ctx.isStandalone) {
-      console.log('[NotifPrompt] Android web — proceeding with permission request');
-      // Android Chrome supports push even without PWA install
-      // Fall through to permission request below
-      // But also suggest installing
-      toast.info('Install Zippo to your home screen for the best experience', { duration: 3000 });
-    }
+    if (ctx.isAndroid && !ctx.isStandalone) toast.info('Install Zippo to your home screen for the best experience', { duration: 3000 });
 
-    // ── REQUEST PERMISSION (works for standalone + Android web) ─────
     setLoading(true);
+    setResult(null);
     try {
-      // Step 1: register service worker
-      const reg = await registerServiceWorker();
-      if (!reg) {
-        console.error('[NotifPrompt] SW registration failed');
-        setLoading(false);
-        return;
-      }
+      const connected = await requestAndSubscribe(userId);
+      const currentHealth = await checkPushHealth(userId);
+      setHealth(currentHealth);
 
-      // Step 2: request permission
-      console.log('[NotifPrompt] Requesting notification permission...');
-      const permission = await Notification.requestPermission();
-      console.log('[NotifPrompt] Permission result:', permission);
-
-      if (permission === 'granted') {
-        // Sync subscription silently using complete lifecycle flow
-        await syncPushSubscription(userId);
+      if (connected && currentHealth.status === 'healthy') {
         setResult('granted');
-
-        // Immediately run auto-test (Fix 4)
-        await runPushSelfTest(userId);
-        setTimeout(() => {
-          setVisible(false);
-          setShowNotifPrompt(false);
-        }, 2000);
-      } else {
-        console.warn('[NotifPrompt] Permission denied by user');
+        toast.success('Notifications are enabled and connected on this device.');
+        setTimeout(() => { setVisible(false); setShowNotifPrompt(false); }, 2000);
+      } else if (currentHealth.status === 'permission_denied') {
         setResult('denied');
-        setTimeout(() => {
-          setVisible(false);
-          setShowNotifPrompt(false);
-        }, 3000);
+      } else {
+        toast.error('Notifications need another connection attempt.');
       }
-    } catch (err: any) {
-      console.error('[NotifPrompt] Permission request error:', err.message || err);
+    } catch (error) {
+      console.error('[NotifPrompt] Push registration failed:', error);
+      toast.error('Notifications could not be connected. Try again.');
     } finally {
       setLoading(false);
     }
@@ -123,51 +74,28 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
   };
 
   if (!visible || !ctx) return null;
+  if (ctx.isIOS && !ctx.isStandalone) return <AddToHomeScreenHint onDismiss={handleDismiss} />;
+  if (ctx.isIOS && ctx.iOSVersion && ctx.iOSVersion < 16.4) return null;
 
-  // If user is on iOS but NOT in standalone mode → show "add to home screen" hint instead
-  if (ctx.isIOS && !ctx.isStandalone) {
-    return <AddToHomeScreenHint onDismiss={handleDismiss} />;
-  }
-
-  // If iOS < 16.4 → push not supported, don't show anything
-  if (ctx.isIOS && ctx.iOSVersion && ctx.iOSVersion < 16.4) {
-    return null;
-  }
+  const needsPermission = health?.status === 'permission_required';
+  const needsRepair = health?.status === 'unhealthy' || health?.status === 'missing_subscription' || health?.status === 'backend_missing';
 
   return (
     <div className="notif-prompt" data-testid="notification-prompt">
       {result === 'granted' ? (
-        <div className="notif-prompt__success">
-          <span className="notif-prompt__success-icon">✅</span>
-          <p>Notifications enabled! You'll get alerts for messages and activity.</p>
-        </div>
+        <div className="notif-prompt__success"><span>OK</span><p>Notifications enabled. You'll get alerts for messages and activity.</p></div>
       ) : result === 'denied' ? (
-        <div className="notif-prompt__denied">
-          <span>🔕</span>
-          <p>Notifications blocked. You can enable them in your device Settings → Notifications.</p>
-          <button className="notif-prompt__dismiss" onClick={handleDismiss}>OK</button>
-        </div>
+        <div className="notif-prompt__denied"><span>Blocked</span><p>Notifications are blocked. Enable them in your browser settings.</p><button className="notif-prompt__dismiss" onClick={handleDismiss}>OK</button></div>
       ) : (
         <>
-          <div className="notif-prompt__icon">🔔</div>
+          <div className="notif-prompt__icon">Bell</div>
           <div className="notif-prompt__text">
-            <strong>Stay in the loop</strong>
-            <p>Get notified for new messages, tips, and activity.</p>
+            <strong>{needsRepair ? 'Notifications need attention' : 'Stay in the loop'}</strong>
+            <p>{needsRepair ? 'Your notification connection on this device is not working. Repair it to receive messages and matches.' : 'Get notified for new messages, matches, and activity.'}</p>
           </div>
           <div className="notif-prompt__actions">
-            <button
-              className="notif-prompt__enable"
-              onClick={handleEnable}
-              disabled={loading}
-            >
-              {loading ? 'Enabling...' : 'Enable'}
-            </button>
-            <button
-              className="notif-prompt__dismiss"
-              onClick={handleDismiss}
-            >
-              Not now
-            </button>
+            <button className="notif-prompt__enable" onClick={handleEnable} disabled={loading}>{loading ? 'Connecting...' : needsPermission ? 'Enable' : 'Repair'}</button>
+            <button className="notif-prompt__dismiss" onClick={handleDismiss}>Not now</button>
           </div>
         </>
       )}

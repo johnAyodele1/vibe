@@ -1,251 +1,252 @@
-// vibe/src/lib/pwa/subscriptionManager.ts
 import { API_BASE_URL } from '../../config';
 import { getInstallContext } from './context';
 import { getOrCreateDeviceId, clearDeviceId, cacheDeviceIdForSW } from './deviceId';
+import { toast } from 'sonner';
 
-const urlBase64ToUint8Array = (base64String: string): Uint8Array => {
-  const padding = '='.repeat((4 - base64String.length % 4) % 4);
-  const base64  = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const raw     = window.atob(base64);
+export type PushHealthStatus = 'unsupported' | 'permission_required' | 'permission_denied' | 'service_worker_unavailable' | 'missing_subscription' | 'backend_missing' | 'unhealthy' | 'healthy' | 'error';
+
+export interface PushHealthResult {
+  status: PushHealthStatus;
+  permission: NotificationPermission | 'unsupported';
+  deviceId: string;
+  hasBrowserSubscription: boolean;
+  backendRegistered: boolean;
+  repaired: boolean;
+  detail?: string;
+}
+
+const urlBase64ToUint8Array = (value: string): Uint8Array => {
+  const padding = '='.repeat((4 - value.length % 4) % 4);
+  const base64 = (value + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = window.atob(base64);
   return new Uint8Array(Array.from(raw).map(char => char.charCodeAt(0)));
 };
+
+const authHeaders = (token: string) => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${token}` });
+const isAdultSession = () => Boolean(localStorage.getItem('adultAccessToken'));
+const getAuthToken = () => localStorage.getItem('adultAccessToken') || localStorage.getItem('accessToken');
+const getPlatform = () => { const ctx = getInstallContext(); return ctx.isIOS ? 'ios' : ctx.isAndroid ? 'android' : 'desktop'; };
 
 export const fetchVapidPublicKey = async (): Promise<string | null> => {
   try {
     const response = await fetch(`${API_BASE_URL}/v1/adult/push/public-key`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch VAPID public key: ${response.status}`);
-    }
+    if (!response.ok) throw new Error(`Failed to fetch VAPID public key: ${response.status}`);
     const data = await response.json();
-    if (data && data.success && data.publicKey) {
-      return data.publicKey;
-    }
-    return null;
-  } catch (err) {
-    console.error('[Push] Error fetching dynamic VAPID public key:', err);
+    return data?.success && data.publicKey ? data.publicKey : null;
+  } catch (error) {
+    console.error('[Push] VAPID key lookup failed:', error);
     return null;
   }
 };
 
-// THE REFACTORED RACE-FREE FUNCTION — ONE register call per sync
-export const syncDeviceRegistration = async (userId: string): Promise<void> => {
-  const deviceId  = getOrCreateDeviceId();
-  const ctx       = getInstallContext();
+const registerDevice = async (token: string, deviceId: string, permission: NotificationPermission | 'unsupported', subscription?: PushSubscription) => {
+  const ctx = getInstallContext();
+  const adult = isAdultSession();
+  const endpoint = adult ? '/v1/adult/devices/register' : '/users/push/subscribe';
+  const body = {
+    deviceId,
+    platform: getPlatform(),
+    isStandalone: ctx.isStandalone,
+    notificationPermission: permission,
+    ...(subscription ? { subscription: subscription.toJSON() } : {}),
+  };
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify(body) });
+  if (!response.ok) throw new Error(`Push device registration failed: ${response.status}`);
+};
+
+const getCurrentDevice = async (token: string, deviceId: string) => {
+  const endpoint = isAdultSession() ? `/v1/adult/push/current?deviceId=${encodeURIComponent(deviceId)}` : `/users/push/subscribe/current?deviceId=${encodeURIComponent(deviceId)}`;
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!response.ok) return null;
+  const data = await response.json();
+  return data?.device ?? null;
+};
+
+const syncCurrentSessionDevice = async (userId: string) => {
+  const deviceId = getOrCreateDeviceId();
   const permission = 'Notification' in window ? Notification.permission : 'unsupported';
-  const token = localStorage.getItem('adultAccessToken');
-
-  if (!token) {
-    console.log('[Sync] No auth token, skipping syncDeviceRegistration');
-    return;
-  }
-
-  // Ensure service worker cache has deviceId & token
+  const token = getAuthToken();
+  if (!token) return;
   await cacheDeviceIdForSW(deviceId).catch(() => {});
 
-  const platform = ctx.isIOS ? 'ios' : ctx.isAndroid ? 'android' : 'desktop';
-
-  console.log('[Sync] Starting device sync:', { userId, deviceId, permission, platform, isStandalone: ctx.isStandalone });
-
-  // If permission is not granted, register basic device info immediately and return early
-  if (permission === 'denied' || permission === 'default' || permission === 'unsupported') {
-    try {
-      await fetch(`${API_BASE_URL}/v1/adult/devices/register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          deviceId,
-          platform,
-          isStandalone: ctx.isStandalone,
-          notificationPermission: permission,
-          // NO endpoint or subscription field
-        })
-      });
-      console.log('[Sync] Basic device registered without subscription');
-    } catch (err: any) {
-      console.error('[Sync] Basic register failed:', err.message);
-    }
-
-    if (permission === 'default') {
-      console.log('[Sync] Permission not granted — dispatching onboarding event');
-      window.dispatchEvent(new CustomEvent('zippo:needs_push_onboarding', {
-        detail: { userId, deviceId }
-      }));
-    }
+  if (permission !== 'granted') {
+    await registerDevice(token, deviceId, permission).catch(error => console.error('[Push] Basic device registration failed:', error));
+    if (permission === 'default') window.dispatchEvent(new CustomEvent('zippo:needs_push_onboarding', { detail: { userId, deviceId } }));
     return;
   }
 
-  // permission === 'granted' — ensure subscription exists and register once
-  if (!('serviceWorker' in navigator)) {
-    console.warn('[Sync] Service workers not supported');
-    return;
-  }
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  const registration = await navigator.serviceWorker.ready;
+  const vapidKey = await fetchVapidPublicKey();
+  if (!vapidKey) return;
 
-  let reg: ServiceWorkerRegistration;
-  try {
-    reg = await navigator.serviceWorker.ready;
-  } catch (err) {
-    console.error('[Sync] SW not ready:', err);
-    return;
-  }
-
-  // Check existing subscription
-  let sub = await reg.pushManager.getSubscription();
-  console.log('[Sync] Existing browser subscription:', {
-    exists:   !!sub,
-    endpoint: sub?.endpoint?.slice(0, 60),
-  });
-
-  // Dynamic public key
-  const activeVapidKey = await fetchVapidPublicKey();
-  if (!activeVapidKey) {
-    console.error('[Sync] Dynamic VAPID public key missing. Aborting silent subscription.');
-    return;
-  }
-
-  // ── KEY FIX: unsubscribe if applicationServerKey might be stale ──
-  if (sub) {
-    try {
-      const response = await fetch(`${API_BASE_URL}/v1/adult/push/current?deviceId=${deviceId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (response.ok) {
-        const { device } = await response.json();
-        const endpointMatches = device?.pushEndpoint === sub.endpoint || device?.endpoint === sub.endpoint;
-        console.log('[Sync] DB endpoint matches browser:', endpointMatches);
-        if (!endpointMatches) {
-          console.warn('[Sync] VAPID key might have rotated or endpoint mismatched — forcing renew');
-          await sub.unsubscribe();
-          sub = null;
-        }
-      }
-    } catch (err: any) {
-      console.warn('[Sync] Failed to verify subscription endpoint match:', err.message);
+  let subscription = await registration.pushManager.getSubscription();
+  if (subscription) {
+    const device = await getCurrentDevice(token, deviceId);
+    const backendEndpoint = device?.endpoint ?? device?.pushEndpoint;
+    if (backendEndpoint && backendEndpoint !== subscription.endpoint) {
+      await subscription.unsubscribe().catch(() => {});
+      subscription = null;
     }
   }
 
-  // Create subscription if missing
-  if (!sub) {
-    console.log('[Sync] No subscription — creating with current VAPID key');
+  if (!subscription) {
     try {
-      sub = await reg.pushManager.subscribe({
-        userVisibleOnly:      true,
-        applicationServerKey: urlBase64ToUint8Array(activeVapidKey),
-      });
-      console.log('[Sync] ✅ Subscription created:', sub.endpoint.slice(0, 60));
-    } catch (err: any) {
-      if (err.message?.includes('different applicationServerKey') || err.message?.includes('registration failed')) {
-        console.warn('[Sync] VAPID key mismatch — unsubscribing and resubscribing');
-        const oldSub = await reg.pushManager.getSubscription();
-        if (oldSub) await oldSub.unsubscribe();
-
-        sub = await reg.pushManager.subscribe({
-          userVisibleOnly:      true,
-          applicationServerKey: urlBase64ToUint8Array(activeVapidKey),
-        });
-        console.log('[Sync] ✅ Resubscribed after key mismatch');
-      } else {
-        console.error('[Sync] Subscribe failed:', err.name, err.message);
+      subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(vapidKey) });
+    } catch (firstError) {
+      const stale = await registration.pushManager.getSubscription().catch(() => null);
+      if (stale) await stale.unsubscribe().catch(() => {});
+      try {
+        subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(vapidKey) });
+      } catch (secondError) {
+        console.error('[Push] Subscription creation failed:', firstError, secondError);
         return;
       }
     }
   }
 
-  // ── VALIDATE: endpoint must be a real HTTPS URL ─────────────────────
-  if (!sub?.endpoint || !sub.endpoint.startsWith('https://')) {
-    console.error('[Sync] Invalid endpoint — aborting register:', sub?.endpoint);
-    return;
-  }
+  if (!subscription.endpoint.startsWith('https://')) return;
+  await registerDevice(token, deviceId, 'granted', subscription);
+};
 
-  console.log('[Sync] Subscription valid:', {
-    endpoint: sub.endpoint.slice(0, 60) + '...',
-  });
+export const syncDeviceRegistration = async (userId: string): Promise<void> => {
+  if (!isAdultSession()) return;
+  await syncCurrentSessionDevice(userId);
+};
 
-  // Step 2: SINGLE register call with COMPLETE data
+export const checkPushHealth = async (userId: string): Promise<PushHealthResult> => {
+  const deviceId = getOrCreateDeviceId();
+  const permission: PushHealthResult['permission'] = 'Notification' in window ? Notification.permission : 'unsupported';
+  const base = { deviceId, permission, hasBrowserSubscription: false, backendRegistered: false, repaired: false };
+
+  if (permission === 'unsupported') return { ...base, status: 'unsupported' };
+  if (permission === 'denied') return { ...base, status: 'permission_denied' };
+  if (permission === 'default') return { ...base, status: 'permission_required' };
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return { ...base, status: 'service_worker_unavailable' };
+
+  const token = getAuthToken();
+  if (!token) return { ...base, status: 'error', detail: 'Authentication required' };
+
   try {
-    const response = await fetch(`${API_BASE_URL}/v1/adult/devices/register`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({
-        deviceId,
-        platform,
-        isStandalone: ctx.isStandalone,
-        notificationPermission: 'granted',
-        subscription: sub.toJSON(),
-      })
-    });
-    const data = await response.json();
-    console.log('[Sync] ✅ Device registered with subscription:', {
-      deviceId,
-      isNew: data.isNew,
-    });
-  } catch (err: any) {
-    console.error('[Sync] Save subscription failed:', err.message);
+    const registration = await navigator.serviceWorker.ready;
+    let subscription = await registration.pushManager.getSubscription();
+    let repaired = false;
+
+    if (!subscription) {
+      await syncCurrentSessionDevice(userId);
+      subscription = await registration.pushManager.getSubscription();
+      repaired = Boolean(subscription);
+    }
+
+    if (!subscription) return { ...base, status: 'missing_subscription', repaired };
+
+    let device = await getCurrentDevice(token, deviceId);
+    const endpoint = device?.endpoint ?? device?.pushEndpoint;
+    if (!device || !device.isActive || endpoint !== subscription.endpoint) {
+      await syncCurrentSessionDevice(userId);
+      device = await getCurrentDevice(token, deviceId);
+      repaired = true;
+    }
+
+    const refreshedEndpoint = device?.endpoint ?? device?.pushEndpoint;
+    if (!device || !device.isActive || refreshedEndpoint !== subscription.endpoint) {
+      return { ...base, status: 'backend_missing', hasBrowserSubscription: true, backendRegistered: false, repaired };
+    }
+
+    if (device.pushHealthStatus === 'unhealthy') {
+      return { ...base, status: 'unhealthy', hasBrowserSubscription: true, backendRegistered: true, repaired };
+    }
+
+    return { ...base, status: 'healthy', hasBrowserSubscription: true, backendRegistered: true, repaired };
+  } catch (error: any) {
+    console.error('[Push] Health check failed:', error);
+    return { ...base, status: 'error', detail: error?.message || 'Unknown push error' };
   }
 };
 
-// For use in logout flow
+const waitForPushTestReceipt = async (token: string, deviceId: string, testId: string, onWaiting?: () => void, timeoutMs = 25_000) => {
+  onWaiting?.();
+  toast.info('Test sent. Waiting for this device to receive it…', { duration: timeoutMs });
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    await new Promise(resolve => window.setTimeout(resolve, 1000));
+    const endpoint = isAdultSession() ? '/v1/adult/push/health-test/status' : '/users/push/health-test/status';
+    const response = await fetch(`${API_BASE_URL}${endpoint}?deviceId=${encodeURIComponent(deviceId)}&testId=${encodeURIComponent(testId)}`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) continue;
+    const data = await response.json();
+    if (data.status === 'delivered') return true;
+    if (data.status === 'failed' || data.status === 'expired') return false;
+  }
+
+  return false;
+};
+
+export const sendPushTest = async (
+  userId: string,
+  options?: { onWaiting?: () => void },
+): Promise<{ success: boolean; status: PushHealthStatus; deliveredToProvider: boolean; deviceReceived?: boolean; reason?: string }> => {
+  const health = await checkPushHealth(userId);
+  if (health.status !== 'healthy') return { success: false, status: health.status, deliveredToProvider: false, reason: health.detail || `Push is not healthy: ${health.status}` };
+
+  const token = getAuthToken();
+  if (!token) return { success: false, status: 'error', deliveredToProvider: false, reason: 'Authentication required' };
+
+  try {
+    const endpoint = isAdultSession() ? '/v1/adult/push/health-test' : '/users/push/health-test';
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ deviceId: health.deviceId }) });
+    const data = await response.json();
+    if (!response.ok || !data?.deliveredToProvider || !data?.testId) {
+      return { success: false, status: 'error', deliveredToProvider: false, reason: data?.reason || 'Push provider rejected the notification' };
+    }
+
+    const deviceReceived = await waitForPushTestReceipt(token, health.deviceId, data.testId, options?.onWaiting);
+    if (!deviceReceived) {
+      return { success: false, status: 'unhealthy', deliveredToProvider: true, deviceReceived: false, reason: 'The push provider accepted the notification, but this device did not confirm receipt within 25 seconds.' };
+    }
+
+    return { success: true, status: 'healthy', deliveredToProvider: true, deviceReceived: true };
+  } catch (error: any) {
+    return { success: false, status: 'error', deliveredToProvider: false, reason: error?.message || 'Network error while testing push' };
+  }
+};
+
+export const syncStandardUserPushRegistration = async (): Promise<void> => {
+  if (isAdultSession()) return;
+  await syncCurrentSessionDevice('standard-user');
+};
+
 export const deregisterDevice = async (): Promise<void> => {
   const deviceId = getOrCreateDeviceId();
-  const token = localStorage.getItem('adultAccessToken');
-  console.log('[Device] Deregistering on logout:', deviceId);
-
+  const token = getAuthToken();
   if (token) {
-    try {
-      await fetch(`${API_BASE_URL}/v1/adult/devices/current`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ deviceId }),
-      });
-    } catch (err) {
-      console.error('[Device] Deregister failed (non-fatal):', err);
-    }
+    const endpoint = isAdultSession() ? '/v1/adult/devices/current' : '/users/push/subscribe';
+    await fetch(`${API_BASE_URL}${endpoint}`, { method: 'DELETE', headers: authHeaders(token), body: JSON.stringify({ deviceId }) }).catch(error => console.error('[Device] Deregister failed:', error));
   }
   clearDeviceId();
 };
 
-// Grant permission — must be called from direct user gesture (button click)
 export const requestAndSubscribe = async (userId: string): Promise<boolean> => {
   const ctx = getInstallContext();
-  console.log('[Push] User requested notifications:', ctx);
-  const token = localStorage.getItem('adultAccessToken');
-
   if (ctx.isIOS && !ctx.isStandalone) {
     window.dispatchEvent(new CustomEvent('zippo:show_install_guide'));
     return false;
   }
+  if (!('Notification' in window)) return false;
 
   const permission = await Notification.requestPermission();
-  console.log('[Push] Permission result:', permission);
-
   if (permission !== 'granted') {
-    if (token) {
-      const platform = ctx.isIOS ? 'ios' : ctx.isAndroid ? 'android' : 'desktop';
-      await fetch(`${API_BASE_URL}/v1/adult/devices/register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          deviceId: getOrCreateDeviceId(),
-          platform,
-          isStandalone: ctx.isStandalone,
-          notificationPermission: permission,
-        })
-      }).catch(() => {});
-    }
+    await syncCurrentSessionDevice(userId);
     return false;
   }
 
-  await syncDeviceRegistration(userId);
-  return true;
+  const token = getAuthToken();
+  const deviceId = getOrCreateDeviceId();
+  if (token) {
+    const endpoint = isAdultSession() ? '/v1/adult/push/health' : '/users/push/health';
+    await fetch(`${API_BASE_URL}${endpoint}`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ deviceId, status: 'unknown' }) }).catch(() => {});
+  }
+
+  await syncCurrentSessionDevice(userId);
+  return (await checkPushHealth(userId)).status === 'healthy';
 };
