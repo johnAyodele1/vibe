@@ -8,7 +8,7 @@ import { getWallet, getBundles, getTransactions, createPurchaseIntent, simulateW
 import { startConversation, getConversations, getUnreadCount, getMessages as getSextMessages, sendMessage as sendSextMessage, unlockMedia, markAsRead, getConversationById, deleteConversation, muteConversation, deleteMessage as deleteSextMessage, reactMessage as reactSextMessage, requestPhoto, fulfillPhotoRequest, declinePhotoRequest, requestService, fulfillServiceTonightRequest, declineServiceTonightRequest, getGiftsCatalogue, sendGift, initiateCall, acceptCall, declineCall, endCall, getCallHistory, missedCall, sendGiftRequest, sendServiceRequest, getTonightRate, payServiceRequest, completeServiceRequest, reportServiceRequest, declineServiceRequest, dismissGiftRequest, fulfillGiftRequest } from '../controllers/adultSext.controller';
 import { getRooms, createRoom as createAdultRoom, getRoom as getAdultRoom, joinRoom as joinAdultRoom, leaveRoom as leaveAdultRoom, getRoomMembers, getRoomLeaderboard, getThreads, createThread, getThread, reactThread, pinThread, lockThread, getMessages as getAdultRoomMessages, sendMessage as sendAdultRoomMessage, reactMessage as reactAdultRoomMessage, deleteMessage as deleteAdultRoomMessage, getReplies, postReply, reactReply, getActivePolls, createPoll, votePoll, reportRoom, muteUser, kickUser } from '../controllers/adultRooms.controller';
 import { getProviderPublicProfile, unlockProviderPhoto } from '../controllers/adultProviders.controller';
-import { savePushSubscription, removePushSubscription, getVapidPublicKey, sendTestPush, getCurrentDevice, updatePushToken, registerDevice, removeDevice, diagnosePush } from '../controllers/adultPush.controller';
+import { savePushSubscription, removePushSubscription, getVapidPublicKey, getCurrentDevice, registerDevice, removeDevice, diagnosePush } from '../controllers/adultPush.controller';
 import { sendPushHealthTest, acknowledgePushHealthTest, getPushHealthTestStatus, markPushHealth } from '../controllers/pushHealth.controller';
 import { getUserTasks, completeTask, dailyCheckin } from '../controllers/adultRewards.controller';
 import { getProviderWheel, updateProviderWheel, spinProviderWheel, getProviderWheelStats } from '../controllers/adultWheel.controller';
@@ -23,13 +23,10 @@ router.get('/adult/push/public-key', getVapidPublicKey);
 router.post('/adult/push/subscribe', verifyAdultJWT, savePushSubscription);
 router.delete('/adult/push/subscribe', verifyAdultJWT, removePushSubscription);
 router.get('/adult/push/current', verifyAdultJWT, getCurrentDevice);
-router.patch('/adult/push/token', verifyAdultJWT, updatePushToken);
-router.post('/adult/push/test', verifyAdultJWT, sendTestPush);
 router.post('/adult/push/health-test', verifyAdultJWT, sendPushHealthTest);
-router.post('/adult/push/health-test/ack', verifyAdultJWT, acknowledgePushHealthTest);
+router.post('/adult/push/health-test/ack', acknowledgePushHealthTest);
 router.get('/adult/push/health-test/status', verifyAdultJWT, getPushHealthTestStatus);
 router.post('/adult/push/health', verifyAdultJWT, markPushHealth);
-
 router.post('/adult/devices/register', verifyAdultJWT, registerDevice);
 router.delete('/adult/devices/current', verifyAdultJWT, removeDevice);
 router.get('/adult/devices/current', verifyAdultJWT, getCurrentDevice);
@@ -40,7 +37,6 @@ router.post('/adult/random/queue', verifyAdultJWT, joinMatchQueue);
 router.delete('/adult/random/queue', verifyAdultJWT, leaveMatchQueue);
 router.post('/adult/random/:matchId/next', verifyAdultJWT, nextStranger);
 router.post('/adult/random/:matchId/end', verifyAdultJWT, endMatchSession);
-
 router.get('/shared/countries', getCountries);
 router.get('/shared/countries/:code/states', getStatesByCountry);
 router.get('/shared/cities', getCities);
@@ -49,7 +45,6 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100
 router.get('/adult/media/presigned-url', verifyAdultJWT, getPresignedUrl);
 router.put('/adult/media/upload-mock', handleMockUpload);
 router.post('/adult/media/upload', verifyAdultJWT, upload.single('file'), uploadMedia);
-
 router.get('/adult/wallet', verifyAdultJWT, getWallet);
 router.get('/adult/wallet/bundles', getBundles);
 router.get('/adult/config/diamond-rate', getDiamondRate);
@@ -58,7 +53,6 @@ router.post('/adult/wallet/purchase/intent', verifyAdultJWT, createPurchaseInten
 router.post('/adult/wallet/purchase/webhook', simulateWebhookSuccess);
 router.get('/adult/subscriptions/plans', getSubscriptionPlans);
 router.post('/adult/wallet/tip', verifyAdultJWT, directTip);
-
 router.get('/adult/sext/conversations', verifyAdultJWT, getConversations);
 router.post('/adult/sext/conversations', verifyAdultJWT, startConversation);
 router.post('/adult/sext/conversations/:userId/start', verifyAdultJWT, startConversation);
@@ -95,13 +89,11 @@ router.put('/adult/sext/calls/:callId/decline', verifyAdultJWT, declineCall);
 router.put('/adult/sext/calls/:callId/missed', verifyAdultJWT, missedCall);
 router.put('/adult/sext/calls/:callId/end', verifyAdultJWT, endCall);
 router.get('/adult/sext/calls/history', verifyAdultJWT, getCallHistory);
-
 router.get('/adult/hookup/nearby', optionalAdultJWT, getHookupNearbyProviders);
 router.get('/adult/profiles/me', verifyAdultJWT, getAdultMemberProfile);
 router.get('/adult/rewards/tasks', verifyAdultJWT, getUserTasks);
 router.post('/adult/rewards/tasks/:taskId/complete', verifyAdultJWT, completeTask);
 router.post('/adult/rewards/checkin', verifyAdultJWT, dailyCheckin);
-
 router.get('/adult/providers/me/onboarding', verifyAdultJWT, getOnboardingProgress);
 router.put('/adult/providers/me/onboarding/step/:stepNumber', verifyAdultJWT, saveOnboardingStep);
 router.get('/adult/providers/me/dashboard', verifyAdultJWT, getProviderDashboard);
@@ -121,12 +113,10 @@ router.put('/adult/providers/me/payout', verifyAdultJWT, updatePayout);
 router.put('/adult/providers/me/photos', verifyAdultJWT, updatePhotos);
 router.put('/adult/providers/me/schedule', verifyAdultJWT, updateSchedule);
 router.get('/adult/providers/me', verifyAdultJWT, getMyProfile);
-
 router.get('/adult/providers/:providerId', verifyAdultJWT, getProviderPublicProfile);
 router.post('/adult/providers/:providerId/photos/:photoIndex/unlock', verifyAdultJWT, unlockProviderPhoto);
 router.get('/adult/providers/:providerId/wheel', verifyAdultJWT, getProviderWheel);
 router.post('/adult/providers/:providerId/wheel/spin', verifyAdultJWT, spinProviderWheel);
-
 router.get('/adult/rooms', optionalAdultJWT, getRooms);
 router.post('/adult/rooms', verifyAdultJWT, createAdultRoom);
 router.get('/adult/rooms/:roomId', optionalAdultJWT, getAdultRoom);
