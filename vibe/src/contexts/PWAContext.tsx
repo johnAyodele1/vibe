@@ -1,9 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { requestForToken, onMessageListener } from '../firebase';
 import { API_BASE_URL } from '../config';
 import { useAuth } from './AuthContext';
 import { toast } from 'sonner';
-import { syncDeviceRegistration } from '../lib/pwa/subscriptionManager';
+import { syncDeviceRegistration, syncStandardUserPushRegistration } from '../lib/pwa/subscriptionManager';
 
 export type InstallResult =
   | { status: 'accepted' }
@@ -29,9 +28,7 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [isStandalone, setIsStandalone] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
-    (typeof window !== 'undefined' && 'Notification' in window)
-      ? Notification.permission
-      : 'default' as NotificationPermission
+    typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default'
   );
 
   const getDiagnostics = () => ({
@@ -52,22 +49,12 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, [isStandalone, isInstallable, deferredPrompt, notificationPermission]);
 
   useEffect(() => {
-    console.log('[PWA] Initializing PWA detection');
-    console.log('[PWA] User agent:', typeof navigator !== 'undefined' ? navigator.userAgent : '');
-    console.log('[PWA] Current URL:', typeof window !== 'undefined' ? window.location.href : '');
-
     const checkStandalone = () => {
-      const isStandaloneMode =
-        window.matchMedia('(display-mode: standalone)').matches ||
-        (navigator as any).standalone ||
-        document.referrer.includes('android-app://');
-      setIsStandalone(!!isStandaloneMode);
+      const standalone = window.matchMedia('(display-mode: standalone)').matches ||
+        (navigator as any).standalone || document.referrer.includes('android-app://');
+      setIsStandalone(!!standalone);
     };
-
-    const checkIOS = () => {
-      const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
-      setIsIOS(ios);
-    };
+    const checkIOS = () => setIsIOS(/iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream);
 
     checkStandalone();
     checkIOS();
@@ -93,141 +80,80 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', handleAppInstalled);
-
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
     };
   }, []);
 
-  // Adult PWA uses the Web Push/device registry as the source of truth.
-  // Keep the legacy FCM path for the non-adult application so this change does
-  // not silently migrate two notification systems at once.
   useEffect(() => {
     if (!isAuthenticated || !user) return;
 
     const adultToken = localStorage.getItem('adultAccessToken');
     if (adultToken) {
-      void syncDeviceRegistration(String(user.id)).catch(err =>
-        console.error('[PWA] Adult push device sync failed:', err),
-      );
+      void syncDeviceRegistration(String(user.id)).catch(err => console.error('[PWA] Adult push sync failed:', err));
       return;
     }
 
-    const hasToken = user.fcmTokens && user.fcmTokens.length > 0;
-
     if (notificationPermission === 'granted') {
-      syncPushToken();
+      void syncStandardUserPushRegistration().catch(err => console.error('[PWA] Push sync failed:', err));
     } else if (notificationPermission === 'default') {
-      toast("Enable push notifications to get matches and messages on your phone!", {
-        action: {
-          label: "Enable Now",
-          onClick: () => requestNotificationPermission(),
-        },
+      toast('Enable push notifications to get matches and messages on your phone!', {
+        action: { label: 'Enable Now', onClick: () => requestNotificationPermission() },
         duration: 15000,
       });
-    } else if (notificationPermission === 'denied' && !hasToken) {
+    } else {
       const hasWarned = sessionStorage.getItem('notificationDeniedWarned');
       if (!hasWarned) {
-        toast.error("Push notifications are blocked in your browser settings. You'll miss out on instant match alerts!", { duration: 6000 });
+        toast.error("Push notifications are blocked in your browser settings.", { duration: 6000 });
         sessionStorage.setItem('notificationDeniedWarned', 'true');
       }
     }
-  }, [isAuthenticated, user?.id, user?.fcmTokens, notificationPermission]);
+  }, [isAuthenticated, user?.id, notificationPermission]);
 
   useEffect(() => {
-    if (isAuthenticated && user) {
-      const checkAndUpdateLocation = async () => {
-        const hasRequested = sessionStorage.getItem('locationRequestedThisSession');
-
-        if ('permissions' in navigator && (navigator.permissions as any).query) {
-          try {
-            const status = await (navigator.permissions as any).query({ name: 'geolocation' });
-            if (status.state === 'denied') return;
-            if (status.state === 'prompt' && hasRequested) return;
-          } catch (e) {
-            console.error('Error checking geolocation permission:', e);
-          }
-        } else if (hasRequested) {
-          return;
+    if (!isAuthenticated || !user) return;
+    const checkAndUpdateLocation = async () => {
+      const hasRequested = sessionStorage.getItem('locationRequestedThisSession');
+      if ('permissions' in navigator && (navigator.permissions as any).query) {
+        try {
+          const status = await (navigator.permissions as any).query({ name: 'geolocation' });
+          if (status.state === 'denied' || (status.state === 'prompt' && hasRequested)) return;
+        } catch (e) {
+          console.error('Error checking geolocation permission:', e);
         }
+      } else if (hasRequested) return;
+      updateUserLocation();
+      sessionStorage.setItem('locationRequestedThisSession', 'true');
+    };
 
-        updateUserLocation();
-        sessionStorage.setItem('locationRequestedThisSession', 'true');
-      };
-
-      const interval = setInterval(checkAndUpdateLocation, 1000 * 60 * 15);
-      checkAndUpdateLocation();
-      return () => clearInterval(interval);
-    }
+    const interval = setInterval(checkAndUpdateLocation, 1000 * 60 * 15);
+    checkAndUpdateLocation();
+    return () => clearInterval(interval);
   }, [isAuthenticated]);
 
-  useEffect(() => {
-    const unsubscribe = onMessageListener((payload: any) => {
-      toast(payload.notification.title, { description: payload.notification.body });
-    });
-    return () => unsubscribe();
-  }, []);
-
-  const syncPushToken = async () => {
-    const lastSync = localStorage.getItem('lastPushTokenSync');
-    const now = Date.now();
-    if (lastSync && now - parseInt(lastSync) < 1000 * 60 * 60 * 24) return;
-
-    try {
-      let registration;
-      if ('serviceWorker' in navigator) registration = await navigator.serviceWorker.ready;
-
-      const token = await requestForToken(registration);
-      if (token) {
-        const response = await fetch(`${API_BASE_URL}/users/push-token`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${localStorage.getItem('accessToken')}`,
-          },
-          body: JSON.stringify({ token }),
-        });
-
-        if (response.ok) localStorage.setItem('lastPushTokenSync', Date.now().toString());
-      }
-    } catch (error) {
-      console.error('Error in syncPushToken:', error);
-    }
-  };
-
   const updateUserLocation = () => {
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          const { latitude, longitude } = position.coords;
-          try {
-            await fetch(`${API_BASE_URL}/users/location`, {
-              method: 'PUT',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${localStorage.getItem('accessToken')}`,
-              },
-              body: JSON.stringify({ latitude, longitude }),
-            });
-          } catch (error) {
-            console.error('Error updating location:', error);
-          }
-        },
-        (error) => console.warn('Geolocation update failed:', error),
-        { enableHighAccuracy: true }
-      );
-    }
+    if (!('geolocation' in navigator)) return;
+    navigator.geolocation.getCurrentPosition(async position => {
+      const { latitude, longitude } = position.coords;
+      try {
+        await fetch(`${API_BASE_URL}/users/location`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` },
+          body: JSON.stringify({ latitude, longitude }),
+        });
+      } catch (error) {
+        console.error('Error updating location:', error);
+      }
+    }, error => console.warn('Geolocation update failed:', error), { enableHighAccuracy: true });
   };
 
   const installApp = async (): Promise<InstallResult> => {
     const promptObj = deferredPrompt || (typeof window !== 'undefined' && (window as any)._deferredInstallPrompt);
     if (!promptObj) return { status: 'unavailable' };
-
     try {
       promptObj.prompt();
       const { outcome } = await promptObj.userChoice;
-
       if (outcome === 'accepted') {
         setIsInstallable(false);
         setDeferredPrompt(null);
@@ -236,7 +162,7 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
       return { status: 'dismissed' };
     } catch (err) {
-      console.error('[PWA] PWA install prompt error:', err);
+      console.error('[PWA] Install prompt error:', err);
       return { status: 'error' };
     }
   };
@@ -250,17 +176,22 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const permission = await Notification.requestPermission();
     setNotificationPermission(permission);
 
-    if (permission === 'granted') {
-      toast.success('Notifications enabled!');
+    if (permission !== 'granted') {
+      if (permission === 'denied') toast.error('Notification permission denied. Please enable it in browser settings.');
+      return;
+    }
+
+    try {
       const adultToken = localStorage.getItem('adultAccessToken');
       if (adultToken && user) {
-        const healthy = await syncDeviceRegistration(String(user.id)).then(() => true).catch(() => false);
-        if (!healthy) toast.error('Notification setup needs another attempt.');
+        await syncDeviceRegistration(String(user.id));
       } else {
-        syncPushToken();
+        await syncStandardUserPushRegistration();
       }
-    } else if (permission === 'denied') {
-      toast.error('Notification permission denied. Please enable them in settings.');
+      toast.success('Notifications enabled and connected.');
+    } catch (error) {
+      console.error('[PWA] Notification registration failed:', error);
+      toast.error('Notifications were allowed, but this device could not be connected. Try again from Settings.');
     }
   };
 
