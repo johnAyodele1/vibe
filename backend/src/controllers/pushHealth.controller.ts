@@ -1,27 +1,39 @@
+import { createHash, randomBytes, randomUUID } from 'crypto';
 import { Request, Response } from 'express';
-import { randomUUID } from 'crypto';
 import PushSubscription from '../models/PushSubscription';
 import { ensureVapidKeys } from '../shared/push';
 import webpush from 'web-push';
 
-const TEST_TTL_MS = 30_000;
+const TEST_TTL_MS = 25_000;
+const getPrincipal = (req: Request) => (req as any).adultUser ?? (req as any).user;
+const hashAckToken = (token: string) => createHash('sha256').update(token).digest('hex');
 
 export const sendPushHealthTest = async (req: Request, res: Response) => {
   try {
-    const user = req.adultUser;
+    const user = getPrincipal(req);
     if (!user) return res.status(401).json({ success: false, error: 'Auth required' });
     const deviceId = typeof req.body?.deviceId === 'string' ? req.body.deviceId : '';
     if (!deviceId) return res.status(400).json({ success: false, error: 'deviceId required' });
-    await ensureVapidKeys();
 
+    await ensureVapidKeys();
     const subscription = await PushSubscription.findOne({ userId: user._id, deviceId, isActive: true, notificationsEnabled: true });
     if (!subscription?.endpoint || !subscription.keys?.p256dh || !subscription.keys?.auth) {
       return res.status(404).json({ success: false, reason: 'No active push subscription exists for this device', status: 'backend_missing' });
     }
 
     const testId = `push_test_${randomUUID()}`;
+    const ackToken = randomBytes(32).toString('hex');
     const now = new Date();
-    await PushSubscription.updateOne({ _id: subscription._id }, { $set: { lastTestAt: now, lastTestId: testId, lastTestStatus: 'pending', pushHealthStatus: 'unknown', lastSeenAt: now } });
+    await PushSubscription.updateOne({ _id: subscription._id }, {
+      $set: {
+        lastTestAt: now,
+        lastTestId: testId,
+        lastTestAckTokenHash: hashAckToken(ackToken),
+        lastTestStatus: 'pending',
+        pushHealthStatus: 'unknown',
+        lastSeenAt: now,
+      },
+    });
 
     const payload = {
       title: 'Test notification',
@@ -34,6 +46,7 @@ export const sendPushHealthTest = async (req: Request, res: Response) => {
       url: '/adult',
       type: 'push_test',
       testId,
+      ackToken,
       timestamp: Date.now(),
     };
 
@@ -61,27 +74,37 @@ export const sendPushHealthTest = async (req: Request, res: Response) => {
   }
 };
 
+// This endpoint is intentionally authenticated by a short-lived, single-use test secret.
+// The service worker may be running with no page context, so it cannot rely on a user JWT.
 export const acknowledgePushHealthTest = async (req: Request, res: Response) => {
   try {
-    const user = req.adultUser;
-    if (!user) return res.status(401).json({ success: false, error: 'Auth required' });
-    const { deviceId, testId, status } = req.body || {};
-    if (!deviceId || !testId) return res.status(400).json({ success: false, error: 'deviceId and testId required' });
+    const { deviceId, testId, ackToken } = req.body || {};
+    if (!deviceId || !testId || !ackToken) return res.status(400).json({ success: false, error: 'deviceId, testId and ackToken required' });
+
+    const subscription = await PushSubscription.findOne({ deviceId, lastTestId: testId, isActive: true });
+    if (!subscription || !subscription.lastTestAckTokenHash || hashAckToken(ackToken) !== subscription.lastTestAckTokenHash) {
+      return res.status(404).json({ success: false, error: 'Push test not found' });
+    }
 
     const now = new Date();
-    const subscription = await PushSubscription.findOneAndUpdate(
-      { userId: user._id, deviceId, lastTestId: testId, isActive: true },
-      { $set: {
-        lastTestStatus: status === 'received' ? 'delivered' : 'failed',
-        pushHealthStatus: status === 'received' ? 'healthy' : 'unhealthy',
-        lastVerifiedAt: now,
-        lastSeenAt: now,
-        ...(status === 'received' ? { lastSuccessfulPushAt: now, failCount: 0 } : {}),
-      } },
+    const updated = await PushSubscription.findOneAndUpdate(
+      { _id: subscription._id, lastTestId: testId, lastTestStatus: 'pending' },
+      {
+        $set: {
+          lastTestStatus: 'delivered',
+          pushHealthStatus: 'healthy',
+          lastVerifiedAt: now,
+          lastSeenAt: now,
+          lastSuccessfulPushAt: now,
+          failCount: 0,
+        },
+        $unset: { lastTestAckTokenHash: 1 },
+      },
       { new: true },
     );
-    if (!subscription) return res.status(404).json({ success: false, error: 'Push test not found' });
-    return res.json({ success: true, status: subscription.lastTestStatus });
+
+    if (!updated) return res.status(409).json({ success: false, error: 'Push test already completed' });
+    return res.json({ success: true, status: 'delivered' });
   } catch (error: any) {
     console.error('[PushHealth] Acknowledgement failed:', error);
     return res.status(500).json({ success: false, error: error.message });
@@ -90,7 +113,7 @@ export const acknowledgePushHealthTest = async (req: Request, res: Response) => 
 
 export const getPushHealthTestStatus = async (req: Request, res: Response) => {
   try {
-    const user = req.adultUser;
+    const user = getPrincipal(req);
     if (!user) return res.status(401).json({ success: false, error: 'Auth required' });
     const { deviceId, testId } = req.query;
     if (typeof deviceId !== 'string' || typeof testId !== 'string') return res.status(400).json({ success: false, error: 'deviceId and testId required' });
@@ -99,7 +122,10 @@ export const getPushHealthTestStatus = async (req: Request, res: Response) => {
     if (!subscription) return res.status(404).json({ success: false, status: 'not_found' });
 
     if (subscription.lastTestStatus === 'pending' && subscription.lastTestAt && Date.now() - subscription.lastTestAt.getTime() > TEST_TTL_MS) {
-      await PushSubscription.updateOne({ _id: subscription._id, lastTestId: testId, lastTestStatus: 'pending' }, { $set: { lastTestStatus: 'expired', pushHealthStatus: 'unhealthy' } });
+      await PushSubscription.updateOne(
+        { _id: subscription._id, lastTestId: testId, lastTestStatus: 'pending' },
+        { $set: { lastTestStatus: 'expired', pushHealthStatus: 'unhealthy', lastVerifiedAt: new Date() }, $inc: { failCount: 1 }, $unset: { lastTestAckTokenHash: 1 } },
+      );
       return res.json({ success: true, status: 'expired' });
     }
 
@@ -112,7 +138,7 @@ export const getPushHealthTestStatus = async (req: Request, res: Response) => {
 
 export const markPushHealth = async (req: Request, res: Response) => {
   try {
-    const user = req.adultUser;
+    const user = getPrincipal(req);
     if (!user) return res.status(401).json({ success: false, error: 'Auth required' });
     const { deviceId, status } = req.body || {};
     if (!deviceId || !['healthy', 'unhealthy', 'unknown'].includes(status)) return res.status(400).json({ success: false, error: 'deviceId and valid status required' });
