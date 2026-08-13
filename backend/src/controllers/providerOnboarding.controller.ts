@@ -272,7 +272,42 @@ export const getAdultMemberProfile = async (req: Request, res: Response) => {
         username: user.username,
         role: user.role,
         displayName: user.displayName,
+        bio: user.bio || '',
         location: location || null
+      }
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const updateAdultMemberProfile = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
+    }
+
+    const { displayName, bio, location } = req.body;
+
+    if (displayName) user.displayName = displayName;
+    if (bio !== undefined) user.bio = bio;
+    if (location) {
+      user.location = location;
+    }
+
+    await user.save();
+
+    return res.json({
+      success: true,
+      data: {
+        id: user._id,
+        email: user.email,
+        username: user.username,
+        role: user.role,
+        displayName: user.displayName,
+        bio: user.bio || '',
+        location: user.location || null
       }
     });
   } catch (error: any) {
