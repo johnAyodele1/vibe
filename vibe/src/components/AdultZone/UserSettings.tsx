@@ -8,7 +8,7 @@ import { LocationSelect } from './LocationSelect';
 
 const UserSettings: React.FC = () => {
   const navigate = useNavigate();
-  const { user, logout } = useAdultAuth();
+  const { logout } = useAdultAuth();
   const token = localStorage.getItem('adultAccessToken');
 
   const [displayName, setDisplayName] = useState('');
