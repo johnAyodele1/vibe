@@ -13,6 +13,10 @@ import {
   updateLocation,
 } from '../controllers/user.controller';
 import {
+  registerUserPushDevice,
+  removeUserPushDevice,
+} from '../controllers/userPush.controller';
+import {
   like,
   dislike,
   superLike,
@@ -24,6 +28,8 @@ const router = Router();
 router.get('/profile', authenticateToken, updateOnlineStatus, getProfile);
 router.put('/profile', authenticateToken, updateOnlineStatus, updateProfile);
 router.post('/push-token', authenticateToken, updateOnlineStatus, updatePushToken);
+router.post('/push/subscribe', authenticateToken, updateOnlineStatus, registerUserPushDevice);
+router.delete('/push/subscribe', authenticateToken, updateOnlineStatus, removeUserPushDevice);
 router.put('/location', authenticateToken, updateOnlineStatus, updateLocation);
 router.get('/discover', authenticateToken, updateOnlineStatus, discover);
 router.get('/favourites', authenticateToken, updateOnlineStatus, getFavourites);
