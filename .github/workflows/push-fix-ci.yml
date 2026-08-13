@@ -15,37 +15,32 @@ jobs:
   frontend-build-lint-unit:
     name: Frontend build, lint, and unit tests
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: vibe
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: vibe/package-lock.json
+          cache-dependency-path: package-lock.json
       - run: npm ci
-      - run: npm run build
-      - run: npm run lint
-      - run: npm test
+      - run: npm run build --workspace=vibe
+      - run: npm run lint --workspace=vibe
+      - run: npm test --workspace=vibe
 
   frontend-e2e:
     name: Frontend Playwright E2E tests
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: vibe
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: vibe/package-lock.json
+          cache-dependency-path: package-lock.json
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e
+        working-directory: vibe
+      - run: npm run test:e2e --workspace=vibe
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
@@ -76,15 +71,12 @@ jobs:
   content-filter:
     name: Content filter build and tests
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: packages/content-filter
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: vibe/package-lock.json
-      - run: npm ci --prefix ../../vibe
-      - run: npm run build
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm run build --workspace=@yourapp/content-filter
