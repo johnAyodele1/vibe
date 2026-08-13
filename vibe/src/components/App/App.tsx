@@ -38,6 +38,7 @@ import ProviderLive from "../AdultZone/ProviderLive";
 import ProviderProfile from "../AdultZone/ProviderProfile";
 import ProviderSettings from "../AdultZone/ProviderSettings";
 import ProviderPayout from "../AdultZone/ProviderPayout";
+import NotificationPrompt from "../pwa/NotificationPrompt";
 import { useAuth } from "../../contexts/AuthContext";
 import { useAdultAuth } from "../../contexts/AdultAuthContext";
 import { API_BASE_URL } from "../../config";
@@ -71,11 +72,8 @@ function App() {
         window.location.reload();
       }
       if (event.data?.type === 'NAVIGATE' && event.data.url) navigate(event.data.url);
-      if (event.data?.type === 'PUSH_SUBSCRIPTION_CHANGED') {
-        window.dispatchEvent(new CustomEvent('zippo:push_subscription_changed', { detail: event.data.subscription }));
-      }
+      if (event.data?.type === 'PUSH_SUBSCRIPTION_CHANGED') window.dispatchEvent(new CustomEvent('zippo:push_subscription_changed', { detail: event.data.subscription }));
     };
-
     navigator.serviceWorker.addEventListener('message', handleServiceWorkerMessage);
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') navigator.serviceWorker.ready.then(registration => registration.update().catch(err => console.warn('[App] SW update check failed:', err)));
@@ -88,6 +86,8 @@ function App() {
   }, [navigate]);
 
   if (loading) return <LoadingScreen />;
+
+  const showStandardUserNotificationPrompt = isAuthenticated && !adultIsAuthenticated && Boolean(user?._id);
 
   return (
     <>
@@ -136,6 +136,7 @@ function App() {
         <Route path="/direct-message/:conversationId" element={isAuthenticated ? (isProfileComplete() ? <DirectMessage /> : <Navigate to="/profile" replace />) : <Navigate to="/auth" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      {showStandardUserNotificationPrompt && <NotificationPrompt userId={user!._id} />}
       <Toaster />
     </>
   );
