@@ -21,9 +21,7 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
     checkPushHealth(userId).then(currentHealth => {
       if (cancelled) return;
       setHealth(currentHealth);
-      if (currentHealth.status === 'permission_required' || currentHealth.status === 'missing_subscription' || currentHealth.status === 'backend_missing' || currentHealth.status === 'unhealthy') {
-        setShowNotifPrompt(true);
-      }
+      if (currentHealth.status === 'permission_required' || currentHealth.status === 'missing_subscription' || currentHealth.status === 'backend_missing' || currentHealth.status === 'unhealthy') setShowNotifPrompt(true);
       if (currentHealth.status === 'healthy') setShowNotifPrompt(false);
     }).catch(error => console.error('[NotifPrompt] Health check failed:', error));
     return () => { cancelled = true; };
@@ -31,7 +29,6 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
 
   const handleEnable = async () => {
     if (!ctx) return;
-
     if (ctx.isIOS && !ctx.isStandalone) {
       setVisible(false);
       setShowNotifPrompt(false);
@@ -39,16 +36,13 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
       toast.info('Add Zippo to your Home Screen first, then enable notifications.', { duration: 5000 });
       return;
     }
-
     if (ctx.isAndroid && !ctx.isStandalone) toast.info('Install Zippo to your home screen for the best experience', { duration: 3000 });
-
     setLoading(true);
     setResult(null);
     try {
       const connected = await requestAndSubscribe(userId);
       const currentHealth = await checkPushHealth(userId);
       setHealth(currentHealth);
-
       if (connected && currentHealth.status === 'healthy') {
         setResult('granted');
         toast.success('Notifications are enabled and connected on this device.');
@@ -83,12 +77,12 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
   return (
     <div className="notif-prompt" data-testid="notification-prompt">
       {result === 'granted' ? (
-        <div className="notif-prompt__success"><span>OK</span><p>Notifications enabled. You'll get alerts for messages and activity.</p></div>
+        <div className="notif-prompt__success"><span>✓</span><p>Notifications enabled. You'll get alerts for messages and activity.</p></div>
       ) : result === 'denied' ? (
         <div className="notif-prompt__denied"><span>Blocked</span><p>Notifications are blocked. Enable them in your browser settings.</p><button className="notif-prompt__dismiss" onClick={handleDismiss}>OK</button></div>
       ) : (
         <>
-          <div className="notif-prompt__icon">Bell</div>
+          <div className="notif-prompt__icon" aria-hidden="true">🔔</div>
           <div className="notif-prompt__text">
             <strong>{needsRepair ? 'Notifications need attention' : 'Stay in the loop'}</strong>
             <p>{needsRepair ? 'Your notification connection on this device is not working. Repair it to receive messages and matches.' : 'Get notified for new messages, matches, and activity.'}</p>
