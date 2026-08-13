@@ -88,6 +88,11 @@ import {
   removeDevice,
   diagnosePush
 } from '../controllers/adultPush.controller';
+import {
+  sendPushHealthTest,
+  acknowledgePushHealthTest,
+  getPushHealthTestStatus,
+} from '../controllers/pushHealth.controller';
 import { getUserTasks, completeTask, dailyCheckin } from '../controllers/adultRewards.controller';
 import {
   getProviderWheel,
@@ -111,6 +116,11 @@ router.delete('/adult/push/subscribe', verifyAdultJWT, removePushSubscription);
 router.get('/adult/push/current', verifyAdultJWT, getCurrentDevice);
 router.patch('/adult/push/token', verifyAdultJWT, updatePushToken);
 router.post('/adult/push/test', verifyAdultJWT, sendTestPush);
+
+// End-to-end push health test. The service worker acknowledges receipt.
+router.post('/adult/push/health-test', verifyAdultJWT, sendPushHealthTest);
+router.post('/adult/push/health-test/ack', verifyAdultJWT, acknowledgePushHealthTest);
+router.get('/adult/push/health-test/status', verifyAdultJWT, getPushHealthTestStatus);
 
 // Spec Device Registration routes
 router.post('/adult/devices/register', verifyAdultJWT, registerDevice);
@@ -137,7 +147,7 @@ router.get('/shared/cities', getCities);
 // Media uploads simulation
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 100 * 1024 * 1024 } // 100MB limit for video upload support
+  limits: { fileSize: 100 * 1024 * 1024 }
 });
 
 router.get('/adult/media/presigned-url', verifyAdultJWT, getPresignedUrl);
@@ -174,7 +184,7 @@ router.post('/adult/sext/conversations/:conversationId/request-photo', verifyAdu
 router.put('/adult/sext/photo-requests/:messageId/fulfill', verifyAdultJWT, fulfillPhotoRequest);
 router.put('/adult/sext/photo-requests/:messageId/decline', verifyAdultJWT, declinePhotoRequest);
 
-// Service Tonight Requests (Member requested)
+// Service Tonight Requests
 router.post('/adult/sext/conversations/:conversationId/request-service', verifyAdultJWT, requestService);
 router.put('/adult/sext/service-tonight-requests/:messageId/fulfill', verifyAdultJWT, fulfillServiceTonightRequest);
 router.put('/adult/sext/service-tonight-requests/:messageId/decline', verifyAdultJWT, declineServiceTonightRequest);
@@ -211,72 +221,16 @@ router.get('/adult/rewards/tasks', verifyAdultJWT, getUserTasks);
 router.post('/adult/rewards/tasks/:taskId/complete', verifyAdultJWT, completeTask);
 router.post('/adult/rewards/checkin', verifyAdultJWT, dailyCheckin);
 
-// Provider specific /me routes (defined first to prevent route parameter hijacking)
+// Provider specific /me routes
 router.get('/adult/providers/me/onboarding', verifyAdultJWT, getOnboardingProgress);
 router.put('/adult/providers/me/onboarding/step/:stepNumber', verifyAdultJWT, saveOnboardingStep);
 router.get('/adult/providers/me/dashboard', verifyAdultJWT, getProviderDashboard);
 router.get('/adult/providers/me/earnings', verifyAdultJWT, getProviderEarnings);
 
 // Payout overhauls
-router.get('/adult/providers/me/payout/eligible', verifyAdultJWT, getEligiblePayout);
-router.post('/adult/providers/me/payout/request', verifyAdultJWT, requestPayout);
-router.get('/adult/providers/me/payout/status', verifyAdultJWT, getPayoutStatus);
-router.get('/adult/providers/me/payout/history', verifyAdultJWT, getPayoutHistory);
-router.post('/adult/providers/me/payout', verifyAdultJWT, requestPayout);
-
-router.get('/adult/providers/me/wheel/stats', verifyAdultJWT, getProviderWheelStats);
-router.put('/adult/providers/me/wheel', verifyAdultJWT, updateProviderWheel);
-router.put('/adult/providers/me/profile', verifyAdultJWT, updateProfile);
-router.put('/adult/providers/me/services', verifyAdultJWT, updateServices);
-router.put('/adult/providers/me/pricing', verifyAdultJWT, updatePricing);
-router.put('/adult/providers/me/location', verifyAdultJWT, updateLocation);
-router.put('/adult/providers/me/payout', verifyAdultJWT, updatePayout);
-router.put('/adult/providers/me/photos', verifyAdultJWT, updatePhotos);
-router.put('/adult/providers/me/schedule', verifyAdultJWT, updateSchedule);
-router.get('/adult/providers/me', verifyAdultJWT, getMyProfile);
-
-// Parameterized Provider Routes (must be defined after specific static routes)
-router.get('/adult/providers/:providerId', verifyAdultJWT, getProviderPublicProfile);
-router.post('/adult/providers/:providerId/photos/:photoIndex/unlock', verifyAdultJWT, unlockProviderPhoto);
-router.get('/adult/providers/:providerId/wheel', verifyAdultJWT, getProviderWheel);
-router.post('/adult/providers/:providerId/wheel/spin', verifyAdultJWT, spinProviderWheel);
-
-// Naughty Rooms API
-router.get('/adult/rooms', optionalAdultJWT, getRooms);
-router.post('/adult/rooms', verifyAdultJWT, createAdultRoom);
-router.get('/adult/rooms/:roomId', optionalAdultJWT, getAdultRoom);
-router.post('/adult/rooms/:roomId/join', verifyAdultJWT, joinAdultRoom);
-router.post('/adult/rooms/:roomId/leave', verifyAdultJWT, leaveAdultRoom);
-router.get('/adult/rooms/:roomId/members', optionalAdultJWT, getRoomMembers);
-router.get('/adult/rooms/:roomId/leaderboard', optionalAdultJWT, getRoomLeaderboard);
-
-// Threads
-router.get('/adult/rooms/:roomId/threads', optionalAdultJWT, getThreads);
-router.post('/adult/rooms/:roomId/threads', verifyAdultJWT, createThread);
-router.get('/adult/rooms/:roomId/threads/:threadId', optionalAdultJWT, getThread);
-router.post('/adult/rooms/:roomId/threads/:threadId/react', verifyAdultJWT, reactThread);
-router.put('/adult/rooms/:roomId/threads/:threadId/pin', verifyAdultJWT, pinThread);
-router.put('/adult/rooms/:roomId/threads/:threadId/lock', verifyAdultJWT, lockThread);
-
-// Messages (main feed)
-router.get('/adult/rooms/:roomId/messages', optionalAdultJWT, getAdultRoomMessages);
-router.post('/adult/rooms/:roomId/messages', verifyAdultJWT, sendAdultRoomMessage);
-router.post('/adult/rooms/:roomId/messages/:messageId/react', verifyAdultJWT, reactAdultRoomMessage);
-router.delete('/adult/rooms/:roomId/messages/:messageId', verifyAdultJWT, deleteAdultRoomMessage);
-
-// Thread replies
-router.get('/adult/rooms/:roomId/threads/:threadId/replies', optionalAdultJWT, getReplies);
-router.post('/adult/rooms/:roomId/threads/:threadId/replies', verifyAdultJWT, postReply);
-router.post('/adult/rooms/:roomId/threads/:threadId/replies/:replyId/react', verifyAdultJWT, reactReply);
-
-// Polls
-router.get('/adult/rooms/:roomId/polls/active', optionalAdultJWT, getActivePolls);
-router.post('/adult/rooms/:roomId/polls', verifyAdultJWT, createPoll);
-router.post('/adult/rooms/:roomId/polls/:pollId/vote', verifyAdultJWT, votePoll);
-
-// Moderation
-router.post('/adult/rooms/:roomId/report', verifyAdultJWT, reportRoom);
-router.post('/adult/rooms/:roomId/members/:userId/mute', verifyAdultJWT, muteUser);
-router.delete('/adult/rooms/:roomId/members/:userId', verifyAdultJWT, kickUser);
+router.get('/adult/payout/eligible', verifyAdultJWT, getEligiblePayout);
+router.post('/adult/payout/request', verifyAdultJWT, requestPayout);
+router.get('/adult/payout/status', verifyAdultJWT, getPayoutStatus);
+router.get('/adult/payout/history', verifyAdultJWT, getPayoutHistory);
 
 export default router;
