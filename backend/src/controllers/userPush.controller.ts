@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import PushSubscription from '../models/PushSubscription';
 
 export const registerUserPushDevice = async (req: any, res: Response) => {
@@ -7,9 +7,7 @@ export const registerUserPushDevice = async (req: any, res: Response) => {
 
     const { deviceId, subscription, platform, isStandalone, notificationPermission } = req.body || {};
     if (!deviceId) return res.status(400).json({ success: false, message: 'deviceId required' });
-    if (!subscription?.endpoint?.startsWith('https://')) {
-      return res.status(400).json({ success: false, message: 'valid subscription required' });
-    }
+    if (!subscription?.endpoint?.startsWith('https://')) return res.status(400).json({ success: false, message: 'valid subscription required' });
 
     const device = await PushSubscription.findOneAndUpdate(
       { userId: req.user._id, deviceId },
@@ -20,10 +18,7 @@ export const registerUserPushDevice = async (req: any, res: Response) => {
           accountType: 'member',
           zone: 'dating',
           endpoint: subscription.endpoint,
-          keys: {
-            p256dh: subscription.keys?.p256dh || '',
-            auth: subscription.keys?.auth || '',
-          },
+          keys: { p256dh: subscription.keys?.p256dh || '', auth: subscription.keys?.auth || '' },
           platform: platform || 'unknown',
           isStandalone: !!isStandalone,
           notificationPermission: notificationPermission || 'granted',
@@ -50,7 +45,6 @@ export const removeUserPushDevice = async (req: any, res: Response) => {
     if (!req.user) return res.status(401).json({ success: false, message: 'Not authenticated' });
     const { deviceId } = req.body || {};
     if (!deviceId) return res.status(400).json({ success: false, message: 'deviceId required' });
-
     await PushSubscription.deleteOne({ userId: req.user._id, deviceId });
     return res.json({ success: true });
   } catch (error: any) {
