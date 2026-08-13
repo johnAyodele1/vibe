@@ -26,10 +26,11 @@ export const usePWAPromptStore = create<PWAPromptState>((set) => ({
 
   dismissInstallPrompt: () => {
     set({ showInstallPrompt: false });
-    // Show notification prompt immediately after install prompt is dismissed
+    // Notification onboarding follows the install prompt. It is intentionally
+    // shown for both default and already-granted permission so a granted device
+    // can be tested immediately instead of assuming push works.
     const ctx = getInstallContext();
-    const canPromptNotif = ctx.notificationPermission === 'default';
-    if (canPromptNotif) {
+    if (ctx.pushSupportedOnThisDevice) {
       set({ showNotifPrompt: true });
     }
   },
@@ -38,29 +39,20 @@ export const usePWAPromptStore = create<PWAPromptState>((set) => ({
     const ctx = getInstallContext();
     if (ctx.isStandalone) return false;
 
-    // NO MORE COOLDOWNS OR PERSISTENT LOCAL STORAGE DISMISSALS ON LOAD!
-    // It must show on every load/reload.
-    // Platform detection: standard iOS or Android or installable browser
     const ua = navigator.userAgent;
     const isIOSDevice = ctx.isIOS;
     const isSafariBrowser = /Safari/i.test(ua) && !/CriOS/i.test(ua) && !/FxiOS/i.test(ua) && !/EdgiOS/i.test(ua);
-
     const isIOS = isIOSDevice && isSafariBrowser;
     const isAndroid = /Android/i.test(ua);
-    const isInstallable = true; // standard fallback
+    const isInstallable = true;
 
     return isIOS || isAndroid || isInstallable;
   },
 
   shouldShowNotifPrompt: () => {
     const ctx = getInstallContext();
-    // Notification permission must be default
-    if (ctx.notificationPermission !== 'default') return false;
-
-    // Must be supported on this device
+    if (ctx.notificationPermission === 'denied') return false;
     if (!ctx.pushSupportedOnThisDevice) return false;
-
-    // NO MORE COOLDOWNS OR PERSISTENT LOCAL STORAGE DISMISSALS ON LOAD!
     return true;
   },
 
