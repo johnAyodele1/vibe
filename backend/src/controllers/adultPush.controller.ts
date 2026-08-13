@@ -149,19 +149,45 @@ export const sendTestPush = async (req: Request, res: Response) => {
           endpoint:   sub.endpoint.slice(0, 60),
           success:    false,
           statusCode: err.statusCode,
-          body:       err.body,
-          message:    err.message,
+          reason:     err.statusCode === 410 ? 'Subscription expired — device was uninstalled or PWA removed'
+                    : err.statusCode === 404 ? 'Endpoint not found'
+                    : err.message,
         });
 
         // Clean up dead subscriptions
-        if (err.statusCode === 410 || err.statusCode === 404 || err.statusCode === 403) {
+        if (err.statusCode === 410 || err.statusCode === 404) {
+          // Mark device as inactive and clear endpoint
+          await PushSubscription.findOneAndUpdate(
+            { _id: sub._id },
+            {
+              $set: {
+                isActive:             false,
+                notificationsEnabled: false,
+                endpoint:             null,
+                keys:                 null,
+                deactivatedAt:        new Date(),
+              }
+            }
+          );
+          console.log('[Push][Test] Removed stale subscription (device uninstalled):', sub.endpoint.slice(0, 60));
+        } else if (err.statusCode === 403) {
           await PushSubscription.deleteOne({ _id: sub._id });
           console.log('[Push][Test] Removed dead or mismatched subscription:', sub._id);
         }
       }
     }
 
-    return res.json({ results });
+    return res.json({
+      results,
+      summary: {
+        sent:   results.filter(r => r.success).length,
+        failed: results.filter(r => !r.success).length,
+        stale:  results.filter(r => r.statusCode === 410).length,
+      },
+      hint: results.some(r => r.statusCode === 410)
+        ? 'Some subscriptions were revoked (device uninstalled PWA). They have been removed.'
+        : undefined,
+    });
   } catch (error: any) {
     console.error('[Push][Test] Send test push failed:', error.message);
     return res.status(500).json({ success: false, error: error.message });
@@ -188,8 +214,28 @@ export const registerDevice = async (req: Request, res: Response) => {
       endpoint: subscription?.endpoint?.slice(0, 60) + '...',
     });
 
-    if (!deviceId) {
-      return res.status(400).json({ error: 'deviceId required' });
+    // ── VALIDATE deviceId ────────────────────────────────────────────
+    if (!deviceId || deviceId === 'undefined' || deviceId === 'null') {
+      console.warn('[Device] Register rejected — missing or invalid deviceId:', {
+        userId,
+        receivedDeviceId: deviceId,
+      });
+      return res.status(400).json({ error: 'Valid deviceId required' });
+    }
+
+    // ── VALIDATE endpoint if subscription provided ───────────────────
+    let validSubscription = subscription;
+    const endpoint = validSubscription?.endpoint;
+    if (validSubscription !== undefined && validSubscription !== null) {
+      // Subscription was provided — validate it
+      if (!endpoint || endpoint === 'undefined' || endpoint === 'null' || !endpoint.startsWith('https://')) {
+        console.warn('[Device] Register rejected — invalid endpoint:', {
+          userId, deviceId, receivedEndpoint: endpoint,
+        });
+        // Do not return error — just proceed without the subscription
+        // (some callers send subscription object with undefined endpoint)
+        validSubscription = undefined;
+      }
     }
 
     // Reassign device if it belonged to a different user
@@ -208,18 +254,18 @@ export const registerDevice = async (req: Request, res: Response) => {
       platform: platform || 'unknown',
       isStandalone: !!isStandalone,
       notificationPermission: notificationPermission || 'unknown',
-      notificationsEnabled: notificationPermission === 'granted' && !!subscription?.endpoint,
+      notificationsEnabled: notificationPermission === 'granted' && !!validSubscription?.endpoint,
       isActive: true,
       failCount: 0,
       lastSeenAt: new Date(),
       updatedAt: new Date(),
     };
 
-    if (subscription?.endpoint) {
-      update.endpoint = subscription.endpoint;
+    if (validSubscription?.endpoint) {
+      update.endpoint = validSubscription.endpoint;
       update.keys = {
-        p256dh: subscription.keys?.p256dh || '',
-        auth: subscription.keys?.auth || '',
+        p256dh: validSubscription.keys?.p256dh || '',
+        auth: validSubscription.keys?.auth || '',
       };
     }
 
@@ -318,10 +364,11 @@ export const updatePushToken = async (req: Request, res: Response) => {
 
     console.log('[Device] Token update:', { userId, deviceId, hasSubscription: !!subscription });
 
-    if (!deviceId) {
+    if (!deviceId || deviceId === 'undefined' || deviceId === 'null') {
       return res.status(400).json({ error: 'deviceId required' });
     }
-    if (!subscription?.endpoint) {
+    const endpoint = subscription?.endpoint;
+    if (!subscription || !endpoint || endpoint === 'undefined' || endpoint === 'null' || !endpoint.startsWith('https://')) {
       return res.status(400).json({ error: 'subscription endpoint required' });
     }
 

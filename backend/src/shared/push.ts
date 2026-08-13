@@ -123,10 +123,12 @@ export const sendPushToUser = async (userId: any, payload: any, zone = 'adult') 
           $set: {
             isActive: false,
             notificationsEnabled: false,
+            endpoint: null,
+            keys: null,
             deactivatedAt: new Date(),
           },
         });
-        console.log('[Push] Device deactivated (expired token):', device.deviceId);
+        console.log('[Push] Device deactivated and endpoint cleared (expired token):', device.deviceId);
       } else {
         const currentFailCount = (device.failCount || 0) + 1;
         const updateFields: any = {

@@ -1,7 +1,7 @@
 // vibe/src/lib/pwa/subscriptionManager.ts
 import { API_BASE_URL } from '../../config';
 import { getInstallContext } from './context';
-import { getOrCreateDeviceId, clearDeviceId } from './deviceId';
+import { getOrCreateDeviceId, clearDeviceId, cacheDeviceIdForSW } from './deviceId';
 
 const urlBase64ToUint8Array = (base64String: string): Uint8Array => {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
@@ -27,7 +27,7 @@ export const fetchVapidPublicKey = async (): Promise<string | null> => {
   }
 };
 
-// THE KEY FUNCTION — call this on every login and app open
+// THE REFACTORED RACE-FREE FUNCTION — ONE register call per sync
 export const syncDeviceRegistration = async (userId: string): Promise<void> => {
   const deviceId  = getOrCreateDeviceId();
   const ctx       = getInstallContext();
@@ -39,43 +39,45 @@ export const syncDeviceRegistration = async (userId: string): Promise<void> => {
     return;
   }
 
+  // Ensure service worker cache has deviceId & token
+  await cacheDeviceIdForSW(deviceId).catch(() => {});
+
   const platform = ctx.isIOS ? 'ios' : ctx.isAndroid ? 'android' : 'desktop';
 
   console.log('[Sync] Starting device sync:', { userId, deviceId, permission, platform, isStandalone: ctx.isStandalone });
 
-  // Step 1: Register basic device info (no subscription yet)
-  try {
-    await fetch(`${API_BASE_URL}/v1/adult/devices/register`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({
-        deviceId,
-        platform,
-        isStandalone: ctx.isStandalone,
-        notificationPermission: permission,
-      })
-    });
-  } catch (err: any) {
-    console.error('[Sync] Basic register failed:', err.message);
-  }
+  // If permission is not granted, register basic device info immediately and return early
+  if (permission === 'denied' || permission === 'default' || permission === 'unsupported') {
+    try {
+      await fetch(`${API_BASE_URL}/v1/adult/devices/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          deviceId,
+          platform,
+          isStandalone: ctx.isStandalone,
+          notificationPermission: permission,
+          // NO endpoint or subscription field
+        })
+      });
+      console.log('[Sync] Basic device registered without subscription');
+    } catch (err: any) {
+      console.error('[Sync] Basic register failed:', err.message);
+    }
 
-  if (permission === 'denied') {
-    console.log('[Sync] Permission denied — no subscription possible');
+    if (permission === 'default') {
+      console.log('[Sync] Permission not granted — dispatching onboarding event');
+      window.dispatchEvent(new CustomEvent('zippo:needs_push_onboarding', {
+        detail: { userId, deviceId }
+      }));
+    }
     return;
   }
 
-  if (permission === 'default') {
-    console.log('[Sync] Permission not granted — dispatching onboarding event');
-    window.dispatchEvent(new CustomEvent('zippo:needs_push_onboarding', {
-      detail: { userId, deviceId }
-    }));
-    return;
-  }
-
-  // permission === 'granted' — ensure subscription exists
+  // permission === 'granted' — ensure subscription exists and register once
   if (!('serviceWorker' in navigator)) {
     console.warn('[Sync] Service workers not supported');
     return;
@@ -104,10 +106,9 @@ export const syncDeviceRegistration = async (userId: string): Promise<void> => {
   }
 
   // ── KEY FIX: unsubscribe if applicationServerKey might be stale ──
-  // This is the #1 cause of dead push. Old sub may use different VAPID key.
   if (sub) {
     try {
-      const response = await fetch(`${API_BASE_URL}/v1/adult/devices/current?deviceId=${deviceId}`, {
+      const response = await fetch(`${API_BASE_URL}/v1/adult/push/current?deviceId=${deviceId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (response.ok) {
@@ -136,7 +137,6 @@ export const syncDeviceRegistration = async (userId: string): Promise<void> => {
       console.log('[Sync] ✅ Subscription created:', sub.endpoint.slice(0, 60));
     } catch (err: any) {
       if (err.message?.includes('different applicationServerKey') || err.message?.includes('registration failed')) {
-        // VAPID key changed — force unsubscribe and resubscribe
         console.warn('[Sync] VAPID key mismatch — unsubscribing and resubscribing');
         const oldSub = await reg.pushManager.getSubscription();
         if (oldSub) await oldSub.unsubscribe();
@@ -153,7 +153,17 @@ export const syncDeviceRegistration = async (userId: string): Promise<void> => {
     }
   }
 
-  // Step 2: Save subscription to backend
+  // ── VALIDATE: endpoint must be a real HTTPS URL ─────────────────────
+  if (!sub?.endpoint || !sub.endpoint.startsWith('https://')) {
+    console.error('[Sync] Invalid endpoint — aborting register:', sub?.endpoint);
+    return;
+  }
+
+  console.log('[Sync] Subscription valid:', {
+    endpoint: sub.endpoint.slice(0, 60) + '...',
+  });
+
+  // Step 2: SINGLE register call with COMPLETE data
   try {
     const response = await fetch(`${API_BASE_URL}/v1/adult/devices/register`, {
       method: 'POST',

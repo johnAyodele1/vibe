@@ -333,3 +333,95 @@ self.addEventListener('message', (event) => {
     }
   }
 });
+
+// Helper to convert VAPID base64 key to Uint8Array inside SW
+const urlBase64ToUint8Array = (base64String) => {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64  = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw     = atob(base64);
+  return new Uint8Array(Array.from(raw).map(char => char.charCodeAt(0)));
+};
+
+// Helper to fetch dynamic VAPID public key
+const fetchVapidKeyInSW = async () => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/v1/adult/push/public-key`);
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data.publicKey || null;
+  } catch (err) {
+    console.error('[SW] Error fetching dynamic VAPID key:', err);
+    return null;
+  }
+};
+
+// Helper to retrieve deviceId and token from SW cache
+const getDeviceDetailsFromCache = async () => {
+  try {
+    const cache = await caches.open('zippo-device-v1');
+    const devIdResp = await cache.match('deviceId').catch(() => null);
+    const tokenResp = await cache.match('token').catch(() => null);
+
+    const deviceId = devIdResp ? await devIdResp.text() : null;
+    const token = tokenResp ? await tokenResp.text() : null;
+
+    return { deviceId, token };
+  } catch (err) {
+    console.error('[SW] Error reading device details from cache:', err.message);
+    return { deviceId: null, token: null };
+  }
+};
+
+// ── Custom pushsubscriptionchange (token rotation) handler ───────────
+self.addEventListener('pushsubscriptionchange', (event) => {
+  console.log('[SW] Push subscription changed — refreshing');
+
+  event.waitUntil(
+    (async () => {
+      const activeVapidKey = await fetchVapidKeyInSW();
+      if (!activeVapidKey) {
+        console.error('[SW] Dynamic VAPID public key missing. Aborting silent subscription.');
+        return;
+      }
+      try {
+        const newSubscription = await self.registration.pushManager.subscribe({
+          userVisibleOnly:      true,
+          applicationServerKey: urlBase64ToUint8Array(activeVapidKey),
+        });
+
+        // Get deviceId and token from cache
+        const { deviceId, token } = await getDeviceDetailsFromCache();
+
+        // Broadcast to any active client windows
+        const clientsList = await self.clients.matchAll();
+        for (const client of clientsList) {
+          client.postMessage({
+            type:         'PUSH_SUBSCRIPTION_CHANGED',
+            subscription: newSubscription.toJSON(),
+          });
+        }
+
+        // Also try to update directly if we have both cached
+        if (deviceId && token) {
+          await fetch(`${API_BASE_URL}/v1/adult/push/token`, {
+            method:  'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body:    JSON.stringify({
+              deviceId,
+              subscription: newSubscription.toJSON(),
+            }),
+          }).then(res => {
+            console.log('[SW] Token refreshed directly after change, status:', res.status);
+          }).catch(err => {
+            console.error('[SW] Failed to patch refreshed token directly:', err.message);
+          });
+        }
+      } catch (err) {
+        console.error('[SW] pushsubscriptionchange failed:', err.message);
+      }
+    })()
+  );
+});
