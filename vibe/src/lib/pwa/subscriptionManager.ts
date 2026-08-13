@@ -1,4 +1,3 @@
-// vibe/src/lib/pwa/subscriptionManager.ts
 import { API_BASE_URL } from '../../config';
 import { getInstallContext } from './context';
 import { getOrCreateDeviceId, clearDeviceId, cacheDeviceIdForSW } from './deviceId';
@@ -16,12 +15,17 @@ export interface PushHealthResult {
   detail?: string;
 }
 
-const urlBase64ToUint8Array = (base64String: string): Uint8Array => {
-  const padding = '='.repeat((4 - base64String.length % 4) % 4);
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const raw = window.atob(base64String ? base64 : '');
+const urlBase64ToUint8Array = (value: string): Uint8Array => {
+  const padding = '='.repeat((4 - value.length % 4) % 4);
+  const base64 = (value + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = window.atob(base64);
   return new Uint8Array(Array.from(raw).map(char => char.charCodeAt(0)));
 };
+
+const authHeaders = (token: string) => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${token}` });
+const isAdultSession = () => Boolean(localStorage.getItem('adultAccessToken'));
+const getAuthToken = () => localStorage.getItem('adultAccessToken') || localStorage.getItem('accessToken');
+const getPlatform = () => { const ctx = getInstallContext(); return ctx.isIOS ? 'ios' : ctx.isAndroid ? 'android' : 'desktop'; };
 
 export const fetchVapidPublicKey = async (): Promise<string | null> => {
   try {
@@ -29,180 +33,220 @@ export const fetchVapidPublicKey = async (): Promise<string | null> => {
     if (!response.ok) throw new Error(`Failed to fetch VAPID public key: ${response.status}`);
     const data = await response.json();
     return data?.success && data.publicKey ? data.publicKey : null;
-  } catch (err) {
-    console.error('[Push] Error fetching dynamic VAPID public key:', err);
+  } catch (error) {
+    console.error('[Push] VAPID key lookup failed:', error);
     return null;
   }
 };
 
-const authHeaders = (token: string) => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${token}` });
-const getPlatform = () => { const ctx = getInstallContext(); return ctx.isIOS ? 'ios' : ctx.isAndroid ? 'android' : 'desktop'; };
-
-const registerDevice = async (token: string, deviceId: string, notificationPermission: NotificationPermission | 'unsupported', subscription?: PushSubscription): Promise<boolean> => {
+const registerDevice = async (token: string, deviceId: string, permission: NotificationPermission | 'unsupported', subscription?: PushSubscription) => {
   const ctx = getInstallContext();
-  const response = await fetch(`${API_BASE_URL}/v1/adult/devices/register`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ deviceId, platform: getPlatform(), isStandalone: ctx.isStandalone, notificationPermission, ...(subscription ? { subscription: subscription.toJSON() } : {}) }) });
-  if (!response.ok) throw new Error(`Device registration failed: ${response.status}`);
-  return true;
+  const adult = isAdultSession();
+  const endpoint = adult ? '/v1/adult/devices/register' : '/users/push/subscribe';
+  const body = {
+    deviceId,
+    platform: getPlatform(),
+    isStandalone: ctx.isStandalone,
+    notificationPermission: permission,
+    ...(subscription ? { subscription: subscription.toJSON() } : {}),
+  };
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify(body) });
+  if (!response.ok) throw new Error(`Push device registration failed: ${response.status}`);
 };
 
 const getCurrentDevice = async (token: string, deviceId: string) => {
-  const response = await fetch(`${API_BASE_URL}/v1/adult/push/current?deviceId=${encodeURIComponent(deviceId)}`, { headers: { Authorization: `Bearer ${token}` } });
+  const endpoint = isAdultSession() ? `/v1/adult/push/current?deviceId=${encodeURIComponent(deviceId)}` : `/users/push/subscribe/current?deviceId=${encodeURIComponent(deviceId)}`;
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, { headers: { Authorization: `Bearer ${token}` } });
   if (!response.ok) return null;
   const data = await response.json();
   return data?.device ?? null;
 };
 
-export const syncDeviceRegistration = async (userId: string): Promise<void> => {
+const syncCurrentSessionDevice = async (userId: string) => {
   const deviceId = getOrCreateDeviceId();
-  const ctx = getInstallContext();
   const permission = 'Notification' in window ? Notification.permission : 'unsupported';
-  const token = localStorage.getItem('adultAccessToken');
+  const token = getAuthToken();
   if (!token) return;
   await cacheDeviceIdForSW(deviceId).catch(() => {});
 
   if (permission !== 'granted') {
-    await registerDevice(token, deviceId, permission).catch(err => console.error('[Push] Basic device registration failed:', err));
+    await registerDevice(token, deviceId, permission).catch(error => console.error('[Push] Basic device registration failed:', error));
     if (permission === 'default') window.dispatchEvent(new CustomEvent('zippo:needs_push_onboarding', { detail: { userId, deviceId } }));
     return;
   }
 
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
-  const reg = await navigator.serviceWorker.ready;
+  const registration = await navigator.serviceWorker.ready;
   const vapidKey = await fetchVapidPublicKey();
   if (!vapidKey) return;
 
-  let sub = await reg.pushManager.getSubscription();
-  if (sub) {
+  let subscription = await registration.pushManager.getSubscription();
+  if (subscription) {
     const device = await getCurrentDevice(token, deviceId);
     const backendEndpoint = device?.endpoint ?? device?.pushEndpoint;
-    if (backendEndpoint && backendEndpoint !== sub.endpoint) {
-      await sub.unsubscribe().catch(() => {});
-      sub = null;
+    if (backendEndpoint && backendEndpoint !== subscription.endpoint) {
+      await subscription.unsubscribe().catch(() => {});
+      subscription = null;
     }
   }
 
-  if (!sub) {
+  if (!subscription) {
     try {
-      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(vapidKey) });
-    } catch (err) {
-      const oldSub = await reg.pushManager.getSubscription().catch(() => null);
-      if (oldSub) await oldSub.unsubscribe().catch(() => {});
-      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(vapidKey) }).catch(() => null);
-      if (!sub) { console.error('[Push] Subscription creation failed:', err); return; }
+      subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(vapidKey) });
+    } catch (firstError) {
+      const stale = await registration.pushManager.getSubscription().catch(() => null);
+      if (stale) await stale.unsubscribe().catch(() => {});
+      try {
+        subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(vapidKey) });
+      } catch (secondError) {
+        console.error('[Push] Subscription creation failed:', firstError, secondError);
+        return;
+      }
     }
   }
 
-  if (!sub?.endpoint?.startsWith('https://')) return;
-  await registerDevice(token, deviceId, 'granted', sub);
+  if (!subscription.endpoint.startsWith('https://')) return;
+  await registerDevice(token, deviceId, 'granted', subscription);
+};
+
+export const syncDeviceRegistration = async (userId: string): Promise<void> => {
+  if (!isAdultSession()) return;
+  await syncCurrentSessionDevice(userId);
 };
 
 export const checkPushHealth = async (userId: string): Promise<PushHealthResult> => {
   const deviceId = getOrCreateDeviceId();
   const permission: PushHealthResult['permission'] = 'Notification' in window ? Notification.permission : 'unsupported';
   const base = { deviceId, permission, hasBrowserSubscription: false, backendRegistered: false, repaired: false };
+
   if (permission === 'unsupported') return { ...base, status: 'unsupported' };
   if (permission === 'denied') return { ...base, status: 'permission_denied' };
   if (permission === 'default') return { ...base, status: 'permission_required' };
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return { ...base, status: 'service_worker_unavailable' };
 
-  const token = localStorage.getItem('adultAccessToken');
+  const token = getAuthToken();
   if (!token) return { ...base, status: 'error', detail: 'Authentication required' };
 
   try {
-    const reg = await navigator.serviceWorker.ready;
-    let sub = await reg.pushManager.getSubscription();
+    const registration = await navigator.serviceWorker.ready;
+    let subscription = await registration.pushManager.getSubscription();
     let repaired = false;
-    if (!sub) {
-      await syncDeviceRegistration(userId);
-      sub = await reg.pushManager.getSubscription();
-      repaired = !!sub;
-    }
-    if (!sub) return { ...base, status: 'missing_subscription', repaired };
 
-    const device = await getCurrentDevice(token, deviceId);
-    const backendEndpoint = device?.endpoint ?? device?.pushEndpoint;
-    if (!device || !device.isActive || !backendEndpoint || backendEndpoint !== sub.endpoint) {
-      await syncDeviceRegistration(userId);
-      const refreshed = await getCurrentDevice(token, deviceId);
-      const refreshedEndpoint = refreshed?.endpoint ?? refreshed?.pushEndpoint;
-      repaired = true;
-      if (!refreshed || refreshedEndpoint !== sub.endpoint) return { ...base, status: 'backend_missing', hasBrowserSubscription: true, backendRegistered: false, repaired };
-      if (refreshed.pushHealthStatus === 'unhealthy') return { ...base, status: 'unhealthy', hasBrowserSubscription: true, backendRegistered: true, repaired };
+    if (!subscription) {
+      await syncCurrentSessionDevice(userId);
+      subscription = await registration.pushManager.getSubscription();
+      repaired = Boolean(subscription);
     }
-    if (device?.pushHealthStatus === 'unhealthy') return { ...base, status: 'unhealthy', hasBrowserSubscription: true, backendRegistered: true, repaired };
+
+    if (!subscription) return { ...base, status: 'missing_subscription', repaired };
+
+    let device = await getCurrentDevice(token, deviceId);
+    const endpoint = device?.endpoint ?? device?.pushEndpoint;
+    if (!device || !device.isActive || endpoint !== subscription.endpoint) {
+      await syncCurrentSessionDevice(userId);
+      device = await getCurrentDevice(token, deviceId);
+      repaired = true;
+    }
+
+    const refreshedEndpoint = device?.endpoint ?? device?.pushEndpoint;
+    if (!device || !device.isActive || refreshedEndpoint !== subscription.endpoint) {
+      return { ...base, status: 'backend_missing', hasBrowserSubscription: true, backendRegistered: false, repaired };
+    }
+
+    if (device.pushHealthStatus === 'unhealthy') {
+      return { ...base, status: 'unhealthy', hasBrowserSubscription: true, backendRegistered: true, repaired };
+    }
+
     return { ...base, status: 'healthy', hasBrowserSubscription: true, backendRegistered: true, repaired };
-  } catch (err: any) {
-    console.error('[Push] Health check failed:', err);
-    return { ...base, status: 'error', detail: err?.message || 'Unknown push error' };
+  } catch (error: any) {
+    console.error('[Push] Health check failed:', error);
+    return { ...base, status: 'error', detail: error?.message || 'Unknown push error' };
   }
 };
 
-const waitForPushTestReceipt = async (token: string, deviceId: string, testId: string, timeoutMs = 25_000) => {
-  const startedAt = Date.now();
+const waitForPushTestReceipt = async (token: string, deviceId: string, testId: string, onWaiting?: () => void, timeoutMs = 25_000) => {
+  onWaiting?.();
   toast.info('Test sent. Waiting for this device to receive it…', { duration: timeoutMs });
+  const startedAt = Date.now();
+
   while (Date.now() - startedAt < timeoutMs) {
     await new Promise(resolve => window.setTimeout(resolve, 1000));
-    const response = await fetch(`${API_BASE_URL}/v1/adult/push/health-test/status?deviceId=${encodeURIComponent(deviceId)}&testId=${encodeURIComponent(testId)}`, { headers: { Authorization: `Bearer ${token}` } });
+    const endpoint = isAdultSession() ? '/v1/adult/push/health-test/status' : '/users/push/health-test/status';
+    const response = await fetch(`${API_BASE_URL}${endpoint}?deviceId=${encodeURIComponent(deviceId)}&testId=${encodeURIComponent(testId)}`, { headers: { Authorization: `Bearer ${token}` } });
     if (!response.ok) continue;
     const data = await response.json();
     if (data.status === 'delivered') return true;
     if (data.status === 'failed' || data.status === 'expired') return false;
   }
+
   return false;
 };
 
-export const sendPushTest = async (userId: string): Promise<{ success: boolean; status: PushHealthStatus; deliveredToProvider: boolean; deviceReceived?: boolean; reason?: string }> => {
+export const sendPushTest = async (
+  userId: string,
+  options?: { onWaiting?: () => void },
+): Promise<{ success: boolean; status: PushHealthStatus; deliveredToProvider: boolean; deviceReceived?: boolean; reason?: string }> => {
   const health = await checkPushHealth(userId);
   if (health.status !== 'healthy') return { success: false, status: health.status, deliveredToProvider: false, reason: health.detail || `Push is not healthy: ${health.status}` };
-  const token = localStorage.getItem('adultAccessToken');
+
+  const token = getAuthToken();
   if (!token) return { success: false, status: 'error', deliveredToProvider: false, reason: 'Authentication required' };
+
   try {
-    const response = await fetch(`${API_BASE_URL}/v1/adult/push/health-test`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ deviceId: health.deviceId }) });
+    const endpoint = isAdultSession() ? '/v1/adult/push/health-test' : '/users/push/health-test';
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ deviceId: health.deviceId }) });
     const data = await response.json();
-    if (!response.ok || !data?.deliveredToProvider || !data?.testId) return { success: false, status: 'error', deliveredToProvider: false, reason: data?.reason || 'Push provider rejected the notification' };
-    const deviceReceived = await waitForPushTestReceipt(token, health.deviceId, data.testId);
-    if (!deviceReceived) return { success: false, status: 'unhealthy', deliveredToProvider: true, deviceReceived: false, reason: 'The push provider accepted the notification, but this device did not confirm receipt within 25 seconds.' };
+    if (!response.ok || !data?.deliveredToProvider || !data?.testId) {
+      return { success: false, status: 'error', deliveredToProvider: false, reason: data?.reason || 'Push provider rejected the notification' };
+    }
+
+    const deviceReceived = await waitForPushTestReceipt(token, health.deviceId, data.testId, options?.onWaiting);
+    if (!deviceReceived) {
+      return { success: false, status: 'unhealthy', deliveredToProvider: true, deviceReceived: false, reason: 'The push provider accepted the notification, but this device did not confirm receipt within 25 seconds.' };
+    }
+
     return { success: true, status: 'healthy', deliveredToProvider: true, deviceReceived: true };
-  } catch (err: any) {
-    return { success: false, status: 'error', deliveredToProvider: false, reason: err?.message || 'Network error while testing push' };
+  } catch (error: any) {
+    return { success: false, status: 'error', deliveredToProvider: false, reason: error?.message || 'Network error while testing push' };
   }
 };
 
 export const syncStandardUserPushRegistration = async (): Promise<void> => {
-  const token = localStorage.getItem('accessToken');
-  if (!token || !('Notification' in window) || Notification.permission !== 'granted') return;
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
-  const deviceId = getOrCreateDeviceId();
-  await cacheDeviceIdForSW(deviceId).catch(() => {});
-  const reg = await navigator.serviceWorker.ready;
-  const vapidKey = await fetchVapidPublicKey();
-  if (!vapidKey) return;
-  let subscription = await reg.pushManager.getSubscription();
-  if (!subscription) subscription = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(vapidKey) });
-  const response = await fetch(`${API_BASE_URL}/users/push/subscribe`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ deviceId, subscription: subscription.toJSON(), platform: getPlatform(), isStandalone: getInstallContext().isStandalone, notificationPermission: Notification.permission }) });
-  if (!response.ok) throw new Error(`Push registration failed: ${response.status}`);
+  if (isAdultSession()) return;
+  await syncCurrentSessionDevice('standard-user');
 };
 
 export const deregisterDevice = async (): Promise<void> => {
   const deviceId = getOrCreateDeviceId();
-  const token = localStorage.getItem('adultAccessToken');
-  if (token) await fetch(`${API_BASE_URL}/v1/adult/devices/current`, { method: 'DELETE', headers: authHeaders(token), body: JSON.stringify({ deviceId }) }).catch(err => console.error('[Device] Deregister failed:', err));
+  const token = getAuthToken();
+  if (token) {
+    const endpoint = isAdultSession() ? '/v1/adult/devices/current' : '/users/push/subscribe';
+    await fetch(`${API_BASE_URL}${endpoint}`, { method: 'DELETE', headers: authHeaders(token), body: JSON.stringify({ deviceId }) }).catch(error => console.error('[Device] Deregister failed:', error));
+  }
   clearDeviceId();
 };
 
 export const requestAndSubscribe = async (userId: string): Promise<boolean> => {
   const ctx = getInstallContext();
-  if (ctx.isIOS && !ctx.isStandalone) { window.dispatchEvent(new CustomEvent('zippo:show_install_guide')); return false; }
+  if (ctx.isIOS && !ctx.isStandalone) {
+    window.dispatchEvent(new CustomEvent('zippo:show_install_guide'));
+    return false;
+  }
   if (!('Notification' in window)) return false;
-  const permission = await Notification.requestPermission();
-  if (permission !== 'granted') { await syncDeviceRegistration(userId); return false; }
 
-  const token = localStorage.getItem('adultAccessToken');
-  const deviceId = getOrCreateDeviceId();
-  if (token) {
-    await fetch(`${API_BASE_URL}/v1/adult/push/health`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ deviceId, status: 'unknown' }) }).catch(() => {});
+  const permission = await Notification.requestPermission();
+  if (permission !== 'granted') {
+    await syncCurrentSessionDevice(userId);
+    return false;
   }
 
-  await syncDeviceRegistration(userId);
+  const token = getAuthToken();
+  const deviceId = getOrCreateDeviceId();
+  if (token) {
+    const endpoint = isAdultSession() ? '/v1/adult/push/health' : '/users/push/health';
+    await fetch(`${API_BASE_URL}${endpoint}`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ deviceId, status: 'unknown' }) }).catch(() => {});
+  }
+
+  await syncCurrentSessionDevice(userId);
   return (await checkPushHealth(userId)).status === 'healthy';
 };
