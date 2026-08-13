@@ -6,7 +6,7 @@ import AddToHomeScreenHint from './AddToHomeScreenHint';
 import { toast } from 'sonner';
 
 const ProviderNotificationPrompt = ({ userId }: { userId: string }) => {
-  const { showNotifPrompt, setShowNotifPrompt, setShowInstallPrompt } = usePWAPromptStore();
+  const { showNotifPrompt, setShowNotifPrompt } = usePWAPromptStore();
   const [ctx, setCtx] = useState<ReturnType<typeof getInstallContext> | null>(null);
   const [health, setHealth] = useState<PushHealthResult | null>(null);
   const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'waiting' | 'sent' | 'failed'>('idle');
