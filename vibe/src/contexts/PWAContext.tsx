@@ -27,9 +27,7 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [isInstallable, setIsInstallable] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
-  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
-    typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default'
-  );
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default');
 
   const getDiagnostics = () => ({
     protocol: typeof window !== 'undefined' ? window.location.protocol : '',
@@ -50,12 +48,10 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   useEffect(() => {
     const checkStandalone = () => {
-      const standalone = window.matchMedia('(display-mode: standalone)').matches ||
-        (navigator as any).standalone || document.referrer.includes('android-app://');
+      const standalone = window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone || document.referrer.includes('android-app://');
       setIsStandalone(!!standalone);
     };
     const checkIOS = () => setIsIOS(/iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream);
-
     checkStandalone();
     checkIOS();
 
@@ -70,7 +66,6 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setIsInstallable(true);
       (window as any)._deferredInstallPrompt = e;
     };
-
     const handleAppInstalled = () => {
       setIsStandalone(true);
       setIsInstallable(false);
@@ -88,9 +83,9 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   useEffect(() => {
     if (!isAuthenticated || !user) return;
-
     const userId = user._id;
     const adultToken = localStorage.getItem('adultAccessToken');
+
     if (adultToken) {
       void syncDeviceRegistration(String(userId)).catch(err => console.error('[PWA] Adult push sync failed:', err));
       return;
@@ -98,18 +93,8 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     if (notificationPermission === 'granted') {
       void syncStandardUserPushRegistration().catch(err => console.error('[PWA] Push sync failed:', err));
-    } else if (notificationPermission === 'default') {
-      toast('Enable push notifications to get matches and messages on your phone!', {
-        action: { label: 'Enable Now', onClick: () => requestNotificationPermission() },
-        duration: 15000,
-      });
-    } else {
-      const hasWarned = sessionStorage.getItem('notificationDeniedWarned');
-      if (!hasWarned) {
-        toast.error('Push notifications are blocked in your browser settings.', { duration: 6000 });
-        sessionStorage.setItem('notificationDeniedWarned', 'true');
-      }
     }
+    // Permission onboarding is rendered by NotificationPrompt so standard users and adult users get the same flow.
   }, [isAuthenticated, user?._id, notificationPermission]);
 
   useEffect(() => {
@@ -127,7 +112,6 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       updateUserLocation();
       sessionStorage.setItem('locationRequestedThisSession', 'true');
     };
-
     const interval = setInterval(checkAndUpdateLocation, 1000 * 60 * 15);
     checkAndUpdateLocation();
     return () => clearInterval(interval);
@@ -173,22 +157,16 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       toast.error('This browser does not support notifications.');
       return;
     }
-
     const permission = await Notification.requestPermission();
     setNotificationPermission(permission);
-
     if (permission !== 'granted') {
       if (permission === 'denied') toast.error('Notification permission denied. Please enable it in browser settings.');
       return;
     }
-
     try {
       const adultToken = localStorage.getItem('adultAccessToken');
-      if (adultToken && user) {
-        await syncDeviceRegistration(String(user._id));
-      } else {
-        await syncStandardUserPushRegistration();
-      }
+      if (adultToken && user) await syncDeviceRegistration(String(user._id));
+      else await syncStandardUserPushRegistration();
       toast.success('Notifications enabled and connected.');
     } catch (error) {
       console.error('[PWA] Notification registration failed:', error);
@@ -196,11 +174,7 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  return (
-    <PWAContext.Provider value={{ isInstallable, isStandalone, isIOS, installApp, notificationPermission, requestNotificationPermission }}>
-      {children}
-    </PWAContext.Provider>
-  );
+  return <PWAContext.Provider value={{ isInstallable, isStandalone, isIOS, installApp, notificationPermission, requestNotificationPermission }}>{children}</PWAContext.Provider>;
 };
 
 export const usePWA = () => {
