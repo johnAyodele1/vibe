@@ -1,10 +1,8 @@
-// vibe/public/sw.js
-
 const API_BASE_URL = self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1'
   ? 'http://localhost:5000/api'
   : 'https://zippo-r8hk.onrender.com/api';
 
-const SW_VERSION = 'zippo-v7';
+const SW_VERSION = 'zippo-v8';
 const CACHE_NAME = `${SW_VERSION}-static`;
 const PRECACHE_ASSETS = ['/', '/offline.html', '/manifest.json', '/favicon.svg'];
 
@@ -18,7 +16,7 @@ self.addEventListener('activate', event => {
       .then(names => Promise.all(names.filter(name => name !== CACHE_NAME).map(name => caches.delete(name))))
       .then(() => self.clients.claim())
       .then(() => self.clients.matchAll({ type: 'window' }))
-      .then(clients => clients.forEach(client => client.postMessage({ type: 'SW_UPDATED', version: SW_VERSION })))
+      .then(clients => clients.forEach(client => client.postMessage({ type: 'SW_UPDATED', version: SW_VERSION }))),
   );
 });
 
@@ -44,19 +42,12 @@ self.addEventListener('fetch', event => {
 });
 
 const acknowledgePushTest = async data => {
-  if (data.type !== 'push_test' || !data.testId) return;
+  if (data.type !== 'push_test' || !data.testId || !data.ackToken || !data.deviceId || !data.ackUrl) return;
   try {
-    const cache = await caches.open('zippo-device-v1');
-    const deviceResponse = await cache.match('deviceId');
-    const tokenResponse = await cache.match('token');
-    const deviceId = deviceResponse ? await deviceResponse.text() : null;
-    const token = tokenResponse ? await tokenResponse.text() : null;
-    if (!deviceId || !token) return;
-
-    const response = await fetch(`${API_BASE_URL}/v1/adult/push/health-test/ack`, {
+    const response = await fetch(`${self.location.origin}${data.ackUrl}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ deviceId, testId: data.testId, status: 'received' }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: data.deviceId, testId: data.testId, ackToken: data.ackToken }),
     });
     if (!response.ok) console.warn('[SW][PushTest] Acknowledgement failed:', response.status);
   } catch (error) {
@@ -85,7 +76,6 @@ self.addEventListener('push', event => {
       url: data.url || '/adult',
       unreadCount: data.unreadCount || 0,
       type: data.type,
-      testId: data.testId,
       callId: data.callId,
       callType: data.callType,
       token: data.token,
@@ -115,9 +105,7 @@ self.addEventListener('notificationclick', event => {
   notification.close();
 
   if (action === 'decline' && data.type === 'incoming_call') {
-    event.waitUntil(fetch(`/api/v1/adult/sext/calls/${data.callId}/decline`, {
-      method: 'PUT', headers: { Authorization: `Bearer ${data.token}` },
-    }).catch(console.error));
+    event.waitUntil(fetch(`/api/v1/adult/sext/calls/${data.callId}/decline`, { method: 'PUT', headers: { Authorization: `Bearer ${data.token}` } }).catch(console.error));
     return;
   }
 
@@ -159,29 +147,15 @@ const fetchVapidKeyInSW = async () => {
   } catch { return null; }
 };
 
-const getDeviceDetailsFromCache = async () => {
-  try {
-    const cache = await caches.open('zippo-device-v1');
-    const devIdResp = await cache.match('deviceId');
-    const tokenResp = await cache.match('token');
-    return { deviceId: devIdResp ? await devIdResp.text() : null, token: tokenResp ? await tokenResp.text() : null };
-  } catch { return { deviceId: null, token: null }; }
-};
-
 self.addEventListener('pushsubscriptionchange', event => {
+  // Do not keep authentication tokens in the service-worker cache. The next
+  // foreground health check will reconcile the rotated subscription securely.
   event.waitUntil((async () => {
     const vapidKey = await fetchVapidKeyInSW();
     if (!vapidKey) return;
     try {
       const subscription = await self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(vapidKey) });
-      const { deviceId, token } = await getDeviceDetailsFromCache();
-      if (!deviceId || !token) return;
-      await fetch(`${API_BASE_URL}/v1/adult/push/token`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ deviceId, subscription: subscription.toJSON() }),
-      });
-      const clientsList = await self.clients.matchAll();
+      const clientsList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
       clientsList.forEach(client => client.postMessage({ type: 'PUSH_SUBSCRIPTION_CHANGED', subscription: subscription.toJSON() }));
     } catch (error) {
       console.error('[SW] pushsubscriptionchange failed:', error);
