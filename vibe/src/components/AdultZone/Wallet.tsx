@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { API_BASE_URL } from '../../config';
 import { usePricingStore, formatNaira } from '../../lib/pricing';
+import { PushNotificationTestCard } from '../Settings/PushNotificationTestCard';
 
 const Wallet: React.FC = () => {
   const navigate = useNavigate();
@@ -134,8 +135,14 @@ const Wallet: React.FC = () => {
             <h2 className="text-lg font-serif italic text-white">Stay in the loop</h2>
             <p className="text-xs text-[var(--az-text-secondary)] mt-1 leading-relaxed">Make sure this device can receive messages, matches, and activity alerts.</p>
             <div className="mt-5 flex flex-wrap gap-3">
-              <button onClick={() => navigate('/settings#push-notifications')} className="px-5 py-2.5 rounded-full bg-[var(--az-accent-primary)] hover:bg-[var(--az-accent-rose)] text-white text-[10px] font-bold uppercase tracking-widest transition-all active:scale-95">Test Push Notifications</button>
-              <button onClick={() => navigate('/settings')} className="px-5 py-2.5 rounded-full bg-[var(--az-bg-tertiary)] hover:bg-[var(--az-bg-primary)] border border-[var(--az-border)] text-white text-[10px] font-bold uppercase tracking-widest transition-all active:scale-95">Account Settings</button>
+              <button onClick={() => {
+                navigate('/adult/settings');
+                setTimeout(() => {
+                  const el = document.getElementById('push-test-section');
+                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 500);
+              }} className="px-5 py-2.5 rounded-full bg-[var(--az-accent-primary)] hover:bg-[var(--az-accent-rose)] text-white text-[10px] font-bold uppercase tracking-widest transition-all active:scale-95">Test Push Notifications</button>
+              <button onClick={() => navigate('/adult/settings')} className="px-5 py-2.5 rounded-full bg-[var(--az-bg-tertiary)] hover:bg-[var(--az-bg-primary)] border border-[var(--az-border)] text-white text-[10px] font-bold uppercase tracking-widest transition-all active:scale-95">Account Settings</button>
             </div>
           </div>
         </div>
@@ -176,6 +183,13 @@ const Wallet: React.FC = () => {
           </div>
         )}
       </div>
+
+      <section className="wallet-section mt-12" id="push-test-section">
+        <h3 className="text-xl font-serif italic text-[var(--az-text-primary)] mb-6">Notification Settings</h3>
+        <div className="bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-3xl p-6">
+          <PushNotificationTestCard />
+        </div>
+      </section>
     </div>
   );
 };

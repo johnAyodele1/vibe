@@ -14,6 +14,7 @@ import { InstallPrompt } from '../pwa/InstallPrompt/InstallPrompt';
 import { updateBadgeCount } from '../../lib/push/pushSubscription';
 import { useUnreadStore } from '../../store/unreadStore';
 import NotificationPrompt from '../pwa/NotificationPrompt';
+import TestNotificationPrompt from '../pwa/TestNotificationPrompt';
 import { getInstallContext } from '../../lib/pwa/context';
 import { usePWAPromptStore, NOTIF_KEYS } from '../../store/pwaPromptStore';
 import { runPushSelfTest } from '../../lib/pwa/pushSelfTest';
@@ -476,6 +477,8 @@ const AdultZoneLayout: React.FC = () => {
       <InstallPrompt />
 
       {user?.id && <NotificationPrompt userId={user.id} />}
+
+      {user?.id && <TestNotificationPrompt />}
 
       {user?.id && <NotifSettingsDialog userId={user.id} />}
 

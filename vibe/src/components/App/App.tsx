@@ -38,6 +38,7 @@ import ProviderLive from "../AdultZone/ProviderLive";
 import ProviderProfile from "../AdultZone/ProviderProfile";
 import ProviderSettings from "../AdultZone/ProviderSettings";
 import ProviderPayout from "../AdultZone/ProviderPayout";
+import UserSettings from "../AdultZone/UserSettings";
 import NotificationPrompt from "../pwa/NotificationPrompt";
 import { useAuth } from "../../contexts/AuthContext";
 import { useAdultAuth } from "../../contexts/AdultAuthContext";
@@ -116,6 +117,7 @@ function App() {
           <Route path="adult/provider/profile" element={<ProviderProfile />} />
           <Route path="adult/provider/settings" element={<ProviderSettings />} />
           <Route path="adult/provider/payout" element={<ProviderPayout />} />
+          <Route path="adult/settings" element={<UserSettings />} />
         </Route>
         <Route path="/dating" element={isAuthenticated ? (isProfileComplete() ? <Navigate to="/discovery" replace /> : <Navigate to="/profile" replace />) : <Onboarding />} />
         <Route path="/admin/errors" element={isAdminAuthenticated ? <AdminErrorsPage /> : <Navigate to="/admin/login" replace />} />
