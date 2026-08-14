@@ -6,6 +6,14 @@ export const PHONE_PATTERNS = [
   /\b\d{4}[\s\-]\d{3}[\s\-]\d{4}\b/          // 0812 345 6789 (Nigerian format)
 ];
 
+// Spoken phone numbers are handled separately from general platform detection.
+// Requiring 7+ digit words avoids treating ordinary speech such as "one thing"
+// or "two people" as contact sharing while still catching common spoken numbers.
+export const SPOKEN_PHONE_PATTERN = new RegExp(
+  `\\b(?:zero|oh|one|two|three|four|five|six|seven|eight|nine)(?:\\s+(?:zero|oh|one|two|three|four|five|six|seven|eight|nine)){6,}\\b`,
+  'i'
+);
+
 export const EMAIL_PATTERNS = [
   /[a-zA-Z0-9._%+\-]+\s*@\s*[a-zA-Z0-9.\-]+\s*\.\s*[a-zA-Z]{2,}/,
   /[a-zA-Z0-9._%+\-]+\s*@\s*[a-zA-Z0-9.\-]+\s*dot\s*[a-zA-Z]{2,}/i,
@@ -56,9 +64,6 @@ export const PLATFORM_PATTERNS = [
 
   // TikTok
   /t[i1]kt[o0]k/i,
-
-  // Number obfuscation — phonetic digits
-  /z[e3]r[o0]|[o0]ne|tw[o0]|thr[e3][e3]|f[o0]ur|f[i1]v[e3]|s[i1]x|s[e3]v[e3]n|[e3][i1]ght|n[i1]n[e3]/i,
 ];
 
 export const SEPARATED_PLATFORM_PATTERNS = [
