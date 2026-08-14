@@ -5,15 +5,7 @@ import { usePWAPromptStore, NOTIF_KEYS } from '../../store/pwaPromptStore';
 import { checkPushHealth, requestAndSubscribe, sendPushTest, type PushHealthResult } from '../../lib/pwa/subscriptionManager';
 import { toast } from 'sonner';
 
-const ACTIONABLE_STATUSES = new Set([
-  'permission_required',
-  'missing_subscription',
-  'backend_missing',
-  'unhealthy',
-  'permission_denied',
-  'service_worker_unavailable',
-]);
-
+const ACTIONABLE_STATUSES = new Set(['permission_required', 'missing_subscription', 'backend_missing', 'unhealthy', 'permission_denied', 'service_worker_unavailable']);
 const CHECKING_MIN_VISIBLE_MS = 1000;
 
 const NotificationPrompt = ({ userId }: { userId: string }) => {
@@ -33,94 +25,54 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
 
   useEffect(() => {
     refreshContext();
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') refreshContext();
-    };
+    const handleVisibility = () => { if (document.visibilityState === 'visible') refreshContext(); };
     window.addEventListener('pageshow', refreshContext);
     document.addEventListener('visibilitychange', handleVisibility);
-    return () => {
-      window.removeEventListener('pageshow', refreshContext);
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
+    return () => { window.removeEventListener('pageshow', refreshContext); document.removeEventListener('visibilitychange', handleVisibility); };
   }, []);
 
   useEffect(() => setVisible(showNotifPrompt), [showNotifPrompt]);
 
   useEffect(() => {
     if (!ctx) return;
-
     let cancelled = false;
 
     const runVerification = async (forceDeviceTest: boolean) => {
       if (selfTestInFlight.current) return;
-
       const checkingStartedAt = Date.now();
-
-      // Enter the visible checking state before doing ANY async push work.
-      // iOS often resolves permission/subscription checks much faster than
-      // Android, so without a minimum display time this state can flash away
-      // before the user can see it.
       if (forceDeviceTest) {
         setSelfTesting(true);
         setTestStatus('sending');
         setShowNotifPrompt(false);
       }
-
       const keepCheckingVisible = async () => {
         const remaining = CHECKING_MIN_VISIBLE_MS - (Date.now() - checkingStartedAt);
         if (remaining > 0) await new Promise(resolve => window.setTimeout(resolve, remaining));
       };
-
       try {
         const currentHealth = await checkPushHealth(userId);
         await keepCheckingVisible();
         if (cancelled) return;
         setHealth(currentHealth);
-
         if (ACTIONABLE_STATUSES.has(currentHealth.status)) {
-          setSelfTesting(false);
-          setTestStatus('idle');
-          setShowNotifPrompt(true);
-          return;
+          setSelfTesting(false); setTestStatus('idle'); setShowNotifPrompt(true); return;
         }
-
         if (currentHealth.status === 'unsupported' || currentHealth.status === 'error') {
-          setSelfTesting(false);
-          setTestStatus('idle');
-          setShowNotifPrompt(false);
-          return;
+          setSelfTesting(false); setTestStatus('idle'); setShowNotifPrompt(false); return;
         }
-
         const shouldTest = forceDeviceTest || currentHealth.status === 'verification_required';
         if (!shouldTest) {
-          setSelfTesting(false);
-          setTestStatus('idle');
-          setShowNotifPrompt(isSettingsTest && currentHealth.status === 'healthy');
-          return;
+          setSelfTesting(false); setTestStatus('idle'); setShowNotifPrompt(isSettingsTest && currentHealth.status === 'healthy'); return;
         }
-
         selfTestInFlight.current = true;
-        setSelfTesting(true);
-        setTestStatus('sending');
-        setShowNotifPrompt(false);
-
-        const result = await sendPushTest(userId, {
-          silent: true,
-          onWaiting: () => setTestStatus('waiting'),
-        });
-
+        setSelfTesting(true); setTestStatus('sending'); setShowNotifPrompt(false);
+        const result = await sendPushTest(userId, { silent: true, onWaiting: () => setTestStatus('waiting') });
         if (cancelled) return;
-
         if (result.success && result.deviceReceived) {
           entryTestUserRef.current = userId;
           setHealth(prev => prev ? { ...prev, status: 'healthy', pushHealthStatus: 'healthy' } : prev);
-          setTestStatus('sent');
-          setShowNotifPrompt(false);
-
-          if (!isSettingsTest) {
-            setShowHealthy(true);
-            window.setTimeout(() => setShowHealthy(false), 4000);
-          }
+          setTestStatus('sent'); setShowNotifPrompt(false);
+          if (!isSettingsTest) { setShowHealthy(true); window.setTimeout(() => setShowHealthy(false), 4000); }
         } else {
           setHealth(prev => prev ? { ...prev, status: 'unhealthy', pushHealthStatus: 'unhealthy' } : prev);
           setShowNotifPrompt(true);
@@ -129,76 +81,72 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
         await keepCheckingVisible();
         if (!cancelled) {
           console.error('[NotifPrompt] Entry health check failed:', error);
-          setHealth(prev => prev ? { ...prev, status: 'error' } : prev);
+          setHealth(prev => prev ? { ...prev, status: 'error', detail: error instanceof Error ? error.message : 'Unknown push error' } : prev);
           setShowNotifPrompt(true);
         }
       } finally {
         selfTestInFlight.current = false;
-        if (!cancelled) {
-          setSelfTesting(false);
-          setTestStatus('idle');
-        }
+        if (!cancelled) { setSelfTesting(false); setTestStatus('idle'); }
       }
     };
 
     const isNewAuthenticatedUser = entryTestUserRef.current !== userId;
     void runVerification(isNewAuthenticatedUser);
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') void runVerification(false);
-    };
+    const handleVisibilityChange = () => { if (document.visibilityState === 'visible') void runVerification(false); };
     const handlePageShow = () => void runVerification(false);
-
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('pageshow', handlePageShow);
-    return () => {
-      cancelled = true;
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('pageshow', handlePageShow);
-    };
+    return () => { cancelled = true; document.removeEventListener('visibilitychange', handleVisibilityChange); window.removeEventListener('pageshow', handlePageShow); };
   }, [ctx, userId, isSettingsTest, setShowNotifPrompt]);
 
   const handleEnable = async () => {
     if (!ctx) return;
     if (ctx.isIOS && !ctx.isStandalone) {
-      setVisible(false);
-      setShowNotifPrompt(false);
-      setShowInstallPrompt(true);
+      setVisible(false); setShowNotifPrompt(false); setShowInstallPrompt(true);
       toast.info('Add Zippo to your Home Screen first, then enable notifications.', { duration: 5000 });
       return;
     }
     if (ctx.isAndroid && !ctx.isStandalone) toast.info('Install Zippo to your home screen for the best experience', { duration: 3000 });
     setLoading(true);
+    setSelfTesting(true);
+    setTestStatus('sending');
+    setShowNotifPrompt(false);
     try {
       const connected = await requestAndSubscribe(userId);
+      if (!connected) {
+        setSelfTesting(false); setTestStatus('idle'); setShowNotifPrompt(true);
+        if (Notification.permission === 'denied') toast.error('Notifications are blocked. Enable them in your browser settings.');
+        else toast.error('Notifications could not be connected on this device.');
+        return;
+      }
+
+      // Do not use the persisted health result to decide whether a fresh
+      // permission grant can be tested. requestAndSubscribe has just created
+      // and registered the current subscription; sendPushTest will verify it.
       const currentHealth = await checkPushHealth(userId);
       setHealth(currentHealth);
+      if (currentHealth.status !== 'healthy' && currentHealth.status !== 'verification_required') {
+        throw new Error(currentHealth.detail || `Push registration is incomplete: ${currentHealth.status}`);
+      }
 
-      if (connected && (currentHealth.status === 'healthy' || currentHealth.status === 'verification_required')) {
-        const result = await sendPushTest(userId, { onWaiting: () => setTestStatus('waiting') });
-        if (result.success && result.deviceReceived) {
-          entryTestUserRef.current = userId;
-          setHealth(prev => prev ? { ...prev, status: 'healthy', pushHealthStatus: 'healthy' } : prev);
-          toast.success('Notifications are enabled and working on this device.');
-          setTimeout(() => { setVisible(false); setShowNotifPrompt(false); }, 2000);
-        } else {
-          setHealth(prev => prev ? { ...prev, status: 'unhealthy', pushHealthStatus: 'unhealthy' } : prev);
-          setShowNotifPrompt(true);
-          toast.error(result.reason || 'Notifications could not be verified.');
-        }
-      } else if (currentHealth.status === 'permission_denied') {
-        toast.error('Notifications are blocked. Enable them in your browser settings.');
+      const result = await sendPushTest(userId, { onWaiting: () => setTestStatus('waiting') });
+      if (result.success && result.deviceReceived) {
+        entryTestUserRef.current = userId;
+        setHealth(prev => prev ? { ...prev, status: 'healthy', pushHealthStatus: 'healthy' } : prev);
+        setTestStatus('sent');
+        toast.success('Notifications are enabled and working on this device.');
+        window.setTimeout(() => { setSelfTesting(false); setTestStatus('idle'); setVisible(false); setShowNotifPrompt(false); }, 2000);
       } else {
-        setShowNotifPrompt(true);
-        toast.error('Notifications need another connection attempt.');
+        setHealth(prev => prev ? { ...prev, status: 'unhealthy', pushHealthStatus: 'unhealthy' } : prev);
+        setSelfTesting(false); setTestStatus('idle'); setShowNotifPrompt(true);
+        toast.error(result.reason || 'Notifications could not be verified on this device.');
       }
     } catch (error) {
       console.error('[NotifPrompt] Push registration failed:', error);
-      setShowNotifPrompt(true);
-      toast.error('Notifications could not be connected. Try again.');
+      setSelfTesting(false); setTestStatus('idle'); setShowNotifPrompt(true);
+      toast.error(error instanceof Error ? error.message : 'Notifications could not be connected on this device.');
     } finally {
       setLoading(false);
-      setTestStatus('idle');
     }
   };
 
@@ -207,30 +155,24 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
     try {
       const result = await sendPushTest(userId, { onWaiting: () => setTestStatus('waiting') });
       if (result.success && result.deviceReceived) {
-        setTestStatus('sent');
-        entryTestUserRef.current = userId;
+        setTestStatus('sent'); entryTestUserRef.current = userId;
         setHealth(prev => prev ? { ...prev, status: 'healthy', pushHealthStatus: 'healthy' } : prev);
         toast.success('This device received the test notification.');
       } else {
-        setTestStatus('failed');
-        setHealth(prev => prev ? { ...prev, status: 'unhealthy', pushHealthStatus: 'unhealthy' } : prev);
+        setTestStatus('failed'); setHealth(prev => prev ? { ...prev, status: 'unhealthy', pushHealthStatus: 'unhealthy' } : prev);
         toast.error(result.reason || 'Push delivery could not be verified.');
       }
     } catch (error) {
       console.error('[NotifPrompt] Push test failed:', error);
-      setTestStatus('failed');
-      setHealth(prev => prev ? { ...prev, status: 'unhealthy', pushHealthStatus: 'unhealthy' } : prev);
+      setTestStatus('failed'); setHealth(prev => prev ? { ...prev, status: 'unhealthy', pushHealthStatus: 'unhealthy' } : prev);
       toast.error('Push delivery could not be verified.');
-    } finally {
-      setTimeout(() => setTestStatus('idle'), 5000);
-    }
+    } finally { window.setTimeout(() => setTestStatus('idle'), 5000); }
   };
 
   const handleDismiss = () => {
     localStorage.setItem(NOTIF_KEYS.dismissed, '1');
     sessionStorage.setItem(NOTIF_KEYS.shownThisSession, '1');
-    setShowNotifPrompt(false);
-    setVisible(false);
+    setShowNotifPrompt(false); setVisible(false);
   };
 
   if (!ctx) return null;
@@ -241,29 +183,19 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
   const needsRepair = health?.status === 'unhealthy' || health?.status === 'missing_subscription' || health?.status === 'backend_missing' || health?.status === 'verification_required';
   const testBusy = testStatus === 'sending' || testStatus === 'waiting';
 
-  if (selfTesting) {
-    return (
-      <div className="notif-prompt" data-testid="notification-prompt" role="status" aria-live="polite">
-        <div className="notif-prompt__icon" aria-hidden="true">🔔</div>
-        <div className="notif-prompt__text">
-          <strong>Checking notifications</strong>
-          <p>{testStatus === 'waiting' ? 'Waiting for this device to receive the test notification.' : 'Checking that notifications are connected to this device.'}</p>
-        </div>
-      </div>
-    );
-  }
+  if (selfTesting) return (
+    <div className="notif-prompt" data-testid="notification-prompt" role="status" aria-live="polite">
+      <div className="notif-prompt__icon" aria-hidden="true">🔔</div>
+      <div className="notif-prompt__text"><strong>Checking notifications</strong><p>{testStatus === 'waiting' ? 'Waiting for this device to receive the test notification.' : 'Checking that notifications are connected to this device.'}</p></div>
+    </div>
+  );
 
-  if (showHealthy && health?.status === 'healthy' && !isSettingsTest) {
-    return (
-      <div className="notif-prompt" data-testid="notification-prompt" role="status" aria-live="polite">
-        <div className="notif-prompt__icon" aria-hidden="true">🔔</div>
-        <div className="notif-prompt__text">
-          <strong>Notifications are working</strong>
-          <p>Push notifications are connected and working on this device.</p>
-        </div>
-      </div>
-    );
-  }
+  if (showHealthy && health?.status === 'healthy' && !isSettingsTest) return (
+    <div className="notif-prompt" data-testid="notification-prompt" role="status" aria-live="polite">
+      <div className="notif-prompt__icon" aria-hidden="true">🔔</div>
+      <div className="notif-prompt__text"><strong>Notifications are working</strong><p>Push notifications are connected and working on this device.</p></div>
+    </div>
+  );
 
   if (!visible && !(isSettingsTest && health?.status === 'healthy')) return null;
 
