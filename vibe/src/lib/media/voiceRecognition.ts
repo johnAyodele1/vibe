@@ -1,10 +1,10 @@
 /**
- * Voice-note recognition is intentionally disabled.
+ * Voice-note browser recognition is disabled.
  *
- * Voice notes are binary media messages and must be sent directly after
- * recording. Keeping this compatibility session avoids changing the two
- * existing recording components while ensuring no browser SpeechRecognition
- * API or content-filtering logic runs for voice notes.
+ * Voice notes must never use the browser SpeechRecognition API. The audio
+ * blob is sent to the server, where the authoritative content checks run.
+ * This no-op compatibility session remains temporarily so the existing
+ * recording components can send audio without invoking browser recognition.
  */
 export interface VoiceRecognitionResult {
   status: 'clean';
