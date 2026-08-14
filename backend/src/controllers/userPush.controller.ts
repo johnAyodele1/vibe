@@ -27,9 +27,10 @@ export const registerUserPushDevice = async (req: any, res: Response) => {
       lastSeenAt: new Date(),
     };
 
-    // A foreground sync must not erase a verified health result. If the
-    // browser has rotated to a different subscription, force verification.
-    if (!existing || endpointChanged || existing.pushHealthStatus === 'unhealthy') {
+    // A foreground sync must not erase a verified result or resurrect a
+    // device that has already failed delivery. A changed browser subscription
+    // is a new endpoint and therefore needs a fresh verification.
+    if (!existing || endpointChanged) {
       set.pushHealthStatus = 'unknown';
     }
 
