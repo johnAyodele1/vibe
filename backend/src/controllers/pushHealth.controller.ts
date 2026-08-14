@@ -105,7 +105,23 @@ export const markPushHealth = async (req: Request, res: Response) => {
     const { deviceId, status } = req.body || {};
     if (!deviceId || !['healthy', 'unhealthy', 'unknown'].includes(status)) return res.status(400).json({ success: false, error: 'deviceId and valid status required' });
     const now = new Date();
-    const device = await PushSubscription.findOneAndUpdate({ userId: user._id, deviceId }, { $set: { pushHealthStatus: status, lastVerifiedAt: now, lastSeenAt: now, ...(status === 'healthy' ? { failCount: 0 } : {}) } }, { new: true });
+    const update: any = {
+      $set: {
+        pushHealthStatus: status,
+        lastVerifiedAt: now,
+        lastSeenAt: now,
+        ...(status === 'healthy' ? { failCount: 0 } : {}),
+      },
+    };
+
+    // "Unknown" means we intentionally invalidated the previous verification
+    // and must run a fresh delivery test. Do not let an old successful push
+    // make a repaired/unverified device look healthy.
+    if (status === 'unknown') {
+      update.$unset = { lastSuccessfulPushAt: 1, lastVerifiedAt: 1 };
+    }
+
+    const device = await PushSubscription.findOneAndUpdate({ userId: user._id, deviceId }, update, { new: true });
     if (!device) return res.status(404).json({ success: false, error: 'Device not found' });
     return res.json({ success: true, status: device.pushHealthStatus });
   } catch (error: any) {
