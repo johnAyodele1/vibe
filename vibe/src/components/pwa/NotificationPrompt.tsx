@@ -5,7 +5,7 @@ import { usePWAPromptStore, NOTIF_KEYS } from '../../store/pwaPromptStore';
 import { checkPushHealth, requestAndSubscribe, sendPushTest, type PushHealthResult } from '../../lib/pwa/subscriptionManager';
 import { toast } from 'sonner';
 
-const ACTIONABLE_STATUSES = new Set(['permission_required', 'missing_subscription', 'backend_missing', 'unhealthy', 'permission_denied', 'service_worker_unavailable']);
+const ACTIONABLE_STATUSES = new Set(['permission_required', 'missing_subscription', 'backend_missing', 'unhealthy', 'permission_denied', 'service_worker_unavailable', 'error']);
 const CHECKING_MIN_VISIBLE_MS = 1000;
 
 const NotificationPrompt = ({ userId }: { userId: string }) => {
@@ -40,39 +40,61 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
     const runVerification = async (forceDeviceTest: boolean) => {
       if (selfTestInFlight.current) return;
       const checkingStartedAt = Date.now();
-      if (forceDeviceTest) {
-        setSelfTesting(true);
-        setTestStatus('sending');
-        setShowNotifPrompt(false);
-      }
+
+      // The health check itself is asynchronous. Previously the checking UI
+      // was only enabled for forced tests, which meant iOS could complete the
+      // check before React ever rendered any notification state. Make the
+      // checking state the entry state for every verification run.
+      setSelfTesting(true);
+      setTestStatus('sending');
+      setShowNotifPrompt(false);
+
       const keepCheckingVisible = async () => {
         const remaining = CHECKING_MIN_VISIBLE_MS - (Date.now() - checkingStartedAt);
         if (remaining > 0) await new Promise(resolve => window.setTimeout(resolve, remaining));
       };
+
       try {
         const currentHealth = await checkPushHealth(userId);
         await keepCheckingVisible();
         if (cancelled) return;
         setHealth(currentHealth);
+
         if (ACTIONABLE_STATUSES.has(currentHealth.status)) {
-          setSelfTesting(false); setTestStatus('idle'); setShowNotifPrompt(true); return;
+          setSelfTesting(false);
+          setTestStatus('idle');
+          setShowNotifPrompt(true);
+          return;
         }
-        if (currentHealth.status === 'unsupported' || currentHealth.status === 'error') {
-          setSelfTesting(false); setTestStatus('idle'); setShowNotifPrompt(false); return;
+
+        if (currentHealth.status === 'unsupported') {
+          setSelfTesting(false);
+          setTestStatus('idle');
+          setShowNotifPrompt(false);
+          return;
         }
+
         const shouldTest = forceDeviceTest || currentHealth.status === 'verification_required';
         if (!shouldTest) {
-          setSelfTesting(false); setTestStatus('idle'); setShowNotifPrompt(isSettingsTest && currentHealth.status === 'healthy'); return;
+          setSelfTesting(false);
+          setTestStatus('idle');
+          setShowNotifPrompt(isSettingsTest && currentHealth.status === 'healthy');
+          return;
         }
+
         selfTestInFlight.current = true;
-        setSelfTesting(true); setTestStatus('sending'); setShowNotifPrompt(false);
+        setTestStatus('sending');
         const result = await sendPushTest(userId, { silent: true, onWaiting: () => setTestStatus('waiting') });
         if (cancelled) return;
         if (result.success && result.deviceReceived) {
           entryTestUserRef.current = userId;
           setHealth(prev => prev ? { ...prev, status: 'healthy', pushHealthStatus: 'healthy' } : prev);
-          setTestStatus('sent'); setShowNotifPrompt(false);
-          if (!isSettingsTest) { setShowHealthy(true); window.setTimeout(() => setShowHealthy(false), 4000); }
+          setTestStatus('sent');
+          setShowNotifPrompt(false);
+          if (!isSettingsTest) {
+            setShowHealthy(true);
+            window.setTimeout(() => setShowHealthy(false), 4000);
+          }
         } else {
           setHealth(prev => prev ? { ...prev, status: 'unhealthy', pushHealthStatus: 'unhealthy' } : prev);
           setShowNotifPrompt(true);
@@ -86,7 +108,10 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
         }
       } finally {
         selfTestInFlight.current = false;
-        if (!cancelled) { setSelfTesting(false); setTestStatus('idle'); }
+        if (!cancelled) {
+          setSelfTesting(false);
+          setTestStatus('idle');
+        }
       }
     };
 
@@ -120,9 +145,6 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
         return;
       }
 
-      // Do not use the persisted health result to decide whether a fresh
-      // permission grant can be tested. requestAndSubscribe has just created
-      // and registered the current subscription; sendPushTest will verify it.
       const currentHealth = await checkPushHealth(userId);
       setHealth(currentHealth);
       if (currentHealth.status !== 'healthy' && currentHealth.status !== 'verification_required') {
@@ -180,7 +202,7 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
   if (ctx.isIOS && ctx.iOSVersion && ctx.iOSVersion < 16.4) return null;
 
   const needsPermission = health?.status === 'permission_required';
-  const needsRepair = health?.status === 'unhealthy' || health?.status === 'missing_subscription' || health?.status === 'backend_missing' || health?.status === 'verification_required';
+  const needsRepair = health?.status === 'unhealthy' || health?.status === 'missing_subscription' || health?.status === 'backend_missing' || health?.status === 'verification_required' || health?.status === 'error' || health?.status === 'permission_denied' || health?.status === 'service_worker_unavailable';
   const testBusy = testStatus === 'sending' || testStatus === 'waiting';
 
   if (selfTesting) return (
