@@ -22,14 +22,12 @@ const AddToHomeScreenHint = ({ onDismiss }: { onDismiss: () => void }) => {
       <div className="notif-prompt__text">
         <strong>Add Zippo to your Home Screen</strong>
         <p>
-          On iPhone, tap <strong>Share</strong>, then choose <strong>➕ Add to Home Screen</strong> to enable push notifications.
+          Tap <strong>Share</strong> <span aria-hidden="true">⬆️</span>, then <strong>Add to Home Screen</strong> to enable push notifications.
         </p>
       </div>
       <div className="notif-prompt__actions">
-        <button className="notif-prompt__enable" onClick={() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
-          Show me how
-        </button>
-        <button className="notif-prompt__dismiss" onClick={dismiss}>Not now</button>
+        <button className="notif-prompt__enable" type="button">Show me how</button>
+        <button className="notif-prompt__dismiss" type="button" onClick={dismiss}>Not now</button>
       </div>
     </div>
   );
