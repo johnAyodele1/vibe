@@ -88,7 +88,14 @@ function App() {
 
   if (loading) return <LoadingScreen />;
 
-  const showStandardUserNotificationPrompt = isAuthenticated && !adultIsAuthenticated && Boolean(user?._id);
+  // AdultZone uses its own authentication context. Push health must be mounted
+  // for both auth systems so normal app entry, account switching, and provider
+  // sessions all execute the same push verification path.
+  const notificationUserId = adultIsAuthenticated && adultUser?.id
+    ? adultUser.id
+    : isAuthenticated && user?._id
+      ? user._id
+      : null;
 
   return (
     <>
@@ -124,6 +131,8 @@ function App() {
         <Route path="/admin/payouts" element={isAdminAuthenticated ? <AdminPayoutsPage /> : <Navigate to="/admin/login" replace />} />
         <Route path="/admin/analytics" element={isAdminAuthenticated ? <AdminAnalytics /> : <Navigate to="/admin/login" replace />} />
         <Route path="/admin/rewards" element={isAdminAuthenticated ? <AdminRewardsPage /> : <Navigate to="/admin/login" replace />} />
+        <Route path="/admin/login" element={<AdminLogin />} />
+        <Route path="/admin" element={isAdminAuthenticated ? <AdminDashboard /> : <Navigate to="/admin/login" replace />} />
         <Route path="/auth" element={<Auth />} />
         <Route path="/auth/callback" element={<GoogleCallback />} />
         <Route path="/profile" element={isAuthenticated ? <ProfileCreation /> : <Navigate to="/auth" replace />} />
@@ -133,12 +142,10 @@ function App() {
         <Route path="/my-profile" element={isAuthenticated ? (isProfileComplete() ? <UserProfileView /> : <Navigate to="/profile" replace />) : <Navigate to="/auth" replace />} />
         <Route path="/settings" element={isAuthenticated ? (isProfileComplete() ? <Settings /> : <Navigate to="/profile" replace />) : <Navigate to="/auth" replace />} />
         <Route path="/chat" element={isAuthenticated ? (isProfileComplete() ? <ChatInterface /> : <Navigate to="/profile" replace />) : <Navigate to="/auth" replace />} />
-        <Route path="/admin/login" element={<AdminLogin />} />
-        <Route path="/admin" element={isAdminAuthenticated ? <AdminDashboard /> : <Navigate to="/admin/login" replace />} />
-        <Route path="/direct-message/:conversationId" element={isAuthenticated ? (isProfileComplete() ? <DirectMessage /> : <Navigate to="/profile" replace />) : <Navigate to="/auth" replace />} />
+        <Route path="/direct-message/:conversationId" element={isAuthenticated ? (isProfileComplete() ? <DirectMessage /> : <Navigate to="/auth" replace />) : <Navigate to="/auth" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-      {showStandardUserNotificationPrompt && <NotificationPrompt userId={user!._id} />}
+      {notificationUserId && <NotificationPrompt userId={notificationUserId} />}
       <Toaster />
     </>
   );
