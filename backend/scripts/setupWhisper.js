@@ -7,7 +7,7 @@ const ROOT = path.resolve(__dirname, '..');
 const RUNTIME_DIR = path.join(ROOT, '.runtime', 'whisper.cpp');
 const MODEL_DIR = path.join(RUNTIME_DIR, 'models');
 const BINARY = path.join(RUNTIME_DIR, 'build', 'bin', 'whisper-cli');
-const MODEL = path.join(MODEL_DIR, 'ggml-tiny.bin');
+const MODEL = path.join(MODEL_DIR, 'ggml-tiny-q5_1.bin');
 
 function commandExists(command) {
   try {
@@ -61,12 +61,12 @@ function main() {
     fs.mkdirSync(MODEL_DIR, { recursive: true });
     run('sh', [
       path.join(RUNTIME_DIR, 'models', 'download-ggml-model.sh'),
-      'tiny',
+      'tiny-q5_1',
     ], { cwd: RUNTIME_DIR });
   }
 
   console.log(`whisper.cpp ready: ${BINARY}`);
-  console.log(`Whisper tiny model ready: ${MODEL}`);
+  console.log(`Whisper tiny-q5_1 model ready: ${MODEL}`);
 }
 
 main();
