@@ -14,6 +14,8 @@ const ACTIONABLE_STATUSES = new Set([
   'service_worker_unavailable',
 ]);
 
+const CHECKING_MIN_VISIBLE_MS = 1000;
+
 const NotificationPrompt = ({ userId }: { userId: string }) => {
   const { showNotifPrompt, setShowNotifPrompt, setShowInstallPrompt } = usePWAPromptStore();
   const [ctx, setCtx] = useState<ReturnType<typeof getInstallContext> | null>(null);
@@ -52,18 +54,26 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
     const runVerification = async (forceDeviceTest: boolean) => {
       if (selfTestInFlight.current) return;
 
-      // A fresh app entry must visibly enter the checking state before any
-      // network/service-worker work starts. This is especially important on
-      // iOS, where subscription discovery can take noticeably longer than
-      // Android. Do not make the UI wait for checkPushHealth() to finish.
+      const checkingStartedAt = Date.now();
+
+      // Enter the visible checking state before doing ANY async push work.
+      // iOS often resolves permission/subscription checks much faster than
+      // Android, so without a minimum display time this state can flash away
+      // before the user can see it.
       if (forceDeviceTest) {
         setSelfTesting(true);
         setTestStatus('sending');
         setShowNotifPrompt(false);
       }
 
+      const keepCheckingVisible = async () => {
+        const remaining = CHECKING_MIN_VISIBLE_MS - (Date.now() - checkingStartedAt);
+        if (remaining > 0) await new Promise(resolve => window.setTimeout(resolve, remaining));
+      };
+
       try {
         const currentHealth = await checkPushHealth(userId);
+        await keepCheckingVisible();
         if (cancelled) return;
         setHealth(currentHealth);
 
@@ -116,6 +126,7 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
           setShowNotifPrompt(true);
         }
       } catch (error) {
+        await keepCheckingVisible();
         if (!cancelled) {
           console.error('[NotifPrompt] Entry health check failed:', error);
           setHealth(prev => prev ? { ...prev, status: 'error' } : prev);
