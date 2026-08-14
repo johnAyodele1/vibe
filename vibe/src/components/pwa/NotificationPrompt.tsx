@@ -45,10 +45,22 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
   useEffect(() => setVisible(showNotifPrompt), [showNotifPrompt]);
 
   useEffect(() => {
+    if (!ctx) return;
+
     let cancelled = false;
 
     const runVerification = async (forceDeviceTest: boolean) => {
       if (selfTestInFlight.current) return;
+
+      // A fresh app entry must visibly enter the checking state before any
+      // network/service-worker work starts. This is especially important on
+      // iOS, where subscription discovery can take noticeably longer than
+      // Android. Do not make the UI wait for checkPushHealth() to finish.
+      if (forceDeviceTest) {
+        setSelfTesting(true);
+        setTestStatus('sending');
+        setShowNotifPrompt(false);
+      }
 
       try {
         const currentHealth = await checkPushHealth(userId);
@@ -56,23 +68,30 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
         setHealth(currentHealth);
 
         if (ACTIONABLE_STATUSES.has(currentHealth.status)) {
+          setSelfTesting(false);
+          setTestStatus('idle');
           setShowNotifPrompt(true);
           return;
         }
 
         if (currentHealth.status === 'unsupported' || currentHealth.status === 'error') {
+          setSelfTesting(false);
+          setTestStatus('idle');
           setShowNotifPrompt(false);
           return;
         }
 
         const shouldTest = forceDeviceTest || currentHealth.status === 'verification_required';
         if (!shouldTest) {
+          setSelfTesting(false);
+          setTestStatus('idle');
           setShowNotifPrompt(isSettingsTest && currentHealth.status === 'healthy');
           return;
         }
 
         selfTestInFlight.current = true;
         setSelfTesting(true);
+        setTestStatus('sending');
         setShowNotifPrompt(false);
 
         const result = await sendPushTest(userId, {
@@ -100,6 +119,7 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
         if (!cancelled) {
           console.error('[NotifPrompt] Entry health check failed:', error);
           setHealth(prev => prev ? { ...prev, status: 'error' } : prev);
+          setShowNotifPrompt(true);
         }
       } finally {
         selfTestInFlight.current = false;
@@ -125,7 +145,7 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('pageshow', handlePageShow);
     };
-  }, [userId, isSettingsTest, setShowNotifPrompt]);
+  }, [ctx, userId, isSettingsTest, setShowNotifPrompt]);
 
   const handleEnable = async () => {
     if (!ctx) return;
