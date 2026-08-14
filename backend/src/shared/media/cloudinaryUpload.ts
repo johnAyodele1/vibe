@@ -19,7 +19,7 @@ if (!existingConfig || !existingConfig.cloud_name) {
 }
 
 // ── QUALITY CONSTANT ───────────────────────────────────────────
-// 0.4 for all uploads — do not hardcode differently anywhere else
+// 0.4 for image/video uploads — voice notes are stored as raw audio.
 export const QUALITY = 0.4;
 export const IMAGE_QUALITY = Math.round(QUALITY * 100);   // 40
 export const VIDEO_QUALITY = Math.round(QUALITY * 100);   // 40
@@ -45,7 +45,10 @@ interface UploadOptions {
 }
 
 /**
- * Upload a buffer or stream to Cloudinary
+ * Upload a buffer or stream to Cloudinary.
+ * Voice notes deliberately use raw storage: MediaRecorder can produce
+ * platform-specific WebM/MP4/M4A audio, and treating that payload as video
+ * makes the upload pipeline unnecessarily fragile.
  */
 export const uploadToCloudinary = (fileData: Buffer | Readable, options: UploadOptions = {}): Promise<any> => {
   return new Promise((resolve, reject) => {
@@ -56,30 +59,30 @@ export const uploadToCloudinary = (fileData: Buffer | Readable, options: UploadO
       publicId     = null,
     } = options;
 
+    const effectiveResourceType = folder === FOLDERS.voiceNote ? 'raw' : resourceType;
+
     const uploadOptions: any = {
       folder,
-      resource_type: resourceType,
-      // ── QUALITY ──────────────────────────────────────────────
-      // 0.4 quality on all uploads — no exceptions
-      quality:       resourceType === 'video' ? VIDEO_QUALITY : IMAGE_QUALITY,
-      // ─────────────────────────────────────────────────────────
-      type:          isPrivate ? 'authenticated' : 'upload',
-      format:        resourceType === 'image' ? 'webp' : undefined,  // auto-convert to WebP
-      flags:         resourceType === 'image' ? 'progressive' : undefined,
+      resource_type: effectiveResourceType,
+      quality: effectiveResourceType === 'video' ? VIDEO_QUALITY : effectiveResourceType === 'image' ? IMAGE_QUALITY : undefined,
+      type: isPrivate ? 'authenticated' : 'upload',
+      format: effectiveResourceType === 'image' ? 'webp' : undefined,
+      flags: effectiveResourceType === 'image' ? 'progressive' : undefined,
     };
 
     if (publicId) uploadOptions.public_id = publicId;
 
-    // For images: auto-optimize and convert to WebP
-    if (resourceType === 'image') {
+    // Match the aggressive image optimization used throughout the provider media pipeline.
+    if (effectiveResourceType === 'image') {
       uploadOptions.transformation = [
-        { quality: 'auto:low', fetch_format: 'webp' },   // auto-WebP conversion
-        { quality: IMAGE_QUALITY },                      // then apply our 40
+        { width: 800, height: 800, crop: 'limit' },
+        { quality: 'auto:low', fetch_format: 'webp' },
+        { quality: IMAGE_QUALITY },
       ];
     }
 
     // For video: compress and optimize
-    if (resourceType === 'video') {
+    if (effectiveResourceType === 'video') {
       uploadOptions.transformation = [
         { quality: VIDEO_QUALITY },
         { video_codec: 'auto' },
@@ -99,7 +102,7 @@ export const uploadToCloudinary = (fileData: Buffer | Readable, options: UploadO
           bytes:       result.bytes,
           width:       result.width,
           height:      result.height,
-          duration:    result.duration,   // for audio/video
+          duration:    result.duration,
           resourceType: result.resource_type,
         });
       }
@@ -108,7 +111,7 @@ export const uploadToCloudinary = (fileData: Buffer | Readable, options: UploadO
     if (Buffer.isBuffer(fileData)) {
       Readable.from(fileData).pipe(uploadStream);
     } else {
-      fileData.pipe(uploadStream);  // already a stream
+      fileData.pipe(uploadStream);
     }
   });
 };
