@@ -68,7 +68,6 @@ dist
 # Gatsby files
 .cache/
 
-
 # Storybook build outputs
 .out
 .storybook-out
@@ -101,6 +100,9 @@ Desktop.ini
 # Upload directories
 backend/uploads/
 backend/uploads/**
+
+# Whisper runtime/model artifacts
+backend/.runtime/
 
 # Build outputs
 build/
