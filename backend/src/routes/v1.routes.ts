@@ -3,6 +3,7 @@ import { getCountries, getStatesByCountry, getCities } from '../controllers/shar
 import { verifyAdultJWT, optionalAdultJWT } from '../middleware/adultAuth';
 import multer from 'multer';
 import { getPresignedUrl, handleMockUpload, uploadMedia, getMyProfile, updateProfile, updateServices, updatePricing, updateLocation, updatePayout, updatePhotos, updateSchedule, getProviderDashboard, getProviderEarnings, getOnboardingProgress, saveOnboardingStep, getHookupNearbyProviders, getAdultMemberProfile, updateAdultMemberProfile } from '../controllers/providerOnboarding.controller';
+import { uploadMediaWithVoiceVerification } from '../controllers/voiceUpload.controller';
 import { changePassword, deactivateAccount } from '../controllers/adultAuth.controller';
 import { getEligiblePayout, requestPayout, getPayoutStatus, getPayoutHistory } from '../controllers/payout.controller';
 import { getWallet, getBundles, getTransactions, createPurchaseIntent, simulateWebhookSuccess, getSubscriptionPlans, directTip, getDiamondRate } from '../controllers/wallet.controller';
@@ -45,7 +46,7 @@ router.get('/shared/cities', getCities);
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 router.get('/adult/media/presigned-url', verifyAdultJWT, getPresignedUrl);
 router.put('/adult/media/upload-mock', handleMockUpload);
-router.post('/adult/media/upload', verifyAdultJWT, upload.single('file'), uploadMedia);
+router.post('/adult/media/upload', verifyAdultJWT, upload.single('file'), uploadMediaWithVoiceVerification);
 router.get('/adult/wallet', verifyAdultJWT, getWallet);
 router.get('/adult/wallet/bundles', getBundles);
 router.get('/adult/config/diamond-rate', getDiamondRate);
