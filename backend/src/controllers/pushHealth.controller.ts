@@ -104,19 +104,20 @@ export const markPushHealth = async (req: Request, res: Response) => {
     if (!user) return res.status(401).json({ success: false, error: 'Auth required' });
     const { deviceId, status } = req.body || {};
     if (!deviceId || !['healthy', 'unhealthy', 'unknown'].includes(status)) return res.status(400).json({ success: false, error: 'deviceId and valid status required' });
-    const now = new Date();
-    const update: any = {
-      $set: {
-        pushHealthStatus: status,
-        lastVerifiedAt: now,
-        lastSeenAt: now,
-        ...(status === 'healthy' ? { failCount: 0 } : {}),
-      },
-    };
 
-    // "Unknown" means we intentionally invalidated the previous verification
-    // and must run a fresh delivery test. Do not let an old successful push
-    // make a repaired/unverified device look healthy.
+    const now = new Date();
+    const set: Record<string, unknown> = {
+      pushHealthStatus: status,
+      lastSeenAt: now,
+    };
+    if (status === 'healthy') {
+      set.lastVerifiedAt = now;
+      set.failCount = 0;
+    } else if (status === 'unhealthy') {
+      set.lastVerifiedAt = now;
+    }
+
+    const update: Record<string, unknown> = { $set: set };
     if (status === 'unknown') {
       update.$unset = { lastSuccessfulPushAt: 1, lastVerifiedAt: 1 };
     }
