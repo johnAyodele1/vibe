@@ -3,7 +3,7 @@ import { getInstallContext } from './context';
 import { getOrCreateDeviceId, clearDeviceId, cacheDeviceIdForSW } from './deviceId';
 import { toast } from 'sonner';
 
-export type PushHealthStatus = 'unsupported' | 'permission_required' | 'permission_denied' | 'service_worker_unavailable' | 'missing_subscription' | 'backend_missing' | 'unhealthy' | 'healthy' | 'error';
+export type PushHealthStatus = 'unsupported' | 'permission_required' | 'permission_denied' | 'service_worker_unavailable' | 'missing_subscription' | 'backend_missing' | 'verification_required' | 'unhealthy' | 'healthy' | 'error';
 
 export interface PushHealthResult {
   status: PushHealthStatus;
@@ -12,6 +12,9 @@ export interface PushHealthResult {
   hasBrowserSubscription: boolean;
   backendRegistered: boolean;
   repaired: boolean;
+  lastVerifiedAt?: string;
+  lastSuccessfulPushAt?: string;
+  pushHealthStatus?: 'unknown' | 'healthy' | 'unhealthy';
   detail?: string;
 }
 
@@ -149,15 +152,31 @@ export const checkPushHealth = async (userId: string): Promise<PushHealthResult>
     }
 
     const refreshedEndpoint = device?.endpoint ?? device?.pushEndpoint;
+    const common = {
+      ...base,
+      hasBrowserSubscription: true,
+      backendRegistered: Boolean(device?.isActive && refreshedEndpoint === subscription.endpoint),
+      repaired,
+      lastVerifiedAt: device?.lastVerifiedAt ? new Date(device.lastVerifiedAt).toISOString() : undefined,
+      lastSuccessfulPushAt: device?.lastSuccessfulPushAt ? new Date(device.lastSuccessfulPushAt).toISOString() : undefined,
+      pushHealthStatus: device?.pushHealthStatus as PushHealthResult['pushHealthStatus'],
+    };
+
     if (!device || !device.isActive || refreshedEndpoint !== subscription.endpoint) {
-      return { ...base, status: 'backend_missing', hasBrowserSubscription: true, backendRegistered: false, repaired };
+      return { ...common, status: 'backend_missing' };
     }
 
     if (device.pushHealthStatus === 'unhealthy') {
-      return { ...base, status: 'unhealthy', hasBrowserSubscription: true, backendRegistered: true, repaired };
+      return { ...common, status: 'unhealthy' };
     }
 
-    return { ...base, status: 'healthy', hasBrowserSubscription: true, backendRegistered: true, repaired };
+    // A registered subscription is not enough to claim that delivery works.
+    // Devices with no successful acknowledgement yet must run the real test.
+    if (!device.lastSuccessfulPushAt) {
+      return { ...common, status: 'verification_required' };
+    }
+
+    return { ...common, status: 'healthy' };
   } catch (error: any) {
     console.error('[Push] Health check failed:', error);
     return { ...base, status: 'error', detail: error?.message || 'Unknown push error' };
@@ -187,7 +206,7 @@ export const sendPushTest = async (
   options?: { onWaiting?: () => void },
 ): Promise<{ success: boolean; status: PushHealthStatus; deliveredToProvider: boolean; deviceReceived?: boolean; reason?: string }> => {
   const health = await checkPushHealth(userId);
-  if (health.status !== 'healthy') return { success: false, status: health.status, deliveredToProvider: false, reason: health.detail || `Push is not healthy: ${health.status}` };
+  if (health.status !== 'healthy' && health.status !== 'verification_required') return { success: false, status: health.status, deliveredToProvider: false, reason: health.detail || `Push is not healthy: ${health.status}` };
 
   const token = getAuthToken();
   if (!token) return { success: false, status: 'error', deliveredToProvider: false, reason: 'Authentication required' };
@@ -248,5 +267,5 @@ export const requestAndSubscribe = async (userId: string): Promise<boolean> => {
   }
 
   await syncCurrentSessionDevice(userId);
-  return (await checkPushHealth(userId)).status === 'healthy';
+  return (await checkPushHealth(userId)).status === 'healthy' || (await checkPushHealth(userId)).status === 'verification_required';
 };
