@@ -1,5 +1,6 @@
 import {
   PHONE_PATTERNS,
+  SPOKEN_PHONE_PATTERN,
   EMAIL_PATTERNS,
   PLATFORM_PATTERNS,
   SEPARATED_PLATFORM_PATTERNS,
@@ -36,6 +37,14 @@ export const detectContactSharing = (text: string): FilterResult => {
     if (match) {
       return { detected: true, category: 'phone', matchedText: match[0] };
     }
+  }
+
+  // Spoken phone numbers need their own stricter rule. Do not treat individual
+  // number words ("one", "two", "six", etc.) as contact information because
+  // those are normal words in speech and are especially common in transcripts.
+  const spokenPhoneMatch = text.match(SPOKEN_PHONE_PATTERN);
+  if (spokenPhoneMatch) {
+    return { detected: true, category: 'phone', matchedText: spokenPhoneMatch[0] };
   }
 
   // Check email patterns on BOTH original and normalised
