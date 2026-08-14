@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { getInstallContext } from '../../lib/pwa/context';
 import AddToHomeScreenHint from './AddToHomeScreenHint';
 import { usePWAPromptStore, NOTIF_KEYS } from '../../store/pwaPromptStore';
 import { checkPushHealth, requestAndSubscribe, sendPushTest, type PushHealthResult } from '../../lib/pwa/subscriptionManager';
+import { runPushSelfTest } from '../../lib/pwa/pushSelfTest';
 import { toast } from 'sonner';
 
 const NotificationPrompt = ({ userId }: { userId: string }) => {
@@ -10,23 +11,81 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
   const [ctx, setCtx] = useState<ReturnType<typeof getInstallContext> | null>(null);
   const [visible, setVisible] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [selfTesting, setSelfTesting] = useState(false);
   const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'waiting' | 'sent' | 'failed'>('idle');
   const [health, setHealth] = useState<PushHealthResult | null>(null);
-  const isSettingsTest = typeof window !== 'undefined' && window.location.hash === '#push-notifications';
+  const selfTestInFlight = useRef(false);
+  const isSettingsTest = typeof window !== 'undefined' && (window.location.hash === '#push-test-section' || window.location.hash === '#push-notifications');
 
   useEffect(() => setCtx(getInstallContext()), []);
   useEffect(() => setVisible(showNotifPrompt), [showNotifPrompt]);
 
   useEffect(() => {
     let cancelled = false;
-    checkPushHealth(userId).then(currentHealth => {
-      if (cancelled) return;
-      setHealth(currentHealth);
-      if (currentHealth.status === 'permission_required' || currentHealth.status === 'missing_subscription' || currentHealth.status === 'backend_missing' || currentHealth.status === 'unhealthy' || (currentHealth.status === 'healthy' && isSettingsTest)) setShowNotifPrompt(true);
-      if (currentHealth.status === 'healthy' && !isSettingsTest) setShowNotifPrompt(false);
-    }).catch(error => console.error('[NotifPrompt] Health check failed:', error));
-    return () => { cancelled = true; };
-  }, [userId, setShowNotifPrompt, isSettingsTest]);
+
+    const verifyOnEntry = async () => {
+      if (selfTestInFlight.current) return;
+
+      try {
+        const currentHealth = await checkPushHealth(userId);
+        if (cancelled) return;
+        setHealth(currentHealth);
+
+        if (currentHealth.status === 'permission_required' || currentHealth.status === 'missing_subscription' || currentHealth.status === 'backend_missing' || currentHealth.status === 'unhealthy' || currentHealth.status === 'permission_denied' || currentHealth.status === 'service_worker_unavailable') {
+          setShowNotifPrompt(true);
+          return;
+        }
+
+        if (currentHealth.status === 'healthy') {
+          setShowNotifPrompt(isSettingsTest);
+          return;
+        }
+
+        if (currentHealth.status !== 'verification_required' || isSettingsTest) {
+          setShowNotifPrompt(false);
+          return;
+        }
+
+        selfTestInFlight.current = true;
+        setSelfTesting(true);
+        const result = await runPushSelfTest(userId, { silent: true });
+        if (cancelled) return;
+
+        if (result === 'success') {
+          const verifiedHealth = await checkPushHealth(userId);
+          if (cancelled) return;
+          setHealth(verifiedHealth);
+          setShowNotifPrompt(false);
+        } else if (result === 'failed') {
+          setHealth(prev => prev ? { ...prev, status: 'unhealthy' } : prev);
+          setShowNotifPrompt(true);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error('[NotifPrompt] Entry health check failed:', error);
+          setHealth(prev => prev ? { ...prev, status: 'error' } : prev);
+        }
+      } finally {
+        selfTestInFlight.current = false;
+        if (!cancelled) setSelfTesting(false);
+      }
+    };
+
+    void verifyOnEntry();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void verifyOnEntry();
+    };
+    const handlePageShow = () => void verifyOnEntry();
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pageshow', handlePageShow);
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pageshow', handlePageShow);
+    };
+  }, [userId, isSettingsTest, setShowNotifPrompt]);
 
   const handleEnable = async () => {
     if (!ctx) return;
@@ -43,19 +102,31 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
       const connected = await requestAndSubscribe(userId);
       const currentHealth = await checkPushHealth(userId);
       setHealth(currentHealth);
-      if (connected && currentHealth.status === 'healthy') {
-        toast.success('Notifications are enabled and connected on this device.');
-        if (!isSettingsTest) setTimeout(() => { setVisible(false); setShowNotifPrompt(false); }, 2000);
+
+      if (connected && (currentHealth.status === 'healthy' || currentHealth.status === 'verification_required')) {
+        const result = await sendPushTest(userId, { onWaiting: () => setTestStatus('waiting') });
+        if (result.success && result.deviceReceived) {
+          setHealth(prev => prev ? { ...prev, status: 'healthy' } : prev);
+          toast.success('Notifications are enabled and working on this device.');
+          setTimeout(() => { setVisible(false); setShowNotifPrompt(false); }, 2000);
+        } else {
+          setHealth(prev => prev ? { ...prev, status: 'unhealthy' } : prev);
+          setShowNotifPrompt(true);
+          toast.error(result.reason || 'Notifications could not be verified.');
+        }
       } else if (currentHealth.status === 'permission_denied') {
         toast.error('Notifications are blocked. Enable them in your browser settings.');
       } else {
+        setShowNotifPrompt(true);
         toast.error('Notifications need another connection attempt.');
       }
     } catch (error) {
       console.error('[NotifPrompt] Push registration failed:', error);
+      setShowNotifPrompt(true);
       toast.error('Notifications could not be connected. Try again.');
     } finally {
       setLoading(false);
+      setTestStatus('idle');
     }
   };
 
@@ -75,6 +146,7 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
     } catch (error) {
       console.error('[NotifPrompt] Push test failed:', error);
       setTestStatus('failed');
+      setHealth(prev => prev ? { ...prev, status: 'unhealthy' } : prev);
       toast.error('Push delivery could not be verified.');
     } finally {
       setTimeout(() => setTestStatus('idle'), 5000);
@@ -88,12 +160,12 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
     setVisible(false);
   };
 
-  if (!visible || !ctx) return null;
+  if (selfTesting || !visible || !ctx) return null;
   if (ctx.isIOS && !ctx.isStandalone) return <AddToHomeScreenHint onDismiss={handleDismiss} />;
   if (ctx.isIOS && ctx.iOSVersion && ctx.iOSVersion < 16.4) return null;
 
   const needsPermission = health?.status === 'permission_required';
-  const needsRepair = health?.status === 'unhealthy' || health?.status === 'missing_subscription' || health?.status === 'backend_missing';
+  const needsRepair = health?.status === 'unhealthy' || health?.status === 'missing_subscription' || health?.status === 'backend_missing' || health?.status === 'verification_required';
   const testBusy = testStatus === 'sending' || testStatus === 'waiting';
 
   return (
