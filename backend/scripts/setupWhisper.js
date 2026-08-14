@@ -62,7 +62,7 @@ function main() {
     run('sh', [
       path.join(RUNTIME_DIR, 'models', 'download-ggml-model.sh'),
       'tiny',
-    ], { cwd: MODEL_DIR });
+    ], { cwd: RUNTIME_DIR });
   }
 
   console.log(`whisper.cpp ready: ${BINARY}`);
