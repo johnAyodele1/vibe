@@ -27,7 +27,21 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
   const selfTestInFlight = useRef(false);
   const isSettingsTest = typeof window !== 'undefined' && (window.location.hash === '#push-test-section' || window.location.hash === '#push-notifications');
 
-  useEffect(() => setCtx(getInstallContext()), []);
+  const refreshContext = () => setCtx(getInstallContext());
+
+  useEffect(() => {
+    refreshContext();
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') refreshContext();
+    };
+    window.addEventListener('pageshow', refreshContext);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.removeEventListener('pageshow', refreshContext);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, []);
+
   useEffect(() => setVisible(showNotifPrompt), [showNotifPrompt]);
 
   useEffect(() => {
@@ -46,21 +60,11 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
           return;
         }
 
-        if (currentHealth.status === 'permission_required' || currentHealth.status === 'permission_denied') {
-          setShowNotifPrompt(true);
-          return;
-        }
-
         if (currentHealth.status === 'unsupported' || currentHealth.status === 'error') {
           setShowNotifPrompt(false);
           return;
         }
 
-        // A real delivery test is performed once for each authenticated user
-        // in this browser runtime. Do not trust an old lastSuccessfulPushAt:
-        // browser/PWA reinstall, OS notification settings, and account changes
-        // can leave the stored health record stale even when the browser says
-        // a subscription still exists.
         const shouldTest = forceDeviceTest || currentHealth.status === 'verification_required';
         if (!shouldTest) {
           setShowNotifPrompt(isSettingsTest && currentHealth.status === 'healthy');
@@ -96,8 +100,6 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
         if (!cancelled) {
           console.error('[NotifPrompt] Entry health check failed:', error);
           setHealth(prev => prev ? { ...prev, status: 'error' } : prev);
-          // A health-check error is not evidence that notifications are broken.
-          // Leave the app usable and let the next visibility/login check retry.
         }
       } finally {
         selfTestInFlight.current = false;
