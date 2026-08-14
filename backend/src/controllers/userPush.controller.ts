@@ -8,25 +8,36 @@ export const registerUserPushDevice = async (req: any, res: Response) => {
     if (!deviceId) return res.status(400).json({ success: false, message: 'deviceId required' });
     if (!subscription?.endpoint?.startsWith('https://')) return res.status(400).json({ success: false, message: 'valid subscription required' });
 
+    const existing = await PushSubscription.findOne({ userId: req.user._id, deviceId });
+    const endpointChanged = Boolean(existing?.endpoint && existing.endpoint !== subscription.endpoint);
+
+    const set: Record<string, unknown> = {
+      userId: req.user._id,
+      deviceId,
+      accountType: 'member',
+      zone: 'dating',
+      endpoint: subscription.endpoint,
+      keys: { p256dh: subscription.keys?.p256dh || '', auth: subscription.keys?.auth || '' },
+      platform: platform || 'unknown',
+      isStandalone: !!isStandalone,
+      notificationPermission: notificationPermission || 'granted',
+      notificationsEnabled: notificationPermission !== 'denied',
+      isActive: true,
+      failCount: 0,
+      lastSeenAt: new Date(),
+    };
+
+    // A foreground sync must not erase a verified result or resurrect a
+    // device that has already failed delivery. A changed browser subscription
+    // is a new endpoint and therefore needs a fresh verification.
+    if (!existing || endpointChanged) {
+      set.pushHealthStatus = 'unknown';
+    }
+
     const device = await PushSubscription.findOneAndUpdate(
       { userId: req.user._id, deviceId },
       {
-        $set: {
-          userId: req.user._id,
-          deviceId,
-          accountType: 'member',
-          zone: 'dating',
-          endpoint: subscription.endpoint,
-          keys: { p256dh: subscription.keys?.p256dh || '', auth: subscription.keys?.auth || '' },
-          platform: platform || 'unknown',
-          isStandalone: !!isStandalone,
-          notificationPermission: notificationPermission || 'granted',
-          notificationsEnabled: notificationPermission !== 'denied',
-          isActive: true,
-          failCount: 0,
-          lastSeenAt: new Date(),
-          pushHealthStatus: 'unknown',
-        },
+        $set: set,
         $setOnInsert: { createdAt: new Date() },
       },
       { upsert: true, new: true },

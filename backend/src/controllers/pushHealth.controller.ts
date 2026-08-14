@@ -104,8 +104,25 @@ export const markPushHealth = async (req: Request, res: Response) => {
     if (!user) return res.status(401).json({ success: false, error: 'Auth required' });
     const { deviceId, status } = req.body || {};
     if (!deviceId || !['healthy', 'unhealthy', 'unknown'].includes(status)) return res.status(400).json({ success: false, error: 'deviceId and valid status required' });
+
     const now = new Date();
-    const device = await PushSubscription.findOneAndUpdate({ userId: user._id, deviceId }, { $set: { pushHealthStatus: status, lastVerifiedAt: now, lastSeenAt: now, ...(status === 'healthy' ? { failCount: 0 } : {}) } }, { new: true });
+    const set: Record<string, unknown> = {
+      pushHealthStatus: status,
+      lastSeenAt: now,
+    };
+    if (status === 'healthy') {
+      set.lastVerifiedAt = now;
+      set.failCount = 0;
+    } else if (status === 'unhealthy') {
+      set.lastVerifiedAt = now;
+    }
+
+    const update: Record<string, unknown> = { $set: set };
+    if (status === 'unknown') {
+      update.$unset = { lastSuccessfulPushAt: 1, lastVerifiedAt: 1 };
+    }
+
+    const device = await PushSubscription.findOneAndUpdate({ userId: user._id, deviceId }, update, { new: true });
     if (!device) return res.status(404).json({ success: false, error: 'Device not found' });
     return res.json({ success: true, status: device.pushHealthStatus });
   } catch (error: any) {

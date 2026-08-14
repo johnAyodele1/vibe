@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom';
 import { Avatar } from './Avatar';
 import { io } from 'socket.io-client';
@@ -14,14 +14,11 @@ import { InstallPrompt } from '../pwa/InstallPrompt/InstallPrompt';
 import { updateBadgeCount } from '../../lib/push/pushSubscription';
 import { useUnreadStore } from '../../store/unreadStore';
 import NotificationPrompt from '../pwa/NotificationPrompt';
-import TestNotificationPrompt from '../pwa/TestNotificationPrompt';
 import { getInstallContext } from '../../lib/pwa/context';
-import { usePWAPromptStore, NOTIF_KEYS } from '../../store/pwaPromptStore';
-import { runPushSelfTest } from '../../lib/pwa/pushSelfTest';
+import { usePWAPromptStore } from '../../store/pwaPromptStore';
 import { NotifSettingsDialog } from '../pwa/NotifSettingsDialog';
 import { syncPushSubscription } from '../../lib/pwa/subscriptionSync';
 import { removePushSubscriptionOnLogout } from '../../lib/pwa/pushSubscriptionLogout';
-import { tryWelcomeBack } from '../../lib/pwa/welcomeBack';
 
 const NavBadge: React.FC = () => {
   const totalUnread = useUnreadStore(s => s.totalUnread);
@@ -57,23 +54,19 @@ const AdultZoneLayout: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Centralized PWA and Notification Prompts sequencing
   const {
-    showNotifPrompt,
     setShowInstallPrompt,
-    setShowNotifPrompt,
     shouldShowInstallPrompt,
-    shouldShowNotifPrompt,
     recordInstallPromptShown,
   } = usePWAPromptStore();
 
-  // Reset any previous PWA dismissals on page reload/mount
+  // Reset any previous PWA dismissals on page reload/mount.
   useEffect(() => {
     localStorage.removeItem('zippo_pwa_dismiss_until');
     localStorage.removeItem('zippo_pwa_dismiss_permanent');
   }, []);
 
-  // PWA Install Prompt trigger hook (shows on every navigate to '/' of the adult zone)
+  // PWA install prompt is independent from notification health.
   useEffect(() => {
     const ctx = getInstallContext();
 
@@ -85,71 +78,7 @@ const AdultZoneLayout: React.FC = () => {
     } else {
       setShowInstallPrompt(false);
     }
-  }, [location.pathname]);
-
-  // Standalone PWA notification permission sequencing hook
-  useEffect(() => {
-    if (!user?.id) return;
-
-    const ctx = getInstallContext();
-    if (!ctx.isStandalone) return;
-
-    // IS standalone PWA — show notif prompt if needed
-    if (ctx.pushSupportedOnThisDevice && shouldShowNotifPrompt() && !showNotifPrompt) {
-      // Delay slightly so page loads first
-      const t = setTimeout(() => {
-        setShowNotifPrompt(true);
-        sessionStorage.setItem(NOTIF_KEYS.shownThisSession, '1');
-        localStorage.setItem(NOTIF_KEYS.lastShownAt, String(Date.now()));
-      }, 3000);
-      return () => clearTimeout(t);
-    }
-  }, [user?.id, showNotifPrompt]);
-
-  // Auto-test trigger in root layout (PWA standalone only)
-  useEffect(() => {
-    if (!user?.id) return;
-
-    const ctx = getInstallContext();
-    if (!ctx.isStandalone) return;    // only for PWA
-
-    // Run after a short delay so app UI loads first
-    const t = setTimeout(() => {
-      runPushSelfTest(user.id);
-    }, 4000);
-
-    return () => clearTimeout(t);
-  }, [user?.id]);
-
-  const lastActiveRef = useRef<number>(Date.now());
-  const AWAY_THRESHOLD = 5 * 60 * 1000;  // 5 minutes = "came back"
-
-  useEffect(() => {
-    if (!user?.id) return;
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') {
-        // Record when user left
-        lastActiveRef.current = Date.now();
-        console.log('[Visibility] App hidden at:', new Date().toISOString());
-        return;
-      }
-
-      if (document.visibilityState === 'visible') {
-        const awayDuration = Date.now() - lastActiveRef.current;
-        console.log('[Visibility] App visible — was away for:', Math.round(awayDuration / 1000), 'seconds');
-
-        // Only treat as "welcome back" if away for more than 5 minutes
-        if (awayDuration > AWAY_THRESHOLD) {
-          console.log('[Visibility] Away long enough — running welcome back');
-          tryWelcomeBack(user.id);
-        }
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [user?.id]);
+  }, [location.pathname, shouldShowInstallPrompt, setShowInstallPrompt, recordInstallPromptShown]);
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/v1/adult/config/diamond-rate`)
@@ -219,7 +148,6 @@ const AdultZoneLayout: React.FC = () => {
     });
 
     s.on('call:incoming', (payload: any) => {
-      // Ignore if already on the messaging page where calls are handled locally
       const isChatPage = location.pathname === '/adult/provider/messages' || location.pathname === '/sext';
       if (isChatPage) return;
 
@@ -303,6 +231,8 @@ const AdultZoneLayout: React.FC = () => {
     return () => window.removeEventListener('open-adult-auth-modal', handleOpenAuth);
   }, []);
 
+  // Keep the browser subscription synchronized with the authenticated user.
+  // NotificationPrompt owns permission, health verification, repair, and test UX.
   useEffect(() => {
     const userId = user?.id;
     if (!isAuthenticated || !userId) return;
@@ -314,18 +244,31 @@ const AdultZoneLayout: React.FC = () => {
       });
 
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.addEventListener('message', (event) => {
+        const handleServiceWorkerMessage = (event: MessageEvent) => {
           if (event.data?.type === 'NAVIGATE') {
             navigate(event.data.url);
           }
-        });
+        };
+
+        navigator.serviceWorker.addEventListener('message', handleServiceWorkerMessage);
+
+        return () => {
+          navigator.serviceWorker.removeEventListener('message', handleServiceWorkerMessage);
+        };
       }
+
+      return undefined;
     };
 
-    setupPush();
-  }, [user?.id, isAuthenticated]);
+    let cleanup: (() => void) | undefined;
+    void setupPush().then((removeListener) => {
+      cleanup = removeListener;
+    });
 
-  // Load initial unread count
+    return () => cleanup?.();
+  }, [user?.id, isAuthenticated, navigate]);
+
+  // Load initial unread count.
   useEffect(() => {
     if (!isAuthenticated || !user?.id) return;
 
@@ -381,7 +324,6 @@ const AdultZoneLayout: React.FC = () => {
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
       }}
     >
-      {/* Top Navigation */}
       <nav
         data-testid="global-header"
         className={`sticky top-0 z-50 az-glass border-b border-[var(--az-border)] px-4 py-3 md:px-8 ${
@@ -460,7 +402,6 @@ const AdultZoneLayout: React.FC = () => {
         </div>
       </nav>
 
-      {/* Main Content */}
       <main className={`flex-grow ${hideGlobalHeader ? 'h-full overflow-hidden' : ''}`}>
         <Outlet />
       </main>
@@ -477,8 +418,6 @@ const AdultZoneLayout: React.FC = () => {
       <InstallPrompt />
 
       {user?.id && <NotificationPrompt userId={user.id} />}
-
-      {user?.id && <TestNotificationPrompt />}
 
       {user?.id && <NotifSettingsDialog userId={user.id} />}
 
@@ -510,7 +449,6 @@ const AdultZoneLayout: React.FC = () => {
         </div>
       )}
 
-      {/* Mobile Bottom Navigation */}
       <nav data-testid="bottom-tab-bar" className="md:hidden fixed bottom-0 left-0 right-0 z-50 az-glass border-t border-[var(--az-border)] pb-safe">
         <div className="flex justify-around items-center h-16">
           {isProvider ? [
@@ -561,7 +499,6 @@ const AdultZoneLayout: React.FC = () => {
         </div>
       </nav>
 
-      {/* Footer */}
       <footer data-testid="site-footer" className={`bg-[#050304] border-t border-[var(--az-border)] px-4 py-12 pb-24 md:pb-12 mt-auto ${
         hideFooter ? 'hidden md:block' : 'block'
       }`}>

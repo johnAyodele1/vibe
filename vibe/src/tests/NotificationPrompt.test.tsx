@@ -3,7 +3,6 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import NotificationPrompt from '../components/pwa/NotificationPrompt';
 import { toast } from 'sonner';
 
-// Mock getInstallContext
 const mockCtx = {
   isStandalone: false,
   isIOS: false,
@@ -22,7 +21,6 @@ vi.mock('../lib/pwa/context', () => ({
   getInstallContext: () => mockCtx,
 }));
 
-// Mock usePWAPromptStore
 const mockStore = {
   showNotifPrompt: false,
   showInstallPrompt: false,
@@ -37,23 +35,33 @@ vi.mock('../store/pwaPromptStore', () => ({
   usePWAPromptStore: () => mockStore,
   NOTIF_KEYS: {
     shownThisSession: 'zippo_notif_prompt_shown_session',
-    lastShownAt:      'zippo_notif_prompt_last_shown_at',
-    dismissed:        'zippo_notif_prompt_dismissed',
+    lastShownAt: 'zippo_notif_prompt_last_shown_at',
+    dismissed: 'zippo_notif_prompt_dismissed',
   },
 }));
 
-// Mock pushSubscription functions
-vi.mock('../lib/push/pushSubscription', () => ({
-  registerServiceWorker: vi.fn().mockResolvedValue({}),
-  subscribeToPush: vi.fn().mockResolvedValue(true),
+vi.mock('../lib/pwa/subscriptionManager', () => ({
+  checkPushHealth: vi.fn().mockResolvedValue({
+    status: 'permission_required',
+    permission: 'default',
+    deviceId: 'device-test',
+    hasBrowserSubscription: false,
+    backendRegistered: false,
+    repaired: false,
+  }),
+  requestAndSubscribe: vi.fn().mockResolvedValue(true),
+  sendPushTest: vi.fn().mockResolvedValue({
+    success: true,
+    status: 'healthy',
+    deliveredToProvider: true,
+    deviceReceived: true,
+  }),
 }));
 
-// Mock pushSelfTest
 vi.mock('../lib/pwa/pushSelfTest', () => ({
   runPushSelfTest: vi.fn().mockResolvedValue('success'),
 }));
 
-// Mock sonner toast
 vi.mock('sonner', () => ({
   toast: {
     info: vi.fn(),
@@ -68,7 +76,6 @@ describe('NotificationPrompt Component', () => {
     sessionStorage.clear();
     localStorage.clear();
 
-    // Default clean state
     mockCtx.isStandalone = false;
     mockCtx.isIOS = false;
     mockCtx.isAndroid = false;
@@ -84,7 +91,6 @@ describe('NotificationPrompt Component', () => {
     mockStore.showNotifPrompt = false;
     mockStore.showInstallPrompt = false;
 
-    // Mock window.Notification object
     (window as any).Notification = {
       permission: 'default',
       requestPermission: vi.fn().mockResolvedValue('granted'),

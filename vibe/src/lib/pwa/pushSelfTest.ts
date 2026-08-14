@@ -1,17 +1,39 @@
 import { getInstallContext } from './context';
-import { checkPushHealth } from './subscriptionManager';
+import { checkPushHealth, sendPushTest } from './subscriptionManager';
 
-export const runPushSelfTest = async (userId: string): Promise<'success' | 'failed' | 'skipped'> => {
-  const ctx = getInstallContext();
-  if (!ctx.isStandalone) return 'skipped';
-  if (!('Notification' in window) || Notification.permission !== 'granted') return 'skipped';
+export type PushSelfTestResult = 'success' | 'failed' | 'skipped';
+
+let activeSelfTest: Promise<PushSelfTestResult> | null = null;
+
+export const runPushSelfTest = async (userId: string, options?: { silent?: boolean }): Promise<PushSelfTestResult> => {
+  if (activeSelfTest) return activeSelfTest;
+
+  activeSelfTest = (async () => {
+    const ctx = getInstallContext();
+    if (ctx.isIOS && !ctx.isStandalone) return 'skipped';
+    if (!('Notification' in window) || Notification.permission !== 'granted') return 'skipped';
+
+    try {
+      const health = await checkPushHealth(userId);
+
+      if (health.status === 'healthy') return 'success';
+
+      if (health.status === 'verification_required') {
+        const result = await sendPushTest(userId, { silent: options?.silent ?? true });
+        return result.success && result.deviceReceived ? 'success' : 'failed';
+      }
+
+      return 'failed';
+    } catch (error) {
+      console.error('[PushHealth] Self-test failed:', error);
+      return 'failed';
+    }
+  })();
 
   try {
-    const health = await checkPushHealth(userId);
-    return health.status === 'healthy' ? 'success' : 'failed';
-  } catch (error) {
-    console.error('[PushHealth] Background health check failed:', error);
-    return 'failed';
+    return await activeSelfTest;
+  } finally {
+    activeSelfTest = null;
   }
 };
 
