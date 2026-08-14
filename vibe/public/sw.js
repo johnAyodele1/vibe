@@ -2,7 +2,7 @@ const API_BASE_URL = self.location.hostname === 'localhost' || self.location.hos
   ? 'http://localhost:5000/api'
   : 'https://zippo-r8hk.onrender.com/api';
 
-const SW_VERSION = 'zippo-v10';
+const SW_VERSION = 'zippo-v11';
 const CACHE_NAME = `${SW_VERSION}-static`;
 const PRECACHE_ASSETS = ['/', '/offline.html', '/manifest.json', '/favicon.svg'];
 
@@ -26,7 +26,11 @@ self.addEventListener('fetch', event => {
 const acknowledgePushTest = async data => {
   if (data.type !== 'push_test' || !data.testId || !data.ackToken || !data.deviceId || !data.ackUrl) return;
   try {
-    const response = await fetch(`${self.location.origin}${data.ackUrl}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deviceId: data.deviceId, testId: data.testId, ackToken: data.ackToken }) });
+    // The service worker receives the push on the PWA origin, while the API
+    // lives on the backend origin. Resolve the relative acknowledgement route
+    // against the configured API origin rather than self.location.origin.
+    const ackUrl = new URL(data.ackUrl, `${API_BASE_URL}/`).toString();
+    const response = await fetch(ackUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deviceId: data.deviceId, testId: data.testId, ackToken: data.ackToken }) });
     if (!response.ok) console.warn('[SW][PushTest] Acknowledgement failed:', response.status);
   } catch (error) { console.error('[SW][PushTest] Acknowledgement error:', error); }
 };

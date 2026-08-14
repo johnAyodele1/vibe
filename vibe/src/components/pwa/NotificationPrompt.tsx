@@ -8,30 +8,39 @@ import { toast } from 'sonner';
 const ACTIONABLE_STATUSES = new Set(['permission_required', 'missing_subscription', 'backend_missing', 'unhealthy', 'permission_denied', 'service_worker_unavailable', 'error']);
 const CHECKING_MIN_VISIBLE_MS = 1000;
 
+type InstallContext = ReturnType<typeof getInstallContext>;
+
+const CheckingNotifications = ({ waiting = false }: { waiting?: boolean }) => (
+  <div className="notif-prompt" data-testid="notification-prompt" role="status" aria-live="polite">
+    <div className="notif-prompt__icon" aria-hidden="true">🔔</div>
+    <div className="notif-prompt__text">
+      <strong>Checking notifications</strong>
+      <p>{waiting ? 'Waiting for this device to receive the test notification.' : 'Checking that notifications are connected to this device.'}</p>
+    </div>
+  </div>
+);
+
 const NotificationPrompt = ({ userId }: { userId: string }) => {
-  const { showNotifPrompt, setShowNotifPrompt, setShowInstallPrompt } = usePWAPromptStore();
-  const [ctx, setCtx] = useState<ReturnType<typeof getInstallContext> | null>(null);
+  const { setShowNotifPrompt, setShowInstallPrompt } = usePWAPromptStore();
+  const [ctx, setCtx] = useState<InstallContext | null>(null);
   const [visible, setVisible] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [selfTesting, setSelfTesting] = useState(false);
-  const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'waiting' | 'sent' | 'failed'>('idle');
+  const [selfTesting, setSelfTesting] = useState(true);
+  const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'waiting' | 'sent' | 'failed'>('sending');
   const [health, setHealth] = useState<PushHealthResult | null>(null);
   const [showHealthy, setShowHealthy] = useState(false);
   const entryTestUserRef = useRef<string | null>(null);
   const selfTestInFlight = useRef(false);
   const isSettingsTest = typeof window !== 'undefined' && (window.location.hash === '#push-test-section' || window.location.hash === '#push-notifications');
 
-  const refreshContext = () => setCtx(getInstallContext());
-
   useEffect(() => {
+    const refreshContext = () => setCtx(getInstallContext());
     refreshContext();
     const handleVisibility = () => { if (document.visibilityState === 'visible') refreshContext(); };
     window.addEventListener('pageshow', refreshContext);
     document.addEventListener('visibilitychange', handleVisibility);
     return () => { window.removeEventListener('pageshow', refreshContext); document.removeEventListener('visibilitychange', handleVisibility); };
   }, []);
-
-  useEffect(() => setVisible(showNotifPrompt), [showNotifPrompt]);
 
   useEffect(() => {
     if (!ctx) return;
@@ -40,11 +49,6 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
     const runVerification = async (forceDeviceTest: boolean) => {
       if (selfTestInFlight.current) return;
       const checkingStartedAt = Date.now();
-
-      // The health check itself is asynchronous. Previously the checking UI
-      // was only enabled for forced tests, which meant iOS could complete the
-      // check before React ever rendered any notification state. Make the
-      // checking state the entry state for every verification run.
       setSelfTesting(true);
       setTestStatus('sending');
       setShowNotifPrompt(false);
@@ -64,6 +68,7 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
           setSelfTesting(false);
           setTestStatus('idle');
           setShowNotifPrompt(true);
+          setVisible(true);
           return;
         }
 
@@ -71,6 +76,7 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
           setSelfTesting(false);
           setTestStatus('idle');
           setShowNotifPrompt(false);
+          setVisible(false);
           return;
         }
 
@@ -78,7 +84,9 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
         if (!shouldTest) {
           setSelfTesting(false);
           setTestStatus('idle');
-          setShowNotifPrompt(isSettingsTest && currentHealth.status === 'healthy');
+          const show = isSettingsTest && currentHealth.status === 'healthy';
+          setShowNotifPrompt(show);
+          setVisible(show);
           return;
         }
 
@@ -91,6 +99,7 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
           setHealth(prev => prev ? { ...prev, status: 'healthy', pushHealthStatus: 'healthy' } : prev);
           setTestStatus('sent');
           setShowNotifPrompt(false);
+          setVisible(false);
           if (!isSettingsTest) {
             setShowHealthy(true);
             window.setTimeout(() => setShowHealthy(false), 4000);
@@ -98,6 +107,7 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
         } else {
           setHealth(prev => prev ? { ...prev, status: 'unhealthy', pushHealthStatus: 'unhealthy' } : prev);
           setShowNotifPrompt(true);
+          setVisible(true);
         }
       } catch (error) {
         await keepCheckingVisible();
@@ -105,6 +115,7 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
           console.error('[NotifPrompt] Entry health check failed:', error);
           setHealth(prev => prev ? { ...prev, status: 'error', detail: error instanceof Error ? error.message : 'Unknown push error' } : prev);
           setShowNotifPrompt(true);
+          setVisible(true);
         }
       } finally {
         selfTestInFlight.current = false;
@@ -139,7 +150,7 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
     try {
       const connected = await requestAndSubscribe(userId);
       if (!connected) {
-        setSelfTesting(false); setTestStatus('idle'); setShowNotifPrompt(true);
+        setSelfTesting(false); setTestStatus('idle'); setShowNotifPrompt(true); setVisible(true);
         if (Notification.permission === 'denied') toast.error('Notifications are blocked. Enable them in your browser settings.');
         else toast.error('Notifications could not be connected on this device.');
         return;
@@ -160,12 +171,12 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
         window.setTimeout(() => { setSelfTesting(false); setTestStatus('idle'); setVisible(false); setShowNotifPrompt(false); }, 2000);
       } else {
         setHealth(prev => prev ? { ...prev, status: 'unhealthy', pushHealthStatus: 'unhealthy' } : prev);
-        setSelfTesting(false); setTestStatus('idle'); setShowNotifPrompt(true);
+        setSelfTesting(false); setTestStatus('idle'); setShowNotifPrompt(true); setVisible(true);
         toast.error(result.reason || 'Notifications could not be verified on this device.');
       }
     } catch (error) {
       console.error('[NotifPrompt] Push registration failed:', error);
-      setSelfTesting(false); setTestStatus('idle'); setShowNotifPrompt(true);
+      setSelfTesting(false); setTestStatus('idle'); setShowNotifPrompt(true); setVisible(true);
       toast.error(error instanceof Error ? error.message : 'Notifications could not be connected on this device.');
     } finally {
       setLoading(false);
@@ -197,20 +208,21 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
     setShowNotifPrompt(false); setVisible(false);
   };
 
-  if (!ctx) return null;
-  if (ctx.isIOS && !ctx.isStandalone) return <AddToHomeScreenHint onDismiss={handleDismiss} />;
-  if (ctx.isIOS && ctx.iOSVersion && ctx.iOSVersion < 16.4) return null;
+  // Never hide the health UI while the install context is being detected.
+  // This is important on iOS Home Screen launches, where the first render can
+  // happen before display-mode/standalone detection has settled.
+  if (!ctx) return <CheckingNotifications />;
 
+  // A normal iOS Safari tab gets the install guidance, never the push health UI.
+  if (ctx.isIOS && !ctx.isStandalone) return <AddToHomeScreenHint onDismiss={handleDismiss} />;
+
+  // Do not gate the UI on parsed iOS version. The actual health check performs
+  // feature detection; a major-version-only parser cannot reliably represent 16.4.
   const needsPermission = health?.status === 'permission_required';
   const needsRepair = health?.status === 'unhealthy' || health?.status === 'missing_subscription' || health?.status === 'backend_missing' || health?.status === 'verification_required' || health?.status === 'error' || health?.status === 'permission_denied' || health?.status === 'service_worker_unavailable';
   const testBusy = testStatus === 'sending' || testStatus === 'waiting';
 
-  if (selfTesting) return (
-    <div className="notif-prompt" data-testid="notification-prompt" role="status" aria-live="polite">
-      <div className="notif-prompt__icon" aria-hidden="true">🔔</div>
-      <div className="notif-prompt__text"><strong>Checking notifications</strong><p>{testStatus === 'waiting' ? 'Waiting for this device to receive the test notification.' : 'Checking that notifications are connected to this device.'}</p></div>
-    </div>
-  );
+  if (selfTesting) return <CheckingNotifications waiting={testStatus === 'waiting'} />;
 
   if (showHealthy && health?.status === 'healthy' && !isSettingsTest) return (
     <div className="notif-prompt" data-testid="notification-prompt" role="status" aria-live="polite">
