@@ -18,6 +18,8 @@ export interface PushHealthResult {
   detail?: string;
 }
 
+const PUSH_VERIFICATION_MAX_AGE_MS = 30 * 60 * 1000;
+
 const urlBase64ToUint8Array = (value: string): Uint8Array => {
   const padding = '='.repeat((4 - value.length % 4) % 4);
   const base64 = (value + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -152,13 +154,14 @@ export const checkPushHealth = async (userId: string): Promise<PushHealthResult>
     }
 
     const refreshedEndpoint = device?.endpoint ?? device?.pushEndpoint;
+    const lastSuccessfulPushAt = device?.lastSuccessfulPushAt ? new Date(device.lastSuccessfulPushAt).toISOString() : undefined;
     const common = {
       ...base,
       hasBrowserSubscription: true,
       backendRegistered: Boolean(device?.isActive && refreshedEndpoint === subscription.endpoint),
       repaired,
       lastVerifiedAt: device?.lastVerifiedAt ? new Date(device.lastVerifiedAt).toISOString() : undefined,
-      lastSuccessfulPushAt: device?.lastSuccessfulPushAt ? new Date(device.lastSuccessfulPushAt).toISOString() : undefined,
+      lastSuccessfulPushAt,
       pushHealthStatus: device?.pushHealthStatus as PushHealthResult['pushHealthStatus'],
     };
 
@@ -170,9 +173,7 @@ export const checkPushHealth = async (userId: string): Promise<PushHealthResult>
       return { ...common, status: 'unhealthy' };
     }
 
-    // A registered subscription is not enough to claim that delivery works.
-    // Devices with no successful acknowledgement yet must run the real test.
-    if (!device.lastSuccessfulPushAt) {
+    if (!lastSuccessfulPushAt || Date.now() - new Date(lastSuccessfulPushAt).getTime() > PUSH_VERIFICATION_MAX_AGE_MS) {
       return { ...common, status: 'verification_required' };
     }
 
@@ -183,9 +184,9 @@ export const checkPushHealth = async (userId: string): Promise<PushHealthResult>
   }
 };
 
-const waitForPushTestReceipt = async (token: string, deviceId: string, testId: string, onWaiting?: () => void, timeoutMs = 25_000) => {
+const waitForPushTestReceipt = async (token: string, deviceId: string, testId: string, onWaiting?: () => void, timeoutMs = 25_000, silent = false) => {
   onWaiting?.();
-  toast.info('Test sent. Waiting for this device to receive it…', { duration: timeoutMs });
+  if (!silent) toast.info('Test sent. Waiting for this device to receive it…', { duration: timeoutMs });
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < timeoutMs) {
@@ -203,7 +204,7 @@ const waitForPushTestReceipt = async (token: string, deviceId: string, testId: s
 
 export const sendPushTest = async (
   userId: string,
-  options?: { onWaiting?: () => void },
+  options?: { onWaiting?: () => void; silent?: boolean },
 ): Promise<{ success: boolean; status: PushHealthStatus; deliveredToProvider: boolean; deviceReceived?: boolean; reason?: string }> => {
   const health = await checkPushHealth(userId);
   if (health.status !== 'healthy' && health.status !== 'verification_required') return { success: false, status: health.status, deliveredToProvider: false, reason: health.detail || `Push is not healthy: ${health.status}` };
@@ -219,7 +220,7 @@ export const sendPushTest = async (
       return { success: false, status: 'error', deliveredToProvider: false, reason: data?.reason || 'Push provider rejected the notification' };
     }
 
-    const deviceReceived = await waitForPushTestReceipt(token, health.deviceId, data.testId, options?.onWaiting);
+    const deviceReceived = await waitForPushTestReceipt(token, health.deviceId, data.testId, options?.onWaiting, 25_000, options?.silent);
     if (!deviceReceived) {
       return { success: false, status: 'unhealthy', deliveredToProvider: true, deviceReceived: false, reason: 'The push provider accepted the notification, but this device did not confirm receipt within 25 seconds.' };
     }
@@ -267,5 +268,6 @@ export const requestAndSubscribe = async (userId: string): Promise<boolean> => {
   }
 
   await syncCurrentSessionDevice(userId);
-  return (await checkPushHealth(userId)).status === 'healthy' || (await checkPushHealth(userId)).status === 'verification_required';
+  const health = await checkPushHealth(userId);
+  return health.status === 'healthy' || health.status === 'verification_required';
 };
