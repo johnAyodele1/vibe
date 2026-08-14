@@ -1,40 +1,32 @@
 export const getInstallContext = () => {
+  const nav = navigator as Navigator & { standalone?: boolean; userAgentData?: { platform?: string } };
   const isStandalone =
     window.matchMedia('(display-mode: standalone)').matches ||
-    (window.navigator as any).standalone === true;  // iOS Safari legacy check
+    nav.standalone === true;
 
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+  // iPadOS can identify itself as desktop Safari, so the touch-point check is
+  // required in addition to the traditional iPhone/iPad user-agent match.
+  const isIOS =
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
   const isAndroid = /Android/.test(navigator.userAgent);
+  const isSafari = /Safari/.test(navigator.userAgent) && !/Chrome|CriOS|Android/.test(navigator.userAgent);
 
-  const isSafari = /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent);
-
-  // Get iOS version
   let iOSVersion: number | null = null;
-  const match = navigator.userAgent.match(/OS (\d+)_/);
-  if (match) iOSVersion = parseInt(match[1]);
+  const iosMatch = navigator.userAgent.match(/OS (\d+)[_.]/);
+  if (iosMatch) {
+    iOSVersion = parseInt(iosMatch[1], 10);
+  }
 
   const supportsPush = 'PushManager' in window && 'serviceWorker' in navigator;
-
   const pushSupportedOnThisDevice =
-    isAndroid ||                                    // Android always supported (Chrome)
+    isAndroid ||
     (isIOS && iOSVersion !== null && iOSVersion >= 16.4 && isStandalone);
-    // iOS only when installed AND 16.4+
 
   const notificationPermission = 'Notification' in window
-    ? Notification.permission   // 'default' | 'granted' | 'denied'
+    ? Notification.permission
     : null;
-
-  console.log('[PWA] Context detected:', {
-    isStandalone,
-    isIOS,
-    isAndroid,
-    isSafari,
-    iOSVersion,
-    supportsPush,
-    pushSupportedOnThisDevice,
-    notificationPermission,
-  });
 
   return {
     isStandalone,
@@ -46,7 +38,7 @@ export const getInstallContext = () => {
     pushSupportedOnThisDevice,
     notificationPermission,
     canRequestPermission: pushSupportedOnThisDevice && notificationPermission === 'default',
-    alreadyGranted:       notificationPermission === 'granted',
-    denied:               notificationPermission === 'denied',
+    alreadyGranted: notificationPermission === 'granted',
+    denied: notificationPermission === 'denied',
   };
 };
