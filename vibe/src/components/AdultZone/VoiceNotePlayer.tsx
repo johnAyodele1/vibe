@@ -31,7 +31,10 @@ export const VoiceNotePlayer: React.FC<VoiceNotePlayerProps> = ({
     }
   }, [mediaDurationSeconds]);
 
-  const togglePlayPause = () => {
+  const togglePlayPause = (e?: React.SyntheticEvent) => {
+    if (e) {
+      e.stopPropagation();
+    }
     if (!audioRef.current || !mediaUrl) return;
 
     if (isPlaying) {
@@ -105,9 +108,13 @@ export const VoiceNotePlayer: React.FC<VoiceNotePlayerProps> = ({
       <button
         type="button"
         data-testid="voice-note-play-btn"
-        onClick={togglePlayPause}
+        onClick={(e) => togglePlayPause(e)}
+        onTouchEnd={(e) => {
+          e.preventDefault();
+          togglePlayPause(e);
+        }}
         aria-label={isPlaying ? 'Pause voice note' : 'Play voice note'}
-        className="w-8 h-8 rounded-full bg-white text-black flex items-center justify-center font-bold text-xs flex-shrink-0 hover:scale-105 active:scale-95 transition-transform"
+        className="w-8 h-8 rounded-full bg-white text-black flex items-center justify-center font-bold text-xs flex-shrink-0 hover:scale-105 active:scale-95 transition-transform cursor-pointer select-none"
       >
         {isPlaying ? '❚❚' : '▶'}
       </button>

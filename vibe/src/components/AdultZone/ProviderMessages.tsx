@@ -1925,10 +1925,10 @@ const ProviderMessages: React.FC = () => {
                       <div data-testid="message-bubble" className={`max-w-xs rounded-xl overflow-hidden border border-pink-500/20 bg-black message-bubble ${m.isFailed ? 'msg-bubble--failed' : ''}`}>
                         <video src={m.mediaUrl} controls className="max-h-72 object-cover" />
                       </div>
-                    ) : m.mediaType === 'voice_note' || m.mediaType === 'voice' ? (
+                    ) : m.mediaType === 'voice_note' || m.mediaType === 'voice' || (m as any).type === 'voice_note' || (m as any).type === 'voice' ? (
                       <VoiceNotePlayer
-                        mediaUrl={m.mediaUrl}
-                        mediaDurationSeconds={m.mediaDurationSeconds}
+                        mediaUrl={m.mediaUrl || (m as any).url || (m.content && m.content.startsWith('http') ? m.content : undefined)}
+                        mediaDurationSeconds={m.mediaDurationSeconds || (m as any).duration}
                         isMe={isMe}
                         isFailed={m.isFailed}
                       />
@@ -2171,21 +2171,19 @@ const ProviderMessages: React.FC = () => {
                 </div>
               )}
 
-              {/* Provider Quick Actions (Always Visible, no conditional gating) */}
-              <div className="provider-quick-actions">
+              {/* Provider Quick Actions (Always Visible, 9px font with whitespace-nowrap) */}
+              <div className="flex justify-center gap-6 mt-2 border-t border-[var(--az-border)]/20 pt-2 provider-quick-actions chat-quick-actions">
                 <button
                   data-testid="gift-request-btn"
                   onClick={openGiftRequestPicker}
-                  onTouchStart={(e) => { e.preventDefault(); openGiftRequestPicker(); }}
-                  className="provider-quick-action-btn provider-quick-action-btn--gift"
+                  className="text-[9px] font-bold uppercase tracking-wider text-amber-400 hover:text-amber-500 flex items-center gap-1 transition-colors whitespace-nowrap provider-quick-action-btn provider-quick-action-btn--gift"
                 >
                   <span className="btn-icon">🎁</span>
                   SEND GIFT REQUEST
                 </button>
                 <button
                   onClick={() => setShowPaidMediaDialog(true)}
-                  onTouchStart={(e) => { e.preventDefault(); setShowPaidMediaDialog(true); }}
-                  className="provider-quick-action-btn provider-quick-action-btn--media"
+                  className="text-[9px] font-bold uppercase tracking-wider text-pink-400 hover:text-pink-500 flex items-center gap-1 transition-colors whitespace-nowrap provider-quick-action-btn provider-quick-action-btn--media"
                 >
                   <span className="btn-icon">💰</span>
                   SEND PAID MEDIA
@@ -2193,8 +2191,7 @@ const ProviderMessages: React.FC = () => {
                 <button
                   data-testid="service-request-btn"
                   onClick={() => setShowServiceRequestDialog(true)}
-                  onTouchStart={(e) => { e.preventDefault(); setShowServiceRequestDialog(true); }}
-                  className="provider-quick-action-btn provider-quick-action-btn--service"
+                  className="text-[9px] font-bold uppercase tracking-wider text-purple-400 hover:text-purple-500 flex items-center gap-1 transition-colors whitespace-nowrap provider-quick-action-btn provider-quick-action-btn--service"
                 >
                   <span className="btn-icon">🌙</span>
                   SEND SERVICE CHARGE
