@@ -12,7 +12,6 @@ import MessageTick, { getMessageStatus } from './MessageTick';
 import { usePricingStore, formatNaira } from '../../lib/pricing';
 import { uploadMedia } from '../../lib/media/uploadMedia';
 import { compressToWebP } from '../../lib/media/compressImage';
-import { createVoiceRecognitionSession, VoiceRecognitionSession } from '../../lib/media/voiceRecognition';
 
 const CallRoom = React.lazy(() => import('./CallRoom'));
 
@@ -204,7 +203,6 @@ const ProviderMessages: React.FC = () => {
   const animationFrameRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recDurationRef = useRef<number>(0);
-  const voiceSessionRef = useRef<VoiceRecognitionSession | null>(null);
 
   // Calling states (Providers only receive, can accept/decline or end)
   const [callState, setCallState] = useState<'idle' | 'calling' | 'ringing' | 'active' | 'summary'>('idle');
@@ -1370,11 +1368,6 @@ const ProviderMessages: React.FC = () => {
     streamRef.current = stream;
     audioChunksRef.current = [];
 
-    // Start voice recognition session in parallel
-    const voiceSession = createVoiceRecognitionSession();
-    voiceSessionRef.current = voiceSession;
-    voiceSession.start();
-
     const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
       ? 'audio/webm;codecs=opus'
       : MediaRecorder.isTypeSupported('audio/mp4')
@@ -1393,28 +1386,6 @@ const ProviderMessages: React.FC = () => {
     recorder.onstop = async () => {
       stopAudioVisualizer();
       const duration = recDurationRef.current;
-
-      // Stop voice recognition and retrieve check result
-      const recognitionResult = voiceSessionRef.current
-        ? await voiceSessionRef.current.stop()
-        : { status: 'unavailable_or_failed' as const, transcript: '' };
-      voiceSessionRef.current = null;
-
-      if (recognitionResult.status === 'contact_detected') {
-        toast.error('Voice note blocked because it contains contact information.');
-        setRecState('idle');
-        setRecDuration(0);
-        recDurationRef.current = 0;
-        return;
-      }
-
-      if (recognitionResult.status === 'unavailable_or_failed' || !recognitionResult.transcript) {
-        toast.error("Voice note couldn't be checked. We couldn't verify this voice note for contact information. Please try recording again.");
-        setRecState('idle');
-        setRecDuration(0);
-        recDurationRef.current = 0;
-        return;
-      }
 
       if (duration < 1) {
         toast.error('Recording too short!');
@@ -1455,7 +1426,7 @@ const ProviderMessages: React.FC = () => {
             mediaUrl: result.url,
             mediaDurationSeconds: duration,
             mediaMimeType: recorder.mimeType,
-            content: recognitionResult.transcript
+            content: '[Voice Note]'
           })
         });
         const msg = await res.json();
@@ -1526,10 +1497,6 @@ const ProviderMessages: React.FC = () => {
   };
 
   const handleCancelRecording = () => {
-    if (voiceSessionRef.current) {
-      voiceSessionRef.current.abort();
-      voiceSessionRef.current = null;
-    }
     if (mediaRecorderRef.current) {
       mediaRecorderRef.current.ondataavailable = null;
       mediaRecorderRef.current.onstop = null;

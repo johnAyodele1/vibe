@@ -1,14 +1,12 @@
 /**
- * Voice-note recognition is intentionally disabled.
+ * Speech recognition is intentionally removed for voice notes.
  *
- * Voice notes are binary media messages and must be sent directly after
- * recording. Keeping this compatibility session avoids changing the two
- * existing recording components while ensuring no browser SpeechRecognition
- * API or content-filtering logic runs for voice notes.
+ * Voice notes are recorded and uploaded directly as audio media files without browser
+ * speech recognition or content filtering checks.
  */
 export interface VoiceRecognitionResult {
   status: 'clean';
-  transcript: '';
+  transcript: string;
 }
 
 export interface VoiceRecognitionSession {
@@ -22,7 +20,7 @@ export function createVoiceRecognitionSession(): VoiceRecognitionSession {
     start: () => {},
     stop: async () => ({
       status: 'clean',
-      transcript: '',
+      transcript: '[Voice Note]',
     }),
     abort: () => {},
   };

@@ -1209,8 +1209,9 @@ export const sendMessage = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'Recipient not found' });
     }
 
-    // Scan content for contact sharing violations
-    const filterResult = detectContactSharing(content || '');
+    // Scan content for contact sharing violations (text messages only; voice notes bypass filtering)
+    const isVoiceNote = type === 'voice_note' || type === 'voice';
+    const filterResult = isVoiceNote ? { detected: false, category: 'none' as const, matchedText: '' } : detectContactSharing(content || '');
     let isFlagged = false;
     let flagReason = '';
     let flaggedText = '';
