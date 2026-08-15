@@ -215,6 +215,10 @@ button {
         padding-top: calc(32px + env(safe-area-inset-top, 0px)) !important;
         padding-bottom: 12px !important;
       }
+
+      .chat-page-mobile {
+        background: var(--az-bg-secondary) !important;
+      }
     }
 
     .chat-page-mobile {
@@ -501,20 +505,25 @@ button {
 /* Quick Fixes: Provider buttons & mobile mic */
 /* ========================================== */
 
-/* The quick actions row container — same as member */
+/* The quick actions row container — provider actions sized 9px for fitting */
 .provider-quick-actions {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 28px;
-  padding: 6px 16px 4px;
+  gap: 20px;
+  padding: 6px 12px 4px;
   background: var(--az-bg-secondary);
   margin-bottom: 0;
 }
 
+.provider-quick-actions button {
+  font-size: 9px !important;
+  white-space: nowrap !important;
+}
+
 @media (max-width: 479px) {
   .provider-quick-actions {
-    gap: 16px;
+    gap: 12px;
   }
 }
 
