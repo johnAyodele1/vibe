@@ -1,0 +1,116 @@
+.notif-prompt {
+  position: fixed;
+  left: 50%;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  z-index: 1000;
+  width: min(100% - 32px, 760px);
+  box-sizing: border-box;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  background: rgba(19, 13, 16, 0.94);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.38), 0 0 0 1px rgba(200, 16, 46, 0.05);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  touch-action: pan-y;
+  user-select: none;
+  transition: transform 220ms ease, opacity 220ms ease;
+}
+
+.notif-prompt--dragging {
+  transition: none;
+}
+
+.notif-prompt__icon {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  background: rgba(200, 16, 46, 0.12);
+  font-size: 18px;
+}
+
+.notif-prompt__text {
+  min-width: 0;
+  flex: 1;
+}
+
+.notif-prompt__text strong {
+  display: block;
+  color: var(--az-text-primary);
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.notif-prompt__text p {
+  margin: 4px 0 0;
+  color: var(--az-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.notif-prompt__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.notif-prompt__enable,
+.notif-prompt__dismiss {
+  border: 0;
+  border-radius: 10px;
+  padding: 9px 13px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.notif-prompt__enable {
+  color: #fff;
+  background: var(--az-accent-primary);
+  box-shadow: 0 5px 16px rgba(200, 16, 46, 0.22);
+}
+
+.notif-prompt__enable:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.notif-prompt__dismiss {
+  color: var(--az-text-secondary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+@media (max-width: 767px) {
+  .notif-prompt {
+    width: calc(100% - 24px);
+    bottom: max(12px, env(safe-area-inset-bottom));
+    padding: 13px;
+    border-radius: 16px;
+  }
+}
+
+@media (min-width: 768px) {
+  .notif-prompt {
+    max-width: 620px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .notif-prompt {
+    max-width: 680px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notif-prompt {
+    transition: none;
+  }
+}
