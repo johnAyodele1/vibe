@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import NotificationPrompt from '../components/pwa/NotificationPrompt';
-import { checkPushHealth, requestAndSubscribe } from '../lib/pwa/subscriptionManager';
+import { checkPushHealth } from '../lib/pwa/subscriptionManager';
 import { toast } from 'sonner';
 
 const mockCtx = {
