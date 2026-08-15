@@ -154,7 +154,7 @@ const ProviderMessages: React.FC = () => {
 
   // Service Request states
   const [showServiceRequestDialog, setShowServiceRequestDialog] = useState(false);
-  const [serviceExtras, setServiceExtras] = useState<Array<{ label: string; amount: number }>>([]);
+  const [serviceExtras, setServiceExtras] = useState<Array<{ label: string; amount: number | '' }>>([]);
   const [serviceRequestNote, setServiceRequestNote] = useState('');
   const tonightRate = (user as any)?.providerProfile?.tonightRate || 100;
   const [dynTonightRate, setDynTonightRate] = useState<number>(0);
@@ -1154,7 +1154,9 @@ const ProviderMessages: React.FC = () => {
   const handleSendServiceRequestSubmit = async () => {
     if (!selectedConv) return;
     if (isSendingServiceRequest) return;
-    const cleanedExtras = serviceExtras.filter(e => e.label.trim());
+    const cleanedExtras = serviceExtras
+      .map(e => ({ label: e.label.trim(), amount: Number(e.amount) || 0 }))
+      .filter(e => e.label && e.amount > 0);
     const baseRate = dynTonightRate || tonightRate;
 
     setIsSendingServiceRequest(true);
@@ -1521,7 +1523,7 @@ const ProviderMessages: React.FC = () => {
   };
 
   // Calculations
-  const totalServiceChargeAmount = (dynTonightRate || tonightRate) + serviceExtras.reduce((sum, item) => sum + item.amount, 0);
+  const totalServiceChargeAmount = (dynTonightRate || tonightRate) + serviceExtras.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
 
   // Filters
   const filteredConversations = conversations.filter(c => {
@@ -2473,12 +2475,13 @@ const ProviderMessages: React.FC = () => {
                       />
                       <input
                         type="number"
-                        min={1}
+                        min={0}
                         placeholder="Credits"
                         value={ext.amount}
                         onChange={(e) => {
                           const updated = [...serviceExtras];
-                          updated[idx].amount = Math.max(1, parseInt(e.target.value) || 1);
+                          const val = e.target.value;
+                          updated[idx].amount = val === '' ? '' : Math.max(0, parseInt(val) || 0);
                           setServiceExtras(updated);
                         }}
                         className="w-20 bg-black/40 border border-[var(--az-border)] rounded-xl px-3 py-2 text-xs text-white text-center font-mono"
