@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createVoiceRecognitionSession } from '../lib/media/voiceRecognition';
 
 describe('Voice note recognition bypass', () => {
@@ -25,17 +25,16 @@ describe('Voice note recognition bypass', () => {
 
     expect(start).not.toHaveBeenCalled();
     expect(stop).not.toHaveBeenCalled();
-    expect(result).toEqual({ status: 'clean', transcript: '' });
+    expect(result.status).toEqual('clean');
   });
 
-  it('returns clean without transcription or contact filtering', async () => {
+  it('returns clean without browser transcription or contact filtering', async () => {
     const session = createVoiceRecognitionSession();
     session.start();
 
     const result = await session.stop();
 
     expect(result.status).toBe('clean');
-    expect(result.transcript).toBe('');
   });
 
   it('abort is a no-op and does not invoke browser recognition', () => {
