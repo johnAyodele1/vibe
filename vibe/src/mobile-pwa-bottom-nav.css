@@ -1,0 +1,17 @@
+/*
+ * Standalone iOS PWA chat layout.
+ *
+ * The global bottom navigation is fixed outside the conversation layout.
+ * Reserve its space inside the chat input bar rather than on the outer
+ * conversation container. This lets the conversation itself remain full
+ * height while the input bar's background fills the area down to the nav.
+ */
+@media (max-width: 767px) and (display-mode: standalone) {
+  .chat-page-mobile {
+    padding-bottom: 0 !important;
+  }
+
+  .chat-input-bar {
+    padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px) + 2px) !important;
+  }
+}
