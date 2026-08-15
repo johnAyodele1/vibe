@@ -1556,10 +1556,7 @@ const ProviderMessages: React.FC = () => {
 
       {/* 1. LEFT PANEL: CONVERSATION LIST */}
       <div className={`w-full md:w-80 flex-shrink-0 flex-col border-r border-[var(--az-border)] bg-[#070406] h-full min-h-0 overflow-hidden ${mobileView === 'chat' ? 'hidden md:flex' : 'flex'}`}>
-        <div
-          className="p-6 border-b border-[var(--az-border)] flex items-center justify-between"
-          style={{ paddingTop: 'calc(1.5rem + env(safe-area-inset-top, 0px))' }}
-        >
+        <div className="p-6 border-b border-[var(--az-border)] flex items-center justify-between">
           <h2 className="text-xl font-serif italic text-pink-500">Inbox Messages</h2>
           <div className="flex gap-2">
             <button
