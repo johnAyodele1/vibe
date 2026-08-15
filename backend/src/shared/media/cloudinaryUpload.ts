@@ -19,9 +19,8 @@ if (!existingConfig || !existingConfig.cloud_name) {
 }
 
 // ── QUALITY CONSTANT ───────────────────────────────────────────
-// 0.4 for image/video uploads — voice notes use Cloudinary's video
-// resource type so audio files receive a browser-compatible media
-// delivery response instead of raw/octet-stream delivery.
+// 0.4 for image/video uploads. Audio is delivered as M4A/AAC for
+// reliable HTML5 playback, including iOS Safari.
 export const QUALITY = 0.4;
 export const IMAGE_QUALITY = Math.round(QUALITY * 100);   // 40
 export const VIDEO_QUALITY = Math.round(QUALITY * 100);   // 40
@@ -48,9 +47,10 @@ interface UploadOptions {
 
 /**
  * Upload a buffer or stream to Cloudinary.
- * Voice notes are delivered through Cloudinary's video resource type.
- * Cloudinary supports audio in that resource type and returns a media
- * delivery URL suitable for HTML5 audio playback, including iOS Safari.
+ *
+ * Cloudinary treats audio as a video resource type. Voice notes are therefore
+ * uploaded as video assets and delivered as M4A/AAC. This avoids depending on
+ * the browser's recording container (WebM/Opus vs MP4/AAC) at playback time.
  */
 export const uploadToCloudinary = (fileData: Buffer | Readable, options: UploadOptions = {}): Promise<any> => {
   return new Promise((resolve, reject) => {
@@ -61,7 +61,8 @@ export const uploadToCloudinary = (fileData: Buffer | Readable, options: UploadO
       publicId     = null,
     } = options;
 
-    const effectiveResourceType = folder === FOLDERS.voiceNote ? 'video' : resourceType;
+    const isVoiceNote = folder === FOLDERS.voiceNote;
+    const effectiveResourceType = isVoiceNote ? 'video' : resourceType;
 
     const uploadOptions: any = {
       folder,
@@ -83,7 +84,8 @@ export const uploadToCloudinary = (fileData: Buffer | Readable, options: UploadO
       ];
     }
 
-    // For video/audio: compress and optimize.
+    // For video: compress and optimize. Audio uses the same resource type,
+    // but its delivery URL is explicitly converted to M4A below.
     if (effectiveResourceType === 'video') {
       uploadOptions.transformation = [
         { quality: VIDEO_QUALITY },
@@ -97,10 +99,20 @@ export const uploadToCloudinary = (fileData: Buffer | Readable, options: UploadO
       (error, result) => {
         if (error) return reject(error);
         if (!result) return reject(new Error('Upload to Cloudinary returned undefined result'));
+
+        const deliveryUrl = isVoiceNote
+          ? cloudinary.url(result.public_id, {
+              resource_type: 'video',
+              type: isPrivate ? 'authenticated' : 'upload',
+              secure: true,
+              format: 'm4a',
+            })
+          : result.secure_url;
+
         resolve({
           publicId:    result.public_id,
-          url:         result.secure_url,
-          format:      result.format,
+          url:         deliveryUrl,
+          format:      isVoiceNote ? 'm4a' : result.format,
           bytes:       result.bytes,
           width:       result.width,
           height:      result.height,
