@@ -1,23 +1,98 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { getInstallContext } from '../../lib/pwa/context';
 import AddToHomeScreenHint from './AddToHomeScreenHint';
+import './NotificationPrompt.css';
 import { usePWAPromptStore, NOTIF_KEYS } from '../../store/pwaPromptStore';
 import { checkPushHealth, requestAndSubscribe, sendPushTest, type PushHealthResult } from '../../lib/pwa/subscriptionManager';
 import { toast } from 'sonner';
 
 const ACTIONABLE_STATUSES = new Set(['permission_required', 'missing_subscription', 'backend_missing', 'unhealthy', 'permission_denied', 'service_worker_unavailable', 'error']);
 const CHECKING_MIN_VISIBLE_MS = 1000;
+const SWIPE_DISMISS_DISTANCE = 96;
 
 type InstallContext = ReturnType<typeof getInstallContext>;
 
-const CheckingNotifications = ({ waiting = false }: { waiting?: boolean }) => (
-  <div className="notif-prompt" data-testid="notification-prompt" role="status" aria-live="polite">
+type SwipeableNotificationProps = {
+  children: ReactNode;
+  onDismiss: () => void;
+  className?: string;
+  'data-testid'?: string;
+  role?: string;
+  'aria-live'?: 'off' | 'assertive' | 'polite';
+};
+
+const SwipeableNotification = ({ children, onDismiss, className = '', ...props }: SwipeableNotificationProps) => {
+  const [offsetX, setOffsetX] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const startXRef = useRef<number | null>(null);
+  const currentXRef = useRef(0);
+
+  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    startXRef.current = event.clientX;
+    currentXRef.current = event.clientX;
+    setDragging(true);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (startXRef.current === null) return;
+    currentXRef.current = event.clientX;
+    setOffsetX(event.clientX - startXRef.current);
+  };
+
+  const resetDrag = () => {
+    startXRef.current = null;
+    currentXRef.current = 0;
+    setDragging(false);
+    setOffsetX(0);
+  };
+
+  const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (startXRef.current === null) return;
+    const distance = event.clientX - startXRef.current;
+    startXRef.current = null;
+    currentXRef.current = 0;
+    setDragging(false);
+
+    if (Math.abs(distance) >= SWIPE_DISMISS_DISTANCE) {
+      const direction = distance > 0 ? 1 : -1;
+      setOffsetX(direction * Math.max(window.innerWidth, 520));
+      window.setTimeout(onDismiss, 180);
+      return;
+    }
+
+    setOffsetX(0);
+  };
+
+  const handlePointerCancel = () => resetDrag();
+
+  return (
+    <div
+      {...props}
+      className={`notif-prompt ${dragging ? 'notif-prompt--dragging' : ''} ${className}`.trim()}
+      style={{
+        transform: `translateX(calc(-50% + ${offsetX}px))`,
+        opacity: Math.max(0, 1 - Math.min(Math.abs(offsetX) / (SWIPE_DISMISS_DISTANCE * 2), 0.85)),
+      }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
+    >
+      {children}
+    </div>
+  );
+};
+
+const CheckingNotifications = ({ waiting = false, onDismiss }: { waiting?: boolean; onDismiss: () => void }) => (
+  <SwipeableNotification onDismiss={onDismiss} data-testid="notification-prompt" role="status" aria-live="polite">
     <div className="notif-prompt__icon" aria-hidden="true">🔔</div>
     <div className="notif-prompt__text">
       <strong>Checking notifications</strong>
       <p>{waiting ? 'Waiting for this device to receive the test notification.' : 'Checking that notifications are connected to this device.'}</p>
     </div>
-  </div>
+  </SwipeableNotification>
 );
 
 const NotificationPrompt = ({ userId }: { userId: string }) => {
@@ -41,6 +116,13 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
     document.addEventListener('visibilitychange', handleVisibility);
     return () => { window.removeEventListener('pageshow', refreshContext); document.removeEventListener('visibilitychange', handleVisibility); };
   }, []);
+
+  const handleDismiss = () => {
+    localStorage.setItem(NOTIF_KEYS.dismissed, '1');
+    sessionStorage.setItem(NOTIF_KEYS.shownThisSession, '1');
+    setShowNotifPrompt(false);
+    setVisible(false);
+  };
 
   useEffect(() => {
     if (!ctx) return;
@@ -202,16 +284,10 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
     } finally { window.setTimeout(() => setTestStatus('idle'), 5000); }
   };
 
-  const handleDismiss = () => {
-    localStorage.setItem(NOTIF_KEYS.dismissed, '1');
-    sessionStorage.setItem(NOTIF_KEYS.shownThisSession, '1');
-    setShowNotifPrompt(false); setVisible(false);
-  };
-
   // Never hide the health UI while the install context is being detected.
   // This is important on iOS Home Screen launches, where the first render can
   // happen before display-mode/standalone detection has settled.
-  if (!ctx) return <CheckingNotifications />;
+  if (!ctx) return <CheckingNotifications onDismiss={handleDismiss} />;
 
   // A normal iOS Safari tab gets the install guidance, never the push health UI.
   if (ctx.isIOS && !ctx.isStandalone) return <AddToHomeScreenHint onDismiss={handleDismiss} />;
@@ -222,19 +298,19 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
   const needsRepair = health?.status === 'unhealthy' || health?.status === 'missing_subscription' || health?.status === 'backend_missing' || health?.status === 'verification_required' || health?.status === 'error' || health?.status === 'permission_denied' || health?.status === 'service_worker_unavailable';
   const testBusy = testStatus === 'sending' || testStatus === 'waiting';
 
-  if (selfTesting) return <CheckingNotifications waiting={testStatus === 'waiting'} />;
+  if (selfTesting) return <CheckingNotifications waiting={testStatus === 'waiting'} onDismiss={handleDismiss} />;
 
   if (showHealthy && health?.status === 'healthy' && !isSettingsTest) return (
-    <div className="notif-prompt" data-testid="notification-prompt" role="status" aria-live="polite">
+    <SwipeableNotification onDismiss={handleDismiss} data-testid="notification-prompt" role="status" aria-live="polite">
       <div className="notif-prompt__icon" aria-hidden="true">🔔</div>
       <div className="notif-prompt__text"><strong>Notifications are working</strong><p>Push notifications are connected and working on this device.</p></div>
-    </div>
+    </SwipeableNotification>
   );
 
   if (!visible && !(isSettingsTest && health?.status === 'healthy')) return null;
 
   return (
-    <div className="notif-prompt" data-testid="notification-prompt">
+    <SwipeableNotification onDismiss={handleDismiss} data-testid="notification-prompt">
       <div className="notif-prompt__icon" aria-hidden="true">🔔</div>
       <div className="notif-prompt__text">
         <strong>{isSettingsTest && health?.status === 'healthy' ? 'Test push notifications' : needsRepair ? 'Notifications need attention' : 'Stay in the loop'}</strong>
@@ -248,7 +324,7 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
         )}
         <button className="notif-prompt__dismiss" onClick={handleDismiss}>{isSettingsTest ? 'Done' : 'Not now'}</button>
       </div>
-    </div>
+    </SwipeableNotification>
   );
 };
 
