@@ -409,6 +409,11 @@ const PrivateSext: React.FC = () => {
   const selectConversation = async (conv: Conversation) => {
     setSelectedConv(conv);
     activeConvIdRef.current = conv.conversationId;
+    setShowServiceRequestModal(false);
+    setServiceRequestNote('');
+    setShowPhotoRequestModal(false);
+    setPhotoRequestNote('');
+    setShowGiftPicker(false);
     setMessages([]);
     setMobileView('chat');
     setMsgPage(1);

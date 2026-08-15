@@ -390,6 +390,10 @@ const ProviderMessages: React.FC = () => {
   const selectConversation = async (conv: Conversation) => {
     setSelectedConv(conv);
     activeConvIdRef.current = conv.conversationId;
+    setActiveServiceTonightRequestFulfillId(null);
+    setShowServiceRequestDialog(false);
+    setServiceExtras([]);
+    setServiceRequestNote('');
     setMessages([]);
     setMobileView('chat');
     setMsgPage(1);
@@ -1151,6 +1155,7 @@ const ProviderMessages: React.FC = () => {
     if (!selectedConv) return;
     if (isSendingServiceRequest) return;
     const cleanedExtras = serviceExtras.filter(e => e.label.trim());
+    const baseRate = dynTonightRate || tonightRate;
 
     setIsSendingServiceRequest(true);
     try {
@@ -1165,7 +1170,7 @@ const ProviderMessages: React.FC = () => {
         url = `${API_BASE_URL}/v1/adult/sext/service-tonight-requests/${activeServiceTonightRequestFulfillId}/fulfill`;
         method = 'PUT';
         body = {
-          baseRate: tonightRate,
+          baseRate,
           extras: cleanedExtras,
           note: serviceRequestNote
         };

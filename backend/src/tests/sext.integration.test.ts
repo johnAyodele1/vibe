@@ -648,5 +648,62 @@ describe('Private Messaging (Sext) Integration Tests', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.serviceRequest.status).toBe('completed');
     });
+
+    it('member can request service even if provider has 0 tonight rate, and provider fulfills with extras', async () => {
+      // Set provider tonightRate to 0
+      await AdultUser.findByIdAndUpdate(providerId, {
+        'providerProfile.tonightRate': 0
+      });
+
+      // Member requests service
+      const reqRes = await request(app)
+        .post(`/api/v1/adult/sext/conversations/${conversationId}/request-service`)
+        .set('Authorization', `Bearer ${memberToken}`)
+        .send({ note: 'Can you give me your rates?' })
+        .expect(201);
+
+      expect(reqRes.body.mediaType).toBe('request_service');
+      expect(reqRes.body.serviceTonightRequest.status).toBe('pending');
+      const serviceTonightReqId = reqRes.body.id;
+
+      // Update provider tonightRate to 100 before provider fulfills
+      await AdultUser.findByIdAndUpdate(providerId, {
+        'providerProfile.tonightRate': 100
+      });
+
+      // Provider fulfills with extra charges: Hotel (50), Transport (20)
+      const fulfillRes = await request(app)
+        .put(`/api/v1/adult/sext/service-tonight-requests/${serviceTonightReqId}/fulfill`)
+        .set('Authorization', `Bearer ${providerToken}`)
+        .send({
+          extras: [
+            { label: 'Hotel', amount: 50 },
+            { label: 'Transport', amount: 20 },
+            { label: '  ', amount: 10 } // should be filtered out
+          ],
+          note: 'Rate details'
+        })
+        .expect(200);
+
+      expect(fulfillRes.body.requestMessage.serviceTonightRequest.status).toBe('fulfilled');
+      expect(fulfillRes.body.invoiceMessage).toBeDefined();
+      const invoice = fulfillRes.body.invoiceMessage.serviceRequest;
+      expect(invoice.baseRate).toBe(100);
+      expect(invoice.extras).toHaveLength(2);
+      expect(invoice.extras).toEqual([
+        expect.objectContaining({ label: 'Hotel', amount: 50 }),
+        expect.objectContaining({ label: 'Transport', amount: 20 })
+      ]);
+      expect(invoice.totalAmount).toBe(170); // 100 + 50 + 20 = 170
+
+      // Second attempt to fulfill must return 409 conflict
+      await request(app)
+        .put(`/api/v1/adult/sext/service-tonight-requests/${serviceTonightReqId}/fulfill`)
+        .set('Authorization', `Bearer ${providerToken}`)
+        .send({
+          extras: [{ label: 'Extra', amount: 10 }]
+        })
+        .expect(409);
+    });
   });
 });
