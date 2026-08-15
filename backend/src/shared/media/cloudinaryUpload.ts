@@ -19,7 +19,9 @@ if (!existingConfig || !existingConfig.cloud_name) {
 }
 
 // ── QUALITY CONSTANT ───────────────────────────────────────────
-// 0.4 for image/video uploads — voice notes are stored as raw audio.
+// 0.4 for image/video uploads — voice notes use Cloudinary's video
+// resource type so audio files receive a browser-compatible media
+// delivery response instead of raw/octet-stream delivery.
 export const QUALITY = 0.4;
 export const IMAGE_QUALITY = Math.round(QUALITY * 100);   // 40
 export const VIDEO_QUALITY = Math.round(QUALITY * 100);   // 40
@@ -46,9 +48,9 @@ interface UploadOptions {
 
 /**
  * Upload a buffer or stream to Cloudinary.
- * Voice notes deliberately use raw storage: MediaRecorder can produce
- * platform-specific WebM/MP4/M4A audio, and treating that payload as video
- * makes the upload pipeline unnecessarily fragile.
+ * Voice notes are delivered through Cloudinary's video resource type.
+ * Cloudinary supports audio in that resource type and returns a media
+ * delivery URL suitable for HTML5 audio playback, including iOS Safari.
  */
 export const uploadToCloudinary = (fileData: Buffer | Readable, options: UploadOptions = {}): Promise<any> => {
   return new Promise((resolve, reject) => {
@@ -59,7 +61,7 @@ export const uploadToCloudinary = (fileData: Buffer | Readable, options: UploadO
       publicId     = null,
     } = options;
 
-    const effectiveResourceType = folder === FOLDERS.voiceNote ? 'raw' : resourceType;
+    const effectiveResourceType = folder === FOLDERS.voiceNote ? 'video' : resourceType;
 
     const uploadOptions: any = {
       folder,
@@ -81,7 +83,7 @@ export const uploadToCloudinary = (fileData: Buffer | Readable, options: UploadO
       ];
     }
 
-    // For video: compress and optimize
+    // For video/audio: compress and optimize.
     if (effectiveResourceType === 'video') {
       uploadOptions.transformation = [
         { quality: VIDEO_QUALITY },
