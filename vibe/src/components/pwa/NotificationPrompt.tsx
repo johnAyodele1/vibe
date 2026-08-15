@@ -25,25 +25,21 @@ const SwipeableNotification = ({ children, onDismiss, className = '', ...props }
   const [offsetX, setOffsetX] = useState(0);
   const [dragging, setDragging] = useState(false);
   const startXRef = useRef<number | null>(null);
-  const currentXRef = useRef(0);
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
     startXRef.current = event.clientX;
-    currentXRef.current = event.clientX;
     setDragging(true);
     event.currentTarget.setPointerCapture?.(event.pointerId);
   };
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (startXRef.current === null) return;
-    currentXRef.current = event.clientX;
     setOffsetX(event.clientX - startXRef.current);
   };
 
   const resetDrag = () => {
     startXRef.current = null;
-    currentXRef.current = 0;
     setDragging(false);
     setOffsetX(0);
   };
@@ -52,7 +48,6 @@ const SwipeableNotification = ({ children, onDismiss, className = '', ...props }
     if (startXRef.current === null) return;
     const distance = event.clientX - startXRef.current;
     startXRef.current = null;
-    currentXRef.current = 0;
     setDragging(false);
 
     if (Math.abs(distance) >= SWIPE_DISMISS_DISTANCE) {
@@ -65,8 +60,6 @@ const SwipeableNotification = ({ children, onDismiss, className = '', ...props }
     setOffsetX(0);
   };
 
-  const handlePointerCancel = () => resetDrag();
-
   return (
     <div
       {...props}
@@ -78,7 +71,7 @@ const SwipeableNotification = ({ children, onDismiss, className = '', ...props }
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerCancel}
+      onPointerCancel={resetDrag}
     >
       {children}
     </div>
@@ -284,16 +277,9 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
     } finally { window.setTimeout(() => setTestStatus('idle'), 5000); }
   };
 
-  // Never hide the health UI while the install context is being detected.
-  // This is important on iOS Home Screen launches, where the first render can
-  // happen before display-mode/standalone detection has settled.
   if (!ctx) return <CheckingNotifications onDismiss={handleDismiss} />;
-
-  // A normal iOS Safari tab gets the install guidance, never the push health UI.
   if (ctx.isIOS && !ctx.isStandalone) return <AddToHomeScreenHint onDismiss={handleDismiss} />;
 
-  // Do not gate the UI on parsed iOS version. The actual health check performs
-  // feature detection; a major-version-only parser cannot reliably represent 16.4.
   const needsPermission = health?.status === 'permission_required';
   const needsRepair = health?.status === 'unhealthy' || health?.status === 'missing_subscription' || health?.status === 'backend_missing' || health?.status === 'verification_required' || health?.status === 'error' || health?.status === 'permission_denied' || health?.status === 'service_worker_unavailable';
   const testBusy = testStatus === 'sending' || testStatus === 'waiting';
