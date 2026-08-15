@@ -6,10 +6,19 @@
  * existing recording components while ensuring no browser SpeechRecognition
  * API or content-filtering logic runs for voice notes.
  */
-export interface VoiceRecognitionResult {
-  status: 'clean';
-  transcript: '';
-}
+export type VoiceRecognitionResult =
+  | {
+      status: 'clean';
+      transcript: string;
+    }
+  | {
+      status: 'contact_detected';
+      transcript: string;
+    }
+  | {
+      status: 'unavailable_or_failed';
+      transcript: string;
+    };
 
 export interface VoiceRecognitionSession {
   start: () => void;
