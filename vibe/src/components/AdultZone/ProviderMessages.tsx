@@ -2171,19 +2171,19 @@ const ProviderMessages: React.FC = () => {
                 </div>
               )}
 
-              {/* Provider Quick Actions (Always Visible, 9px font with whitespace-nowrap) */}
-              <div className="flex justify-center gap-6 mt-2 border-t border-[var(--az-border)]/20 pt-2 provider-quick-actions chat-quick-actions">
+              {/* Provider Quick Actions */}
+              <div className="flex justify-center gap-4 mt-2 border-t border-[var(--az-border)]/20 pt-2 provider-quick-actions chat-quick-actions flex-wrap">
                 <button
                   data-testid="gift-request-btn"
                   onClick={openGiftRequestPicker}
-                  className="text-[9px] font-bold uppercase tracking-wider text-amber-400 hover:text-amber-500 flex items-center gap-1 transition-colors whitespace-nowrap provider-quick-action-btn provider-quick-action-btn--gift"
+                  className="text-[11px] font-bold uppercase tracking-wider text-amber-400 hover:text-amber-500 flex items-center justify-center gap-1 transition-colors whitespace-normal text-center provider-quick-action-btn provider-quick-action-btn--gift"
                 >
                   <span className="btn-icon">🎁</span>
                   SEND GIFT REQUEST
                 </button>
                 <button
                   onClick={() => setShowPaidMediaDialog(true)}
-                  className="text-[9px] font-bold uppercase tracking-wider text-pink-400 hover:text-pink-500 flex items-center gap-1 transition-colors whitespace-nowrap provider-quick-action-btn provider-quick-action-btn--media"
+                  className="text-[11px] font-bold uppercase tracking-wider text-pink-400 hover:text-pink-500 flex items-center justify-center gap-1 transition-colors whitespace-normal text-center provider-quick-action-btn provider-quick-action-btn--media"
                 >
                   <span className="btn-icon">💰</span>
                   SEND PAID MEDIA
@@ -2191,7 +2191,7 @@ const ProviderMessages: React.FC = () => {
                 <button
                   data-testid="service-request-btn"
                   onClick={() => setShowServiceRequestDialog(true)}
-                  className="text-[9px] font-bold uppercase tracking-wider text-purple-400 hover:text-purple-500 flex items-center gap-1 transition-colors whitespace-nowrap provider-quick-action-btn provider-quick-action-btn--service"
+                  className="text-[11px] font-bold uppercase tracking-wider text-purple-400 hover:text-purple-500 flex items-center justify-center gap-1 transition-colors whitespace-normal text-center provider-quick-action-btn provider-quick-action-btn--service"
                 >
                   <span className="btn-icon">🌙</span>
                   SEND SERVICE CHARGE

@@ -41,6 +41,13 @@ export const VoiceNotePlayer: React.FC<VoiceNotePlayerProps> = ({
       audioRef.current.pause();
       setIsPlaying(false);
     } else {
+      if (audioRef.current.readyState === 0 && typeof audioRef.current.load === 'function') {
+        try {
+          audioRef.current.load();
+        } catch (err) {
+          // Ignore load error in mock environments
+        }
+      }
       audioRef.current
         .play()
         .then(() => {
@@ -73,10 +80,11 @@ export const VoiceNotePlayer: React.FC<VoiceNotePlayerProps> = ({
     }
   };
 
-  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleSeek = (e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
     if (!audioRef.current || !duration) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
+    const clientX = 'touches' in e && e.touches.length > 0 ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
+    const clickX = clientX - rect.left;
     const width = rect.width;
     const seekFraction = Math.max(0, Math.min(1, clickX / width));
     const newTime = seekFraction * duration;
@@ -102,17 +110,17 @@ export const VoiceNotePlayer: React.FC<VoiceNotePlayerProps> = ({
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
         onEnded={handleEnded}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
         preload="metadata"
+        playsInline
+        webkit-playsinline="true"
       />
 
       <button
         type="button"
         data-testid="voice-note-play-btn"
         onClick={(e) => togglePlayPause(e)}
-        onTouchEnd={(e) => {
-          e.preventDefault();
-          togglePlayPause(e);
-        }}
         aria-label={isPlaying ? 'Pause voice note' : 'Play voice note'}
         className="w-8 h-8 rounded-full bg-white text-black flex items-center justify-center font-bold text-xs flex-shrink-0 hover:scale-105 active:scale-95 transition-transform cursor-pointer select-none"
       >

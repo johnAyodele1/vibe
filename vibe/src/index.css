@@ -505,20 +505,22 @@ button {
 /* Quick Fixes: Provider buttons & mobile mic */
 /* ========================================== */
 
-/* The quick actions row container — provider actions sized 9px for fitting */
+/* The quick actions row container — provider actions sized 11px with mobile text wrapping support */
 .provider-quick-actions {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 20px;
+  flex-wrap: wrap;
+  gap: 8px 16px;
   padding: 6px 12px 4px;
   background: var(--az-bg-secondary);
   margin-bottom: 0;
 }
 
 .provider-quick-actions button {
-  font-size: 9px !important;
-  white-space: nowrap !important;
+  font-size: 11px !important;
+  white-space: normal !important;
+  text-align: center;
 }
 
 @media (max-width: 479px) {
