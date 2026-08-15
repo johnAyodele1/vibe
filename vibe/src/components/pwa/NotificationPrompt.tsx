@@ -48,6 +48,11 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
 
     const runVerification = async (forceDeviceTest: boolean) => {
       if (selfTestInFlight.current) return;
+
+      // Lock before the first await so pageshow/visibilitychange cannot start
+      // a second verification while the initial health check is still pending.
+      selfTestInFlight.current = true;
+
       const checkingStartedAt = Date.now();
       setSelfTesting(true);
       setTestStatus('sending');
@@ -90,7 +95,6 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
           return;
         }
 
-        selfTestInFlight.current = true;
         setTestStatus('sending');
         const result = await sendPushTest(userId, { silent: true, onWaiting: () => setTestStatus('waiting') });
         if (cancelled) return;
@@ -208,16 +212,10 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
     setShowNotifPrompt(false); setVisible(false);
   };
 
-  // Never hide the health UI while the install context is being detected.
-  // This is important on iOS Home Screen launches, where the first render can
-  // happen before display-mode/standalone detection has settled.
   if (!ctx) return <CheckingNotifications />;
 
-  // A normal iOS Safari tab gets the install guidance, never the push health UI.
   if (ctx.isIOS && !ctx.isStandalone) return <AddToHomeScreenHint onDismiss={handleDismiss} />;
 
-  // Do not gate the UI on parsed iOS version. The actual health check performs
-  // feature detection; a major-version-only parser cannot reliably represent 16.4.
   const needsPermission = health?.status === 'permission_required';
   const needsRepair = health?.status === 'unhealthy' || health?.status === 'missing_subscription' || health?.status === 'backend_missing' || health?.status === 'verification_required' || health?.status === 'error' || health?.status === 'permission_denied' || health?.status === 'service_worker_unavailable';
   const testBusy = testStatus === 'sending' || testStatus === 'waiting';
