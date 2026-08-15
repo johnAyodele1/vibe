@@ -192,12 +192,12 @@ button {
     position: sticky;
     top: 0;
     z-index: 20;
-    height: calc(56px + env(safe-area-inset-top, 0px)) !important;
-    padding-top: env(safe-area-inset-top, 0px) !important;
+    height: calc(68px + env(safe-area-inset-top, 0px)) !important;
+    padding-top: calc(12px + env(safe-area-inset-top, 0px)) !important;
+    padding-bottom: 12px !important;
     display: flex;
     align-items: center;
     padding-right: 12px !important;
-    padding-bottom: 0 !important;
     padding-left: 4px !important;
     gap: 8px !important;
     background: var(--az-bg-secondary);
