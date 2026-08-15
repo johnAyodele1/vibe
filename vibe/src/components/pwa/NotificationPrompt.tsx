@@ -25,8 +25,8 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
   const [ctx, setCtx] = useState<InstallContext | null>(null);
   const [visible, setVisible] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [selfTesting, setSelfTesting] = useState(true);
-  const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'waiting' | 'sent' | 'failed'>('sending');
+  const [selfTesting, setSelfTesting] = useState(false);
+  const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'waiting' | 'sent' | 'failed'>('idle');
   const [health, setHealth] = useState<PushHealthResult | null>(null);
   const [showHealthy, setShowHealthy] = useState(false);
   const entryTestUserRef = useRef<string | null>(null);
@@ -48,16 +48,12 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
 
     const runVerification = async (forceDeviceTest: boolean) => {
       if (selfTestInFlight.current) return;
-
-      // Lock before the first await so pageshow/visibilitychange cannot start
-      // a second verification while the initial health check is still pending.
       selfTestInFlight.current = true;
-
-      const checkingStartedAt = Date.now();
       setSelfTesting(true);
       setTestStatus('sending');
       setShowNotifPrompt(false);
 
+      const checkingStartedAt = Date.now();
       const keepCheckingVisible = async () => {
         const remaining = CHECKING_MIN_VISIBLE_MS - (Date.now() - checkingStartedAt);
         if (remaining > 0) await new Promise(resolve => window.setTimeout(resolve, remaining));
@@ -70,16 +66,12 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
         setHealth(currentHealth);
 
         if (ACTIONABLE_STATUSES.has(currentHealth.status)) {
-          setSelfTesting(false);
-          setTestStatus('idle');
           setShowNotifPrompt(true);
           setVisible(true);
           return;
         }
 
         if (currentHealth.status === 'unsupported') {
-          setSelfTesting(false);
-          setTestStatus('idle');
           setShowNotifPrompt(false);
           setVisible(false);
           return;
@@ -87,15 +79,12 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
 
         const shouldTest = forceDeviceTest || currentHealth.status === 'verification_required';
         if (!shouldTest) {
-          setSelfTesting(false);
-          setTestStatus('idle');
           const show = isSettingsTest && currentHealth.status === 'healthy';
           setShowNotifPrompt(show);
           setVisible(show);
           return;
         }
 
-        setTestStatus('sending');
         const result = await sendPushTest(userId, { silent: true, onWaiting: () => setTestStatus('waiting') });
         if (cancelled) return;
         if (result.success && result.deviceReceived) {
@@ -159,13 +148,9 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
         else toast.error('Notifications could not be connected on this device.');
         return;
       }
-
       const currentHealth = await checkPushHealth(userId);
       setHealth(currentHealth);
-      if (currentHealth.status !== 'healthy' && currentHealth.status !== 'verification_required') {
-        throw new Error(currentHealth.detail || `Push registration is incomplete: ${currentHealth.status}`);
-      }
-
+      if (currentHealth.status !== 'healthy' && currentHealth.status !== 'verification_required') throw new Error(currentHealth.detail || `Push registration is incomplete: ${currentHealth.status}`);
       const result = await sendPushTest(userId, { onWaiting: () => setTestStatus('waiting') });
       if (result.success && result.deviceReceived) {
         entryTestUserRef.current = userId;
@@ -182,9 +167,7 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
       console.error('[NotifPrompt] Push registration failed:', error);
       setSelfTesting(false); setTestStatus('idle'); setShowNotifPrompt(true); setVisible(true);
       toast.error(error instanceof Error ? error.message : 'Notifications could not be connected on this device.');
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   const handleTest = async () => {
@@ -212,8 +195,7 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
     setShowNotifPrompt(false); setVisible(false);
   };
 
-  if (!ctx) return <CheckingNotifications />;
-
+  if (!ctx) return null;
   if (ctx.isIOS && !ctx.isStandalone) return <AddToHomeScreenHint onDismiss={handleDismiss} />;
 
   const needsPermission = health?.status === 'permission_required';
@@ -221,29 +203,17 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
   const testBusy = testStatus === 'sending' || testStatus === 'waiting';
 
   if (selfTesting) return <CheckingNotifications waiting={testStatus === 'waiting'} />;
-
   if (showHealthy && health?.status === 'healthy' && !isSettingsTest) return (
-    <div className="notif-prompt" data-testid="notification-prompt" role="status" aria-live="polite">
-      <div className="notif-prompt__icon" aria-hidden="true">🔔</div>
-      <div className="notif-prompt__text"><strong>Notifications are working</strong><p>Push notifications are connected and working on this device.</p></div>
-    </div>
+    <div className="notif-prompt" data-testid="notification-prompt" role="status" aria-live="polite"><div className="notif-prompt__icon" aria-hidden="true">🔔</div><div className="notif-prompt__text"><strong>Notifications are working</strong><p>Push notifications are connected and working on this device.</p></div></div>
   );
-
   if (!visible && !(isSettingsTest && health?.status === 'healthy')) return null;
 
   return (
     <div className="notif-prompt" data-testid="notification-prompt">
       <div className="notif-prompt__icon" aria-hidden="true">🔔</div>
-      <div className="notif-prompt__text">
-        <strong>{isSettingsTest && health?.status === 'healthy' ? 'Test push notifications' : needsRepair ? 'Notifications need attention' : 'Stay in the loop'}</strong>
-        <p>{isSettingsTest && health?.status === 'healthy' ? 'Send a real notification to this device and wait for the device to confirm receipt.' : needsRepair ? 'Your notification connection on this device is not working. Repair it to receive messages and matches.' : 'Get notified for new messages, matches, and activity.'}</p>
-      </div>
+      <div className="notif-prompt__text"><strong>{isSettingsTest && health?.status === 'healthy' ? 'Test push notifications' : needsRepair ? 'Notifications need attention' : 'Stay in the loop'}</strong><p>{isSettingsTest && health?.status === 'healthy' ? 'Send a real notification to this device and wait for the device to confirm receipt.' : needsRepair ? 'Your notification connection on this device is not working. Repair it to receive messages and matches.' : 'Get notified for new messages, matches, and activity.'}</p></div>
       <div className="notif-prompt__actions">
-        {isSettingsTest && health?.status === 'healthy' ? (
-          <button className="notif-prompt__enable" onClick={handleTest} disabled={testBusy}>{testStatus === 'sending' ? 'Preparing...' : testStatus === 'waiting' ? 'Waiting for this device...' : testStatus === 'sent' ? '✓ Device received it' : testStatus === 'failed' ? 'Try test again' : 'Test notification'}</button>
-        ) : (
-          <button className="notif-prompt__enable" onClick={handleEnable} disabled={loading}>{loading ? 'Connecting...' : needsPermission ? 'Enable' : 'Repair'}</button>
-        )}
+        {isSettingsTest && health?.status === 'healthy' ? <button className="notif-prompt__enable" onClick={handleTest} disabled={testBusy}>{testStatus === 'sending' ? 'Preparing...' : testStatus === 'waiting' ? 'Waiting for this device...' : testStatus === 'sent' ? '✓ Device received it' : testStatus === 'failed' ? 'Try test again' : 'Test notification'}</button> : <button className="notif-prompt__enable" onClick={handleEnable} disabled={loading}>{loading ? 'Connecting...' : needsPermission ? 'Enable' : 'Repair'}</button>}
         <button className="notif-prompt__dismiss" onClick={handleDismiss}>{isSettingsTest ? 'Done' : 'Not now'}</button>
       </div>
     </div>
