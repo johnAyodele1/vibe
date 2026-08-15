@@ -168,7 +168,7 @@ export const PWAInstallInstructions: React.FC<PWAInstallInstructionsProps> = ({
                   1
                 </span>
                 <p className="text-xs text-[var(--az-text-primary)] leading-relaxed">
-                  Tap the Share icon{' '}
+                  Tap <span className="font-semibold text-white">"+"</span> in your Safari address bar (iOS 17+), or tap the Share icon{' '}
                   <svg
                     aria-hidden="true"
                     className="w-4 h-4 inline-block text-[var(--az-accent-rose)] mx-0.5"

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import NotificationPrompt from '../components/pwa/NotificationPrompt';
+import { checkPushHealth, requestAndSubscribe } from '../lib/pwa/subscriptionManager';
 import { toast } from 'sonner';
 
 const mockCtx = {
@@ -49,7 +50,12 @@ vi.mock('../lib/pwa/subscriptionManager', () => ({
     backendRegistered: false,
     repaired: false,
   }),
-  requestAndSubscribe: vi.fn().mockResolvedValue(true),
+  requestAndSubscribe: vi.fn().mockImplementation(async () => {
+    if (typeof window !== 'undefined' && (window as any).Notification) {
+      await (window as any).Notification.requestPermission();
+    }
+    return true;
+  }),
   sendPushTest: vi.fn().mockResolvedValue({
     success: true,
     status: 'healthy',
@@ -97,14 +103,26 @@ describe('NotificationPrompt Component', () => {
     };
   });
 
-  it('does not render when showNotifPrompt is false', () => {
+  it('does not render when health check determines unsupported', async () => {
+    (checkPushHealth as any).mockResolvedValueOnce({
+      status: 'unsupported',
+    });
     render(<NotificationPrompt userId="user-123" />);
+
+    await act(async () => {
+      await new Promise(r => setTimeout(r, 1100));
+    });
+
     expect(screen.queryByTestId('notification-prompt')).not.toBeInTheDocument();
   });
 
-  it('renders correctly when showNotifPrompt is true', () => {
+  it('renders correctly when showNotifPrompt is true after health check', async () => {
     mockStore.showNotifPrompt = true;
     render(<NotificationPrompt userId="user-123" />);
+
+    await act(async () => {
+      await new Promise(r => setTimeout(r, 1100));
+    });
 
     expect(screen.getByTestId('notification-prompt')).toBeInTheDocument();
     expect(screen.getByText('Stay in the loop')).toBeInTheDocument();
@@ -120,14 +138,30 @@ describe('NotificationPrompt Component', () => {
     render(<NotificationPrompt userId="user-123" />);
 
     expect(screen.getByTestId('aths-hint')).toBeInTheDocument();
-    expect(screen.getByText('Add Zippo to your Home Screen')).toBeInTheDocument();
+    expect(screen.getByText('Get the full Zippo experience')).toBeInTheDocument();
   });
 
   it('requests notification permission when the user clicks Enable in standalone', async () => {
     mockStore.showNotifPrompt = true;
     mockCtx.isStandalone = true;
 
+    (checkPushHealth as any)
+      .mockResolvedValueOnce({
+        status: 'permission_required',
+        permission: 'default',
+        deviceId: 'device-test',
+      })
+      .mockResolvedValueOnce({
+        status: 'healthy',
+        permission: 'granted',
+        deviceId: 'device-test',
+      });
+
     render(<NotificationPrompt userId="user-123" />);
+
+    await act(async () => {
+      await new Promise(r => setTimeout(r, 1100));
+    });
 
     const enableBtn = screen.getByText('Enable');
     await act(async () => {
@@ -155,7 +189,23 @@ describe('NotificationPrompt Component', () => {
     mockCtx.isAndroid = true;
     mockCtx.isStandalone = false;
 
+    (checkPushHealth as any)
+      .mockResolvedValueOnce({
+        status: 'permission_required',
+        permission: 'default',
+        deviceId: 'device-test',
+      })
+      .mockResolvedValueOnce({
+        status: 'healthy',
+        permission: 'granted',
+        deviceId: 'device-test',
+      });
+
     render(<NotificationPrompt userId="user-123" />);
+
+    await act(async () => {
+      await new Promise(r => setTimeout(r, 1100));
+    });
 
     const enableBtn = screen.getByText('Enable');
     await act(async () => {

@@ -449,8 +449,12 @@ const AdultZoneLayout: React.FC = () => {
         </div>
       )}
 
-      <nav data-testid="bottom-tab-bar" className="md:hidden fixed bottom-0 left-0 right-0 z-50 az-glass border-t border-[var(--az-border)] pb-safe">
-        <div className="flex justify-around items-center h-16">
+      <nav
+        data-testid="bottom-tab-bar"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-50 az-glass border-t border-[var(--az-border)]"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        <div className="flex justify-around items-center h-14">
           {isProvider ? [
             { icon: '📊', path: '/adult/provider/dashboard', label: 'Studio' },
             { icon: '💰', path: '/adult/provider/earnings', label: 'Earnings' },
@@ -461,7 +465,7 @@ const AdultZoneLayout: React.FC = () => {
             <Link
               key={item.path}
               to={item.path}
-              className={`flex flex-col items-center gap-1 p-2 min-w-[64px] transition-all relative ${
+              className={`flex flex-col items-center justify-center gap-[3px] flex-1 h-14 transition-all relative ${
                 location.pathname === item.path ? 'scale-110' : 'opacity-60'
               }`}
             >
@@ -483,7 +487,7 @@ const AdultZoneLayout: React.FC = () => {
             <Link
               key={item.path}
               to={item.path}
-              className={`flex flex-col items-center gap-1 p-2 min-w-[64px] transition-all relative ${
+              className={`flex flex-col items-center justify-center gap-[3px] flex-1 h-14 transition-all relative ${
                 location.pathname === item.path ? 'scale-110' : 'opacity-60'
               }`}
             >

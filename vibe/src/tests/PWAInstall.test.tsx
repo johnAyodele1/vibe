@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { InstallPrompt } from '../components/pwa/InstallPrompt/InstallPrompt';
 
 interface MockPWAState {
@@ -10,6 +11,11 @@ interface MockPWAState {
   notificationPermission: string;
   requestNotificationPermission: () => void;
 }
+
+// Mock AdultAuthContext
+vi.mock('../contexts/AdultAuthContext', () => ({
+  useAdultAuth: () => ({ user: { role: 'user' } }),
+}));
 
 // Mock the PWA Context
 const mockPwaState: MockPWAState = {
@@ -83,7 +89,11 @@ describe('PWA Installation Flow', () => {
     mockUserAgent('Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Mobile Safari/537.36');
     mockPwaState.isInstallable = true;
 
-    render(<InstallPrompt />);
+    render(
+      <MemoryRouter>
+        <InstallPrompt />
+      </MemoryRouter>
+    );
 
     // Before timer, should not be in document
     expect(screen.queryByTestId('pwa-install-cta')).not.toBeInTheDocument();
@@ -106,7 +116,11 @@ describe('PWA Installation Flow', () => {
       configurable: true,
     });
 
-    render(<InstallPrompt />);
+    render(
+      <MemoryRouter>
+        <InstallPrompt />
+      </MemoryRouter>
+    );
 
     act(() => {
       vi.advanceTimersByTime(2000);
@@ -120,7 +134,11 @@ describe('PWA Installation Flow', () => {
     mockPwaState.isInstallable = true;
     mockPwaState.isStandalone = true;
 
-    render(<InstallPrompt />);
+    render(
+      <MemoryRouter>
+        <InstallPrompt />
+      </MemoryRouter>
+    );
 
     act(() => {
       vi.advanceTimersByTime(2000);
@@ -133,7 +151,11 @@ describe('PWA Installation Flow', () => {
     mockUserAgent('Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Mobile Safari/537.36');
     mockPwaState.isInstallable = true;
 
-    render(<InstallPrompt />);
+    render(
+      <MemoryRouter>
+        <InstallPrompt />
+      </MemoryRouter>
+    );
 
     act(() => {
       vi.advanceTimersByTime(2000);
@@ -152,7 +174,11 @@ describe('PWA Installation Flow', () => {
     mockUserAgent('Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Mobile Safari/537.36');
     mockPwaState.isInstallable = false;
 
-    render(<InstallPrompt />);
+    render(
+      <MemoryRouter>
+        <InstallPrompt />
+      </MemoryRouter>
+    );
 
     act(() => {
       vi.advanceTimersByTime(2000);
@@ -166,7 +192,11 @@ describe('PWA Installation Flow', () => {
     mockUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Mobile/15E148 Safari/604.1');
     mockPwaState.isIOS = true;
 
-    render(<InstallPrompt />);
+    render(
+      <MemoryRouter>
+        <InstallPrompt />
+      </MemoryRouter>
+    );
 
     act(() => {
       vi.advanceTimersByTime(2000);
@@ -184,7 +214,7 @@ describe('PWA Installation Flow', () => {
     // Floating banner is hidden or instructions are displayed
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText('Add Zippo to your Home Screen')).toBeInTheDocument();
-    expect(screen.getByText(/Tap the Share icon/)).toBeInTheDocument();
+    expect(screen.getByText(/Safari address bar/)).toBeInTheDocument();
 
     // Click 'Got it' to dismiss
     const gotItBtn = screen.getByText('Got it');
@@ -197,7 +227,11 @@ describe('PWA Installation Flow', () => {
     mockUserAgent('Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Mobile Safari/537.36');
     mockPwaState.isInstallable = true;
 
-    const { unmount } = render(<InstallPrompt />);
+    const { unmount } = render(
+      <MemoryRouter>
+        <InstallPrompt />
+      </MemoryRouter>
+    );
 
     act(() => {
       vi.advanceTimersByTime(2000);
@@ -216,7 +250,11 @@ describe('PWA Installation Flow', () => {
 
     // Unmount and re-render to check persistence behavior
     unmount();
-    render(<InstallPrompt />);
+    render(
+      <MemoryRouter>
+        <InstallPrompt />
+      </MemoryRouter>
+    );
 
     act(() => {
       vi.advanceTimersByTime(2000);
@@ -230,7 +268,11 @@ describe('PWA Installation Flow', () => {
     mockUserAgent('Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Mobile Safari/537.36');
     mockPwaState.isInstallable = true;
 
-    const { unmount } = render(<InstallPrompt />);
+    const { unmount } = render(
+      <MemoryRouter>
+        <InstallPrompt />
+      </MemoryRouter>
+    );
 
     act(() => {
       vi.advanceTimersByTime(2000);
@@ -244,7 +286,11 @@ describe('PWA Installation Flow', () => {
 
     // Re-render
     unmount();
-    render(<InstallPrompt />);
+    render(
+      <MemoryRouter>
+        <InstallPrompt />
+      </MemoryRouter>
+    );
 
     act(() => {
       vi.advanceTimersByTime(2000);

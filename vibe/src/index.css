@@ -136,7 +136,8 @@ button {
     height: 100dvh !important;
     overflow: hidden !important;
     background: var(--az-bg-primary);
-    padding-bottom: calc(64px + env(safe-area-inset-bottom)) !important;
+    padding-top: env(safe-area-inset-top) !important;
+    padding-bottom: calc(56px + env(safe-area-inset-bottom)) !important;
   }
 
   .chat-input-bar {
@@ -145,14 +146,16 @@ button {
     background: var(--az-bg-secondary) !important;
     border-top: 1px solid var(--az-border) !important;
     z-index: 10 !important;
+    padding: 12px 12px 6px 12px !important;
   }
 
   .chat-quick-actions {
     display: flex;
     justify-content: center;
-    gap: 32px;
-    padding: 8px 16px;
+    gap: 28px;
+    padding: 6px 16px 4px;
     background: var(--az-bg-secondary);
+    margin-bottom: 0;
   }
 
   .message-feed-container {
@@ -475,9 +478,10 @@ button {
   justify-content: center;
   align-items: center;
   gap: 28px;                        /* same gap as member row */
-  padding: 10px 16px 12px;
+  padding: 6px 16px 4px;
   background: var(--az-bg-secondary);
   border-top: 1px solid var(--az-border);
+  margin-bottom: 0;
 }
 
 /* Each button — same base as member */
@@ -1734,6 +1738,121 @@ button {
   border-right: 12px solid transparent;
   border-top:   12px solid var(--az-accent-gold);
   margin:       12px auto 0;
+}
+
+/* ── iOS Install Prompt Redesign Card ── */
+.ios-install-card {
+  position:      fixed;
+  bottom:        calc(56px + env(safe-area-inset-bottom) + 12px);
+  left:          16px;
+  right:         16px;
+  z-index:       500;
+
+  background:    var(--az-bg-secondary);
+  border:        1.5px solid var(--az-accent-crimson);
+  border-radius: 16px;
+  padding:       16px;
+  box-shadow:    0 0 20px rgba(200, 16, 46, 0.15);
+  animation:     slideUpPrompt 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.ios-install-card__main {
+  display:     flex;
+  align-items: flex-start;
+  gap:         12px;
+}
+
+.ios-install-card__icon {
+  font-size:   28px;
+  flex-shrink: 0;
+  margin-top:  2px;
+}
+
+.ios-install-card__text {
+  flex:      1;
+  min-width: 0;
+}
+
+.ios-install-card__title {
+  font:          600 15px/1.2 'DM Sans', sans-serif;
+  color:         var(--az-text-primary);
+  margin-bottom: 4px;
+}
+
+.ios-install-card__subtitle {
+  font:          400 12px/1.4 'DM Sans', sans-serif;
+  color:         var(--az-text-muted);
+  margin-bottom: 10px;
+}
+
+.ios-install-card__steps {
+  display:        flex;
+  flex-direction: column;
+  gap:            4px;
+  margin-top:     6px;
+}
+
+.ios-install-card__step {
+  display:     flex;
+  align-items: center;
+  gap:         6px;
+  font:        400 12px/1.4 'DM Sans', sans-serif;
+  color:       var(--az-text-secondary);
+}
+
+.ios-install-card__step strong {
+  color: var(--az-text-primary);
+}
+
+.ios-install-card__step-badge {
+  display:          inline-flex;
+  align-items:      center;
+  justify-content:  center;
+  width:            18px;
+  height:           18px;
+  border-radius:    4px;
+  background:       rgba(200, 16, 46, 0.15);
+  border:           1px solid rgba(200, 16, 46, 0.3);
+  color:            var(--az-accent-rose);
+  font:             700 11px/1 'DM Sans', sans-serif;
+  flex-shrink:      0;
+}
+
+.ios-install-card__divider {
+  font:       400 11px/1 'DM Sans', sans-serif;
+  color:      var(--az-text-muted);
+  text-align: center;
+  margin:     2px 0;
+}
+
+.ios-install-card__actions {
+  display:        flex;
+  flex-direction: column;
+  align-items:    center;
+  gap:            6px;
+  flex-shrink:    0;
+  margin-left:    4px;
+}
+
+.ios-install-card__show-btn {
+  padding:       9px 16px;
+  border-radius: 100px;
+  background:    var(--az-accent-crimson);
+  border:        none;
+  color:         white;
+  font:          700 13px/1 'DM Sans', sans-serif;
+  cursor:        pointer;
+  white-space:   nowrap;
+  box-shadow:    0 3px 12px rgba(200, 16, 46, 0.3);
+}
+
+.ios-install-card__not-now {
+  background: none;
+  border:     none;
+  color:      var(--az-text-muted);
+  font:       400 11px/1 'DM Sans', sans-serif;
+  cursor:     pointer;
+  white-space: nowrap;
 }
 
 /* User & Provider Settings Styles */
