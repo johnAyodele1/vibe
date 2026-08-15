@@ -1,5 +1,5 @@
 /*
- * Standalone iOS PWA chat layout.
+ * Standalone mobile PWA chat layout.
  *
  * The global bottom navigation is fixed outside the conversation layout.
  * Reserve its space inside the chat input bar rather than on the outer
@@ -13,5 +13,15 @@
 
   .chat-input-bar {
     padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px) + 2px) !important;
+  }
+
+  /* The extra 32px header inset is an iOS standalone-PWA workaround only.
+   * Do not apply it to Android standalone PWAs. */
+  @supports (-webkit-touch-callout: none) {
+    .conversation-header {
+      height: calc(88px + env(safe-area-inset-top, 0px)) !important;
+      padding-top: calc(32px + env(safe-area-inset-top, 0px)) !important;
+      padding-bottom: 12px !important;
+    }
   }
 }
