@@ -208,10 +208,13 @@ button {
 
   /* Compact Conversation Header — PWA Standalone Mode */
   @media (display-mode: standalone) {
-    .conversation-header {
-      height: calc(88px + env(safe-area-inset-top, 0px)) !important;
-      padding-top: calc(32px + env(safe-area-inset-top, 0px)) !important;
-      padding-bottom: 12px !important;
+    /* iOS WebKit Standalone Only */
+    @supports (-webkit-touch-callout: none) {
+      .conversation-header {
+        height: calc(88px + env(safe-area-inset-top, 0px)) !important;
+        padding-top: calc(32px + env(safe-area-inset-top, 0px)) !important;
+        padding-bottom: 12px !important;
+      }
     }
 
     .chat-page-mobile {
@@ -503,62 +506,15 @@ button {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 28px;                        /* same gap as member row */
+  gap: 28px;
   padding: 6px 16px 4px;
   background: var(--az-bg-secondary);
-  border-top: 1px solid var(--az-border);
   margin-bottom: 0;
-}
-
-/* Each button — same base as member */
-.provider-quick-action-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 4px 0;
-  font: 700 11px/1 'DM Sans', sans-serif;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  transition: opacity 0.15s;
-}
-.provider-quick-action-btn:active {
-  opacity: 0.7;
-}
-
-/* SEND GIFT REQUEST — gold, matching the gift theme */
-.provider-quick-action-btn--gift {
-  color: var(--az-accent-gold);    /* #c9a84c */
-}
-.provider-quick-action-btn--gift .btn-icon {
-  font-size: 16px;
-}
-
-/* SEND PAID MEDIA — rose/crimson, matching locked media theme */
-.provider-quick-action-btn--media {
-  color: var(--az-accent-rose);    /* #e8496a */
-}
-.provider-quick-action-btn--media .btn-icon {
-  font-size: 16px;
-}
-
-/* SEND SERVICE CHARGE — soft purple/lavender for the night/moon theme */
-.provider-quick-action-btn--service {
-  color: #a78bfa;
-}
-.provider-quick-action-btn--service .btn-icon {
-  font-size: 16px;
 }
 
 @media (max-width: 479px) {
   .provider-quick-actions {
     gap: 16px;
-  }
-  .provider-quick-action-btn {
-    font-size: 10px;
-    letter-spacing: 0.05em;
   }
 }
 

@@ -2153,10 +2153,10 @@ const PrivateSext: React.FC = () => {
                       <div data-testid="message-bubble" className={`max-w-xs rounded-xl overflow-hidden border border-pink-500/20 bg-black message-bubble ${m.isFailed ? 'msg-bubble--failed' : ''}`}>
                         <video src={m.mediaUrl} controls className="max-h-72 object-cover" />
                       </div>
-                    ) : m.mediaType === 'voice_note' || m.mediaType === 'voice' ? (
+                    ) : m.mediaType === 'voice_note' || m.mediaType === 'voice' || (m as any).type === 'voice_note' || (m as any).type === 'voice' ? (
                       <VoiceNotePlayer
-                        mediaUrl={m.mediaUrl}
-                        mediaDurationSeconds={m.mediaDurationSeconds}
+                        mediaUrl={m.mediaUrl || (m as any).url || (m.content && m.content.startsWith('http') ? m.content : undefined)}
+                        mediaDurationSeconds={m.mediaDurationSeconds || (m as any).duration}
                         isMe={isMe}
                         isFailed={m.isFailed}
                       />
