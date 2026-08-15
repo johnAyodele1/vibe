@@ -13,6 +13,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { usePricingStore, formatNaira } from '../../lib/pricing';
 import { uploadMedia } from '../../lib/media/uploadMedia';
 import { compressToWebP } from '../../lib/media/compressImage';
+import { VoiceNotePlayer } from './VoiceNotePlayer';
 
 const CallRoom = React.lazy(() => import('./CallRoom'));
 
@@ -2153,24 +2154,12 @@ const PrivateSext: React.FC = () => {
                         <video src={m.mediaUrl} controls className="max-h-72 object-cover" />
                       </div>
                     ) : m.mediaType === 'voice_note' || m.mediaType === 'voice' ? (
-                      <div data-testid="message-voice-note" className={`p-3.5 rounded-2xl flex items-center gap-3 w-64 message-voice-note ${isMe ? 'bg-pink-700 text-white' : 'bg-[#1e101a] text-gray-200 border border-pink-500/20'} ${m.isFailed ? 'msg-bubble--failed' : ''}`}>
-                        <button className="w-8 h-8 rounded-full bg-white text-black flex items-center justify-center font-bold text-xs">
-                          ▶
-                        </button>
-                        <div className="flex-grow flex items-end gap-0.5 h-6">
-                          {/* Beautiful waveform visualizer bars */}
-                          {Array.from({ length: 15 }).map((_, idx) => (
-                            <span
-                              key={idx}
-                              className="w-1.5 bg-pink-300 rounded-t"
-                              style={{ height: `${Math.max(15, (idx % 4) * 20)}%` }}
-                            />
-                          ))}
-                        </div>
-                        <span className="text-[10px] font-mono opacity-80">
-                          0:{m.mediaDurationSeconds ? String(m.mediaDurationSeconds).padStart(2, '0') : '05'}
-                        </span>
-                      </div>
+                      <VoiceNotePlayer
+                        mediaUrl={m.mediaUrl}
+                        mediaDurationSeconds={m.mediaDurationSeconds}
+                        isMe={isMe}
+                        isFailed={m.isFailed}
+                      />
                     ) : (
                       // STANDARD TEXT MESSAGE
                       <div data-testid="message-bubble" className={`p-3.5 max-w-xs text-sm rounded-2xl shadow-md leading-relaxed message-bubble break-words ${isMe ? 'bg-pink-600 text-white rounded-tr-none' : 'bg-[#1b0d19] border border-pink-500/20 text-gray-200 rounded-tl-none'} ${m.isFailed ? 'msg-bubble--failed' : ''}`}>
