@@ -2716,27 +2716,36 @@ export const endCall = async (req: Request, res: Response) => {
             const providerUser = await AdultUser.findById(call.receiverId).session(refundSession);
 
             if (callerUser && providerUser) {
-              const refundAmount = call.creditsDeducted;
-              const { providerAmount, platformFee } = calculateFees(refundAmount);
+              const clientPrice = call.creditsDeducted;
+              const { providerAmount, platformFee } = calculateFees(clientPrice);
 
-              callerUser.credits += refundAmount;
-              await callerUser.save({ session: refundSession });
+              // 1. Calculate how much the provider can absorb without balance dropping below 0
+              const recoverableProviderAmount = Math.min(Math.max(0, providerUser.credits), providerAmount);
+              // 2. Unrecoverable provider amount (if provider spent/withdrew earnings)
+              const unrecoverableAmount = providerAmount - recoverableProviderAmount;
+              // 3. Member receives net refund (original client charge minus unrecoverable provider reversal)
+              const netMemberRefund = Math.max(0, clientPrice - unrecoverableAmount);
 
-              providerUser.credits -= providerAmount;
+              // Deduct recoverable provider earnings (provider.credits >= 0 invariant preserved strictly)
+              providerUser.credits -= recoverableProviderAmount;
               if (providerUser.providerProfile) {
-                providerUser.providerProfile.totalEarnings -= providerAmount;
+                providerUser.providerProfile.totalEarnings = Math.max(0, providerUser.providerProfile.totalEarnings - recoverableProviderAmount);
               }
               await providerUser.save({ session: refundSession });
+
+              // Credit net refund to member
+              callerUser.credits += netMemberRefund;
+              await callerUser.save({ session: refundSession });
 
               const refundTx = await CreditTransaction.create([{
                 userId: callerUser._id,
                 type: 'call_refund',
-                amount: refundAmount,
+                amount: netMemberRefund,
                 usdAmount: 0,
                 description: `${call.type.charAt(0).toUpperCase() + call.type.slice(1)} call refund (<10s)`,
                 relatedUserId: providerUser._id,
                 status: 'completed',
-                metadata: { callId: call._id.toString() },
+                metadata: { callId: call._id.toString(), minuteIndex: 1, unrecoverableAmount },
               }], { session: refundSession });
 
               if (platformFee > 0) {
