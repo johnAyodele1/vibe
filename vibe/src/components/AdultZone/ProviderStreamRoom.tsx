@@ -1,5 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import AgoraRTC, { IAgoraRTCClient, ICameraVideoTrack, IMicrophoneAudioTrack } from 'agora-rtc-sdk-ng';
+import { useVideoReadiness } from '../../hooks/useVideoReadiness';
+import VideoFallbackOverlay from './VideoFallbackOverlay';
 
 interface ProviderStreamRoomProps {
   appId: string | number;
@@ -8,6 +10,8 @@ interface ProviderStreamRoomProps {
   userId: string;
   userName: string;
   sessionId: string;
+  providerAvatar?: string;
+  providerName?: string;
   onEnd: () => void;
 }
 
@@ -18,9 +22,11 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
   userId,
   userName,
   sessionId,
+  providerAvatar,
+  providerName,
   onEnd,
 }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const videoState = useVideoReadiness();
   const clientRef = useRef<IAgoraRTCClient | null>(null);
   const localAudioTrackRef = useRef<IMicrophoneAudioTrack | null>(null);
   const localVideoTrackRef = useRef<ICameraVideoTrack | null>(null);
@@ -40,8 +46,13 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
         const videoTrack = await AgoraRTC.createCameraVideoTrack();
         localVideoTrackRef.current = videoTrack;
 
-        if (containerRef.current) {
-          videoTrack.play(containerRef.current);
+        if (videoState.containerRef.current) {
+          videoTrack.play(videoState.containerRef.current);
+        }
+        if (typeof (videoTrack as any).on === 'function') {
+          (videoTrack as any).on('first-frame-decoded', () => {
+            videoState.markReady();
+          });
         }
 
         await client.publish([audioTrack, videoTrack]);
@@ -53,6 +64,7 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
     initHost();
 
     return () => {
+      videoState.resetReadiness();
       if (localAudioTrackRef.current) {
         localAudioTrackRef.current.stop();
         localAudioTrackRef.current.close();
@@ -78,9 +90,19 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '400px' }}>
+      {!videoState.isVideoReady && (
+        <VideoFallbackOverlay
+          avatarUrl={providerAvatar}
+          displayName={providerName || userName || 'Provider'}
+          statusText="Starting camera stream..."
+        />
+      )}
       <div
-        ref={containerRef}
+        ref={videoState.containerRef}
         style={{ width: '100%', height: '100%', minHeight: '400px', background: '#0a0608' }}
+        className={`transition-opacity duration-300 ${
+          videoState.isVideoReady ? 'opacity-100 z-0' : 'opacity-0 pointer-events-none'
+        }`}
         data-testid="zego-provider-stream-room"
       />
       {/* End Stream floating overlay button */}

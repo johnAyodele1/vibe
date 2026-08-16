@@ -2729,6 +2729,8 @@ const PrivateSext: React.FC = () => {
                       onCallEnd={handleEndCall}
                       partnerName={selectedConv?.otherUser?.displayName}
                       partnerAvatar={selectedConv?.otherUser?.avatarUrl}
+                      providerAvatar={selectedConv?.otherUser?.avatarUrl}
+                      providerName={selectedConv?.otherUser?.displayName}
                     />
                   </React.Suspense>
                 )}

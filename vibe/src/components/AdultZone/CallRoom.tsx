@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState, memo } from 'react';
 import AgoraRTC, { IAgoraRTCClient, ICameraVideoTrack, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
+import { useVideoReadiness } from '../../hooks/useVideoReadiness';
+import VideoFallbackOverlay from './VideoFallbackOverlay';
 
 interface CallRoomProps {
   appId: string | number;
@@ -11,6 +13,8 @@ interface CallRoomProps {
   onCallEnd: (durationSeconds: number) => void;
   partnerName?: string;
   partnerAvatar?: string;
+  providerAvatar?: string;
+  providerName?: string;
 }
 
 const CallRoom: React.FC<CallRoomProps> = ({
@@ -23,10 +27,13 @@ const CallRoom: React.FC<CallRoomProps> = ({
   onCallEnd,
   partnerName,
   partnerAvatar,
+  providerAvatar,
+  providerName,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const localVideoRef = useRef<HTMLDivElement>(null);
-  const remoteVideoRef = useRef<HTMLDivElement>(null);
+
+  const remoteVideoState = useVideoReadiness();
+  const localVideoState = useVideoReadiness();
 
   const clientRef = useRef<IAgoraRTCClient | null>(null);
   const localAudioTrackRef = useRef<IMicrophoneAudioTrack | null>(null);
@@ -38,6 +45,9 @@ const CallRoom: React.FC<CallRoomProps> = ({
   const [micEnabled, setMicEnabled] = useState(true);
   const [cameraEnabled, setCameraEnabled] = useState(callType === 'video');
   const [isPartnerSpeaking, setIsPartnerSpeaking] = useState(false);
+
+  const effectiveProviderAvatar = providerAvatar || partnerAvatar;
+  const effectiveProviderName = providerName || partnerName || userName || 'Provider';
 
   useEffect(() => {
     if (hasJoined.current) return;
@@ -73,8 +83,13 @@ const CallRoom: React.FC<CallRoomProps> = ({
       if (mediaType === 'datachannel') return;
       await client.subscribe(user, mediaType);
       if (mediaType === 'video' && user.videoTrack) {
-        if (remoteVideoRef.current) {
-          user.videoTrack.play(remoteVideoRef.current);
+        if (remoteVideoState.containerRef.current) {
+          user.videoTrack.play(remoteVideoState.containerRef.current);
+        }
+        if (typeof (user.videoTrack as any).on === 'function') {
+          (user.videoTrack as any).on('first-frame-decoded', () => {
+            remoteVideoState.markReady();
+          });
         }
       }
       if (mediaType === 'audio' && user.audioTrack) {
@@ -83,8 +98,11 @@ const CallRoom: React.FC<CallRoomProps> = ({
     };
 
     const handleUserUnpublished = (user: IAgoraRTCRemoteUser, mediaType: 'audio' | 'video' | 'datachannel') => {
-      if (mediaType === 'video' && user.videoTrack) {
-        user.videoTrack.stop();
+      if (mediaType === 'video') {
+        remoteVideoState.resetReadiness();
+        if (user.videoTrack) {
+          user.videoTrack.stop();
+        }
       }
       if (mediaType === 'audio' && user.audioTrack) {
         user.audioTrack.stop();
@@ -92,6 +110,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
     };
 
     const handleUserLeft = () => {
+      remoteVideoState.resetReadiness();
       const durationSeconds = Math.floor((Date.now() - startTime) / 1000);
       onCallEnd(durationSeconds);
     };
@@ -124,8 +143,13 @@ const CallRoom: React.FC<CallRoomProps> = ({
           localVideoTrackRef.current = videoTrack;
           tracksToPublish.push(videoTrack);
 
-          if (localVideoRef.current) {
-            videoTrack.play(localVideoRef.current);
+          if (localVideoState.containerRef.current) {
+            videoTrack.play(localVideoState.containerRef.current);
+          }
+          if (typeof (videoTrack as any).on === 'function') {
+            (videoTrack as any).on('first-frame-decoded', () => {
+              localVideoState.markReady();
+            });
           }
         }
 
@@ -141,6 +165,8 @@ const CallRoom: React.FC<CallRoomProps> = ({
 
     return () => {
       const leaveAndCleanup = async () => {
+        remoteVideoState.resetReadiness();
+        localVideoState.resetReadiness();
         if (localAudioTrackRef.current) {
           localAudioTrackRef.current.stop();
           localAudioTrackRef.current.close();
@@ -183,10 +209,15 @@ const CallRoom: React.FC<CallRoomProps> = ({
       const nextState = !cameraEnabled;
       await localVideoTrackRef.current.setEnabled(nextState);
       setCameraEnabled(nextState);
+      if (!nextState) {
+        localVideoState.resetReadiness();
+      }
     }
   };
 
   const handleEndCallLocal = async () => {
+    remoteVideoState.resetReadiness();
+    localVideoState.resetReadiness();
     if (clientRef.current) {
       if (localAudioTrackRef.current) {
         localAudioTrackRef.current.stop();
@@ -223,20 +254,44 @@ const CallRoom: React.FC<CallRoomProps> = ({
       }}
     >
       {callType === 'video' ? (
-        /* Video Call Layout (Exactly identical to original code) */
+        /* Video Call Layout */
         <div className="absolute inset-0 flex flex-col md:flex-row gap-4 p-4">
           {/* Remote Video Container */}
-          <div className="flex-1 bg-zinc-950/40 border border-zinc-800 rounded-xl relative overflow-hidden flex items-center justify-center">
-            <div ref={remoteVideoRef} className="w-full h-full absolute inset-0" />
-            <div className="absolute top-4 left-4 bg-black/60 px-3 py-1 rounded text-xs text-white uppercase tracking-widest z-10">
-              {userName || 'Partner'}
+          <div className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl relative overflow-hidden flex items-center justify-center">
+            {!remoteVideoState.isVideoReady && (
+              <VideoFallbackOverlay
+                avatarUrl={effectiveProviderAvatar}
+                displayName={partnerName || effectiveProviderName}
+                statusText="Connecting video..."
+              />
+            )}
+            <div
+              ref={remoteVideoState.containerRef}
+              className={`w-full h-full absolute inset-0 transition-opacity duration-300 ${
+                remoteVideoState.isVideoReady ? 'opacity-100 z-0' : 'opacity-0 pointer-events-none'
+              }`}
+            />
+            <div className="absolute top-4 left-4 bg-black/60 px-3 py-1 rounded text-xs text-white uppercase tracking-widest z-20">
+              {partnerName || userName || 'Partner'}
             </div>
           </div>
 
-          {/* Local Video Container (Only if video call) */}
-          <div className="w-full md:w-1/3 bg-zinc-950/40 border border-zinc-800 rounded-xl relative overflow-hidden flex items-center justify-center aspect-video md:aspect-auto">
-            <div ref={localVideoRef} className="w-full h-full absolute inset-0" />
-            <div className="absolute top-4 left-4 bg-black/60 px-3 py-1 rounded text-xs text-white uppercase tracking-widest z-10">
+          {/* Local Video Container */}
+          <div className="w-full md:w-1/3 bg-zinc-950 border border-zinc-800 rounded-xl relative overflow-hidden flex items-center justify-center aspect-video md:aspect-auto">
+            {!localVideoState.isVideoReady && (
+              <VideoFallbackOverlay
+                avatarUrl={effectiveProviderAvatar}
+                displayName="You"
+                statusText={cameraEnabled ? "Starting camera..." : "Camera Off"}
+              />
+            )}
+            <div
+              ref={localVideoState.containerRef}
+              className={`w-full h-full absolute inset-0 transition-opacity duration-300 ${
+                localVideoState.isVideoReady ? 'opacity-100 z-0' : 'opacity-0 pointer-events-none'
+              }`}
+            />
+            <div className="absolute top-4 left-4 bg-black/60 px-3 py-1 rounded text-xs text-white uppercase tracking-widest z-20">
               You
             </div>
           </div>
@@ -246,8 +301,8 @@ const CallRoom: React.FC<CallRoomProps> = ({
         <>
           {/* Hidden containers for track binding so Agora doesn't complain, keeping refs unique */}
           <div style={{ display: 'none' }}>
-            <div ref={remoteVideoRef} />
-            <div ref={localVideoRef} />
+            <div ref={remoteVideoState.containerRef} />
+            <div ref={localVideoState.containerRef} />
           </div>
 
           <div className="absolute inset-0 flex flex-col items-center justify-center p-6 bg-gradient-to-b from-zinc-900 via-zinc-950 to-black overflow-hidden select-none">
@@ -284,7 +339,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
 
                 <div className="w-32 h-32 md:w-40 md:h-40 rounded-full overflow-hidden relative border-2 border-black bg-zinc-900">
                   <img
-                    src={partnerAvatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=150&auto=format&fit=crop"}
+                    src={partnerAvatar || effectiveProviderAvatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=150&auto=format&fit=crop"}
                     className="w-full h-full object-cover select-none pointer-events-none"
                     alt={partnerName || 'Partner'}
                   />

@@ -1,5 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import AgoraRTC, { IAgoraRTCClient, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
+import { useVideoReadiness } from '../../hooks/useVideoReadiness';
+import VideoFallbackOverlay from './VideoFallbackOverlay';
 
 interface CamViewerRoomProps {
   appId: string | number;
@@ -7,6 +9,8 @@ interface CamViewerRoomProps {
   roomId: string;
   userId: string;
   userName: string;
+  providerAvatar?: string;
+  providerName?: string;
   onUserCountUpdate?: (count: number) => void;
 }
 
@@ -16,9 +20,11 @@ const CamViewerRoom: React.FC<CamViewerRoomProps> = ({
   roomId,
   userId,
   userName,
+  providerAvatar,
+  providerName,
   onUserCountUpdate,
 }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const videoState = useVideoReadiness();
   const clientRef = useRef<IAgoraRTCClient | null>(null);
 
   useEffect(() => {
@@ -29,8 +35,13 @@ const CamViewerRoom: React.FC<CamViewerRoomProps> = ({
       if (mediaType === 'datachannel') return;
       await client.subscribe(user, mediaType);
       if (mediaType === 'video' && user.videoTrack) {
-        if (containerRef.current) {
-          user.videoTrack.play(containerRef.current);
+        if (videoState.containerRef.current) {
+          user.videoTrack.play(videoState.containerRef.current);
+        }
+        if (typeof (user.videoTrack as any).on === 'function') {
+          (user.videoTrack as any).on('first-frame-decoded', () => {
+            videoState.markReady();
+          });
         }
       }
       if (mediaType === 'audio' && user.audioTrack) {
@@ -39,8 +50,11 @@ const CamViewerRoom: React.FC<CamViewerRoomProps> = ({
     };
 
     const handleUserUnpublished = (user: IAgoraRTCRemoteUser, mediaType: 'audio' | 'video' | 'datachannel') => {
-      if (mediaType === 'video' && user.videoTrack) {
-        user.videoTrack.stop();
+      if (mediaType === 'video') {
+        videoState.resetReadiness();
+        if (user.videoTrack) {
+          user.videoTrack.stop();
+        }
       }
       if (mediaType === 'audio' && user.audioTrack) {
         user.audioTrack.stop();
@@ -66,6 +80,7 @@ const CamViewerRoom: React.FC<CamViewerRoomProps> = ({
     initViewer();
 
     return () => {
+      videoState.resetReadiness();
       if (clientRef.current) {
         clientRef.current.off('user-published', handleUserPublished);
         clientRef.current.off('user-unpublished', handleUserUnpublished);
@@ -77,10 +92,23 @@ const CamViewerRoom: React.FC<CamViewerRoomProps> = ({
 
   return (
     <div
-      ref={containerRef}
-      style={{ width: '100%', height: '100%', minHeight: '400px', background: '#0a0608' }}
+      style={{ position: 'relative', width: '100%', height: '100%', minHeight: '400px', background: '#0a0608' }}
       data-testid="zego-cam-viewer-room"
-    />
+    >
+      {!videoState.isVideoReady && (
+        <VideoFallbackOverlay
+          avatarUrl={providerAvatar}
+          displayName={providerName}
+          statusText="Connecting stream..."
+        />
+      )}
+      <div
+        ref={videoState.containerRef}
+        className={`w-full h-full absolute inset-0 transition-opacity duration-300 ${
+          videoState.isVideoReady ? 'opacity-100 z-0' : 'opacity-0 pointer-events-none'
+        }`}
+      />
+    </div>
   );
 };
 
