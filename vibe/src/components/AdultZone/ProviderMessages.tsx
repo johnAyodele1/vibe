@@ -2587,8 +2587,8 @@ const ProviderMessages: React.FC = () => {
                       onCallEnd={handleEndCall}
                       partnerName={selectedConv?.otherUser?.displayName}
                       partnerAvatar={selectedConv?.otherUser?.avatarUrl}
-                      providerAvatar={user?.avatarUrl || providerProfile?.avatarUrl || user?.photos?.[0]?.url}
-                      providerName={providerProfile?.stageName || user?.firstName || 'Provider'}
+                      providerAvatar={(user as any)?.avatarUrl || user?.profilePhoto}
+                      providerName={user?.firstName || 'Provider'}
                     />
                   </React.Suspense>
                 )}

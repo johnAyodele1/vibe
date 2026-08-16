@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, act, fireEvent } from '@testing-library/react';
-import React from 'react';
+import { render, screen, act } from '@testing-library/react';
 import VideoFallbackOverlay from '../components/AdultZone/VideoFallbackOverlay';
 import CallRoom from '../components/AdultZone/CallRoom';
 
