@@ -12,6 +12,8 @@ const adultCallSchema = new Schema(
     durationSeconds: { type: Number, default: 0 },
     creditsDeducted: { type: Number, default: 0 },
     perMinuteRate: { type: Number, required: true },
+    billedMinutes: { type: Number, default: 0 },
+    lastBilledAt: { type: Date, default: null },
     endedBy: { type: Schema.Types.ObjectId, ref: 'AdultUser', default: null },
     endReason: { type: String, default: '' },
     webrtcRoomId: { type: String, required: true },

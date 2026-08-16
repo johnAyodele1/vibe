@@ -52,5 +52,8 @@ export const recordPlatformEarning = async (
     }
   } catch (err) {
     console.error('recordPlatformEarning failed:', err);
+    if (options?.session) {
+      throw err; // Rethrow when running inside a transaction session to force atomic rollback
+    }
   }
 };

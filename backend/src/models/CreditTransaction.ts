@@ -29,7 +29,8 @@ const creditTransactionSchema = new Schema<ICreditTransaction>(
         'service_payment_received',
         'service_payment_sent',
         'paid_media_unlock',
-        'spin_wheel'
+        'spin_wheel',
+        'call_refund'
       ],
     },
     amount: {
@@ -100,6 +101,29 @@ const creditTransactionSchema = new Schema<ICreditTransaction>(
   },
   {
     timestamps: { createdAt: true, updatedAt: false },
+  }
+);
+
+// Compound unique indexes to enforce database-level duplicate billing and refund protection
+creditTransactionSchema.index(
+  { 'metadata.callId': 1, 'metadata.minuteIndex': 1, type: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      'metadata.callId': { $exists: true },
+      'metadata.minuteIndex': { $exists: true },
+    },
+  }
+);
+
+creditTransactionSchema.index(
+  { 'metadata.callId': 1, type: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      'metadata.callId': { $exists: true },
+      type: 'call_refund',
+    },
   }
 );
 
