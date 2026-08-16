@@ -15,6 +15,7 @@ import { calculateFees, recordPlatformEarning } from '../shared/fees';
 import { getSignedUrl } from '../shared/media/cloudinaryUpload';
 import { sendPushToUser } from '../shared/push';
 import { sendNewMessageEmail } from '../shared/email/providerEmail';
+import { checkActiveCall } from '../services/sessionInvariantService';
 
 // Backwards compatibility startConversation route
 export const startConversation = async (req: Request, res: Response) => {
@@ -2317,18 +2318,43 @@ export const initiateCall = async (req: Request, res: Response) => {
       return res.status(402).json({ success: false, error: 'Insufficient credits to start call' });
     }
 
+    // Server-side enforcement: single active call invariant
+    const callerActive = await checkActiveCall(user._id);
+    if (callerActive) {
+      return res.status(409).json({ success: false, error: 'You are already on a call on another device.' });
+    }
+
+    const receiverActive = await checkActiveCall(receiver._id);
+    if (receiverActive) {
+      return res.status(409).json({ success: false, error: 'The other user is currently in another call.' });
+    }
+
     const webrtcRoomId = `room_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
     const call = new AdultCall({
       conversationId,
       callerId: user._id,
       receiverId: receiver._id,
+      activeParticipants: [user._id, receiver._id],
+      isActiveSession: true,
       type,
       status: 'ringing',
       perMinuteRate: rate,
       webrtcRoomId
     });
-    await call.save();
+
+    try {
+      await call.save();
+    } catch (err: any) {
+      if (err.code === 11000 || err.name === 'MongoServerError' || err.message?.includes('E11000') || err.message?.includes('duplicate key')) {
+        const checkCallerAgain = await checkActiveCall(user._id);
+        if (checkCallerAgain && checkCallerAgain._id.toString() !== call._id.toString()) {
+          return res.status(409).json({ success: false, error: 'You are already on a call on another device.' });
+        }
+        return res.status(409).json({ success: false, error: 'The other user is currently in another call.' });
+      }
+      throw err;
+    }
 
     // Emit socket alert to receiver
     const ns = req.app.get('adultNamespace');
@@ -2380,6 +2406,8 @@ export const initiateCall = async (req: Request, res: Response) => {
           liveCall.endReason = 'no_answer';
           liveCall.endedAt = new Date();
           liveCall.creditsDeducted = 0;
+          liveCall.isActiveSession = false;
+          liveCall.activeParticipants = [];
           await liveCall.save();
 
           const systemMsg = new AdultMessage({
@@ -2407,6 +2435,7 @@ export const initiateCall = async (req: Request, res: Response) => {
       roomId: webrtcRoomId,
       webrtcRoomId,
       perMinuteRate: rate,
+      status: call.status,
       iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
     });
   } catch (error: any) {
@@ -2558,6 +2587,17 @@ export const acceptCall = async (req: Request, res: Response) => {
 
     const ns = req.app.get('adultNamespace');
 
+    // Check if receiver or caller is currently in another active call
+    const callerActive = await checkActiveCall(call.callerId);
+    if (callerActive && callerActive._id.toString() !== call._id.toString()) {
+      return res.status(409).json({ success: false, error: 'The caller is currently in another call.' });
+    }
+
+    const receiverActive = await checkActiveCall(call.receiverId);
+    if (receiverActive && receiverActive._id.toString() !== call._id.toString()) {
+      return res.status(409).json({ success: false, error: 'You are already on a call on another device.' });
+    }
+
     // Bill Minute 1 atomically before transitioning to active
     const billResult = await billCallMinute(call._id.toString(), 1, ns);
     if (!billResult.success) {
@@ -2565,6 +2605,8 @@ export const acceptCall = async (req: Request, res: Response) => {
     }
 
     call.status = 'active';
+    call.isActiveSession = true;
+    call.activeParticipants = [call.callerId, call.receiverId];
     call.startedAt = new Date();
     await call.save();
 
@@ -2606,6 +2648,8 @@ export const declineCall = async (req: Request, res: Response) => {
     call.endReason = 'declined';
     call.endedAt = new Date();
     call.creditsDeducted = 0;
+    call.isActiveSession = false;
+    call.activeParticipants = [];
     await call.save();
 
     // Insert system message
@@ -2645,6 +2689,8 @@ export const missedCall = async (req: Request, res: Response) => {
       call.endReason = 'no_answer';
       call.endedAt = new Date();
       call.creditsDeducted = 0;
+      call.isActiveSession = false;
+      call.activeParticipants = [];
       await call.save();
 
       // Insert system message
@@ -2795,6 +2841,8 @@ export const endCall = async (req: Request, res: Response) => {
     updatedCall.endedBy = user._id;
     updatedCall.endReason = reason;
     updatedCall.durationSeconds = durationSeconds;
+    updatedCall.isActiveSession = false;
+    updatedCall.activeParticipants = [];
     await updatedCall.save();
 
     const isBilled = updatedCall.creditsDeducted > 0;

@@ -167,7 +167,8 @@ const ProviderLive: React.FC = () => {
           });
         }
       } else {
-        toast.error(resData.error?.message || 'Failed to start stream');
+        const errorMsg = typeof resData.error === 'string' ? resData.error : (resData.error?.message || 'Failed to start stream');
+        toast.error(errorMsg);
       }
     } catch (err) {
       console.error(err);

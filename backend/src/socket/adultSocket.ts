@@ -12,6 +12,7 @@ import { getClientPrice } from '../services/pricingService';
 import app from '../app';
 import Redis from 'ioredis';
 import { billCallMinute } from '../controllers/adultSext.controller';
+import { checkActiveCall } from '../services/sessionInvariantService';
 
 let redisClient: Redis | null = null;
 if (process.env.REDIS_URL || process.env.REDIS_HOST) {
@@ -100,6 +101,12 @@ export const cleanStalePresence = async () => {
       $set: { status: 'ended', endedAt: new Date() },
     });
   }
+
+  // End ALL active call sessions on startup
+  await AdultCall.updateMany(
+    { status: { $in: ['ringing', 'active'] } },
+    { $set: { status: 'ended', endReason: 'server_restart', endedAt: new Date(), isActiveSession: false, activeParticipants: [] } }
+  );
 
   console.log(`Cleaned up ${staleSessions.length} stale cam sessions on startup`);
 };
@@ -543,6 +550,18 @@ export const setupAdultSocket = (io: Server) => {
           return;
         }
 
+        const callerActive = await checkActiveCall(socket.data.user._id);
+        if (callerActive) {
+          socket.emit('call:error', { message: 'You are already on a call on another device.' });
+          return;
+        }
+
+        const providerActive = await checkActiveCall(provider._id);
+        if (providerActive) {
+          socket.emit('call:error', { message: 'The other user is currently in another call.' });
+          return;
+        }
+
         const rate = data.isVideo ? (provider.providerProfile.videoCallPrice || 0) : (provider.providerProfile.audioCallPrice || 0);
         const userPrice = getClientPrice(rate);
 
@@ -568,10 +587,23 @@ export const setupAdultSocket = (io: Server) => {
         const caller = await AdultUser.findById(data.callerId);
         if (!caller) return;
 
+        const callId = data.callId || `${data.callerId}_${provider._id}`;
+
+        const callerActive = await checkActiveCall(data.callerId);
+        if (callerActive && callerActive._id.toString() !== callId) {
+          socket.emit('call:error', { message: 'The caller is currently in another call.' });
+          return;
+        }
+
+        const providerActive = await checkActiveCall(provider._id);
+        if (providerActive && providerActive._id.toString() !== callId) {
+          socket.emit('call:error', { message: 'You are already on a call on another device.' });
+          return;
+        }
+
         const rate = data.isVideo ? (provider.providerProfile?.videoCallPrice || provider.providerProfile?.pricePerMinute || 0) : (provider.providerProfile?.audioCallPrice || provider.providerProfile?.pricePerMinute || 0);
         const userPrice = getClientPrice(rate);
 
-        const callId = data.callId || `${data.callerId}_${provider._id}`;
         let call = await AdultCall.findById(callId);
 
         if (!call) {
@@ -582,12 +614,19 @@ export const setupAdultSocket = (io: Server) => {
             conversationId,
             callerId: data.callerId,
             receiverId: provider._id,
+            activeParticipants: [data.callerId, provider._id],
+            isActiveSession: true,
             type: data.isVideo ? 'video' : 'audio',
             status: 'ringing',
             perMinuteRate: rate,
             webrtcRoomId: `room_${Date.now()}_${Math.floor(Math.random() * 1000)}`
           });
-          await call.save();
+          try {
+            await call.save();
+          } catch (err: any) {
+            socket.emit('call:error', { message: 'You are already on a call on another device.' });
+            return;
+          }
         }
 
         // Bill Minute 1 atomically before marking as active
@@ -599,6 +638,8 @@ export const setupAdultSocket = (io: Server) => {
         }
 
         call.status = 'active';
+        call.isActiveSession = true;
+        call.activeParticipants = [call.callerId, call.receiverId];
         call.startedAt = new Date();
         await call.save();
 
@@ -689,6 +730,16 @@ export const setupAdultSocket = (io: Server) => {
       // Check remaining connections
       const remainingConnections = await getActiveConnectionCount(userId);
       if (remainingConnections === 0) {
+        const userActiveCall = await checkActiveCall(userId);
+        if (userActiveCall) {
+          userActiveCall.status = 'ended';
+          userActiveCall.endedAt = new Date();
+          userActiveCall.endReason = 'participant_disconnected';
+          userActiveCall.isActiveSession = false;
+          userActiveCall.activeParticipants = [];
+          await userActiveCall.save();
+        }
+
         if (accountType === 'provider') {
           await handleProviderGoesOffline(userId, adultNamespace);
         } else {

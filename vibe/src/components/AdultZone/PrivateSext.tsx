@@ -1579,7 +1579,7 @@ const PrivateSext: React.FC = () => {
         }
       } else {
         setCallState('idle');
-        if (res.status === 402 || data.error?.toLowerCase().includes('insufficient')) {
+        if (res.status === 402 || (typeof data.error === 'string' && data.error.toLowerCase().includes('insufficient'))) {
           toast.error('Insufficient tokens. Please get more tokens.', {
             action: {
               label: 'Get Tokens',
@@ -1587,17 +1587,13 @@ const PrivateSext: React.FC = () => {
             }
           });
         } else {
-          toast.error(data.error || 'Call initialization failed');
+          const errorMsg = typeof data.error === 'string' ? data.error : (data.error?.message || 'Call initialization failed');
+          toast.error(errorMsg);
         }
       }
     } catch (err) {
       setCallState('idle');
-      toast.error('Insufficient tokens. Please get more tokens.', {
-        action: {
-          label: 'Get Tokens',
-          onClick: () => { window.location.href = '/wallet'; }
-        }
-      });
+      toast.error(err instanceof Error ? err.message : 'Call initialization failed');
     }
   };
 
@@ -1615,6 +1611,13 @@ const PrivateSext: React.FC = () => {
         headers: getHeaders()
       });
       const data = await res.json();
+
+      if (!res.ok || data.error) {
+        setAcceptLoading(false);
+        const errorMsg = typeof data.error === 'string' ? data.error : (data.error?.message || 'Failed to accept call');
+        toast.error(errorMsg);
+        return;
+      }
 
       const tokenRes = await fetch(`${API_BASE_URL}/v1/adult/zego/token?roomId=${data.roomId || callData.roomId}&type=call`, {
         headers: getHeaders()

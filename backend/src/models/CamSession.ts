@@ -99,5 +99,10 @@ const camSessionSchema = new Schema<ICamSession>(
   }
 );
 
+camSessionSchema.index(
+  { providerId: 1 },
+  { unique: true, partialFilterExpression: { status: 'live' } }
+);
+
 export const CamSession = mongoose.model<ICamSession>('CamSession', camSessionSchema);
 export default CamSession;
