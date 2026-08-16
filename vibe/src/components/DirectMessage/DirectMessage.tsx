@@ -7,6 +7,8 @@ import { API_BASE_URL } from "../../config";
 // TODO: Use configurable backend URL for socket connection
 import { useAuth } from "../../contexts/AuthContext";
 import { useSocket } from "../../contexts/SocketContext";
+import { useVideoReadiness } from "../../hooks/useVideoReadiness";
+import VideoFallbackOverlay from "../AdultZone/VideoFallbackOverlay";
 
 type CallStatus = "idle" | "calling" | "receiving" | "connected" | "ended";
 
@@ -114,6 +116,9 @@ const DirectMessage: React.FC = () => {
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+
+  const remoteVideoState = useVideoReadiness();
+  const localVideoState = useVideoReadiness();
 
   const currentUserId = (user as any)?._id || "";
   const token = localStorage.getItem("accessToken");
@@ -1189,12 +1194,26 @@ const DirectMessage: React.FC = () => {
             <div className={styles.callContainer}>
               {isVideoCall && callStatus === "connected" ? (
                 <div className={styles.videoContainer}>
-                  <div className={styles.remoteVideoWrapper}>
+                  <div className={styles.remoteVideoWrapper} style={{ position: 'relative' }}>
+                    {!remoteVideoState.isVideoReady && (
+                      <VideoFallbackOverlay
+                        avatarUrl={otherParticipant?.photos.find((p) => p.isMain)?.url}
+                        displayName={otherParticipant ? `${otherParticipant.firstName} ${otherParticipant.lastName}` : 'Partner'}
+                        statusText="Connecting video..."
+                      />
+                    )}
                     <video
-                      ref={remoteVideoRef}
+                      ref={(el) => {
+                        (remoteVideoRef as any).current = el;
+                        (remoteVideoState.containerRef as any).current = el;
+                      }}
                       autoPlay
                       playsInline
                       className={styles.remoteVideo}
+                      style={{
+                        opacity: remoteVideoState.isVideoReady ? 1 : 0,
+                        transition: 'opacity 300ms ease',
+                      }}
                     />
 
                     <div className={styles.callInfoOverlay}>
@@ -1203,13 +1222,27 @@ const DirectMessage: React.FC = () => {
                       </p>
                     </div>
 
-                    <div className={styles.localVideoWrapper}>
+                    <div className={styles.localVideoWrapper} style={{ position: 'relative' }}>
+                      {!localVideoState.isVideoReady && (
+                        <VideoFallbackOverlay
+                          avatarUrl={otherParticipant?.photos.find((p) => p.isMain)?.url}
+                          displayName="You"
+                          statusText="Starting camera..."
+                        />
+                      )}
                       <video
-                        ref={localVideoRef}
+                        ref={(el) => {
+                          (localVideoRef as any).current = el;
+                          (localVideoState.containerRef as any).current = el;
+                        }}
                         autoPlay
                         playsInline
                         muted
                         className={styles.localVideo}
+                        style={{
+                          opacity: localVideoState.isVideoReady ? 1 : 0,
+                          transition: 'opacity 300ms ease',
+                        }}
                       />
                     </div>
                   </div>

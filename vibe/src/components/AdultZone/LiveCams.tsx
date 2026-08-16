@@ -357,6 +357,8 @@ const LiveCams: React.FC = () => {
                 roomId={agoraRoomId}
                 userId={user?.id || ''}
                 userName={user?.firstName || 'Viewer'}
+                providerAvatar={providerProfile?.avatarUrl || activeSession?.providerId?.profilePhoto || activeSession?.avatarUrl}
+                providerName={providerProfile?.stageName || activeSession?.providerId?.username || 'Performer'}
                 onUserCountUpdate={setViewerCount}
               />
             </React.Suspense>

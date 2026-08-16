@@ -275,6 +275,8 @@ const ProviderLive: React.FC = () => {
                       userId={user?.id || ''}
                       userName={user?.firstName || 'Provider'}
                       sessionId={agoraSessionId}
+                      providerAvatar={(user as any)?.avatarUrl || user?.profilePhoto}
+                      providerName={user?.firstName || 'Provider'}
                       onEnd={handleEndStream}
                     />
                   </React.Suspense>
