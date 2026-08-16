@@ -102,12 +102,6 @@ export const cleanStalePresence = async () => {
     });
   }
 
-  // End ALL active call sessions on startup
-  await AdultCall.updateMany(
-    { status: { $in: ['ringing', 'active'] } },
-    { $set: { status: 'ended', endReason: 'server_restart', endedAt: new Date(), isActiveSession: false, activeParticipants: [] } }
-  );
-
   console.log(`Cleaned up ${staleSessions.length} stale cam sessions on startup`);
 };
 
@@ -178,6 +172,8 @@ export const monitorActiveCalls = async (ns: any) => {
             call.endedAt = new Date();
             call.endReason = 'insufficient_credits';
             call.durationSeconds = elapsedSeconds;
+            call.isActiveSession = false;
+            call.activeParticipants = [];
             await call.save();
 
             // Insert system message

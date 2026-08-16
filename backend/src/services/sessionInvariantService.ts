@@ -3,8 +3,29 @@ import AdultCall from '../models/AdultCall';
 import CamSession from '../models/CamSession';
 
 /**
- * Checks if a user is currently in an active call (as caller or receiver).
- * Automatically cleans up stale ringing calls older than 60 seconds.
+ * Explicit state transition to expire a stale ringing call (>60s without acceptance).
+ */
+export const expireStaleRingingCall = async (call: any) => {
+  if (call && call.status === 'ringing') {
+    const createdAtTime = call.get('createdAt')
+      ? new Date(call.get('createdAt')).getTime()
+      : Date.now();
+    if (Date.now() - createdAtTime > 60000) {
+      call.status = 'missed';
+      call.endReason = 'timeout';
+      call.endedAt = new Date();
+      call.isActiveSession = false;
+      call.activeParticipants = [];
+      await call.save();
+      return true;
+    }
+  }
+  return false;
+};
+
+/**
+ * Read-only lookup to check if a user is currently in an active call (as caller or receiver).
+ * Performs auto-expiration of stale ringing calls if encountered.
  */
 export const checkActiveCall = async (userId: string | Types.ObjectId) => {
   const uid = typeof userId === 'string' ? new Types.ObjectId(userId) : userId;
@@ -18,28 +39,17 @@ export const checkActiveCall = async (userId: string | Types.ObjectId) => {
 
   if (!activeCall) return null;
 
-  // Stale ringing call check (> 60 seconds in ringing state without acceptance)
+  // Check and perform explicit state transition if stale ringing call encountered
   if (activeCall.status === 'ringing') {
-    const createdAtTime = activeCall.get('createdAt')
-      ? new Date(activeCall.get('createdAt')).getTime()
-      : Date.now();
-    if (Date.now() - createdAtTime > 60000) {
-      activeCall.status = 'missed';
-      activeCall.endReason = 'timeout';
-      activeCall.endedAt = new Date();
-      activeCall.isActiveSession = false;
-      activeCall.activeParticipants = [];
-      await activeCall.save();
-      return null;
-    }
+    const expired = await expireStaleRingingCall(activeCall);
+    if (expired) return null;
   }
 
   return activeCall;
 };
 
 /**
- * Checks if a provider has an active livestream (status: 'live').
- * The database session state is the authoritative source of truth.
+ * Read-only lookup to check if a provider has an active livestream (status: 'live').
  */
 export const checkActiveCamSession = async (providerId: string | Types.ObjectId) => {
   const pid = typeof providerId === 'string' ? new Types.ObjectId(providerId) : providerId;

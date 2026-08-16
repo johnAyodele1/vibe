@@ -114,6 +114,10 @@ describe('Single-Active-Session Invariant Integration Tests', () => {
     provider2Id = p2._id.toString();
     provider2Token = jwt.sign({ sub: provider2Id }, ADULT_JWT_SECRET);
 
+    // Ensure database indexes are created
+    await AdultCall.ensureIndexes();
+    await CamSession.ensureIndexes();
+
     // Create conversations with required custom _id string
     conv1Id = [member1Id, provider1Id].sort().join('_');
     const c1 = new AdultConversation({
@@ -232,6 +236,46 @@ describe('Single-Active-Session Invariant Integration Tests', () => {
 
       expect(successCount).toBe(1);
       expect(rejectedCount).toBe(1);
+    });
+
+    it('E2. Device A HTTP initiateCall and Device B HTTP initiateCall simultaneously → exactly one succeeds, one gets 409', async () => {
+      const [devA, devB] = await Promise.all([
+        request(app)
+          .post('/api/v1/adult/sext/calls/initiate')
+          .set('Authorization', `Bearer ${member1Token}`)
+          .send({ conversationId: conv1Id, type: 'video' }),
+        request(app)
+          .post('/api/v1/adult/sext/calls/initiate')
+          .set('Authorization', `Bearer ${member1Token}`)
+          .send({ conversationId: conv2Id, type: 'audio' }),
+      ]);
+
+      const successes = [devA, devB].filter(r => r.status === 200);
+      const rejections = [devA, devB].filter(r => r.status === 409);
+
+      expect(successes.length).toBe(1);
+      expect(rejections.length).toBe(1);
+      expect(rejections[0].body.error).toBe("You are already on a call on another device.");
+    });
+
+    it('E3. Backend server restart does NOT end active calls in DB', async () => {
+      // 1. Create active call
+      const initRes = await request(app)
+        .post('/api/v1/adult/sext/calls/initiate')
+        .set('Authorization', `Bearer ${member1Token}`)
+        .send({ conversationId: conv1Id, type: 'video' });
+      expect(initRes.status).toBe(200);
+      const activeCallId = initRes.body.callId;
+
+      // 2. Simulate server restart cleanStalePresence()
+      const { cleanStalePresence } = require('../socket/adultSocket');
+      await cleanStalePresence();
+
+      // 3. Verify call in DB remains active/ringing
+      const callAfterRestart = await AdultCall.findById(activeCallId);
+      expect(callAfterRestart).not.toBeNull();
+      expect(callAfterRestart?.status).toBe('ringing');
+      expect(callAfterRestart?.isActiveSession).toBe(true);
     });
 
     it('F. End existing call → user can start another call', async () => {

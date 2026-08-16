@@ -25,7 +25,7 @@ const adultCallSchema = new Schema(
 
 adultCallSchema.index(
   { activeParticipants: 1 },
-  { unique: true, partialFilterExpression: { isActiveSession: true } }
+  { name: 'unique_active_call_participants', unique: true, partialFilterExpression: { isActiveSession: true } }
 );
 
 export const AdultCall = mongoose.model('AdultCall', adultCallSchema);
