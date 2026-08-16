@@ -2414,8 +2414,22 @@ export const initiateCall = async (req: Request, res: Response) => {
   }
 };
 
-// Helper to bill a call minute atomically
-export const billCallMinute = async (callId: string, minuteIndex: number, ns?: any): Promise<{ success: boolean; error?: string }> => {
+// Helper to bill a call minute atomically & idempotently
+export const billCallMinute = async (
+  callId: string,
+  minuteIndex: number,
+  ns?: any
+): Promise<{ success: boolean; error?: string; alreadyBilled?: boolean }> => {
+  // Idempotency check 1: Has this transaction already been recorded in DB?
+  const existingTx = await CreditTransaction.findOne({
+    'metadata.callId': callId,
+    'metadata.minuteIndex': minuteIndex,
+    type: 'call_charge',
+  });
+  if (existingTx) {
+    return { success: true, alreadyBilled: true };
+  }
+
   const dbSession = await mongoose.startSession();
   dbSession.startTransaction();
   try {
@@ -2425,9 +2439,16 @@ export const billCallMinute = async (callId: string, minuteIndex: number, ns?: a
       return { success: false, error: 'Call not active or not found' };
     }
 
-    if (call.billedMinutes >= minuteIndex) {
+    // Secondary check inside transaction session
+    const existingTxInSession = await CreditTransaction.findOne({
+      'metadata.callId': callId,
+      'metadata.minuteIndex': minuteIndex,
+      type: 'call_charge',
+    }).session(dbSession);
+
+    if (existingTxInSession) {
       await dbSession.abortTransaction();
-      return { success: true }; // Already billed for this minute
+      return { success: true, alreadyBilled: true };
     }
 
     const clientPrice = getClientPrice(call.perMinuteRate);
@@ -2448,7 +2469,7 @@ export const billCallMinute = async (callId: string, minuteIndex: number, ns?: a
     callerUser.credits -= clientPrice;
     await callerUser.save({ session: dbSession });
 
-    // Payout provider
+    // Payout provider immediately
     const { providerAmount, platformFee } = calculateFees(clientPrice);
     providerUser.credits += providerAmount;
     if (providerUser.providerProfile) {
@@ -2457,12 +2478,14 @@ export const billCallMinute = async (callId: string, minuteIndex: number, ns?: a
     await providerUser.save({ session: dbSession });
 
     // Update Call record
-    call.billedMinutes = minuteIndex;
+    if (call.billedMinutes < minuteIndex) {
+      call.billedMinutes = minuteIndex;
+    }
     call.lastBilledAt = new Date();
     call.creditsDeducted += clientPrice;
     await call.save({ session: dbSession });
 
-    // Record Transactions
+    // Record Transactions with callId and minuteIndex in metadata for unique index protection
     await CreditTransaction.create([{
       userId: callerUser._id,
       type: 'call_charge',
@@ -2471,6 +2494,7 @@ export const billCallMinute = async (callId: string, minuteIndex: number, ns?: a
       description: `${call.type.charAt(0).toUpperCase() + call.type.slice(1)} call — Min ${minuteIndex}`,
       relatedUserId: providerUser._id,
       status: 'completed',
+      metadata: { callId, minuteIndex },
     }], { session: dbSession });
 
     const providerTx = await CreditTransaction.create([{
@@ -2482,6 +2506,7 @@ export const billCallMinute = async (callId: string, minuteIndex: number, ns?: a
       description: `${call.type.charAt(0).toUpperCase() + call.type.slice(1)} call payout from ${callerUser.username}`,
       relatedUserId: callerUser._id,
       status: 'completed',
+      metadata: { callId, minuteIndex },
     }], { session: dbSession });
 
     await recordPlatformEarning({
@@ -2502,6 +2527,10 @@ export const billCallMinute = async (callId: string, minuteIndex: number, ns?: a
     return { success: true };
   } catch (err: any) {
     await dbSession.abortTransaction();
+    if (err.code === 11000 || err.name === 'MongoServerError' || err.message?.includes('E11000') || err.message?.includes('duplicate key')) {
+      // MongoDB E11000 duplicate key error indicates another concurrent process already billed this minute.
+      return { success: true, alreadyBilled: true };
+    }
     return { success: false, error: err.message };
   } finally {
     dbSession.endSession();
@@ -2673,51 +2702,69 @@ export const endCall = async (req: Request, res: Response) => {
 
     if (call.status === 'active' && call.startedAt) {
       if (durationSeconds < MINIMUM_BILLING_SECONDS && call.billedMinutes > 0) {
-        // Call ended under 10 seconds: refund Minute 1 upfront deduction
-        const refundSession = await mongoose.startSession();
-        refundSession.startTransaction();
-        try {
-          const callerUser = await AdultUser.findById(call.callerId).session(refundSession);
-          const providerUser = await AdultUser.findById(call.receiverId).session(refundSession);
+        // Check if refund was already processed for this call
+        const existingRefund = await CreditTransaction.findOne({
+          'metadata.callId': call._id.toString(),
+          type: 'call_refund',
+        });
 
-          if (callerUser && providerUser) {
-            const refundAmount = call.creditsDeducted;
-            const { providerAmount } = calculateFees(refundAmount);
+        if (!existingRefund) {
+          const refundSession = await mongoose.startSession();
+          refundSession.startTransaction();
+          try {
+            const callerUser = await AdultUser.findById(call.callerId).session(refundSession);
+            const providerUser = await AdultUser.findById(call.receiverId).session(refundSession);
 
-            callerUser.credits += refundAmount;
-            await callerUser.save({ session: refundSession });
+            if (callerUser && providerUser) {
+              const refundAmount = call.creditsDeducted;
+              const { providerAmount, platformFee } = calculateFees(refundAmount);
 
-            providerUser.credits = Math.max(0, providerUser.credits - providerAmount);
-            if (providerUser.providerProfile) {
-              providerUser.providerProfile.totalEarnings = Math.max(0, providerUser.providerProfile.totalEarnings - providerAmount);
+              callerUser.credits += refundAmount;
+              await callerUser.save({ session: refundSession });
+
+              providerUser.credits -= providerAmount;
+              if (providerUser.providerProfile) {
+                providerUser.providerProfile.totalEarnings -= providerAmount;
+              }
+              await providerUser.save({ session: refundSession });
+
+              const refundTx = await CreditTransaction.create([{
+                userId: callerUser._id,
+                type: 'call_refund',
+                amount: refundAmount,
+                usdAmount: 0,
+                description: `${call.type.charAt(0).toUpperCase() + call.type.slice(1)} call refund (<10s)`,
+                relatedUserId: providerUser._id,
+                status: 'completed',
+                metadata: { callId: call._id.toString() },
+              }], { session: refundSession });
+
+              if (platformFee > 0) {
+                await recordPlatformEarning({
+                  source: 'call',
+                  amount: -platformFee,
+                  fromUserId: callerUser._id,
+                  toProviderId: providerUser._id,
+                  referenceId: refundTx[0]._id,
+                }, { session: refundSession });
+              }
+
+              call.creditsDeducted = 0;
+              call.billedMinutes = 0;
+              await call.save({ session: refundSession });
+
+              if (ns) {
+                ns.to(`user:${callerUser._id.toString()}`).emit('wallet:updated', { balance: callerUser.credits });
+                ns.to(`user:${providerUser._id.toString()}`).emit('wallet:updated', { balance: providerUser.credits });
+              }
             }
-            await providerUser.save({ session: refundSession });
-
-            await CreditTransaction.create([{
-              userId: callerUser._id,
-              type: 'call_refund',
-              amount: refundAmount,
-              usdAmount: 0,
-              description: `${call.type.charAt(0).toUpperCase() + call.type.slice(1)} call refund (<10s)`,
-              relatedUserId: providerUser._id,
-              status: 'completed',
-            }], { session: refundSession });
-
-            call.creditsDeducted = 0;
-            call.billedMinutes = 0;
-            await call.save({ session: refundSession });
-
-            if (ns) {
-              ns.to(`user:${callerUser._id.toString()}`).emit('wallet:updated', { balance: callerUser.credits });
-              ns.to(`user:${providerUser._id.toString()}`).emit('wallet:updated', { balance: providerUser.credits });
-            }
+            await refundSession.commitTransaction();
+          } catch (err: any) {
+            console.error("REFUND_SESSION_ERROR:", err);
+            await refundSession.abortTransaction();
+          } finally {
+            refundSession.endSession();
           }
-          await refundSession.commitTransaction();
-        } catch (err: any) {
-          console.error("REFUND_SESSION_ERROR:", err);
-          await refundSession.abortTransaction();
-        } finally {
-          refundSession.endSession();
         }
       } else if (durationSeconds >= MINIMUM_BILLING_SECONDS) {
         // Bill any pending unbilled minutes up to duration

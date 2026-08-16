@@ -104,5 +104,28 @@ const creditTransactionSchema = new Schema<ICreditTransaction>(
   }
 );
 
+// Compound unique indexes to enforce database-level duplicate billing and refund protection
+creditTransactionSchema.index(
+  { 'metadata.callId': 1, 'metadata.minuteIndex': 1, type: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      'metadata.callId': { $exists: true },
+      'metadata.minuteIndex': { $exists: true },
+    },
+  }
+);
+
+creditTransactionSchema.index(
+  { 'metadata.callId': 1, type: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      'metadata.callId': { $exists: true },
+      type: 'call_refund',
+    },
+  }
+);
+
 export const CreditTransaction = mongoose.model<ICreditTransaction>('CreditTransaction', creditTransactionSchema);
 export default CreditTransaction;

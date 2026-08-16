@@ -545,6 +545,82 @@ describe('PAYMENT FLOWS — COMPLETE COVERAGE', () => {
       expect(updatedCall?.status).toBe('ended');
       expect(updatedCall?.endReason).toBe('insufficient_credits');
     });
+
+    it('concurrency test: concurrent billCallMinute calls for same minute create exactly 1 financial effect', async () => {
+      const { billCallMinute } = require('../controllers/adultSext.controller');
+
+      // Accept call -> minute 1 billed
+      await request(app)
+        .put(`/api/v1/adult/sext/calls/${callId}/accept`)
+        .set('Authorization', `Bearer ${providerToken}`)
+        .expect(200);
+
+      const initialMemberCredits = (await AdultUser.findById(memberId))?.credits || 0;
+      const initialProviderCredits = (await AdultUser.findById(providerId))?.credits || 0;
+
+      // Run 5 concurrent billings for Minute 2
+      const results = await Promise.all([
+        billCallMinute(callId, 2, null),
+        billCallMinute(callId, 2, null),
+        billCallMinute(callId, 2, null),
+        billCallMinute(callId, 2, null),
+        billCallMinute(callId, 2, null),
+      ]);
+
+      expect(results.every(r => r.success)).toBe(true);
+
+      // Verify member balance decreased by exactly 1 minute rate (10 credits)
+      const finalMember = await AdultUser.findById(memberId);
+      expect(finalMember?.credits).toBe(initialMemberCredits - 10);
+
+      // Verify provider balance increased by exactly 1 minute payout (8 credits)
+      const finalProvider = await AdultUser.findById(providerId);
+      expect(finalProvider?.credits).toBe(initialProviderCredits + 8);
+
+      // Verify only 1 call_charge transaction exists for minuteIndex 2
+      const txs = await CreditTransaction.find({ 'metadata.callId': callId, 'metadata.minuteIndex': 2, type: 'call_charge' });
+      expect(txs).toHaveLength(1);
+    });
+
+    it('endCall race condition: running billCallMinute and endCall concurrently produces consistent accounting', async () => {
+      const { billCallMinute } = require('../controllers/adultSext.controller');
+
+      await request(app)
+        .put(`/api/v1/adult/sext/calls/${callId}/accept`)
+        .set('Authorization', `Bearer ${providerToken}`)
+        .expect(200);
+
+      await AdultCall.findByIdAndUpdate(callId, { startedAt: new Date(Date.now() - 65000) }); // 65s
+
+      await Promise.all([
+        billCallMinute(callId, 2, null),
+        request(app)
+          .put(`/api/v1/adult/sext/calls/${callId}/end`)
+          .set('Authorization', `Bearer ${memberToken}`)
+          .send({ reason: 'hung_up' })
+      ]);
+
+      const updatedCall = await AdultCall.findById(callId);
+      expect(updatedCall?.status).toBe('ended');
+
+      // Member should be charged for exactly 2 minutes (20 credits)
+      const member = await AdultUser.findById(memberId);
+      expect(member?.credits).toBe(980); // 1000 - 20
+
+      // Provider should receive payout for exactly 2 minutes (16 credits)
+      const provider = await AdultUser.findById(providerId);
+      expect(provider?.credits).toBe(16);
+
+      // Accounting invariant: total member deductions = provider payouts + platform fees
+      const memberTxs = await CreditTransaction.find({ userId: memberId, type: 'call_charge' });
+      const totalMemberDeductions = memberTxs.reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+
+      const providerTxs = await CreditTransaction.find({ userId: providerId, type: 'call_earning' });
+      const totalProviderPayouts = providerTxs.reduce((sum, tx) => sum + tx.amount, 0);
+      const totalPlatformFees = providerTxs.reduce((sum, tx) => sum + (tx.platformFee || 0), 0);
+
+      expect(totalMemberDeductions).toBe(totalProviderPayouts + totalPlatformFees);
+    });
   });
 
   // ─── SERVICE CHARGES ───────────────────────────────────────────────────

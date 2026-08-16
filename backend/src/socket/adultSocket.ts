@@ -572,25 +572,35 @@ export const setupAdultSocket = (io: Server) => {
         const userPrice = getClientPrice(rate);
 
         const callId = data.callId || `${data.callerId}_${provider._id}`;
-        let existingCall = await AdultCall.findById(callId);
+        let call = await AdultCall.findById(callId);
 
-        if (existingCall) {
-          const billResult = await billCallMinute(callId, 1, adultNamespace);
-          if (!billResult.success) {
-            socket.emit('call:error', { message: 'User has insufficient credits' });
-            adultNamespace.to(`user:${data.callerId}`).emit('call:rejected', { reason: 'insufficient_credits' });
-            return;
-          }
-          existingCall.status = 'active';
-          existingCall.startedAt = new Date();
-          await existingCall.save();
-        } else {
-          if (caller.credits < userPrice) {
-            socket.emit('call:error', { message: 'User has insufficient credits' });
-            adultNamespace.to(`user:${data.callerId}`).emit('call:rejected', { reason: 'insufficient_credits' });
-            return;
-          }
+        if (!call) {
+          // If call record doesn't exist yet, create it
+          const conversationId = [data.callerId, provider._id.toString()].sort().join('_');
+          call = new AdultCall({
+            _id: callId,
+            conversationId,
+            callerId: data.callerId,
+            receiverId: provider._id,
+            type: data.isVideo ? 'video' : 'audio',
+            status: 'ringing',
+            perMinuteRate: rate,
+            webrtcRoomId: `room_${Date.now()}_${Math.floor(Math.random() * 1000)}`
+          });
+          await call.save();
         }
+
+        // Bill Minute 1 atomically before marking as active
+        const billResult = await billCallMinute(call._id.toString(), 1, adultNamespace);
+        if (!billResult.success) {
+          socket.emit('call:error', { message: 'User has insufficient credits' });
+          adultNamespace.to(`user:${data.callerId}`).emit('call:rejected', { reason: 'insufficient_credits' });
+          return;
+        }
+
+        call.status = 'active';
+        call.startedAt = new Date();
+        await call.save();
 
         adultNamespace.to(`user:${data.callerId}`).emit('call:accepted', {
           providerId: provider._id,
