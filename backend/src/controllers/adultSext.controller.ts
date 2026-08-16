@@ -257,6 +257,7 @@ export const requestService = async (req: Request, res: Response) => {
       content: `Requested a tonight service`,
       mediaType: 'request_service',
       isUnlocked: true,
+      serviceRequest: message.serviceRequest,
       serviceTonightRequest: message.serviceTonightRequest,
       createdAt: message.createdAt
     };
@@ -383,6 +384,7 @@ export const sendServiceRequest = async (req: Request, res: Response) => {
       content: `🌙 Service request: 💎 ${totalAmount}`,
       mediaType: 'service_request',
       serviceRequest: msg.serviceRequest,
+      serviceTonightRequest: msg.serviceTonightRequest,
       isUnlocked: true,
       createdAt: msg.createdAt
     };
@@ -1148,6 +1150,7 @@ export const getMessages = async (req: Request, res: Response) => {
         gift: m.gift,
         giftRequest: m.giftRequest,
         serviceRequest: m.serviceRequest,
+        serviceTonightRequest: m.serviceTonightRequest,
         photoRequest: m.photoRequest,
         systemText: m.systemText,
         reactions: m.reactions,
@@ -1380,6 +1383,9 @@ export const sendMessage = async (req: Request, res: Response) => {
       creditCost: finalCreditCost,
       isUnlocked: !finalIsLocked,
       gift,
+      giftRequest: message.giftRequest,
+      serviceRequest: message.serviceRequest,
+      serviceTonightRequest: message.serviceTonightRequest,
       photoRequest,
       systemText,
       reactions: [],
@@ -2084,6 +2090,7 @@ export const fulfillServiceTonightRequest = async (req: Request, res: Response) 
           content: `🌙 Service request: 💎 ${totalAmount}`,
           mediaType: 'service_request',
           serviceRequest: invoiceMsg.serviceRequest,
+          serviceTonightRequest: invoiceMsg.serviceTonightRequest,
           isUnlocked: true,
           createdAt: invoiceMsg.createdAt
         }

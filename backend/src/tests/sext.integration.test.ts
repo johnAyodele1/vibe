@@ -666,6 +666,30 @@ describe('Private Messaging (Sext) Integration Tests', () => {
       expect(reqRes.body.serviceTonightRequest.status).toBe('pending');
       const serviceTonightReqId = reqRes.body.id;
 
+      // GET endpoint returns serviceTonightRequest and serviceRequest for member
+      const memberGetRes = await request(app)
+        .get(`/api/v1/adult/sext/conversations/${conversationId}/messages`)
+        .set('Authorization', `Bearer ${memberToken}`)
+        .expect(200);
+
+      const memberMsg = memberGetRes.body.find((m: any) => m.id === serviceTonightReqId);
+      expect(memberMsg).toBeDefined();
+      expect(memberMsg.serviceTonightRequest).toBeDefined();
+      expect(memberMsg.serviceTonightRequest.status).toBe('pending');
+      expect(memberMsg.serviceRequest).toBeDefined();
+
+      // GET endpoint returns serviceTonightRequest and serviceRequest for provider
+      const providerGetRes = await request(app)
+        .get(`/api/v1/adult/sext/conversations/${conversationId}/messages`)
+        .set('Authorization', `Bearer ${providerToken}`)
+        .expect(200);
+
+      const providerMsg = providerGetRes.body.find((m: any) => m.id === serviceTonightReqId);
+      expect(providerMsg).toBeDefined();
+      expect(providerMsg.serviceTonightRequest).toBeDefined();
+      expect(providerMsg.serviceTonightRequest.status).toBe('pending');
+      expect(providerMsg.serviceRequest).toBeDefined();
+
       // Update provider tonightRate to 100 before provider fulfills
       await AdultUser.findByIdAndUpdate(providerId, {
         'providerProfile.tonightRate': 100
