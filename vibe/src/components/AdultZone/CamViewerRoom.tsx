@@ -27,6 +27,12 @@ const CamViewerRoom: React.FC<CamViewerRoomProps> = ({
   const videoState = useVideoReadiness();
   const clientRef = useRef<IAgoraRTCClient | null>(null);
 
+  const {
+    containerRef,
+    markReady,
+    resetReadiness,
+  } = videoState;
+
   useEffect(() => {
     const client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
     clientRef.current = client;
@@ -35,12 +41,12 @@ const CamViewerRoom: React.FC<CamViewerRoomProps> = ({
       if (mediaType === 'datachannel') return;
       await client.subscribe(user, mediaType);
       if (mediaType === 'video' && user.videoTrack) {
-        if (videoState.containerRef.current) {
-          user.videoTrack.play(videoState.containerRef.current);
+        if (containerRef.current) {
+          user.videoTrack.play(containerRef.current);
         }
         if (typeof (user.videoTrack as any).on === 'function') {
           (user.videoTrack as any).on('first-frame-decoded', () => {
-            videoState.markReady();
+            markReady();
           });
         }
       }
@@ -51,7 +57,7 @@ const CamViewerRoom: React.FC<CamViewerRoomProps> = ({
 
     const handleUserUnpublished = (user: IAgoraRTCRemoteUser, mediaType: 'audio' | 'video' | 'datachannel') => {
       if (mediaType === 'video') {
-        videoState.resetReadiness();
+        resetReadiness();
         if (user.videoTrack) {
           user.videoTrack.stop();
         }
@@ -80,7 +86,7 @@ const CamViewerRoom: React.FC<CamViewerRoomProps> = ({
     initViewer();
 
     return () => {
-      videoState.resetReadiness();
+      resetReadiness();
       if (clientRef.current) {
         clientRef.current.off('user-published', handleUserPublished);
         clientRef.current.off('user-unpublished', handleUserUnpublished);
@@ -88,7 +94,7 @@ const CamViewerRoom: React.FC<CamViewerRoomProps> = ({
         clientRef.current = null;
       }
     };
-  }, [appId, token, roomId, userId, userName, onUserCountUpdate]);
+  }, [appId, token, roomId, userId, userName, onUserCountUpdate, containerRef, markReady, resetReadiness]);
 
   return (
     <div

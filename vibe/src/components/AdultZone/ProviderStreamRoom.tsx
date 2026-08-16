@@ -31,6 +31,12 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
   const localAudioTrackRef = useRef<IMicrophoneAudioTrack | null>(null);
   const localVideoTrackRef = useRef<ICameraVideoTrack | null>(null);
 
+  const {
+    containerRef,
+    markReady,
+    resetReadiness,
+  } = videoState;
+
   useEffect(() => {
     const client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
     clientRef.current = client;
@@ -46,12 +52,12 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
         const videoTrack = await AgoraRTC.createCameraVideoTrack();
         localVideoTrackRef.current = videoTrack;
 
-        if (videoState.containerRef.current) {
-          videoTrack.play(videoState.containerRef.current);
+        if (containerRef.current) {
+          videoTrack.play(containerRef.current);
         }
         if (typeof (videoTrack as any).on === 'function') {
           (videoTrack as any).on('first-frame-decoded', () => {
-            videoState.markReady();
+            markReady();
           });
         }
 
@@ -64,7 +70,7 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
     initHost();
 
     return () => {
-      videoState.resetReadiness();
+      resetReadiness();
       if (localAudioTrackRef.current) {
         localAudioTrackRef.current.stop();
         localAudioTrackRef.current.close();
@@ -80,7 +86,7 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
         clientRef.current = null;
       }
     };
-  }, [appId, token, roomId, userId, userName, sessionId]);
+  }, [appId, token, roomId, userId, userName, sessionId, containerRef, markReady, resetReadiness]);
 
   const handleEndClick = () => {
     if (window.confirm('Are you sure you want to end the broadcast?')) {

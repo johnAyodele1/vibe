@@ -49,6 +49,23 @@ const CallRoom: React.FC<CallRoomProps> = ({
   const effectiveProviderAvatar = providerAvatar || partnerAvatar;
   const effectiveProviderName = providerName || partnerName || userName || 'Provider';
 
+  const onCallEndRef = useRef(onCallEnd);
+  useEffect(() => {
+    onCallEndRef.current = onCallEnd;
+  }, [onCallEnd]);
+
+  const {
+    containerRef: remoteContainerRef,
+    markReady: remoteMarkReady,
+    resetReadiness: remoteResetReadiness,
+  } = remoteVideoState;
+
+  const {
+    containerRef: localContainerRef,
+    markReady: localMarkReady,
+    resetReadiness: localResetReadiness,
+  } = localVideoState;
+
   useEffect(() => {
     if (hasJoined.current) return;
     if (!containerRef.current) return;
@@ -83,12 +100,12 @@ const CallRoom: React.FC<CallRoomProps> = ({
       if (mediaType === 'datachannel') return;
       await client.subscribe(user, mediaType);
       if (mediaType === 'video' && user.videoTrack) {
-        if (remoteVideoState.containerRef.current) {
-          user.videoTrack.play(remoteVideoState.containerRef.current);
+        if (remoteContainerRef.current) {
+          user.videoTrack.play(remoteContainerRef.current);
         }
         if (typeof (user.videoTrack as any).on === 'function') {
           (user.videoTrack as any).on('first-frame-decoded', () => {
-            remoteVideoState.markReady();
+            remoteMarkReady();
           });
         }
       }
@@ -99,7 +116,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
 
     const handleUserUnpublished = (user: IAgoraRTCRemoteUser, mediaType: 'audio' | 'video' | 'datachannel') => {
       if (mediaType === 'video') {
-        remoteVideoState.resetReadiness();
+        remoteResetReadiness();
         if (user.videoTrack) {
           user.videoTrack.stop();
         }
@@ -110,9 +127,9 @@ const CallRoom: React.FC<CallRoomProps> = ({
     };
 
     const handleUserLeft = () => {
-      remoteVideoState.resetReadiness();
+      remoteResetReadiness();
       const durationSeconds = Math.floor((Date.now() - startTime) / 1000);
-      onCallEnd(durationSeconds);
+      onCallEndRef.current(durationSeconds);
     };
 
     const handleVolumeIndicator = (volumes: any[]) => {
@@ -143,12 +160,12 @@ const CallRoom: React.FC<CallRoomProps> = ({
           localVideoTrackRef.current = videoTrack;
           tracksToPublish.push(videoTrack);
 
-          if (localVideoState.containerRef.current) {
-            videoTrack.play(localVideoState.containerRef.current);
+          if (localContainerRef.current) {
+            videoTrack.play(localContainerRef.current);
           }
           if (typeof (videoTrack as any).on === 'function') {
             (videoTrack as any).on('first-frame-decoded', () => {
-              localVideoState.markReady();
+              localMarkReady();
             });
           }
         }
@@ -165,8 +182,8 @@ const CallRoom: React.FC<CallRoomProps> = ({
 
     return () => {
       const leaveAndCleanup = async () => {
-        remoteVideoState.resetReadiness();
-        localVideoState.resetReadiness();
+        remoteResetReadiness();
+        localResetReadiness();
         if (localAudioTrackRef.current) {
           localAudioTrackRef.current.stop();
           localAudioTrackRef.current.close();
@@ -193,7 +210,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
       };
       leaveAndCleanup();
     };
-  }, [retry, appId, token, roomId, userId, callType]);
+  }, [retry, appId, token, roomId, userId, callType, remoteContainerRef, localContainerRef, remoteMarkReady, remoteResetReadiness, localMarkReady, localResetReadiness]);
 
   const toggleMic = async () => {
     if (localAudioTrackRef.current) {
@@ -210,14 +227,14 @@ const CallRoom: React.FC<CallRoomProps> = ({
       await localVideoTrackRef.current.setEnabled(nextState);
       setCameraEnabled(nextState);
       if (!nextState) {
-        localVideoState.resetReadiness();
+        localResetReadiness();
       }
     }
   };
 
   const handleEndCallLocal = async () => {
-    remoteVideoState.resetReadiness();
-    localVideoState.resetReadiness();
+    remoteResetReadiness();
+    localResetReadiness();
     if (clientRef.current) {
       if (localAudioTrackRef.current) {
         localAudioTrackRef.current.stop();

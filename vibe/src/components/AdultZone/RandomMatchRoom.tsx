@@ -32,6 +32,18 @@ const RandomMatchRoom: React.FC<RandomMatchRoomProps> = ({
   const localAudioTrackRef = useRef<IMicrophoneAudioTrack | null>(null);
   const localVideoTrackRef = useRef<ICameraVideoTrack | null>(null);
 
+  const {
+    containerRef: remoteContainerRef,
+    markReady: remoteMarkReady,
+    resetReadiness: remoteResetReadiness,
+  } = remoteVideoState;
+
+  const {
+    containerRef: localContainerRef,
+    markReady: localMarkReady,
+    resetReadiness: localResetReadiness,
+  } = localVideoState;
+
   useEffect(() => {
     const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
     clientRef.current = client;
@@ -40,12 +52,12 @@ const RandomMatchRoom: React.FC<RandomMatchRoomProps> = ({
       if (mediaType === 'datachannel') return;
       await client.subscribe(user, mediaType);
       if (mediaType === 'video' && user.videoTrack) {
-        if (remoteVideoState.containerRef.current) {
-          user.videoTrack.play(remoteVideoState.containerRef.current);
+        if (remoteContainerRef.current) {
+          user.videoTrack.play(remoteContainerRef.current);
         }
         if (typeof (user.videoTrack as any).on === 'function') {
           (user.videoTrack as any).on('first-frame-decoded', () => {
-            remoteVideoState.markReady();
+            remoteMarkReady();
           });
         }
       }
@@ -56,7 +68,7 @@ const RandomMatchRoom: React.FC<RandomMatchRoomProps> = ({
 
     const handleUserUnpublished = (user: IAgoraRTCRemoteUser, mediaType: 'audio' | 'video' | 'datachannel') => {
       if (mediaType === 'video') {
-        remoteVideoState.resetReadiness();
+        remoteResetReadiness();
         if (user.videoTrack) {
           user.videoTrack.stop();
         }
@@ -67,7 +79,7 @@ const RandomMatchRoom: React.FC<RandomMatchRoomProps> = ({
     };
 
     const handleUserLeft = () => {
-      remoteVideoState.resetReadiness();
+      remoteResetReadiness();
       onNext();
     };
 
@@ -85,12 +97,12 @@ const RandomMatchRoom: React.FC<RandomMatchRoomProps> = ({
         const videoTrack = await AgoraRTC.createCameraVideoTrack();
         localVideoTrackRef.current = videoTrack;
 
-        if (localVideoState.containerRef.current) {
-          videoTrack.play(localVideoState.containerRef.current);
+        if (localContainerRef.current) {
+          videoTrack.play(localContainerRef.current);
         }
         if (typeof (videoTrack as any).on === 'function') {
           (videoTrack as any).on('first-frame-decoded', () => {
-            localVideoState.markReady();
+            localMarkReady();
           });
         }
 
@@ -103,8 +115,8 @@ const RandomMatchRoom: React.FC<RandomMatchRoomProps> = ({
     initCall();
 
     return () => {
-      remoteVideoState.resetReadiness();
-      localVideoState.resetReadiness();
+      remoteResetReadiness();
+      localResetReadiness();
       if (localAudioTrackRef.current) {
         localAudioTrackRef.current.stop();
         localAudioTrackRef.current.close();
@@ -123,7 +135,7 @@ const RandomMatchRoom: React.FC<RandomMatchRoomProps> = ({
         clientRef.current = null;
       }
     };
-  }, [roomId, appId, token, userId, onNext]);
+  }, [roomId, appId, token, userId, onNext, remoteContainerRef, localContainerRef, remoteMarkReady, remoteResetReadiness, localMarkReady, localResetReadiness]);
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '500px', background: '#0a0608' }}>
