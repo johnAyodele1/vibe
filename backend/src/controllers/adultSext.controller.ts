@@ -211,18 +211,7 @@ export const requestService = async (req: Request, res: Response) => {
       });
     }
 
-    // 2. Recipient must have configured tonight rate
-    const tonightRate = recipient.providerProfile?.tonightRate || 0;
-    if (tonightRate <= 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'NO_TONIGHT_RATE',
-        message: `${recipient.providerProfile?.stageName || recipient.displayName || 'The provider'} has not configured a tonight service rate yet.`,
-        action: 'Go to Settings → Pricing'
-      });
-    }
-
-    // 3. No active request already pending
+    // 2. No active request already pending
     const existing = await AdultMessage.findOne({
       conversationId,
       messageType: 'request_service',
@@ -338,12 +327,17 @@ export const sendServiceRequest = async (req: Request, res: Response) => {
       return res.status(409).json({ success: false, error: 'An active service request already exists in this conversation' });
     }
 
-    const validatedExtras = (extras || []).map((e: any) => ({
-      label: String(e.label).slice(0, 50),
-      amount: Math.max(0, parseInt(e.amount) || 0),
-    })).filter((e: any) => e.amount > 0 && e.label);
+    const validatedExtras = (extras ?? [])
+      .map((extra: any) => ({
+        label: String(extra.label ?? '').trim().slice(0, 50),
+        amount: Math.max(0, Number(extra.amount) || 0),
+      }))
+      .filter((extra: any) => extra.label && extra.amount > 0);
 
-    const extrasTotal = validatedExtras.reduce((sum: number, e: any) => sum + e.amount, 0);
+    const extrasTotal = validatedExtras.reduce(
+      (sum: number, extra: any) => sum + extra.amount,
+      0
+    );
     const totalAmount = baseRate + extrasTotal;
 
     const receiverId = conversation.participants.find(p => p.toString() !== user._id.toString());
@@ -2019,7 +2013,7 @@ export const fulfillServiceTonightRequest = async (req: Request, res: Response) 
     }
 
     const { messageId } = req.params;
-    const { baseRate, extras = [], note = '' } = req.body;
+    const { extras = [], note = '' } = req.body;
 
     const requestMsg = await AdultMessage.findById(messageId);
     if (!requestMsg || requestMsg.messageType !== 'request_service') {
@@ -2030,16 +2024,26 @@ export const fulfillServiceTonightRequest = async (req: Request, res: Response) 
       return res.status(403).json({ success: false, error: 'Only the recipient of the request can fulfill it' });
     }
 
-    if (requestMsg.serviceTonightRequest?.status === 'fulfilled') {
-      return res.status(409).json({ success: false, error: 'Already fulfilled' });
+    if (requestMsg.serviceTonightRequest?.status !== 'pending') {
+      return res.status(409).json({
+        success: false,
+        error: `Service request is already ${requestMsg.serviceTonightRequest?.status}`
+      });
     }
 
-    const validatedExtras = (extras || []).map((e: any) => ({
-      label: String(e.label).slice(0, 50),
-      amount: Math.max(0, parseInt(e.amount) || 0),
-    })).filter((e: any) => e.amount > 0 && e.label);
+    const baseRate = user.providerProfile?.tonightRate || (user.providerProfile as any)?.pricing?.tonightRate || 0;
 
-    const extrasTotal = validatedExtras.reduce((sum: number, e: any) => sum + e.amount, 0);
+    const validatedExtras = (extras ?? [])
+      .map((extra: any) => ({
+        label: String(extra.label ?? '').trim().slice(0, 50),
+        amount: Math.max(0, Number(extra.amount) || 0),
+      }))
+      .filter((extra: any) => extra.label && extra.amount > 0);
+
+    const extrasTotal = validatedExtras.reduce(
+      (sum: number, extra: any) => sum + extra.amount,
+      0
+    );
     const totalAmount = baseRate + extrasTotal;
 
     // Create the formal invoice (service_request) message
