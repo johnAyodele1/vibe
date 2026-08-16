@@ -29,7 +29,8 @@ const creditTransactionSchema = new Schema<ICreditTransaction>(
         'service_payment_received',
         'service_payment_sent',
         'paid_media_unlock',
-        'spin_wheel'
+        'spin_wheel',
+        'call_refund'
       ],
     },
     amount: {

@@ -520,6 +520,31 @@ describe('PAYMENT FLOWS — COMPLETE COVERAGE', () => {
       expect(dbCall?.creditsDeducted).toBe(0);
       expect(dbCall?.status).toBe('declined');
     });
+
+    it('active call monitor: terminates call immediately if member cannot afford next minute', async () => {
+      // 1. Accept call -> minute 1 deducted upfront (10 credits)
+      await request(app)
+        .put(`/api/v1/adult/sext/calls/${callId}/accept`)
+        .set('Authorization', `Bearer ${providerToken}`)
+        .expect(200);
+
+      // Verify member balance became 990 (1000 - 10)
+      const memberAfterM1 = await AdultUser.findById(memberId);
+      expect(memberAfterM1?.credits).toBe(990);
+
+      // Set member balance to 0 so they cannot afford Minute 2
+      await AdultUser.findByIdAndUpdate(memberId, { credits: 0 });
+
+      // Simulate 65 seconds elapsed -> neededMinutes = 2
+      await AdultCall.findByIdAndUpdate(callId, { startedAt: new Date(Date.now() - 65000) });
+
+      const { monitorActiveCalls } = require('../socket/adultSocket');
+      await monitorActiveCalls(null);
+
+      const updatedCall = await AdultCall.findById(callId);
+      expect(updatedCall?.status).toBe('ended');
+      expect(updatedCall?.endReason).toBe('insufficient_credits');
+    });
   });
 
   // ─── SERVICE CHARGES ───────────────────────────────────────────────────

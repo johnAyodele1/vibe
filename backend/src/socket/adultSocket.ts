@@ -5,11 +5,13 @@ import CamSession from '../models/CamSession';
 import CamViewer from '../models/CamViewer';
 import PrivateShowRequest from '../models/PrivateShowRequest';
 import AdultMessage from '../models/AdultMessage';
-import { decrypt } from '../services/encryptionService';
+import AdultCall from '../models/AdultCall';
+import { encrypt, decrypt } from '../services/encryptionService';
 import mongoose from 'mongoose';
 import { getClientPrice } from '../services/pricingService';
 import app from '../app';
 import Redis from 'ioredis';
+import { billCallMinute } from '../controllers/adultSext.controller';
 
 let redisClient: Redis | null = null;
 if (process.env.REDIS_URL || process.env.REDIS_HOST) {
@@ -147,11 +149,82 @@ export const handleProviderGoesOffline = async (userId: string, namespace: any) 
 // Centralized map for active call tickers accessible across all socket connections in the adult namespace
 const activeCallTickers = new Map<string, NodeJS.Timeout>();
 
+export const monitorActiveCalls = async (ns: any) => {
+  try {
+    const activeCalls = await AdultCall.find({ status: 'active' });
+    const now = new Date();
+
+    for (const call of activeCalls) {
+      if (!call.startedAt) continue;
+
+      const elapsedSeconds = Math.max(0, Math.floor((now.getTime() - call.startedAt.getTime()) / 1000));
+      // Determine how many minutes are required based on elapsed time:
+      // minute 1: 0-59s, minute 2: 60-119s, minute 3: 120-179s, etc.
+      const neededMinutes = Math.floor(elapsedSeconds / 60) + 1;
+
+      if (neededMinutes > call.billedMinutes) {
+        for (let min = call.billedMinutes + 1; min <= neededMinutes; min++) {
+          const billResult = await billCallMinute(call._id.toString(), min, ns);
+          if (!billResult.success) {
+            // Conditional debit failed: caller cannot pay for next minute! Terminate call immediately.
+            call.status = 'ended';
+            call.endedAt = new Date();
+            call.endReason = 'insufficient_credits';
+            call.durationSeconds = elapsedSeconds;
+            await call.save();
+
+            // Insert system message
+            const systemMsg = new AdultMessage({
+              conversationId: call.conversationId,
+              senderId: call.callerId,
+              receiverId: call.receiverId,
+              content: encrypt("Call ended due to insufficient credits"),
+              messageType: 'system',
+              systemText: "Call ended due to insufficient credits"
+            });
+            await systemMsg.save();
+
+            if (ns) {
+              ns.to(`user:${call.callerId.toString()}`).emit('call:ended', {
+                callId: call._id.toString(),
+                durationSeconds: elapsedSeconds,
+                creditsDeducted: call.creditsDeducted,
+                reason: 'insufficient_credits'
+              });
+              ns.to(`user:${call.receiverId.toString()}`).emit('call:ended', {
+                callId: call._id.toString(),
+                durationSeconds: elapsedSeconds,
+                creditsDeducted: call.creditsDeducted,
+                reason: 'insufficient_credits'
+              });
+              ns.to(`call:${call._id.toString()}`).emit('call:ended', {
+                callId: call._id.toString(),
+                reason: 'insufficient_credits'
+              });
+            }
+            break; // Stop processing further minutes for this call
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Error monitoring active calls:', err);
+  }
+};
+
 export const setupAdultSocket = (io: Server) => {
   const adultNamespace = io.of('/adult');
 
   // Attach namespace to express app for access in REST controllers
   app.set('adultNamespace', adultNamespace);
+
+  // Set up periodic call monitoring for active calls (every 3 seconds)
+  const billingInterval = setInterval(() => {
+    monitorActiveCalls(adultNamespace).catch(err => {
+      console.error('Error in monitorActiveCalls interval:', err);
+    });
+  }, 3000);
+  billingInterval.unref?.();
 
   adultNamespace.use(async (socket, next) => {
     try {
@@ -489,22 +562,35 @@ export const setupAdultSocket = (io: Server) => {
       }
     });
 
-    socket.on('call:accept', async (data: { callerId: string, isVideo: boolean }) => {
+    socket.on('call:accept', async (data: { callerId: string, isVideo: boolean, callId?: string }) => {
       try {
         const provider = socket.data.user;
         const caller = await AdultUser.findById(data.callerId);
         if (!caller) return;
 
-        const rate = data.isVideo ? (provider.providerProfile.videoCallPrice || 0) : (provider.providerProfile.audioCallPrice || 0);
+        const rate = data.isVideo ? (provider.providerProfile?.videoCallPrice || provider.providerProfile?.pricePerMinute || 0) : (provider.providerProfile?.audioCallPrice || provider.providerProfile?.pricePerMinute || 0);
         const userPrice = getClientPrice(rate);
 
-        if (caller.credits < userPrice) {
-          socket.emit('call:error', { message: 'User has insufficient credits' });
-          adultNamespace.to(`user:${data.callerId}`).emit('call:rejected', { reason: 'insufficient_credits' });
-          return;
-        }
+        const callId = data.callId || `${data.callerId}_${provider._id}`;
+        let existingCall = await AdultCall.findById(callId);
 
-        const callId = `${data.callerId}_${provider._id}`;
+        if (existingCall) {
+          const billResult = await billCallMinute(callId, 1, adultNamespace);
+          if (!billResult.success) {
+            socket.emit('call:error', { message: 'User has insufficient credits' });
+            adultNamespace.to(`user:${data.callerId}`).emit('call:rejected', { reason: 'insufficient_credits' });
+            return;
+          }
+          existingCall.status = 'active';
+          existingCall.startedAt = new Date();
+          await existingCall.save();
+        } else {
+          if (caller.credits < userPrice) {
+            socket.emit('call:error', { message: 'User has insufficient credits' });
+            adultNamespace.to(`user:${data.callerId}`).emit('call:rejected', { reason: 'insufficient_credits' });
+            return;
+          }
+        }
 
         adultNamespace.to(`user:${data.callerId}`).emit('call:accepted', {
           providerId: provider._id,
