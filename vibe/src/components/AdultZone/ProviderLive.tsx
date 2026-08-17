@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
 import { API_BASE_URL, SOCKET_URL } from '../../config';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
+import { formatAmount } from '../../lib/pricing';
 import { io, Socket } from 'socket.io-client';
 
 import { WheelEditor } from './WheelEditor';
@@ -123,7 +124,7 @@ const ProviderLive: React.FC = () => {
         {
           id: 'spin-' + Date.now() + '-' + Math.random(),
           senderName: 'System',
-          content: `🎡 ${data.spinnerName} spun the wheel and got: "${data.itemLabel}" (💎 ${data.creditsPaid})`,
+          content: `🎡 ${data.spinnerName} spun the wheel and got: "${data.itemLabel}" (💎 ${formatAmount(data.creditsPaid)})`,
           type: 'spin'
         }
       ]);
@@ -212,7 +213,7 @@ const ProviderLive: React.FC = () => {
       setAgoraRoomId(null);
       setAgoraSessionId(null);
       setViewerCount(0);
-      toast.info(`Session ended. Tips accumulated: 💎 ${sessionTips}`);
+      toast.info(`Session ended. Tips accumulated: 💎 ${formatAmount(sessionTips)}`);
     }
   };
 
@@ -315,7 +316,7 @@ const ProviderLive: React.FC = () => {
               <h4 className="text-sm font-serif italic text-white">Cumulative Session Tips</h4>
               <p className="text-xs text-[var(--az-text-secondary)] mt-0.5">Tip metrics accumulated from public viewing arena</p>
             </div>
-            <span className="text-3xl font-mono font-bold text-[var(--az-accent-gold)]">💎 {sessionTips}</span>
+            <span className="text-3xl font-mono font-bold text-[var(--az-accent-gold)]">💎 {formatAmount(sessionTips)}</span>
           </div>
 
           <div className="stream-tools mt-4">
@@ -357,7 +358,7 @@ const ProviderLive: React.FC = () => {
               if (isTip) {
                 return (
                   <div key={msg.id} className="p-2 bg-yellow-950/20 border border-yellow-500/30 rounded-lg text-[var(--az-accent-gold)] font-bold mb-1 text-xs">
-                    🎉 {sender} tipped 💎 {tipAmount} credits!
+                    🎉 {sender} tipped 💎 {formatAmount(tipAmount)} credits!
                   </div>
                 );
               }

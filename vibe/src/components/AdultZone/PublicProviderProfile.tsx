@@ -4,6 +4,7 @@ import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { useTipSheetStore } from './useTipSheetStore';
 import { API_BASE_URL } from '../../config';
 import { toast } from 'sonner';
+import { formatAmount } from '../../lib/pricing';
 
 const SERVICE_LABELS: Record<string, { icon: string; label: string; color: string }> = {
   live_cam:       { icon: '📹', label: 'Live Webcam Shows',   color: '#e8496a' },
@@ -462,7 +463,7 @@ export const PublicProviderProfile: React.FC = () => {
                 className="tip-menu-item shadow-md"
                 onClick={() => handleTipMenuClick(item.amount)}
               >
-                <span className="tip-menu-item__amount">💎 {item.amount}</span>
+                <span className="tip-menu-item__amount">💎 {formatAmount(item.amount)}</span>
                 <span className="tip-menu-item__desc">{item.description}</span>
               </button>
             ))}

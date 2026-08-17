@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { SOCKET_URL } from '../../config';
+import { formatAmount } from '../../lib/pricing';
 
 export interface ChatMessage {
   id: string;
@@ -67,7 +68,7 @@ export const CamLiveChat: React.FC<CamLiveChatProps> = ({
         senderId: 'system',
         senderName: 'System',
         senderBadge: null,
-        content: `🎡 ${data.spinnerName} spun the wheel and got: "${data.itemLabel}" (💎 ${data.creditsPaid})`,
+        content: `🎡 ${data.spinnerName} spun the wheel and got: "${data.itemLabel}" (💎 ${formatAmount(data.creditsPaid)})`,
         timestamp: Date.now(),
         type: 'spin'
       };
@@ -143,7 +144,7 @@ export const CamLiveChat: React.FC<CamLiveChatProps> = ({
             return (
               <div key={msg.id} className="cam-chat-msg cam-chat-msg--tip p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-xl animate-fadeIn">
                 <span className="cam-tip-notif font-bold text-xs text-yellow-400 font-sans block">
-                  🎉 <strong>{msg.fromName || msg.senderName}</strong> tipped 💎 {msg.amount}!
+                  🎉 <strong>{msg.fromName || msg.senderName}</strong> tipped 💎 {formatAmount(msg.amount)}!
                 </span>
               </div>
             );

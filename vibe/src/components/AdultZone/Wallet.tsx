@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { API_BASE_URL } from '../../config';
-import { usePricingStore, formatNaira } from '../../lib/pricing';
+import { usePricingStore, formatNaira, formatAmount } from '../../lib/pricing';
 
 const Wallet: React.FC = () => {
   const navigate = useNavigate();
@@ -75,7 +75,7 @@ const Wallet: React.FC = () => {
     fetchWallet();
     fetchBundles();
     fetchTransactions();
-  }, [token, user, navigate]);
+  }, [token, user?.role, navigate]);
 
   const handlePurchase = async (bundleId: string) => {
     if (!token) {
@@ -123,7 +123,7 @@ const Wallet: React.FC = () => {
       <div className="bg-[var(--az-bg-secondary)] rounded-3xl border border-[var(--az-border)] p-10 mb-12 text-center relative overflow-hidden">
         <div className="absolute top-[-20%] right-[-10%] w-64 h-64 bg-[var(--az-accent-gold)] rounded-full blur-[100px] opacity-10" />
         <h1 className="text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--az-text-muted)] mb-4">Current Balance</h1>
-        <div className="flex items-center justify-center gap-3 text-6xl font-mono text-[var(--az-accent-gold)] font-bold mb-2"><span>💎</span><span>{loadingWallet ? '...' : (wallet?.creditBalance ?? 0)}</span></div>
+        <div className="flex items-center justify-center gap-3 text-6xl font-mono text-[var(--az-accent-gold)] font-bold mb-2"><span>💎</span><span>{loadingWallet ? '...' : formatAmount(wallet?.creditBalance)}</span></div>
         <p className="text-sm text-[var(--az-text-secondary)] font-serif italic">{loadingWallet ? 'Loading wallet...' : `Credits available for tipping & private shows (~${formatNaira((wallet?.creditBalance ?? 0) * usePricingStore.getState().diamondNairaRate)})`}</p>
       </div>
 
@@ -151,7 +151,7 @@ const Wallet: React.FC = () => {
             return (
               <div key={bundle.id} onClick={() => purchaseLoading === null && handlePurchase(bundle.id)} className={`group relative bg-[var(--az-bg-secondary)] rounded-2xl p-8 border-2 transition-all cursor-pointer az-card-hover ${isBestValue ? 'border-[var(--az-accent-gold)]' : 'border-[var(--az-border)]'} ${purchaseLoading === bundle.id ? 'opacity-50 pointer-events-none' : ''}`}>
                 {bundle.badge && <div className={`absolute top-4 right-4 text-[8px] font-bold uppercase tracking-widest px-2 py-1 rounded ${isBestValue ? 'bg-[var(--az-accent-gold)] text-black' : 'bg-[var(--az-bg-tertiary)] text-[var(--az-text-secondary)]'}`}>{bundle.badge}</div>}
-                <div className="flex items-center gap-4 mb-6"><span className="text-4xl">💎</span><div><h3 className="text-2xl font-mono font-bold text-white">{bundle.credits}</h3><p className="text-[10px] text-[var(--az-text-muted)] uppercase tracking-widest">{bundle.label || 'Credits'}</p></div></div>
+                <div className="flex items-center gap-4 mb-6"><span className="text-4xl">💎</span><div><h3 className="text-2xl font-mono font-bold text-white">{formatAmount(bundle.credits)}</h3><p className="text-[10px] text-[var(--az-text-muted)] uppercase tracking-widest">{bundle.label || 'Credits'}</p></div></div>
                 <div className="flex items-center justify-between"><span className="text-xl font-bold text-[var(--az-text-primary)]">{formatNaira(bundle.priceNaira || (bundle.credits * usePricingStore.getState().diamondNairaRate))}</span><button disabled={purchaseLoading !== null} className={`px-6 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all ${isBestValue ? 'bg-[var(--az-accent-gold)] text-black shadow-lg shadow-yellow-900/20' : 'bg-[var(--az-bg-tertiary)] text-[var(--az-text-primary)] group-hover:bg-[var(--az-accent-primary)] group-hover:text-white'}`}>{purchaseLoading === bundle.id ? 'Processing...' : 'Buy Now'}</button></div>
               </div>
             );
@@ -170,7 +170,7 @@ const Wallet: React.FC = () => {
             ) : (
               transactions.map(tx => {
                 const isPositive = tx.type === 'purchase' || tx.type === 'deposit';
-                return <div key={tx._id} className="p-4 border-b border-[var(--az-border)]/50 flex items-center justify-between last:border-0 hover:bg-[var(--az-bg-tertiary)]/30 transition-colors"><div><h4 className="text-xs font-bold text-[var(--az-text-primary)] capitalize">{tx.type}</h4><p className="text-[10px] text-[var(--az-text-muted)]">{new Date(tx.createdAt).toLocaleDateString()}</p></div><div className="text-right flex flex-col items-end"><p className={`text-xs font-mono font-bold ${isPositive ? 'text-green-400' : 'text-[var(--az-accent-rose)]'}`}>{isPositive ? '+' : '-'}{tx.amount} 💎</p><p className="text-[10px] text-[var(--az-text-muted)] font-mono">≈ {formatNaira(Math.abs(tx.amount) * usePricingStore.getState().diamondNairaRate)}</p><p className="text-[8px] uppercase tracking-tighter text-[var(--az-text-muted)] font-bold">{tx.status}</p></div></div>;
+                return <div key={tx._id} className="p-4 border-b border-[var(--az-border)]/50 flex items-center justify-between last:border-0 hover:bg-[var(--az-bg-tertiary)]/30 transition-colors"><div><h4 className="text-xs font-bold text-[var(--az-text-primary)] capitalize">{tx.type}</h4><p className="text-[10px] text-[var(--az-text-muted)]">{new Date(tx.createdAt).toLocaleDateString()}</p></div><div className="text-right flex flex-col items-end"><p className={`text-xs font-mono font-bold ${isPositive ? 'text-green-400' : 'text-[var(--az-accent-rose)]'}`}>{isPositive ? '+' : '-'}{formatAmount(tx.amount)} 💎</p><p className="text-[10px] text-[var(--az-text-muted)] font-mono">≈ {formatNaira(Math.abs(tx.amount) * usePricingStore.getState().diamondNairaRate)}</p><p className="text-[8px] uppercase tracking-tighter text-[var(--az-text-muted)] font-bold">{tx.status}</p></div></div>;
               })
             )}
           </div>

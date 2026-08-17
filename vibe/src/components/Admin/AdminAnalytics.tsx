@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
 import { API_BASE_URL } from "../../config";
+import { formatAmount } from "../../lib/pricing";
 import {
   LineChart, Line, BarChart, Bar, AreaChart, Area,
   PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid,
@@ -213,12 +214,12 @@ const AdminAnalytics: React.FC = () => {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <span className="text-[10px] uppercase font-bold text-neutral-500 block">All-Time Platform Fees</span>
-                <span className="text-xl md:text-2xl font-mono font-bold text-amber-500">💎 {overview.earnings.totalPlatformFees.toLocaleString()}</span>
+                <span className="text-xl md:text-2xl font-mono font-bold text-amber-500">💎 {formatAmount(overview.earnings.totalPlatformFees)}</span>
                 <span className="text-xs text-neutral-400 block mt-1">₦{overview.earnings.totalPlatformNaira.toLocaleString()} Naira</span>
               </div>
               <div>
                 <span className="text-[10px] uppercase font-bold text-neutral-500 block">Pending Payouts</span>
-                <span className="text-xl md:text-2xl font-mono font-bold text-red-400">💎 {overview.earnings.pendingPayouts.toLocaleString()}</span>
+                <span className="text-xl md:text-2xl font-mono font-bold text-red-400">💎 {formatAmount(overview.earnings.pendingPayouts)}</span>
                 <span className="text-xs text-neutral-400 block mt-1">₦{overview.earnings.pendingPayoutsNaira.toLocaleString()} Naira</span>
               </div>
             </div>
@@ -371,7 +372,7 @@ const AdminAnalytics: React.FC = () => {
                         <img src={p.profilePhoto} alt={p.stageName} className="w-8 h-8 rounded-full object-cover border border-red-950/50" />
                       </td>
                       <td className="py-2.5 font-sans font-bold text-white">{p.stageName}</td>
-                      <td className="py-2.5 text-right font-bold text-amber-500">💎 {p.earnings.toLocaleString()}</td>
+                      <td className="py-2.5 text-right font-bold text-amber-500">💎 {formatAmount(p.earnings)}</td>
                     </tr>
                   ))
                 )}
@@ -401,7 +402,7 @@ const AdminAnalytics: React.FC = () => {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="font-mono font-bold text-green-400">💎 {tx.amount.toLocaleString()}</p>
+                    <p className="font-mono font-bold text-green-400">💎 {formatAmount(tx.amount)}</p>
                     <p className="text-[9px] text-neutral-500 font-mono">≈ ₦{(tx.amount * rate).toLocaleString()}</p>
                   </div>
                 </div>

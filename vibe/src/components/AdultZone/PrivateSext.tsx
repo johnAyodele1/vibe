@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 import { useUIStore } from './useUIStore';
 import MessageTick, { getMessageStatus } from './MessageTick';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { usePricingStore, formatNaira } from '../../lib/pricing';
+import { usePricingStore, formatNaira, formatAmount } from '../../lib/pricing';
 import { uploadMedia } from '../../lib/media/uploadMedia';
 import { compressToWebP } from '../../lib/media/compressImage';
 import { VoiceNotePlayer } from './VoiceNotePlayer';
@@ -1849,7 +1849,7 @@ const PrivateSext: React.FC = () => {
                   📹
                 </button>
                 <span className="text-yellow-400 font-bold text-xs flex items-center gap-1 conversation-header__credits">
-                  💎 {creditsRemaining}
+                  💎 {formatAmount(creditsRemaining)}
                 </span>
               </div>
             </div>
@@ -1914,7 +1914,7 @@ const PrivateSext: React.FC = () => {
                                 disabled={processingIds[m.id]}
                                 className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-yellow-600 text-black font-bold rounded-full text-[10px] uppercase tracking-wider shadow-[0_0_15px_rgba(245,158,11,0.5)] hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
                               >
-                                {processingIds[m.id] ? 'Unlocking...' : `Unlock for ${Math.ceil(m.creditCost * 1.15)} 💎`}
+                                {processingIds[m.id] ? 'Unlocking...' : `Unlock for ${formatAmount(m.creditCost * 1.15)} 💎`}
                               </button>
                             ) : (
                               <p className="text-[10px] text-amber-400 italic">Your premium locked content</p>
@@ -1927,7 +1927,7 @@ const PrivateSext: React.FC = () => {
                         <div className="absolute top-1 right-2 text-[8px] text-yellow-400 font-bold uppercase tracking-widest">GIFT SENT</div>
                         <span className="text-5xl my-2">🎁</span>
                         <h5 className="font-serif italic text-pink-300 text-base">{m.gift?.giftName}</h5>
-                        <p className="text-yellow-400 font-bold text-xs mt-1">💎 {m.gift?.giftValue} Credits</p>
+                        <p className="text-yellow-400 font-bold text-xs mt-1">💎 {formatAmount(m.gift?.giftValue)} Credits</p>
                         {m.gift?.message && (
                           <p className="text-xs italic text-gray-300 mt-2 border-t border-pink-500/20 pt-2 w-full break-words">"{m.gift.message}"</p>
                         )}
@@ -1939,7 +1939,7 @@ const PrivateSext: React.FC = () => {
                         <span className="text-5xl my-3 animate-bounce">🎁</span>
                         <h5 className="font-serif italic text-white text-base">is wishing for a gift</h5>
                         <p className="text-pink-300 font-bold text-sm mt-1">{m.giftRequest?.giftName}</p>
-                        <p className="text-amber-400 font-bold font-mono text-xs mt-1">💎 {m.giftRequest?.giftValue} Credits</p>
+                        <p className="text-amber-400 font-bold font-mono text-xs mt-1">💎 {formatAmount(m.giftRequest?.giftValue)} Credits</p>
                         {m.giftRequest?.message && (
                           <p className="text-xs italic text-gray-300 my-3 border-t border-pink-500/10 pt-3 w-full break-words">"{m.giftRequest.message}"</p>
                         )}
@@ -1990,17 +1990,17 @@ const PrivateSext: React.FC = () => {
                         <div className="space-y-2 text-xs">
                           <div className="flex justify-between text-gray-300">
                             <span>Tonight rate:</span>
-                            <span className="font-mono font-bold text-white">💎 {m.serviceRequest?.baseRate}</span>
+                            <span className="font-mono font-bold text-white">💎 {formatAmount(m.serviceRequest?.baseRate)}</span>
                           </div>
                           {m.serviceRequest?.extras?.map((ext: { label: string; amount: number }, idx: number) => (
                             <div key={idx} className="flex justify-between text-gray-400">
                               <span>{ext.label}:</span>
-                              <span className="font-mono text-white">💎 {ext.amount}</span>
+                              <span className="font-mono text-white">💎 {formatAmount(ext.amount)}</span>
                             </div>
                           ))}
                           <div className="border-t border-white/5 my-2 pt-2 flex justify-between items-center text-sm font-bold">
                             <span className="text-white">TOTAL:</span>
-                            <span className="font-mono text-amber-400">💎 {m.serviceRequest?.totalAmount}</span>
+                            <span className="font-mono text-amber-400">💎 {formatAmount(m.serviceRequest?.totalAmount)}</span>
                           </div>
                           <span className="text-[10px] text-gray-500 block text-right">
                             ≈ {formatNaira(m.serviceRequest?.totalAmount! * usePricingStore.getState().diamondNairaRate)}
@@ -2018,14 +2018,14 @@ const PrivateSext: React.FC = () => {
                             <>
                               <button
                                 onClick={() => {
-                                  if (window.confirm(`Confirm payment of 💎 ${m.serviceRequest?.totalAmount} credits (≈ ${formatNaira(m.serviceRequest?.totalAmount! * usePricingStore.getState().diamondNairaRate)})?`)) {
+                                  if (window.confirm(`Confirm payment of 💎 ${formatAmount(m.serviceRequest?.totalAmount)} credits (≈ ${formatNaira(m.serviceRequest?.totalAmount! * usePricingStore.getState().diamondNairaRate)})?`)) {
                                     handlePayServiceRequest(m.id);
                                   }
                                 }}
                                 disabled={processingIds[m.id]}
                                 className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-yellow-600 text-black font-bold rounded-xl text-xs uppercase tracking-wider hover:scale-[1.02] active:scale-[0.98] transition-transform disabled:opacity-50"
                               >
-                                {processingIds[m.id] ? 'Paying...' : `Pay 💎 ${m.serviceRequest?.totalAmount} Credits`}
+                                {processingIds[m.id] ? 'Paying...' : `Pay 💎 ${formatAmount(m.serviceRequest?.totalAmount)} Credits`}
                               </button>
                               <button
                                 onClick={() => handleDeclineServiceRequest(m.id)}
@@ -2065,7 +2065,7 @@ const PrivateSext: React.FC = () => {
                                 ⚠️ Issue Reported — Under Review
                               </div>
                               <div className="bg-red-950/20 border border-red-500/30 rounded-xl p-3 text-[11px] text-gray-300 leading-relaxed text-left">
-                                Your payment of 💎 {m.serviceRequest?.totalAmount} is under review. You can still request a full withdrawal — your payment will be held until admin resolves this dispute.
+                                Your payment of 💎 {formatAmount(m.serviceRequest?.totalAmount)} is under review. You can still request a full withdrawal — your payment will be held until admin resolves this dispute.
                               </div>
                               <a href="/support" onClick={(e) => { e.preventDefault(); alert("Please contact support at support@vibe.com"); }} className="block text-center text-pink-400 hover:underline text-[11px] font-bold mt-2">
                                 Contact Support
@@ -2491,7 +2491,7 @@ const PrivateSext: React.FC = () => {
               ×
             </button>
             <h3 className="text-xl font-serif italic text-pink-300 mb-2">Send a Gift</h3>
-            <p className="text-[10px] text-yellow-400 uppercase tracking-widest font-bold mb-4">Your balance: 💎 {creditsRemaining} credits</p>
+            <p className="text-[10px] text-yellow-400 uppercase tracking-widest font-bold mb-4">Your balance: 💎 {formatAmount(creditsRemaining)} credits</p>
 
             {/* Category selection */}
             <div className="flex gap-2 border-b border-pink-500/20 pb-3 mb-4 overflow-x-auto no-scrollbar">
@@ -2535,7 +2535,7 @@ const PrivateSext: React.FC = () => {
                       >
                         <span className="text-3xl mb-1">{iconsMap[g.iconUrl] || '🎁'}</span>
                         <span className="text-[10px] font-bold block truncate w-full">{g.name}</span>
-                        <span className="text-[9px] text-yellow-400 font-mono mt-1">💎 {g.creditCost}</span>
+                        <span className="text-[9px] text-yellow-400 font-mono mt-1">💎 {formatAmount(g.creditCost)}</span>
                       </div>
                     );
                   })
@@ -2558,7 +2558,7 @@ const PrivateSext: React.FC = () => {
                   disabled={isSendingGift}
                   className={`w-full py-2.5 bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-black font-bold text-xs uppercase tracking-widest rounded-full transition-all disabled:opacity-50 ${shakeGiftButton ? 'animate-shake' : ''}`}
                 >
-                  {isSendingGift ? 'Sending...' : `Confirm Send (${selectedGift.creditCost} 💎)`}
+                  {isSendingGift ? 'Sending...' : `Confirm Send (${formatAmount(selectedGift.creditCost)} 💎)`}
                 </button>
               </div>
             )}
@@ -2671,7 +2671,7 @@ const PrivateSext: React.FC = () => {
               </div>
               <h2 className="text-3xl font-serif italic mb-2 truncate max-w-xs px-4 text-center" title={selectedConv?.otherUser?.displayName}>{selectedConv?.otherUser?.displayName}</h2>
               <p className="text-xs text-pink-400 uppercase tracking-widest animate-pulse">Incoming {callType} Call...</p>
-              <p className="text-xs text-yellow-400 mt-2 font-mono">Rate: 💎 {callRate} credits / min</p>
+              <p className="text-xs text-yellow-400 mt-2 font-mono">Rate: 💎 {formatAmount(callRate)} credits / min</p>
 
               <div className="flex gap-8 mt-12">
                 <button
@@ -2760,7 +2760,7 @@ const PrivateSext: React.FC = () => {
                   gap: '8px',
                 }}
               >
-                <span>💎 {creditsRemaining.toLocaleString()}</span>
+                <span>💎 {formatAmount(creditsRemaining)}</span>
                 <span style={{ borderLeft: '1px solid rgba(201,168,76,0.3)', paddingLeft: '8px' }}>
                   {Math.floor(callDuration / 60).toString().padStart(2, '0')}:
                   {(callDuration % 60).toString().padStart(2, '0')}

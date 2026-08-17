@@ -3,6 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
 import styles from "./Admin.module.css";
 import { API_BASE_URL } from "../../config";
+import { formatAmount } from "../../lib/pricing";
 
 interface Payout {
   _id: string;
@@ -381,7 +382,7 @@ export const AdminPayoutsPage: React.FC = () => {
                 {payouts.map((p) => (
                   <tr key={p._id}>
                     <td className="font-bold text-white">{p.providerName}</td>
-                    <td className="text-yellow-400 font-mono font-bold">💎 {p.amount.toLocaleString()}</td>
+                    <td className="text-yellow-400 font-mono font-bold">💎 {formatAmount(p.amount)}</td>
                     <td className="text-green-400 font-mono font-bold">₦{p.amountNaira.toLocaleString('en-NG')}</td>
                     <td className="text-xs max-w-xs">
                       <span className="bg-neutral-800 text-zinc-300 font-bold px-2 py-0.5 rounded text-[10px] uppercase block w-max mb-1">
@@ -507,12 +508,12 @@ export const AdminPayoutsPage: React.FC = () => {
                   <div className="grid grid-cols-2 gap-4 mb-4">
                     <div>
                       <p className="text-[10px] uppercase tracking-wider text-zinc-500">Amount in Dispute</p>
-                      <p className="font-mono font-bold text-yellow-400 text-sm">💎 {dispute.amountInDispute}</p>
+                      <p className="font-mono font-bold text-yellow-400 text-sm">💎 {formatAmount(dispute.amountInDispute)}</p>
                       <p className="text-[10px] text-zinc-500">₦{(dispute.amountInDispute * 100).toLocaleString('en-NG')}</p>
                     </div>
                     <div>
                       <p className="text-[10px] uppercase tracking-wider text-zinc-500">Provider share held</p>
-                      <p className="font-mono font-bold text-amber-500 text-sm">💎 {dispute.providerAmountHeld}</p>
+                      <p className="font-mono font-bold text-amber-500 text-sm">💎 {formatAmount(dispute.providerAmountHeld)}</p>
                     </div>
                   </div>
 

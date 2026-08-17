@@ -3,6 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
 import styles from "./Admin.module.css";
 import { API_BASE_URL } from "../../config";
+import { formatAmount } from "../../lib/pricing";
 
 interface Task {
   _id: string;
@@ -229,7 +230,7 @@ export const AdminRewardsPage: React.FC = () => {
                 </div>
                 <div className="text-right">
                   <p className="text-xs text-zinc-400">Awarded</p>
-                  <p className="text-lg font-bold text-yellow-400">💎 {stat.totalCreditsAwarded}</p>
+                  <p className="text-lg font-bold text-yellow-400">💎 {formatAmount(stat.totalCreditsAwarded)}</p>
                 </div>
               </div>
             </div>
@@ -274,7 +275,7 @@ export const AdminRewardsPage: React.FC = () => {
                     {task.description && <div className="text-xs text-zinc-500 mt-0.5">{task.description}</div>}
                   </td>
                   <td className="text-zinc-300 font-mono text-xs">{task.type}</td>
-                  <td className="text-yellow-400 font-bold font-mono">💎 {task.reward}</td>
+                  <td className="text-yellow-400 font-bold font-mono">💎 {formatAmount(task.reward)}</td>
                   <td className="text-zinc-400 text-xs font-mono">{task.actionUrl || "—"}</td>
                   <td className="text-zinc-300 font-mono text-xs">{task.sortOrder}</td>
                   <td>

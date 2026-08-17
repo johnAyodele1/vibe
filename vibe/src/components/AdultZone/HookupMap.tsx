@@ -2,6 +2,7 @@ import React from 'react';
 import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { formatAmount } from '../../lib/pricing';
 
 // Fix Leaflet's default marker icon issue in Vite just in case
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -72,7 +73,7 @@ export const HookupMap: React.FC<HookupMapProps> = ({ providers, center, zoom, o
                   </span>
                   {provider.tonightRate && (
                     <span className="map-popup-rate text-xs font-mono text-[var(--az-accent-gold)]">
-                      💎 {provider.tonightRate} tonight
+                      💎 {formatAmount(provider.tonightRate)} tonight
                     </span>
                   )}
                 </div>
