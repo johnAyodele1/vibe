@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import CamSession from '../models/CamSession';
 import CamViewer from '../models/CamViewer';
 import { generateAgoraToken } from '../services/agora.service';
+import { checkActiveCamSession } from '../services/sessionInvariantService';
 
 export const getCams = async (req: Request, res: Response) => {
   const { page = 1, limit = 20, status = 'live' } = req.query;
@@ -40,20 +41,11 @@ export const startStream = async (req: Request, res: Response) => {
   const appId = process.env.AGORA_APP_ID || '123456';
   const appCertificate = process.env.AGORA_APP_CERTIFICATE || '12345678901234567890123456789012';
 
-  const active = await CamSession.findOne({ providerId: provider._id, status: 'live' });
+  const active = await checkActiveCamSession(provider._id);
   if (active) {
-    const roomId = active.streamKey;
-    const token = generateAgoraToken(appId, appCertificate, roomId, provider._id.toString(), 'publisher', 7200);
-    return res.json({
-      success: true,
-      data: {
-        sessionId: active._id,
-        roomId,
-        streamKey: roomId,
-        token,
-        appId,
-        isExisting: true
-      }
+    return res.status(409).json({
+      success: false,
+      error: 'You are already streaming on another device.'
     });
   }
 
@@ -77,7 +69,17 @@ export const startStream = async (req: Request, res: Response) => {
     startedAt: new Date(),
   });
 
-  await session.save();
+  try {
+    await session.save();
+  } catch (err: any) {
+    if (err.code === 11000 || err.name === 'MongoServerError' || err.message?.includes('E11000') || err.message?.includes('duplicate key')) {
+      return res.status(409).json({
+        success: false,
+        error: 'You are already streaming on another device.'
+      });
+    }
+    throw err;
+  }
 
   const ns = req.app.get('adultNamespace');
   if (ns) {

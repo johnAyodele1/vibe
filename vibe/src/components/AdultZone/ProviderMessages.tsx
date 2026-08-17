@@ -774,6 +774,13 @@ const ProviderMessages: React.FC = () => {
       });
       const data = await res.json();
 
+      if (!res.ok || data.error) {
+        setAcceptLoading(false);
+        const errorMsg = typeof data.error === 'string' ? data.error : (data.error?.message || 'Failed to accept call');
+        toast.error(errorMsg);
+        return;
+      }
+
       const tokenRes = await fetch(`${API_BASE_URL}/v1/adult/zego/token?roomId=${data.roomId || callData.roomId}&type=call`, {
         headers: getHeaders()
       });

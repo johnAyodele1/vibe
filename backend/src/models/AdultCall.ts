@@ -17,8 +17,15 @@ const adultCallSchema = new Schema(
     endedBy: { type: Schema.Types.ObjectId, ref: 'AdultUser', default: null },
     endReason: { type: String, default: '' },
     webrtcRoomId: { type: String, required: true },
+    isActiveSession: { type: Boolean, default: true },
+    activeParticipants: [{ type: Schema.Types.ObjectId, ref: 'AdultUser' }],
   },
   { timestamps: true }
+);
+
+adultCallSchema.index(
+  { activeParticipants: 1 },
+  { name: 'unique_active_call_participants', unique: true, partialFilterExpression: { isActiveSession: true } }
 );
 
 export const AdultCall = mongoose.model('AdultCall', adultCallSchema);
