@@ -15,9 +15,9 @@ import { billCallMinute } from '../controllers/adultSext.controller';
 import { checkActiveCall } from '../services/sessionInvariantService';
 
 let redisClient: Redis | null = null;
-if (process.env.REDIS_URL || process.env.REDIS_HOST) {
+if (process.env.NODE_ENV !== 'test' && (process.env.REDIS_URL || process.env.REDIS_HOST)) {
   try {
-    redisClient = new Redis(process.env.REDIS_URL || '');
+    redisClient = new Redis(process.env.REDIS_URL || '', { maxRetriesPerRequest: 1, enableOfflineQueue: false });
   } catch (err) {
     console.warn('Failed to initialize Redis client inside adultSocket, falling back to in-memory tracking:', err);
   }
@@ -103,6 +103,58 @@ export const cleanStalePresence = async () => {
   }
 
   console.log(`Cleaned up ${staleSessions.length} stale cam sessions on startup`);
+};
+
+export const updateCamSpectatorCount = async (ns: any, sessionId: string) => {
+  try {
+    const room = ns.adapter?.rooms?.get(`cam:${sessionId}`);
+    if (!room) {
+      ns.to(`cam:${sessionId}`).emit('cam:viewerCount', 0);
+      ns.to(`cam:${sessionId}`).emit('cam:viewer_count', { count: 0 });
+      return 0;
+    }
+
+    const session = await CamSession.findById(sessionId).select('providerId peakViewerCount');
+    if (!session) return 0;
+
+    const providerIdStr = session.providerId.toString();
+    const uniqueViewers = new Set<string>();
+
+    const socketsMap = ns.sockets?.sockets || ns.sockets;
+
+    for (const socketId of room) {
+      const socket = socketsMap?.get ? (socketsMap.get(socketId) || socketsMap.get(`/adult#${socketId}`) || socketsMap.get(socketId.replace(/^\/adult#/, ''))) : null;
+      if (socket && socket.data && socket.data.user) {
+        const uId = socket.data.user._id.toString();
+        if (uId !== providerIdStr) {
+          uniqueViewers.add(uId);
+        }
+      }
+    }
+
+    const currentCount = uniqueViewers.size;
+
+    ns.to(`cam:${sessionId}`).emit('cam:viewerCount', currentCount);
+    ns.to(`cam:${sessionId}`).emit('cam:viewer_count', { count: currentCount });
+
+    if (currentCount > (session.peakViewerCount || 0)) {
+      await CamSession.updateOne(
+        {
+          _id: sessionId,
+          $or: [
+            { peakViewerCount: { $lt: currentCount } },
+            { peakViewerCount: { $exists: false } }
+          ]
+        },
+        { $set: { peakViewerCount: currentCount } }
+      );
+    }
+
+    return currentCount;
+  } catch (err) {
+    console.error('Error in updateCamSpectatorCount:', err);
+    return 0;
+  }
 };
 
 export const handleProviderGoesOffline = async (userId: string, namespace: any) => {
@@ -253,37 +305,8 @@ export const setupAdultSocket = (io: Server) => {
     const userId = user._id.toString();
     const accountType = user.role; // 'provider' or 'user'
 
-    // Track active connection
-    await addActiveConnection(userId, socket.id);
-
-    // Join personal user room
+    // Join personal user room immediately
     socket.join(`user:${userId}`);
-
-    // Mark user as online
-    if (accountType === 'provider') {
-      await AdultUser.findByIdAndUpdate(
-        userId,
-        { $set: { 'providerProfile.isOnline': true, 'providerProfile.onlineSince': new Date() } }
-      );
-
-      // Notify members that this provider came online
-      adultNamespace.emit('provider:online', {
-        providerId: userId,
-        isOnline: true,
-      });
-    } else {
-      // Standard member
-      await AdultUser.findByIdAndUpdate(
-        userId,
-        { $set: { isOnline: true, onlineSince: new Date() } }
-      );
-    }
-
-    // Broadcast user status change globally in the adult namespace
-    adultNamespace.emit('user:status', {
-      userId,
-      isOnline: true,
-    });
 
     // Room events (for both standard rooms and naughty rooms)
     socket.on('room:join', (data: any) => {
@@ -408,11 +431,13 @@ export const setupAdultSocket = (io: Server) => {
         const sessionId = typeof data === 'string' ? data : data?.sessionId;
         if (!sessionId) return;
 
-        socket.join(`cam:${sessionId}`);
+        await socket.join(`cam:${sessionId}`);
+        if (!socket.data.camRooms) {
+          socket.data.camRooms = new Set<string>();
+        }
+        socket.data.camRooms.add(sessionId);
 
-        const count = adultNamespace.adapter.rooms.get(`cam:${sessionId}`)?.size || 0;
-        adultNamespace.to(`cam:${sessionId}`).emit('cam:viewerCount', count);
-        adultNamespace.to(`cam:${sessionId}`).emit('cam:viewer_count', { count });
+        await updateCamSpectatorCount(adultNamespace, sessionId);
 
         try {
           await CamViewer.findOneAndUpdate(
@@ -436,10 +461,12 @@ export const setupAdultSocket = (io: Server) => {
         const sessionId = typeof data === 'string' ? data : data?.sessionId;
         if (!sessionId) return;
 
-        socket.leave(`cam:${sessionId}`);
-        const count = adultNamespace.adapter.rooms.get(`cam:${sessionId}`)?.size || 0;
-        adultNamespace.to(`cam:${sessionId}`).emit('cam:viewerCount', count);
-        adultNamespace.to(`cam:${sessionId}`).emit('cam:viewer_count', { count });
+        await socket.leave(`cam:${sessionId}`);
+        if (socket.data.camRooms) {
+          socket.data.camRooms.delete(sessionId);
+        }
+
+        await updateCamSpectatorCount(adultNamespace, sessionId);
 
         try {
           await CamViewer.findOneAndUpdate(
@@ -708,8 +735,48 @@ export const setupAdultSocket = (io: Server) => {
 
     // Individual user room for notifications is already joined above!
 
+    // Asynchronously perform presence & DB updates in background so socket listeners are ready immediately
+    (async () => {
+      // Track active connection
+      await addActiveConnection(userId, socket.id);
+
+      // Mark user as online
+      if (accountType === 'provider') {
+        await AdultUser.findByIdAndUpdate(
+          userId,
+          { $set: { 'providerProfile.isOnline': true, 'providerProfile.onlineSince': new Date() } }
+        );
+
+        // Notify members that this provider came online
+        adultNamespace.emit('provider:online', {
+          providerId: userId,
+          isOnline: true,
+        });
+      } else {
+        // Standard member
+        await AdultUser.findByIdAndUpdate(
+          userId,
+          { $set: { isOnline: true, onlineSince: new Date() } }
+        );
+      }
+
+      // Broadcast user status change globally in the adult namespace
+      adultNamespace.emit('user:status', {
+        userId,
+        isOnline: true,
+      });
+    })().catch(err => console.error('Error in async connection setup:', err));
+
     socket.on('disconnect', async (reason) => {
       console.log(`Adult Socket disconnected: ${socket.id} reason: ${reason}`);
+
+      // Clean up active cam rooms and update spectator counts
+      if (socket.data.camRooms && socket.data.camRooms.size > 0) {
+        for (const sId of socket.data.camRooms) {
+          updateCamSpectatorCount(adultNamespace, sId).catch(err => console.error('Error updating spectator count on disconnect:', err));
+        }
+        socket.data.camRooms.clear();
+      }
 
       // Clean up any active tickers associated with this user/provider
       for (const [callId, ticker] of activeCallTickers.entries()) {
