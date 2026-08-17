@@ -18,7 +18,7 @@ const camSessionSchema = new Schema<ICamSession>(
     status: {
       type: String,
       required: true,
-      enum: ['scheduled', 'live', 'ended', 'interrupted'],
+      enum: ['scheduled', 'pending', 'live', 'ended', 'interrupted'],
       default: 'scheduled',
     },
     streamKey: {
@@ -101,7 +101,12 @@ const camSessionSchema = new Schema<ICamSession>(
 
 camSessionSchema.index(
   { providerId: 1 },
-  { name: 'unique_active_provider_stream', unique: true, partialFilterExpression: { status: 'live' } }
+  { name: 'unique_live_provider_stream', unique: true, partialFilterExpression: { status: 'live' } }
+);
+
+camSessionSchema.index(
+  { providerId: 1 },
+  { name: 'unique_pending_provider_stream', unique: true, partialFilterExpression: { status: 'pending' } }
 );
 
 export const CamSession = mongoose.model<ICamSession>('CamSession', camSessionSchema);

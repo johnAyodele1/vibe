@@ -12,7 +12,16 @@ import { getClientPrice } from '../services/pricingService';
 import app from '../app';
 import Redis from 'ioredis';
 import { billCallMinute } from '../controllers/adultSext.controller';
-import { checkActiveCall } from '../services/sessionInvariantService';
+import { checkActiveCall, endCamSessionAtomic } from '../services/sessionInvariantService';
+
+// Host Socket Registry for Live Broadcast Sessions
+const activeHostSessions = new Map<string, string>(); // sessionId -> socketId
+const socketToHostSession = new Map<string, string>(); // socketId -> sessionId
+const hostDisconnectTimers = new Map<string, NodeJS.Timeout>(); // sessionId -> Timeout
+
+export const isHostSocketActive = (sessionId: string): boolean => {
+  return activeHostSessions.has(sessionId);
+};
 
 let redisClient: Redis | null = null;
 if (process.env.NODE_ENV !== 'test' && (process.env.REDIS_URL || process.env.REDIS_HOST)) {
@@ -82,10 +91,18 @@ export const cleanStalePresence = async () => {
     }
   }
 
+  // Clear in-memory maps
+  activeHostSessions.clear();
+  socketToHostSession.clear();
+  for (const timer of hostDisconnectTimers.values()) {
+    clearTimeout(timer);
+  }
+  hostDisconnectTimers.clear();
+
   // Mark ALL providers as offline on startup
   await AdultUser.updateMany(
     { role: 'provider' },
-    { $set: { 'providerProfile.isOnline': false, 'providerProfile.onlineSince': null } }
+    { $set: { 'providerProfile.isOnline': false, 'providerProfile.isLive': false, 'providerProfile.onlineSince': null } }
   );
 
   // Mark ALL users as offline on startup
@@ -94,12 +111,10 @@ export const cleanStalePresence = async () => {
     { $set: { isOnline: false, onlineSince: null } }
   );
 
-  // End ALL active cam sessions (they cannot survive a server restart)
-  const staleSessions = await CamSession.find({ status: 'live' });
+  // End ALL active/pending cam sessions (they cannot survive a server restart)
+  const staleSessions = await CamSession.find({ status: { $in: ['live', 'pending'] } });
   for (const session of staleSessions) {
-    await CamSession.findByIdAndUpdate(session._id, {
-      $set: { status: 'ended', endedAt: new Date() },
-    });
+    await endCamSessionAtomic(session._id, 'server_restart');
   }
 
   console.log(`Cleaned up ${staleSessions.length} stale cam sessions on startup`);
@@ -158,41 +173,15 @@ export const updateCamSpectatorCount = async (ns: any, sessionId: string) => {
 };
 
 export const handleProviderGoesOffline = async (userId: string, namespace: any) => {
-  // 1. Mark provider as offline
+  if (mongoose.connection.readyState !== 1) return;
+
+  // Mark provider as offline (isLive is owned by the host broadcast session lifecycle)
   await AdultUser.findByIdAndUpdate(
     userId,
     { $set: { 'providerProfile.isOnline': false, 'providerProfile.onlineSince': null } }
   );
 
-  // 2. End any active cam session for this provider
-  const activeSession = await CamSession.findOne({
-    providerId: userId,
-    status: 'live',
-  });
-
-  if (activeSession) {
-    await CamSession.findByIdAndUpdate(activeSession._id, {
-      $set: {
-        status: 'ended',
-        endedAt: new Date(),
-      },
-    });
-
-    // 3. Tell all viewers in this cam room that the stream ended
-    namespace.to(`cam:${activeSession._id}`).emit('cam:session_ended', {
-      sessionId: activeSession._id.toString(),
-      reason: 'provider_disconnected',
-    });
-
-    // 4. Remove from the global live list
-    namespace.emit('cam:session_ended', {
-      sessionId: activeSession._id.toString(),
-    });
-
-    console.log(`Auto-ended cam session ${activeSession._id} because provider ${userId} disconnected`);
-  }
-
-  // 5. Tell members browsing that this provider went offline
+  // Tell members browsing that this provider went offline
   namespace.emit('provider:offline', {
     providerId: userId,
     isOnline: false,
@@ -305,7 +294,82 @@ export const setupAdultSocket = (io: Server) => {
     const userId = user._id.toString();
     const accountType = user.role; // 'provider' or 'user'
 
-    // Join personal user room immediately
+    // Register socket listeners synchronously so early emits are not dropped
+    socket.on('cam:host_start', async (data: { sessionId: string }, callback?: Function) => {
+      try {
+        const { sessionId } = data || {};
+        console.log('[cam:host_start] fired with data:', data, 'socketUserId:', userId);
+        if (!sessionId) {
+          console.log('[cam:host_start] missing sessionId');
+          if (typeof callback === 'function') callback({ success: false, error: 'missing_session_id' });
+          return;
+        }
+
+        const session = await CamSession.findById(sessionId);
+        console.log('[cam:host_start] sessionId:', sessionId, 'found:', !!session, 'sessionProviderId:', session?.providerId?.toString(), 'socketUserId:', userId);
+        if (!session) {
+          console.log('[cam:host_start] session not found:', sessionId);
+          if (typeof callback === 'function') callback({ success: false, error: 'session_not_found' });
+          return;
+        }
+        if (session.providerId.toString() !== userId) {
+          console.log('[cam:host_start] provider mismatch:', session.providerId.toString(), userId);
+          if (typeof callback === 'function') callback({ success: false, error: 'provider_mismatch' });
+          return;
+        }
+
+        // Cancel any pending disconnect grace timer for this session
+        const existingTimer = hostDisconnectTimers.get(sessionId);
+        if (existingTimer) {
+          clearTimeout(existingTimer);
+          hostDisconnectTimers.delete(sessionId);
+        }
+
+        // Register host socket
+        const previousSocketId = activeHostSessions.get(sessionId);
+        if (previousSocketId) {
+          socketToHostSession.delete(previousSocketId);
+        }
+        activeHostSessions.set(sessionId, socket.id);
+        socketToHostSession.set(socket.id, sessionId);
+
+        socket.join(`cam:${sessionId}`);
+
+        // Mark session as LIVE if pending/scheduled
+        if (session.status === 'pending' || session.status === 'scheduled') {
+          session.status = 'live';
+          session.startedAt = session.startedAt || new Date();
+          await session.save();
+
+          await AdultUser.findByIdAndUpdate(userId, {
+            $set: { 'providerProfile.isLive': true }
+          });
+
+          const sessionProvider = socket.data.user;
+
+          adultNamespace.emit('cam:session_started', {
+            sessionId: session._id,
+            providerId: session.providerId,
+            roomId: session.streamKey,
+            streamKey: session.streamKey,
+            providerName: sessionProvider?.providerProfile?.stageName || sessionProvider?.displayName || sessionProvider?.username,
+            avatarUrl: sessionProvider?.profilePhoto || '/placeholder.svg',
+            viewerCount: 0,
+            title: session.title,
+            tags: session.tags || []
+          });
+        }
+        if (typeof callback === 'function') callback({ success: true, sessionId: session._id });
+      } catch (err: any) {
+        console.error('Error in cam:host_start:', err);
+        if (typeof callback === 'function') callback({ success: false, error: err.message });
+      }
+    });
+
+    // Track active connection
+    await addActiveConnection(userId, socket.id);
+
+    // Join personal user room
     socket.join(`user:${userId}`);
 
     // Room events (for both standard rooms and naughty rooms)
@@ -425,7 +489,7 @@ export const setupAdultSocket = (io: Server) => {
       }
     });
 
-    // Cam Events
+    // Cam Events & Host Registration
     socket.on('cam:join', async (data: any) => {
       try {
         const sessionId = typeof data === 'string' ? data : data?.sessionId;
@@ -770,21 +834,32 @@ export const setupAdultSocket = (io: Server) => {
     socket.on('disconnect', async (reason) => {
       console.log(`Adult Socket disconnected: ${socket.id} reason: ${reason}`);
 
-      // Clean up active cam rooms and update spectator counts
-      if (socket.data.camRooms && socket.data.camRooms.size > 0) {
-        for (const sId of socket.data.camRooms) {
-          updateCamSpectatorCount(adultNamespace, sId).catch(err => console.error('Error updating spectator count on disconnect:', err));
-        }
-        socket.data.camRooms.clear();
-      }
-
-      // Clean up any active tickers associated with this user/provider
+      // Clean up any active call tickers associated with this user/provider
       for (const [callId, ticker] of activeCallTickers.entries()) {
         if (callId.includes(userId)) {
           clearInterval(ticker);
           activeCallTickers.delete(callId);
           adultNamespace.to(`call:${callId}`).emit('call:ended', { reason: 'participant_disconnected' });
         }
+      }
+
+      // Check if this disconnecting socket was registered as a stream host broadcast connection
+      const hostedSessionId = socketToHostSession.get(socket.id);
+      if (hostedSessionId) {
+        socketToHostSession.delete(socket.id);
+        if (activeHostSessions.get(hostedSessionId) === socket.id) {
+          activeHostSessions.delete(hostedSessionId);
+        }
+
+        // Start a grace timer to allow temporary network reconnects (200ms in test environment, 10s in production)
+        const graceMs = process.env.NODE_ENV === 'test' ? (process.env.CAM_GRACE_MS ? parseInt(process.env.CAM_GRACE_MS) : 200) : 10000;
+        const timer = setTimeout(async () => {
+          hostDisconnectTimers.delete(hostedSessionId);
+          await endCamSessionAtomic(hostedSessionId, 'host_disconnected', adultNamespace);
+          console.log(`Ended cam session ${hostedSessionId} after host socket disconnect grace period expired`);
+        }, graceMs);
+        timer.unref?.();
+        hostDisconnectTimers.set(hostedSessionId, timer);
       }
 
       // Remove active connection
