@@ -366,10 +366,6 @@ export const setupAdultSocket = (io: Server) => {
       }
     });
 
-    // Track active connection
-    await addActiveConnection(userId, socket.id);
-
-    // Join personal user room
     socket.join(`user:${userId}`);
 
     // Room events (for both standard rooms and naughty rooms)
@@ -833,6 +829,14 @@ export const setupAdultSocket = (io: Server) => {
 
     socket.on('disconnect', async (reason) => {
       console.log(`Adult Socket disconnected: ${socket.id} reason: ${reason}`);
+
+      // Clean up active cam rooms and update spectator counts
+      if (socket.data.camRooms && socket.data.camRooms.size > 0) {
+        for (const sId of socket.data.camRooms) {
+          updateCamSpectatorCount(adultNamespace, sId).catch(err => console.error('Error updating spectator count on disconnect:', err));
+        }
+        socket.data.camRooms.clear();
+      }
 
       // Clean up any active call tickers associated with this user/provider
       for (const [callId, ticker] of activeCallTickers.entries()) {
