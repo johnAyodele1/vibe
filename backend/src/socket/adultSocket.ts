@@ -13,6 +13,7 @@ import app from '../app';
 import Redis from 'ioredis';
 import { billCallMinute } from '../controllers/adultSext.controller';
 import { checkActiveCall, endCamSessionAtomic } from '../services/sessionInvariantService';
+import { sendPushToUser } from '../shared/push';
 
 // Host Socket Registry for Live Broadcast Sessions
 const activeHostSessions = new Map<string, string>(); // sessionId -> socketId
@@ -645,11 +646,11 @@ export const setupAdultSocket = (io: Server) => {
 
         const providerActive = await checkActiveCall(provider._id);
         if (providerActive) {
-          socket.emit('call:error', { message: 'The other user is currently in another call.' });
+          socket.emit('call:error', { message: 'This provider is busy. Try again later.' });
           return;
         }
 
-        const rate = data.isVideo ? (provider.providerProfile.videoCallPrice || 0) : (provider.providerProfile.audioCallPrice || 0);
+        const rate = data.isVideo ? (provider.providerProfile.videoCallPrice || provider.providerProfile.pricePerMinute || 5) : (provider.providerProfile.audioCallPrice || provider.providerProfile.pricePerMinute || 5);
         const userPrice = getClientPrice(rate);
 
         if (socket.data.user.credits < userPrice) {
@@ -657,11 +658,109 @@ export const setupAdultSocket = (io: Server) => {
           return;
         }
 
+        const conversationId = [socket.data.user._id.toString(), provider._id.toString()].sort().join('_');
+        const webrtcRoomId = `room_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+        const call = new AdultCall({
+          conversationId,
+          callerId: socket.data.user._id,
+          receiverId: provider._id,
+          activeParticipants: [socket.data.user._id, provider._id],
+          isActiveSession: true,
+          type: data.isVideo ? 'video' : 'audio',
+          status: 'ringing',
+          perMinuteRate: rate,
+          webrtcRoomId
+        });
+
+        try {
+          await call.save();
+        } catch (err: any) {
+          if (err.code === 11000 || err.name === 'MongoServerError' || err.message?.includes('E11000') || err.message?.includes('duplicate key')) {
+            const checkCallerAgain = await checkActiveCall(socket.data.user._id);
+            if (checkCallerAgain && checkCallerAgain._id.toString() !== call._id.toString()) {
+              socket.emit('call:error', { message: 'You are already on a call on another device.' });
+              return;
+            }
+            socket.emit('call:error', { message: 'This provider is busy. Try again later.' });
+            return;
+          }
+          throw err;
+        }
+
+        // Setup 45s timeout in background for auto-missed cleanup
+        setTimeout(async () => {
+          if (mongoose.connection.readyState !== 1) return;
+          try {
+            const liveCall = await AdultCall.findById(call._id);
+            if (liveCall && liveCall.status === 'ringing') {
+              liveCall.status = 'missed';
+              liveCall.endReason = 'no_answer';
+              liveCall.endedAt = new Date();
+              liveCall.creditsDeducted = 0;
+              liveCall.isActiveSession = false;
+              liveCall.activeParticipants = [];
+              await liveCall.save();
+
+              const systemMsg = new AdultMessage({
+                conversationId: liveCall.conversationId,
+                senderId: liveCall.callerId,
+                receiverId: liveCall.receiverId,
+                content: encrypt("No answer"),
+                messageType: 'system',
+                systemText: "No answer"
+              });
+              await systemMsg.save();
+
+              adultNamespace.to(`user:${socket.data.user._id.toString()}`).emit('call:missed', { callId: call._id });
+              adultNamespace.to(`user:${provider._id.toString()}`).emit('call:missed', { callId: call._id });
+            }
+          } catch (err) {
+            // Ignore background query errors during teardown
+          }
+        }, 45000);
+
         adultNamespace.to(`user:${provider._id}`).emit('call:incoming', {
+          callId: call._id,
           callerId: socket.data.user._id,
           callerUsername: socket.data.user.username,
+          callerName: socket.data.user.displayName || socket.data.user.username,
+          callerAvatar: socket.data.user.profilePhoto || '/placeholder.svg',
+          type: data.isVideo ? 'video' : 'audio',
           isVideo: data.isVideo,
+          webrtcRoomId,
           rate: userPrice,
+        });
+
+        // Trigger call push notification
+        sendPushToUser(provider._id, {
+          title: data.isVideo
+            ? `📹 Incoming video call from ${socket.data.user.displayName || socket.data.user.username}`
+            : `📞 Incoming call from ${socket.data.user.displayName || socket.data.user.username}`,
+          body: 'Tap to answer',
+          icon: socket.data.user.profilePhoto || '/icons/icon-192x192.png',
+          badge: '/icons/badge-72x72.png',
+          tag: `call_${call._id}`,
+          renotify: true,
+          vibrate: [500, 200, 500, 200, 500],
+          requireInteraction: true,
+          url: `/adult/sext?conversation=${conversationId}&call=${call._id}`,
+          unreadCount: 0,
+          type: 'incoming_call',
+          callId: call._id.toString(),
+          callType: data.isVideo ? 'video' : 'audio',
+          actions: [
+            { action: 'answer', title: '📞 Answer' },
+            { action: 'decline', title: 'Decline' },
+          ],
+        }).catch(err => console.error('[Push][Call] Failed:', err));
+
+        socket.emit('call:requested', {
+          callId: call._id,
+          roomId: webrtcRoomId,
+          webrtcRoomId,
+          perMinuteRate: rate,
+          status: call.status
         });
       } catch (err) {
         console.error('Call request error:', err);
@@ -671,49 +770,34 @@ export const setupAdultSocket = (io: Server) => {
     socket.on('call:accept', async (data: { callerId: string, isVideo: boolean, callId?: string }) => {
       try {
         const provider = socket.data.user;
-        const caller = await AdultUser.findById(data.callerId);
-        if (!caller) return;
+        let call: any = null;
+        if (data.callId) {
+          call = await AdultCall.findById(data.callId);
+        }
+        if (!call) {
+          call = await AdultCall.findOne({
+            callerId: data.callerId,
+            receiverId: provider._id,
+            status: 'ringing',
+            isActiveSession: true
+          });
+        }
 
-        const callId = data.callId || `${data.callerId}_${provider._id}`;
+        if (!call || call.status !== 'ringing') {
+          socket.emit('call:error', { message: 'Call is no longer available or already active.' });
+          return;
+        }
 
         const callerActive = await checkActiveCall(data.callerId);
-        if (callerActive && callerActive._id.toString() !== callId) {
+        if (callerActive && callerActive._id.toString() !== call._id.toString()) {
           socket.emit('call:error', { message: 'The caller is currently in another call.' });
           return;
         }
 
         const providerActive = await checkActiveCall(provider._id);
-        if (providerActive && providerActive._id.toString() !== callId) {
+        if (providerActive && providerActive._id.toString() !== call._id.toString()) {
           socket.emit('call:error', { message: 'You are already on a call on another device.' });
           return;
-        }
-
-        const rate = data.isVideo ? (provider.providerProfile?.videoCallPrice || provider.providerProfile?.pricePerMinute || 0) : (provider.providerProfile?.audioCallPrice || provider.providerProfile?.pricePerMinute || 0);
-        const userPrice = getClientPrice(rate);
-
-        let call = await AdultCall.findById(callId);
-
-        if (!call) {
-          // If call record doesn't exist yet, create it
-          const conversationId = [data.callerId, provider._id.toString()].sort().join('_');
-          call = new AdultCall({
-            _id: callId,
-            conversationId,
-            callerId: data.callerId,
-            receiverId: provider._id,
-            activeParticipants: [data.callerId, provider._id],
-            isActiveSession: true,
-            type: data.isVideo ? 'video' : 'audio',
-            status: 'ringing',
-            perMinuteRate: rate,
-            webrtcRoomId: `room_${Date.now()}_${Math.floor(Math.random() * 1000)}`
-          });
-          try {
-            await call.save();
-          } catch (err: any) {
-            socket.emit('call:error', { message: 'You are already on a call on another device.' });
-            return;
-          }
         }
 
         // Bill Minute 1 atomically before marking as active
@@ -724,35 +808,94 @@ export const setupAdultSocket = (io: Server) => {
           return;
         }
 
-        call.status = 'active';
-        call.isActiveSession = true;
-        call.activeParticipants = [call.callerId, call.receiverId];
-        call.startedAt = new Date();
-        await call.save();
+        const updatedCall = await AdultCall.findOneAndUpdate(
+          { _id: call._id, status: 'ringing', isActiveSession: true },
+          { $set: { status: 'active', startedAt: new Date() } },
+          { new: true }
+        );
+
+        if (!updatedCall) {
+          socket.emit('call:error', { message: 'Call is no longer available or already active.' });
+          return;
+        }
 
         adultNamespace.to(`user:${data.callerId}`).emit('call:accepted', {
           providerId: provider._id,
           isVideo: data.isVideo,
-          callId
+          callId: updatedCall._id,
+          webrtcRoomId: updatedCall.webrtcRoomId
         });
 
-        socket.join(`call:${callId}`);
+        socket.join(`call:${updatedCall._id}`);
       } catch (err) {
         console.error('Call accept error:', err);
       }
     });
 
-    socket.on('call:reject', (data: { callerId: string }) => {
-      adultNamespace.to(`user:${data.callerId}`).emit('call:rejected', { reason: 'declined' });
+    socket.on('call:reject', async (data: { callerId: string, callId?: string }) => {
+      try {
+        const provider = socket.data.user;
+        let call: any = null;
+        if (data.callId) {
+          call = await AdultCall.findById(data.callId);
+        }
+        if (!call) {
+          call = await AdultCall.findOne({
+            callerId: data.callerId,
+            receiverId: provider._id,
+            status: 'ringing',
+            isActiveSession: true
+          });
+        }
+
+        if (call && call.status === 'ringing') {
+          call.status = 'declined';
+          call.endReason = 'declined';
+          call.endedAt = new Date();
+          call.creditsDeducted = 0;
+          call.isActiveSession = false;
+          call.activeParticipants = [];
+          await call.save();
+
+          const systemMsg = new AdultMessage({
+            conversationId: call.conversationId,
+            senderId: call.receiverId,
+            receiverId: call.callerId,
+            content: encrypt("Call declined"),
+            messageType: 'system',
+            systemText: "Call declined"
+          });
+          await systemMsg.save();
+        }
+
+        adultNamespace.to(`user:${data.callerId}`).emit('call:rejected', { reason: 'declined', callId: call?._id });
+      } catch (err) {
+        console.error('Call reject error:', err);
+      }
     });
 
-    socket.on('call:end', (data: { callId: string }) => {
-      const ticker = activeCallTickers.get(data.callId);
-      if (ticker) {
-        clearInterval(ticker);
-        activeCallTickers.delete(data.callId);
+    socket.on('call:end', async (data: { callId: string, reason?: string }) => {
+      try {
+        if (data.callId) {
+          const ticker = activeCallTickers.get(data.callId);
+          if (ticker) {
+            clearInterval(ticker);
+            activeCallTickers.delete(data.callId);
+          }
+          const call = await AdultCall.findById(data.callId);
+          if (call && call.isActiveSession) {
+            call.status = 'ended';
+            call.endedAt = new Date();
+            call.endReason = data.reason || 'ended';
+            call.isActiveSession = false;
+            call.activeParticipants = [];
+            await call.save();
+          }
+        }
+        adultNamespace.to(`call:${data.callId}`).emit('call:ended', { reason: data.reason || 'ended' });
+      } catch (err) {
+        console.error('Call end error:', err);
       }
-      adultNamespace.to(`call:${data.callId}`).emit('call:ended', { reason: 'ended' });
     });
 
     socket.on('call:join', (data: { callId: string }) => {
