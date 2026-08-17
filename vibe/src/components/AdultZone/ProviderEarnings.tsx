@@ -10,6 +10,8 @@ const ProviderEarnings: React.FC = () => {
 
   const [dateRange, setDateRange] = useState('This Month');
   const [totalEarned, setTotalEarned] = useState(0);
+  const [grossEarned, setGrossEarned] = useState(0);
+  const [platformFee, setPlatformFee] = useState(0);
   const [paidOut, setPaidOut] = useState(0);
   const [pending, setPending] = useState(0);
   const [transactions, setTransactions] = useState<any[]>([]);
@@ -30,10 +32,12 @@ const ProviderEarnings: React.FC = () => {
       });
       const json = await res.json();
       if (json.success) {
-        setTotalEarned(json.data.totalEarned);
-        setPaidOut(json.data.paidOut);
-        setPending(json.data.pending);
-        setTransactions(json.data.transactions);
+        setTotalEarned(json.data.totalEarned || 0);
+        setGrossEarned(json.data.grossEarned !== undefined ? json.data.grossEarned : (json.data.totalEarned || 0));
+        setPlatformFee(json.data.platformFee !== undefined ? json.data.platformFee : 0);
+        setPaidOut(json.data.paidOut || 0);
+        setPending(json.data.pending || 0);
+        setTransactions(json.data.transactions || []);
         setTimeline(json.data.timeline || []);
         setCurrentPage(1); // reset to first page on fetch / dateRange change
       } else {
@@ -121,11 +125,11 @@ const ProviderEarnings: React.FC = () => {
               <div className="space-y-2 text-xs mb-3 border-b border-[var(--az-border)]/30 pb-3">
                 <div className="flex justify-between">
                   <span className="text-[var(--az-text-secondary)]">Gross earnings</span>
-                  <span className="font-mono">💎 {formatAmount(totalEarned / 0.85)}</span>
+                  <span className="font-mono">💎 {formatAmount(grossEarned)}</span>
                 </div>
                 <div className="flex justify-between text-[var(--az-accent-rose)]">
                   <span>Platform fee (15%)</span>
-                  <span className="font-mono">- 💎 {formatAmount((totalEarned / 0.85) * 0.15)}</span>
+                  <span className="font-mono">- 💎 {formatAmount(platformFee)}</span>
                 </div>
                 <div className="flex justify-between text-[var(--az-accent-gold)] font-bold">
                   <span>Your earnings (85%)</span>

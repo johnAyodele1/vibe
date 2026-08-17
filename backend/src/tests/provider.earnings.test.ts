@@ -4,7 +4,6 @@ import { MongoMemoryServer } from 'mongodb-memory-server';
 import app from '../app';
 import AdultUser from '../models/AdultUser';
 import CreditTransaction from '../models/CreditTransaction';
-import PayoutRequest from '../models/PayoutRequest';
 import AppConfig from '../models/AppConfig';
 import jwt from 'jsonwebtoken';
 
@@ -38,10 +37,10 @@ describe('Provider Earnings & Payout API', () => {
       dateOfBirth: new Date('1995-01-01'),
       role: 'provider',
       country: 'Nigeria',
-      credits: 20000, // Starts with 20000 credits in their wallet
+      credits: 20000,
       providerProfile: {
         stageName: 'Lucia Gold',
-        totalEarnings: 15000, // Accumulated 15000 credits over time
+        totalEarnings: 15000, // Lifetime total earnings accumulated
         pendingPayout: 0,
         verificationStatus: 'approved',
         payoutInfo: {
@@ -81,16 +80,18 @@ describe('Provider Earnings & Payout API', () => {
     await mongoServer.stop();
   });
 
-  it('GET /api/v1/adult/providers/me/earnings returns default earnings if no transactions exist', async () => {
+  it('GET /api/v1/adult/providers/me/earnings returns 0 period earnings if no transactions exist in the period, while preserving pending payout from lifetime earnings', async () => {
     const res = await request(app)
-      .get('/api/v1/adult/providers/me/earnings')
+      .get('/api/v1/adult/providers/me/earnings?dateRange=This Month')
       .set('Authorization', `Bearer ${providerToken}`)
       .expect(200);
 
     expect(res.body.success).toBe(true);
-    expect(res.body.data.totalEarned).toBe(15000);
+    expect(res.body.data.totalEarned).toBe(0);
+    expect(res.body.data.grossEarned).toBe(0);
+    expect(res.body.data.platformFee).toBe(0);
     expect(res.body.data.paidOut).toBe(0);
-    // 15000 * 100 = 1500000
+    // Pending payout uses lifetime total earnings (15000 * 100 = 1500000)
     expect(res.body.data.pending).toBe(1500000);
     expect(res.body.data.timeline).toHaveLength(6);
     expect(res.body.data.transactions).toHaveLength(0);
@@ -102,6 +103,7 @@ describe('Provider Earnings & Payout API', () => {
       userId: providerId,
       type: 'tip_received',
       amount: 15000,
+      platformFee: 2647.06,
       usdAmount: 112.5,
       nairaAmount: 1500000,
       description: 'Fan tips',
@@ -122,7 +124,6 @@ describe('Provider Earnings & Payout API', () => {
   });
 
   it('GET /api/v1/adult/providers/me/earnings reflects paid out after admin completes the queued request', async () => {
-    // 1. Advance payout status queued -> verifying -> processing -> completed
     await request(app)
       .put(`/api/admin/payouts/${activeRequestId}/verify`)
       .set('Authorization', `Bearer ${adminToken}`)
@@ -139,9 +140,8 @@ describe('Provider Earnings & Payout API', () => {
       .send({ reference: 'REF-BANK-999' })
       .expect(200);
 
-    // 2. Now check provider earnings matches expected completed values
     const res = await request(app)
-      .get('/api/v1/adult/providers/me/earnings')
+      .get('/api/v1/adult/providers/me/earnings?dateRange=This Month')
       .set('Authorization', `Bearer ${providerToken}`)
       .expect(200);
 
@@ -152,7 +152,6 @@ describe('Provider Earnings & Payout API', () => {
   });
 
   it('POST /api/v1/adult/providers/me/payout fails if pending payout is below threshold', async () => {
-    // Now that previous transactions are paid out, eligible is 0
     const res = await request(app)
       .post('/api/v1/adult/providers/me/payout')
       .set('Authorization', `Bearer ${providerToken}`)
@@ -160,5 +159,165 @@ describe('Provider Earnings & Payout API', () => {
 
     expect(res.body.success).toBe(false);
     expect(res.body.error).toBe('NO_ELIGIBLE_BALANCE');
+  });
+
+  it('proves canonical aggregation consistency across Dashboard and Detailed Earnings endpoints', async () => {
+    // Clear transactions for isolated test provider
+    const p2 = new AdultUser({
+      email: 'p2@vibe.com',
+      passwordHash: 'pass',
+      username: 'p2user',
+      displayName: 'Provider Two',
+      dateOfBirth: new Date('1992-01-01'),
+      role: 'provider',
+      country: 'Nigeria',
+      credits: 5000,
+      providerProfile: {
+        stageName: 'Provider Two',
+        totalEarnings: 3663.80, // Lifetime total in profile
+        pendingPayout: 0,
+        verificationStatus: 'approved'
+      }
+    });
+    await p2.save();
+    const p2Token = jwt.sign({ sub: p2._id.toString() }, process.env.ADULT_JWT_SECRET || 'adult_secret');
+
+    const now = new Date();
+
+    // 1. Multiple legitimate earning types recorded this month
+    await CreditTransaction.create({
+      userId: p2._id,
+      type: 'tip_received',
+      amount: 850,
+      platformFee: 150,
+      usdAmount: 0,
+      description: 'Tip received',
+      status: 'completed',
+      createdAt: now,
+    });
+
+    await CreditTransaction.create({
+      userId: p2._id,
+      type: 'call_earning',
+      amount: 1700,
+      platformFee: 300,
+      usdAmount: 0,
+      description: 'Call payout',
+      status: 'completed',
+      createdAt: now,
+    });
+
+    await CreditTransaction.create({
+      userId: p2._id,
+      type: 'service_payment_received',
+      amount: 850,
+      platformFee: 150,
+      usdAmount: 0,
+      description: 'Service request payment',
+      status: 'completed',
+      createdAt: now,
+    });
+
+    await CreditTransaction.create({
+      userId: p2._id,
+      type: 'paid_media_unlock',
+      amount: 263.80,
+      platformFee: 46.55,
+      usdAmount: 0,
+      description: 'Photo unlock',
+      status: 'completed',
+      createdAt: now,
+    });
+
+    await CreditTransaction.create({
+      userId: p2._id,
+      type: 'spin_wheel',
+      amount: 76,
+      platformFee: 13.41,
+      usdAmount: 0,
+      description: 'Spin wheel prize',
+      status: 'completed',
+      createdAt: now,
+    });
+
+    // 2. Non-earning positive transactions that MUST be excluded from earnings reports:
+    await CreditTransaction.create({
+      userId: p2._id,
+      type: 'purchase',
+      amount: 500,
+      platformFee: 0,
+      usdAmount: 0,
+      description: 'Credit purchase',
+      status: 'completed',
+      createdAt: now,
+    });
+
+    await CreditTransaction.create({
+      userId: p2._id,
+      type: 'bonus',
+      amount: 100,
+      platformFee: 0,
+      usdAmount: 0,
+      description: 'Welcome bonus',
+      status: 'completed',
+      createdAt: now,
+    });
+
+    // 3. Transactions outside current month (must be excluded from This Month report)
+    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 15);
+    await CreditTransaction.create({
+      userId: p2._id,
+      type: 'tip_received',
+      amount: 1000,
+      platformFee: 176.47,
+      usdAmount: 0,
+      description: 'Old tip',
+      status: 'completed',
+      createdAt: lastMonth,
+    });
+
+    // Fetch Dashboard stats
+    const dashRes = await request(app)
+      .get('/api/v1/adult/providers/me/dashboard')
+      .set('Authorization', `Bearer ${p2Token}`)
+      .expect(200);
+
+    // Fetch Detailed Earnings report for "This Month"
+    const earningsRes = await request(app)
+      .get('/api/v1/adult/providers/me/earnings?dateRange=This Month')
+      .set('Authorization', `Bearer ${p2Token}`)
+      .expect(200);
+
+    const expectedEarningSum = 850 + 1700 + 850 + 263.80 + 76; // = 3739.80
+    const expectedPlatformFeeSum = 150 + 300 + 150 + 46.55 + 13.41; // = 659.96
+    const expectedGrossSum = expectedEarningSum + expectedPlatformFeeSum; // = 4399.76
+
+    // Assertion 1: Dashboard This Month and Detailed Earnings This Month return the EXACT SAME provider-net total
+    expect(dashRes.body.data.stats.monthEarnings).toBeCloseTo(expectedEarningSum, 2);
+    expect(earningsRes.body.data.totalEarned).toBeCloseTo(expectedEarningSum, 2);
+    expect(dashRes.body.data.stats.monthEarnings).toEqual(earningsRes.body.data.totalEarned);
+
+    // Assertion 2: Non-earning positive transactions (purchase 500, bonus 100) are excluded
+    // (If non-earning txs were included, sum would be 4339.80; if lastMonth included, sum would be 4739.80)
+    expect(dashRes.body.data.stats.monthEarnings).not.toBe(4339.80);
+    expect(dashRes.body.data.stats.monthEarnings).not.toBe(4739.80);
+
+    // Assertion 3: Platform fees and gross earnings are calculated from stored transaction data
+    expect(earningsRes.body.data.platformFee).toBeCloseTo(expectedPlatformFeeSum, 2);
+    expect(earningsRes.body.data.grossEarned).toBeCloseTo(expectedGrossSum, 2);
+
+    // Assertion 4: Selected-period report does not accidentally use lifetime providerProfile.totalEarnings (3663.80)
+    expect(earningsRes.body.data.totalEarned).not.toBe(p2.providerProfile!.totalEarnings);
+
+    // Assertion 5: Transactions outside selected period are excluded when date range is Today
+    const todayRes = await request(app)
+      .get('/api/v1/adult/providers/me/earnings?dateRange=Today')
+      .set('Authorization', `Bearer ${p2Token}`)
+      .expect(200);
+
+    expect(todayRes.body.data.totalEarned).toBeCloseTo(expectedEarningSum, 2);
+
+    // Assertion 6: Multiple earning types are aggregated correctly
+    expect(earningsRes.body.data.transactions).toHaveLength(7); // 7 txs created this month for p2 (excluding 1 lastMonth tx)
   });
 });

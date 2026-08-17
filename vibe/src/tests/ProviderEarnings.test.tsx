@@ -20,6 +20,8 @@ describe('ProviderEarnings Component', () => {
             success: true,
             data: {
               totalEarned: 74200,
+              grossEarned: 87294.12,
+              platformFee: 13094.12,
               paidOut: 45000,
               pending: 600000,
               timeline: [
@@ -51,9 +53,10 @@ describe('ProviderEarnings Component', () => {
       </MemoryRouter>
     );
 
-    // Verify loading spinner shows or data appears
     await waitFor(() => {
       expect(screen.getByText(/💎 74,?200/)).toBeInTheDocument();
+      expect(screen.getByText(/💎 87,?294\.12/)).toBeInTheDocument();
+      expect(screen.getByText(/- 💎 13,?094\.12/)).toBeInTheDocument();
       expect(screen.getByText('₦45,000')).toBeInTheDocument();
       expect(screen.getByText('₦600,000')).toBeInTheDocument();
       expect(screen.getByText('Member_3821')).toBeInTheDocument();
@@ -63,7 +66,6 @@ describe('ProviderEarnings Component', () => {
   });
 
   it('supports beautiful client-side pagination', async () => {
-    // Override fetch to return 12 mock transactions
     mockFetch.mockImplementation(async (input: any) => {
       const url = typeof input === 'string' ? input : input.url;
       if (url.includes('/v1/adult/providers/me/earnings')) {
@@ -73,6 +75,8 @@ describe('ProviderEarnings Component', () => {
             success: true,
             data: {
               totalEarned: 1000,
+              grossEarned: 1176.47,
+              platformFee: 176.47,
               paidOut: 0,
               pending: 0,
               timeline: [],
@@ -98,25 +102,21 @@ describe('ProviderEarnings Component', () => {
       </MemoryRouter>
     );
 
-    // Page 1 should show User_0 to User_9 but not User_10
     await waitFor(() => {
       expect(screen.getByText('User_0')).toBeInTheDocument();
       expect(screen.getByText('User_9')).toBeInTheDocument();
     });
     expect(screen.queryByText('User_10')).not.toBeInTheDocument();
 
-    // Find the Next page button
     const nextButton = screen.getByRole('button', { name: /Next/i });
     expect(nextButton).toBeInTheDocument();
     fireEvent.click(nextButton);
 
-    // Now User_10 and User_11 should be shown, User_0 and User_9 should be hidden
     await waitFor(() => {
       expect(screen.getByText('User_10')).toBeInTheDocument();
     });
     expect(screen.queryByText('User_0')).not.toBeInTheDocument();
 
-    // Go back to Page 1
     const prevButton = screen.getByRole('button', { name: /Prev/i });
     fireEvent.click(prevButton);
 
@@ -125,11 +125,9 @@ describe('ProviderEarnings Component', () => {
     });
     expect(screen.queryByText('User_10')).not.toBeInTheDocument();
 
-    // Change rows per page size to 15
     const rowsSelect = screen.getByTestId('rows-per-page-select');
     fireEvent.change(rowsSelect, { target: { value: '15' } });
 
-    // Now all 12 users should be visible since limit is 15
     await waitFor(() => {
       expect(screen.getByText('User_0')).toBeInTheDocument();
       expect(screen.getByText('User_10')).toBeInTheDocument();
@@ -149,7 +147,6 @@ describe('ProviderEarnings Component', () => {
 
     const payoutButton = screen.getByRole('button', { name: /Request Early Payout/i });
 
-    // Mock payout API success
     mockFetch.mockImplementation(async (input: any) => {
       const url = typeof input === 'string' ? input : input.url;
       if (url.includes('/v1/adult/providers/me/payout')) {
@@ -165,6 +162,8 @@ describe('ProviderEarnings Component', () => {
             success: true,
             data: {
               totalEarned: 74200,
+              grossEarned: 87294.12,
+              platformFee: 13094.12,
               paidOut: 55650,
               pending: 0.00,
               timeline: [],
