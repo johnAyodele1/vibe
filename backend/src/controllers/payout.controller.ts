@@ -6,6 +6,7 @@ import PayoutRequest from '../models/PayoutRequest';
 import Report from '../models/Report';
 import { getDiamondNairaRate } from '../shared/pricing';
 import { sendPushToUser } from '../shared/push';
+import { PROVIDER_EARNING_TYPES } from '../shared/earnings';
 
 /**
  * Helper to construct payout details snapshot from provider profile.
@@ -38,23 +39,9 @@ export const getEligiblePayout = async (req: Request, res: Response) => {
     }
 
     // Unpaid, eligible transactions for this provider
-    // Allowed earning types
-    const earningTypes = [
-      'tip_received',
-      'cam_tip',
-      'tip',
-      'call_earning',
-      'service_payment_received',
-      'gift_received',
-      'paid_media_earning',
-      'paid_media_unlock',
-      'spin_earning',
-      'spin_wheel'
-    ];
-
     const eligibleTxs = await CreditTransaction.find({
       userId: user._id,
-      type: { $in: earningTypes },
+      type: { $in: PROVIDER_EARNING_TYPES },
       status: 'completed',
       eligibleForPayout: true,
       paidOut: { $ne: true },
@@ -269,22 +256,9 @@ export const requestPayout = async (req: Request, res: Response) => {
     }
 
     // 3. Calculate eligible amount
-    const earningTypes = [
-      'tip_received',
-      'cam_tip',
-      'tip',
-      'call_earning',
-      'service_payment_received',
-      'gift_received',
-      'paid_media_earning',
-      'paid_media_unlock',
-      'spin_earning',
-      'spin_wheel'
-    ];
-
     const eligibleTxs = await CreditTransaction.find({
       userId: user._id,
-      type: { $in: earningTypes },
+      type: { $in: PROVIDER_EARNING_TYPES },
       status: 'completed',
       eligibleForPayout: true,
       paidOut: { $ne: true },
