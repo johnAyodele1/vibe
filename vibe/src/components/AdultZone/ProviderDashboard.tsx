@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../../config';
-import { usePricingStore, formatNaira } from '../../lib/pricing';
+import { usePricingStore, formatNaira, formatAmount } from '../../lib/pricing';
 
 const ProviderDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -166,17 +166,17 @@ const ProviderDashboard: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="space-y-1">
               <p className="text-xs text-[var(--az-text-secondary)] font-serif italic">Today's Earnings</p>
-              <p className="text-4xl font-mono font-bold text-[var(--az-accent-gold)]">💎 {stats.todayEarnings}</p>
+              <p className="text-4xl font-mono font-bold text-[var(--az-accent-gold)]">💎 {formatAmount(stats.todayEarnings)}</p>
               <p className="text-xs text-[var(--az-text-muted)]">≈ {formatNaira(stats.todayEarnings * usePricingStore.getState().diamondNairaRate)} est.</p>
             </div>
             <div className="space-y-1 border-t md:border-t-0 md:border-l border-[var(--az-border)]/50 pt-4 md:pt-0 md:pl-8">
               <p className="text-xs text-[var(--az-text-secondary)] font-serif italic">This Week</p>
-              <p className="text-4xl font-mono font-bold text-white">💎 {stats.weekEarnings}</p>
+              <p className="text-4xl font-mono font-bold text-white">💎 {formatAmount(stats.weekEarnings)}</p>
               <p className="text-xs text-[var(--az-text-muted)]">≈ {formatNaira(stats.weekEarnings * usePricingStore.getState().diamondNairaRate)} est.</p>
             </div>
             <div className="space-y-1 border-t md:border-t-0 md:border-l border-[var(--az-border)]/50 pt-4 md:pt-0 md:pl-8">
               <p className="text-xs text-[var(--az-text-secondary)] font-serif italic">This Month</p>
-              <p className="text-4xl font-mono font-bold text-white">💎 {stats.monthEarnings}</p>
+              <p className="text-4xl font-mono font-bold text-white">💎 {formatAmount(stats.monthEarnings)}</p>
               <p className="text-xs text-[var(--az-text-muted)]">≈ {formatNaira(stats.monthEarnings * usePricingStore.getState().diamondNairaRate)} est.</p>
             </div>
           </div>
@@ -226,7 +226,7 @@ const ProviderDashboard: React.FC = () => {
                         <p className="font-medium text-white">{session.date}</p>
                         <p className="text-[10px] text-[var(--az-text-secondary)]">👁️ {session.peakViewers} peak spectators</p>
                       </div>
-                      <span className="font-mono text-[var(--az-accent-gold)] font-bold">💎 {session.tips}</span>
+                      <span className="font-mono text-[var(--az-accent-gold)] font-bold">💎 {formatAmount(session.tips)}</span>
                     </div>
                   ))
                 ) : (

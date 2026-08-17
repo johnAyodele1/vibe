@@ -1834,7 +1834,7 @@ const ProviderMessages: React.FC = () => {
 
                         {m.serviceRequest?.status === 'reported' && (
                           <div className="bg-red-950/20 border border-red-500/30 rounded-xl p-3 text-[11px] text-gray-300 leading-relaxed mt-2 text-left">
-                            A dispute has been raised on this service charge. Your payout for 💎 {m.serviceRequest ? Math.floor(m.serviceRequest.totalAmount * 0.85) : 0} is on hold pending review.
+                            A dispute has been raised on this service charge. Your payout for 💎 {m.serviceRequest ? formatAmount(m.serviceRequest.totalAmount * 0.85) : 0} is on hold pending review.
                           </div>
                         )}
                       </div>
@@ -2385,7 +2385,7 @@ const ProviderMessages: React.FC = () => {
                       >
                         <span className="text-3xl mb-1">{iconsMap[g.iconUrl] || '🎁'}</span>
                         <span className="text-[10px] font-bold block truncate w-full">{g.name}</span>
-                        <span className="text-[9px] text-yellow-400 font-mono mt-1">💎 {g.creditCost}</span>
+                        <span className="text-[9px] text-yellow-400 font-mono mt-1">💎 {formatAmount(g.creditCost)}</span>
                       </div>
                     );
                   })
@@ -2683,7 +2683,7 @@ const ProviderMessages: React.FC = () => {
                       {user?.role === 'provider' ? (
                         <>
                           <span className="text-gray-400">Credits Earned:</span>
-                          <span className="font-bold text-yellow-400">💎 {callSummary.cost}</span>
+                          <span className="font-bold text-yellow-400">💎 {formatAmount(callSummary.cost)}</span>
                         </>
                       ) : (
                         <>

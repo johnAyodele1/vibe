@@ -508,12 +508,12 @@ export const AdminPayoutsPage: React.FC = () => {
                   <div className="grid grid-cols-2 gap-4 mb-4">
                     <div>
                       <p className="text-[10px] uppercase tracking-wider text-zinc-500">Amount in Dispute</p>
-                      <p className="font-mono font-bold text-yellow-400 text-sm">💎 {dispute.amountInDispute}</p>
+                      <p className="font-mono font-bold text-yellow-400 text-sm">💎 {formatAmount(dispute.amountInDispute)}</p>
                       <p className="text-[10px] text-zinc-500">₦{(dispute.amountInDispute * 100).toLocaleString('en-NG')}</p>
                     </div>
                     <div>
                       <p className="text-[10px] uppercase tracking-wider text-zinc-500">Provider share held</p>
-                      <p className="font-mono font-bold text-amber-500 text-sm">💎 {dispute.providerAmountHeld}</p>
+                      <p className="font-mono font-bold text-amber-500 text-sm">💎 {formatAmount(dispute.providerAmountHeld)}</p>
                     </div>
                   </div>
 
