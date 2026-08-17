@@ -108,7 +108,7 @@ describe('Cam Session Lifecycle Integration Tests (A - N)', () => {
       });
       activeClients.push(client);
       client.on('connect', () => resolve(client));
-      client.on('connect_error', (err) => reject(err));
+      client.on('connect_error', (err: any) => reject(err));
     });
   };
 
@@ -359,7 +359,7 @@ describe('Cam Session Lifecycle Integration Tests (A - N)', () => {
     viewerSocket.emit('cam:join', sessionId);
 
     let streamEndedEventReceived = false;
-    viewerSocket.on('cam:session_ended', (data) => {
+    viewerSocket.on('cam:session_ended', (data: any) => {
       if (data.sessionId === sessionId) {
         streamEndedEventReceived = true;
       }

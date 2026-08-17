@@ -5,8 +5,8 @@ import { generateAgoraToken } from '../services/agora.service';
 import { checkActiveCamSession, endCamSessionAtomic } from '../services/sessionInvariantService';
 
 export const getCams = async (req: Request, res: Response) => {
-  const { page = 1, limit = 20, status = 'live' } = req.query;
-  const query: any = { status };
+  const { page = 1, limit = 20, status } = req.query;
+  const query: any = { status: status ? status : { $in: ['live', 'pending'] } };
 
   const sessions = await CamSession.find(query)
     .populate({
