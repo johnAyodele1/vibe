@@ -1,6 +1,6 @@
 import request from 'supertest';
 import mongoose from 'mongoose';
-import { MongoMemoryReplSet } from 'mongodb-memory-server';
+import { MongoMemoryServer } from 'mongodb-memory-server';
 import app from '../app';
 import AdultUser from '../models/AdultUser';
 import AdultCall from '../models/AdultCall';
@@ -9,7 +9,7 @@ import AdultConversation from '../models/AdultConversation';
 import jwt from 'jsonwebtoken';
 
 describe('Single-Active-Session Invariant Integration Tests', () => {
-  let mongoServer: MongoMemoryReplSet;
+  let mongoServer: MongoMemoryServer;
 
   let member1Token: string;
   let member1Id: string;
@@ -30,8 +30,8 @@ describe('Single-Active-Session Invariant Integration Tests', () => {
   const ADULT_JWT_SECRET = process.env.ADULT_JWT_SECRET || 'adult_secret';
 
   beforeAll(async () => {
-    mongoServer = await MongoMemoryReplSet.create({
-      replSet: { count: 1 },
+    mongoServer = await MongoMemoryServer.create({
+      binary: { version: '6.0.14' }
     });
     const mongoUri = mongoServer.getUri();
     await mongoose.connect(mongoUri);
