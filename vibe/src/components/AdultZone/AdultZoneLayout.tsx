@@ -9,7 +9,7 @@ import LoadingScreen from '../LoadingScreen/LoadingScreen';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { TipSheet } from './TipSheet';
 import { useUIStore } from './useUIStore';
-import { usePricingStore } from '../../lib/pricing';
+import { usePricingStore, formatAmount } from '../../lib/pricing';
 import { InstallPrompt } from '../pwa/InstallPrompt/InstallPrompt';
 import { updateBadgeCount } from '../../lib/push/pushSubscription';
 import { useUnreadStore } from '../../store/unreadStore';
@@ -372,7 +372,7 @@ const AdultZoneLayout: React.FC = () => {
             {isAuthenticated ? (
               <>
                 <div className="hidden xs:flex items-center bg-[var(--az-bg-tertiary)] px-3 py-1.5 rounded-full border border-[var(--az-border)]">
-                  <span className="text-xs font-mono text-[var(--az-accent-gold)]">💎 {user?.credits || 0} Credits</span>
+                  <span className="text-xs font-mono text-[var(--az-accent-gold)]">💎 {formatAmount(user?.credits)} Credits</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <Link to="/wallet" className="w-8 h-8 rounded-full bg-[var(--az-bg-secondary)] border border-[var(--az-border)] flex items-center justify-center overflow-hidden hover:scale-110 active:scale-95 transition-transform" title="Wallet">
@@ -428,7 +428,7 @@ const AdultZoneLayout: React.FC = () => {
           </div>
           <h2 className="text-3xl font-serif italic mb-2 truncate max-w-xs px-4 text-center" title={incomingCall.callerName}>{incomingCall.callerName}</h2>
           <p className="text-xs text-pink-400 uppercase tracking-widest animate-pulse">Incoming {incomingCall.type} Call...</p>
-          <p className="text-xs text-yellow-400 mt-2 font-mono">Rate: 💎 {incomingCall.rate} credits / min</p>
+          <p className="text-xs text-yellow-400 mt-2 font-mono">Rate: 💎 {formatAmount(incomingCall.rate)} credits / min</p>
 
           <div className="flex gap-8 mt-12">
             <button

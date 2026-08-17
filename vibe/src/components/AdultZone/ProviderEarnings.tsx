@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { API_BASE_URL } from '../../config';
-import { usePricingStore, formatNaira } from '../../lib/pricing';
+import { usePricingStore, formatNaira, formatAmount } from '../../lib/pricing';
 
 const ProviderEarnings: React.FC = () => {
   const navigate = useNavigate();
@@ -121,15 +121,15 @@ const ProviderEarnings: React.FC = () => {
               <div className="space-y-2 text-xs mb-3 border-b border-[var(--az-border)]/30 pb-3">
                 <div className="flex justify-between">
                   <span className="text-[var(--az-text-secondary)]">Gross earnings</span>
-                  <span className="font-mono">💎 {Math.round(totalEarned / 0.85).toLocaleString()}</span>
+                  <span className="font-mono">💎 {formatAmount(totalEarned / 0.85)}</span>
                 </div>
                 <div className="flex justify-between text-[var(--az-accent-rose)]">
                   <span>Platform fee (15%)</span>
-                  <span className="font-mono">- 💎 {Math.round((totalEarned / 0.85) * 0.15).toLocaleString()}</span>
+                  <span className="font-mono">- 💎 {formatAmount((totalEarned / 0.85) * 0.15)}</span>
                 </div>
                 <div className="flex justify-between text-[var(--az-accent-gold)] font-bold">
                   <span>Your earnings (85%)</span>
-                  <span className="font-mono">💎 {totalEarned.toLocaleString()}</span>
+                  <span className="font-mono">💎 {formatAmount(totalEarned)}</span>
                 </div>
               </div>
             </div>
@@ -174,7 +174,7 @@ const ProviderEarnings: React.FC = () => {
                   >
                     {/* Tooltip on hover */}
                     <div className="absolute -top-10 scale-0 group-hover:scale-100 transition-all bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded px-2 py-1 text-[9px] font-mono whitespace-nowrap z-10 shadow-lg">
-                      💎 {t.credits} (${(t.credits * 0.0075).toFixed(2)} est.)
+                      💎 {formatAmount(t.credits)} (${(t.credits * 0.0075).toFixed(2)} est.)
                     </div>
                     <div
                       style={{ height: `${heightPct}%` }}
@@ -225,10 +225,10 @@ const ProviderEarnings: React.FC = () => {
                           <td className="p-4 font-semibold text-white capitalize">{tx.type}</td>
                           <td className="p-4 text-[var(--az-text-secondary)]">{tx.from}</td>
                           <td className={`p-4 font-mono font-bold ${tx.amount > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                            {tx.amount > 0 ? `+${tx.amount}` : tx.amount}
+                            {tx.amount > 0 ? `+${formatAmount(tx.amount)}` : formatAmount(tx.amount)}
                             {tx.platformFee > 0 && (
                               <div className="text-[10px] text-neutral-400 font-normal mt-0.5">
-                                Fee: -💎{tx.platformFee}
+                                Fee: -💎{formatAmount(tx.platformFee)}
                               </div>
                             )}
                           </td>

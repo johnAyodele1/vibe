@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { API_BASE_URL } from '../../config';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { toast } from 'sonner';
+import { formatAmount } from '../../lib/pricing';
 
 interface RewardTask {
   id: string;
@@ -67,7 +68,7 @@ export const RewardsSheet: React.FC<RewardsSheetProps> = ({ onClose }) => {
       });
       const data = await response.json();
       if (response.ok && data.success) {
-        toast.success(`Check-in successful! Earned 💎 ${data.creditsAwarded} Credits! 🎁`);
+        toast.success(`Check-in successful! Earned 💎 ${formatAmount(data.creditsAwarded)} Credits! 🎁`);
         if (data.newBalance !== undefined) {
           updateCredits(data.newBalance);
         }
@@ -98,7 +99,7 @@ export const RewardsSheet: React.FC<RewardsSheetProps> = ({ onClose }) => {
       });
       const data = await response.json();
       if (response.ok && data.success) {
-        toast.success(`Task completed! Earned 💎 ${data.creditsAwarded} Credits! 🎉`);
+        toast.success(`Task completed! Earned 💎 ${formatAmount(data.creditsAwarded)} Credits! 🎉`);
         if (data.newBalance !== undefined) {
           updateCredits(data.newBalance);
         }

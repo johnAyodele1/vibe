@@ -5,6 +5,7 @@ import { Avatar } from './Avatar';
 import { API_BASE_URL, SOCKET_URL } from '../../config';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { toast } from 'sonner';
+import { formatAmount } from '../../lib/pricing';
 
 // ============================================================================
 // MAIN NAUGHTY ROOMS SYSTEM COMPONENT
@@ -2680,7 +2681,7 @@ const LeaderboardSidebar: React.FC<{ roomId: string; getHeaders: () => any }> = 
               <Avatar src={row.avatarUrl} name={row.displayName} size={20} className="border border-white/5" />
               <span className="text-gray-300 truncate max-w-[100px]">{row.displayName}</span>
             </div>
-            <span className="font-mono text-rose-500 text-[10px] font-bold">💎 {row.score}</span>
+            <span className="font-mono text-rose-500 text-[10px] font-bold">💎 {formatAmount(row.score)}</span>
           </div>
         ))}
       </div>
