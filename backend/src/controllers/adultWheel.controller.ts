@@ -168,6 +168,22 @@ export const spinProviderWheel = async (req: Request, res: Response) => {
         { session, new: true }
       );
 
+      let resolvedCamSessionId = camSessionId ? new mongoose.Types.ObjectId(camSessionId) : null;
+      if (!resolvedCamSessionId) {
+        const activeCam = await mongoose.model('CamSession').findOne({ providerId: recipient._id, status: 'live' }).session(session);
+        if (activeCam) {
+          resolvedCamSessionId = activeCam._id;
+        }
+      }
+
+      if (resolvedCamSessionId) {
+        await mongoose.model('CamSession').findByIdAndUpdate(
+          resolvedCamSessionId,
+          { $inc: { totalTipsReceived: creditsToProvider } },
+          { session }
+        );
+      }
+
       // Create dual transactional logs
       const spinnerTx = await CreditTransaction.create([{
         userId: spinner._id,
@@ -177,6 +193,7 @@ export const spinProviderWheel = async (req: Request, res: Response) => {
         description: `Spun Wheel for ${updatedRecipient?.providerProfile?.stageName || updatedRecipient?.displayName || 'Provider'}: ${pickedItem.label}`,
         relatedUserId: recipient._id,
         status: 'completed',
+        metadata: resolvedCamSessionId ? { camSessionId: resolvedCamSessionId } : undefined,
       }], { session });
 
       await CreditTransaction.create([{
@@ -188,6 +205,7 @@ export const spinProviderWheel = async (req: Request, res: Response) => {
         description: `Wheel spin received from member: ${pickedItem.label}`,
         relatedUserId: spinner._id,
         status: 'completed',
+        metadata: resolvedCamSessionId ? { camSessionId: resolvedCamSessionId } : undefined,
       }], { session });
 
       // Record Platform Earnings
@@ -205,7 +223,7 @@ export const spinProviderWheel = async (req: Request, res: Response) => {
         providerId: recipient._id,
         spinnerId: spinner._id,
         spinnerName: spinner.displayName || spinner.username,
-        camSessionId: camSessionId ? new mongoose.Types.ObjectId(camSessionId) : null,
+        camSessionId: resolvedCamSessionId,
         itemId: pickedItem.id,
         itemLabel: pickedItem.label,
         creditsPaid: cost,

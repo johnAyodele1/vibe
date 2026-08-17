@@ -23,7 +23,40 @@ export const getCams = async (req: Request, res: Response) => {
   const total = filtered.length;
   const paginated = filtered.slice((Number(page) - 1) * Number(limit), Number(page) * Number(limit));
 
-  res.json({ success: true, data: { sessions: paginated, total, page: Number(page), pages: Math.ceil(total / Number(limit)) } });
+  const ns = req.app.get('adultNamespace');
+
+  const mappedSessions = paginated.map((session: any) => {
+    let currentViewerCount = session.totalViewerCount || 0;
+    if (ns && session.status === 'live') {
+      const room = ns.adapter?.rooms?.get(`cam:${session._id.toString()}`);
+      if (room) {
+        const uniqueViewers = new Set<string>();
+        const providerIdStr = session.providerId?._id ? session.providerId._id.toString() : '';
+        const socketsMap = ns.sockets?.sockets || ns.sockets;
+
+        for (const socketId of room) {
+          const socket = socketsMap?.get ? (socketsMap.get(socketId) || socketsMap.get(`/adult#${socketId}`) || socketsMap.get(socketId.replace(/^\/adult#/, ''))) : null;
+          if (socket && socket.data && socket.data.user) {
+            const uId = socket.data.user._id.toString();
+            if (uId !== providerIdStr) {
+              uniqueViewers.add(uId);
+            }
+          }
+        }
+        currentViewerCount = uniqueViewers.size;
+      } else {
+        currentViewerCount = 0;
+      }
+    }
+    const sessionObj = session.toObject ? session.toObject() : { ...session };
+    return {
+      ...sessionObj,
+      totalViewerCount: currentViewerCount,
+      peakViewerCount: session.peakViewerCount || 0
+    };
+  });
+
+  res.json({ success: true, data: { sessions: mappedSessions, total, page: Number(page), pages: Math.ceil(total / Number(limit)) } });
 };
 
 export const startStream = async (req: Request, res: Response) => {
