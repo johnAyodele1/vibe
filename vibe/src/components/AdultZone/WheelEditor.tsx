@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { API_BASE_URL } from '../../config';
 import { toast } from 'sonner';
+import { formatAmount } from '../../lib/pricing';
 
 const WHEEL_COLORS = [
   '#c8102e', // Crimson
@@ -96,7 +97,7 @@ export const WheelPreview: React.FC<{ items: WheelItem[]; spinning?: boolean; la
               fontSize={7}
               fontFamily="JetBrains Mono"
             >
-              💎{item.creditCost}
+              💎{formatAmount(item.creditCost)}
             </text>
           </g>
         ))}
@@ -251,7 +252,7 @@ export const WheelEditor: React.FC = () => {
           <span className="text-[10px] font-bold tracking-[0.12em] text-[var(--az-text-secondary)] uppercase">Live Render Preview</span>
           <WheelPreview items={items} />
           <p className="text-[10px] text-[var(--az-text-muted)] text-center font-mono">
-            Ranges from: 💎 {Math.min(...items.map(i => i.creditCost || 5))} to 💎 {Math.max(...items.map(i => i.creditCost || 5))}
+            Ranges from: 💎 {formatAmount(Math.min(...items.map(i => i.creditCost || 5)))} to 💎 {formatAmount(Math.max(...items.map(i => i.creditCost || 5)))}
           </p>
         </div>
 
@@ -359,7 +360,7 @@ export const WheelEditor: React.FC = () => {
             </div>
             <div className="bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-2xl p-4">
               <span className="text-[10px] font-bold text-[var(--az-text-secondary)] uppercase tracking-wider block">Total Earned</span>
-              <span className="text-2xl font-mono font-bold text-yellow-500 mt-1 block">💎 {stats.totalEarned}</span>
+              <span className="text-2xl font-mono font-bold text-yellow-500 mt-1 block">💎 {formatAmount(stats.totalEarned)}</span>
             </div>
             <div className="bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-2xl p-4">
               <span className="text-[10px] font-bold text-[var(--az-text-secondary)] uppercase tracking-wider block">Cash Value equivalent</span>
@@ -368,7 +369,7 @@ export const WheelEditor: React.FC = () => {
             <div className="bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-2xl p-4">
               <span className="text-[10px] font-bold text-[var(--az-text-secondary)] uppercase tracking-wider block">Average per spin</span>
               <span className="text-2xl font-mono font-bold text-white mt-1 block">
-                💎 {stats.totalSpins > 0 ? Math.round(stats.totalEarned / stats.totalSpins) : 0}
+                💎 {formatAmount(stats.totalSpins > 0 ? stats.totalEarned / stats.totalSpins : 0)}
               </span>
             </div>
           </div>
@@ -384,7 +385,7 @@ export const WheelEditor: React.FC = () => {
                   <div key={item._id || i} className="flex justify-between items-center text-xs font-medium border-b border-[var(--az-border)]/20 pb-1.5">
                     <span className="text-[var(--az-text-secondary)]">{item.label}</span>
                     <span className="font-mono text-white text-right shrink-0">
-                      {item.count} spins · <span className="text-yellow-500">💎 {item.earned}</span>
+                      {item.count} spins · <span className="text-yellow-500">💎 {formatAmount(item.earned)}</span>
                     </span>
                   </div>
                 ))}
@@ -404,7 +405,7 @@ export const WheelEditor: React.FC = () => {
                       <span className="text-[var(--az-text-muted)] block font-mono">{new Date(spin.createdAt).toLocaleTimeString()}</span>
                     </div>
                     <span className="text-[var(--az-accent-rose)] font-serif italic text-right shrink-0">
-                      Landed on "{spin.itemLabel}" (💎 {spin.creditsPaid})
+                      Landed on "{spin.itemLabel}" (💎 {formatAmount(spin.creditsPaid)})
                     </span>
                   </div>
                 ))}

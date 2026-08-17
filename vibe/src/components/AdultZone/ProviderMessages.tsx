@@ -9,7 +9,7 @@ import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { toast } from 'sonner';
 import { useUIStore } from './useUIStore';
 import MessageTick, { getMessageStatus } from './MessageTick';
-import { usePricingStore, formatNaira } from '../../lib/pricing';
+import { usePricingStore, formatNaira, formatAmount } from '../../lib/pricing';
 import { uploadMedia } from '../../lib/media/uploadMedia';
 import { compressToWebP } from '../../lib/media/compressImage';
 import { VoiceNotePlayer } from './VoiceNotePlayer';
@@ -1739,7 +1739,7 @@ const ProviderMessages: React.FC = () => {
                           <span className="text-3xl mb-3">🔒</span>
                           <p className="text-xs font-serif italic text-amber-300 tracking-widest uppercase mb-1">YOUR LOCKED PAYLOAD</p>
                           <p className="text-[10px] text-gray-400 mb-6 uppercase tracking-wider">PREVIEW SILHOUETTE EFFECT</p>
-                          <p className="text-sm font-bold text-amber-400 italic">💎 {m.creditCost} credits to unlock</p>
+                          <p className="text-sm font-bold text-amber-400 italic">💎 {formatAmount(m.creditCost)} credits to unlock</p>
                         </div>
                       </div>
                     ) : m.mediaType === 'gift' ? (
@@ -1747,7 +1747,7 @@ const ProviderMessages: React.FC = () => {
                         <div className="absolute top-1 right-2 text-[8px] text-yellow-400 font-bold uppercase tracking-widest">GIFT SENT</div>
                         <span className="text-5xl my-2">🎁</span>
                         <h5 className="font-serif italic text-pink-300 text-base">{m.gift?.giftName}</h5>
-                        <p className="text-yellow-400 font-bold text-xs mt-1">💎 {m.gift?.giftValue} Credits</p>
+                        <p className="text-yellow-400 font-bold text-xs mt-1">💎 {formatAmount(m.gift?.giftValue)} Credits</p>
                         {m.gift?.message && (
                           <p className="text-xs italic text-gray-300 mt-2 border-t border-pink-500/20 pt-2 w-full break-words">"{m.gift.message}"</p>
                         )}
@@ -1758,7 +1758,7 @@ const ProviderMessages: React.FC = () => {
                         <div className="absolute top-1.5 right-2.5 text-[8px] text-amber-400 font-bold uppercase tracking-widest">WISH REQUEST</div>
                         <span className="text-5xl my-3 animate-bounce">🎁</span>
                         <h5 className="font-serif italic text-white text-base">You requested a {m.giftRequest?.giftName}</h5>
-                        <p className="text-amber-400 font-bold font-mono text-xs mt-1">💎 {m.giftRequest?.giftValue} Credits</p>
+                        <p className="text-amber-400 font-bold font-mono text-xs mt-1">💎 {formatAmount(m.giftRequest?.giftValue)} Credits</p>
                         {m.giftRequest?.message && (
                           <p className="text-[11px] italic text-gray-300 my-3 border-t border-pink-500/10 pt-3 w-full break-words">"{m.giftRequest.message}"</p>
                         )}
@@ -1783,17 +1783,17 @@ const ProviderMessages: React.FC = () => {
                         <div className="space-y-2 text-xs">
                           <div className="flex justify-between text-gray-300">
                             <span>Tonight rate:</span>
-                            <span className="font-mono font-bold text-white">💎 {m.serviceRequest?.baseRate}</span>
+                            <span className="font-mono font-bold text-white">💎 {formatAmount(m.serviceRequest?.baseRate)}</span>
                           </div>
                           {m.serviceRequest?.extras?.map((ext: { label: string; amount: number }, idx: number) => (
                             <div key={idx} className="flex justify-between text-gray-400">
                               <span>{ext.label}:</span>
-                              <span className="font-mono text-white">💎 {ext.amount}</span>
+                              <span className="font-mono text-white">💎 {formatAmount(ext.amount)}</span>
                             </div>
                           ))}
                           <div className="border-t border-white/5 my-2 pt-2 flex justify-between items-center text-sm font-bold">
                             <span className="text-white">TOTAL:</span>
-                            <span className="font-mono text-amber-400">💎 {m.serviceRequest?.totalAmount}</span>
+                            <span className="font-mono text-amber-400">💎 {formatAmount(m.serviceRequest?.totalAmount)}</span>
                           </div>
                           <span className="text-[10px] text-gray-500 block text-right">
                             ≈ {formatNaira(m.serviceRequest?.totalAmount! * usePricingStore.getState().diamondNairaRate)}
@@ -1834,7 +1834,7 @@ const ProviderMessages: React.FC = () => {
 
                         {m.serviceRequest?.status === 'reported' && (
                           <div className="bg-red-950/20 border border-red-500/30 rounded-xl p-3 text-[11px] text-gray-300 leading-relaxed mt-2 text-left">
-                            A dispute has been raised on this service charge. Your payout for 💎 {m.serviceRequest ? Math.floor(m.serviceRequest.totalAmount * 0.85) : 0} is on hold pending review.
+                            A dispute has been raised on this service charge. Your payout for 💎 {m.serviceRequest ? formatAmount(m.serviceRequest.totalAmount * 0.85) : 0} is on hold pending review.
                           </div>
                         )}
                       </div>
@@ -2385,7 +2385,7 @@ const ProviderMessages: React.FC = () => {
                       >
                         <span className="text-3xl mb-1">{iconsMap[g.iconUrl] || '🎁'}</span>
                         <span className="text-[10px] font-bold block truncate w-full">{g.name}</span>
-                        <span className="text-[9px] text-yellow-400 font-mono mt-1">💎 {g.creditCost}</span>
+                        <span className="text-[9px] text-yellow-400 font-mono mt-1">💎 {formatAmount(g.creditCost)}</span>
                       </div>
                     );
                   })
@@ -2444,7 +2444,7 @@ const ProviderMessages: React.FC = () => {
                 </label>
                 <div className="flex justify-between items-center p-3 bg-black/40 border border-white/5 rounded-xl">
                   <span className="text-xs text-gray-400">Your tonight rate (from profile):</span>
-                  <span className="text-xs font-mono font-bold text-amber-400">💎 {dynTonightRate || tonightRate} credits (≈ {formatNaira((dynTonightRate || tonightRate) * usePricingStore.getState().diamondNairaRate)})</span>
+                  <span className="text-xs font-mono font-bold text-amber-400">💎 {formatAmount(dynTonightRate || tonightRate)} credits (≈ {formatNaira((dynTonightRate || tonightRate) * usePricingStore.getState().diamondNairaRate)})</span>
                 </div>
               </div>
 
@@ -2522,7 +2522,7 @@ const ProviderMessages: React.FC = () => {
               <div className="border-t border-white/5 pt-4 flex justify-between items-center">
                 <span className="text-sm font-bold text-white uppercase tracking-wider">TOTAL:</span>
                 <span data-testid="service-request-total" className="text-2xl font-mono font-bold text-amber-400">
-                  💎 {totalServiceChargeAmount} credits <span className="text-xs text-gray-500 font-sans font-normal">(≈ {formatNaira(totalServiceChargeAmount * usePricingStore.getState().diamondNairaRate)})</span>
+                  💎 {formatAmount(totalServiceChargeAmount)} credits <span className="text-xs text-gray-500 font-sans font-normal">(≈ {formatNaira(totalServiceChargeAmount * usePricingStore.getState().diamondNairaRate)})</span>
                 </span>
               </div>
 
@@ -2553,7 +2553,7 @@ const ProviderMessages: React.FC = () => {
               </div>
               <h2 className="text-3xl font-serif italic mb-2 truncate max-w-xs px-4 text-center" title={selectedConv?.otherUser?.displayName}>{selectedConv?.otherUser?.displayName}</h2>
               <p className="text-xs text-pink-400 uppercase tracking-widest animate-pulse">Incoming {callType} Call...</p>
-              <p className="text-xs text-yellow-400 mt-2 font-mono">Rate: 💎 {callRate} credits / min</p>
+              <p className="text-xs text-yellow-400 mt-2 font-mono">Rate: 💎 {formatAmount(callRate)} credits / min</p>
 
               <div className="flex gap-8 mt-12">
                 <button
@@ -2683,12 +2683,12 @@ const ProviderMessages: React.FC = () => {
                       {user?.role === 'provider' ? (
                         <>
                           <span className="text-gray-400">Credits Earned:</span>
-                          <span className="font-bold text-yellow-400">💎 {callSummary.cost}</span>
+                          <span className="font-bold text-yellow-400">💎 {formatAmount(callSummary.cost)}</span>
                         </>
                       ) : (
                         <>
                           <span className="text-gray-400">Credits Charged:</span>
-                          <span className="font-bold text-yellow-400">💎 {callSummary.cost}  ≈  {formatNaira(callSummary.cost * usePricingStore.getState().diamondNairaRate)}</span>
+                          <span className="font-bold text-yellow-400">💎 {formatAmount(callSummary.cost)}  ≈  {formatNaira(callSummary.cost * usePricingStore.getState().diamondNairaRate)}</span>
                         </>
                       )}
                     </div>

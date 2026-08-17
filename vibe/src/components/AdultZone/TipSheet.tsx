@@ -4,7 +4,7 @@ import { io } from 'socket.io-client';
 import { API_BASE_URL, SOCKET_URL } from '../../config';
 import { useTipSheetStore } from './useTipSheetStore';
 import { useWalletStore } from './useWalletStore';
-import { usePricingStore } from '../../lib/pricing';
+import { usePricingStore, formatAmount } from '../../lib/pricing';
 
 const PRESETS = [10, 25, 50, 100, 250, 500];
 
@@ -327,7 +327,7 @@ export const TipSheet: React.FC = () => {
               <div className="flex items-center gap-1.5" data-testid="wallet-balance">
                 <span className="text-yellow-500">💎</span>
                 <span className={`font-mono text-sm font-semibold ${creditBalance === 0 ? 'text-red-500' : 'text-yellow-500'}`}>
-                  {creditBalance.toLocaleString()}
+                  {formatAmount(creditBalance)}
                 </span>
                 {creditBalance === 0 && (
                   <span
@@ -365,7 +365,7 @@ export const TipSheet: React.FC = () => {
                           ${isInsufficient ? 'opacity-[0.35] cursor-not-allowed border-[var(--az-border)]/50' : ''}`}
                       >
                         <span className="text-yellow-500 text-xs">💎</span>
-                        <span className="font-mono text-sm font-bold">{amount}</span>
+                        <span className="font-mono text-sm font-bold">{formatAmount(amount)}</span>
                       </button>
                     );
                   })}
@@ -482,7 +482,7 @@ export const TipSheet: React.FC = () => {
                     <span>Processing...</span>
                   </>
                 ) : finalAmount > 0 && finalAmount <= creditBalance ? (
-                  `Send 💎 ${finalAmount} to ${provider.stageName}`
+                  `Send 💎 ${formatAmount(finalAmount)} to ${provider.stageName}`
                 ) : (
                   'Send Tip'
                 )}
@@ -507,7 +507,7 @@ export const TipSheet: React.FC = () => {
             <div className="space-y-1">
               <h2 className="text-2xl md:text-3xl font-serif italic text-white leading-tight">Tip Sent! 🎉</h2>
               <p className="text-sm text-[var(--az-text-secondary)] font-medium">
-                <span className="text-yellow-500">💎 {result?.amount}</span> sent to {result?.recipientName}
+                <span className="text-yellow-500">💎 {formatAmount(result?.amount)}</span> sent to {result?.recipientName}
               </p>
               <p className="text-xs text-[var(--az-text-muted)]">Your tip is on its way</p>
             </div>
@@ -523,7 +523,7 @@ export const TipSheet: React.FC = () => {
               <div className="flex items-center justify-center gap-1.5 text-yellow-500">
                 <span className="text-lg">💎</span>
                 <span className="font-mono text-xl font-bold">
-                  {displayedBalance.toLocaleString()}
+                  {formatAmount(displayedBalance)}
                 </span>
               </div>
             </div>

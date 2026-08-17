@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import Lottie from 'lottie-react';
 import { API_BASE_URL } from '../../config';
+import { formatAmount } from '../../lib/pricing';
 
 // Minimal valid Lottie JSON objects defined directly to avoid JSON resolve issues in Vite/TS
 const minimalLottie = {
@@ -259,7 +260,7 @@ const ProviderPayout: React.FC = () => {
             <div className="bg-[#0d040e]/60 border border-gray-800 rounded-2xl p-5 mb-8 text-left text-sm space-y-3">
               <div className="flex justify-between border-b border-gray-800/80 pb-2">
                 <span className="text-gray-500">Amount</span>
-                <span className="font-semibold text-amber-400 font-mono">💎 {activeRequest.amount?.toLocaleString()}</span>
+                <span className="font-semibold text-amber-400 font-mono">💎 {formatAmount(activeRequest.amount)}</span>
               </div>
               <div className="flex justify-between border-b border-gray-800/80 pb-2">
                 <span className="text-gray-500">Naira Value</span>
@@ -342,7 +343,7 @@ const ProviderPayout: React.FC = () => {
                 <div className="text-center md:text-left mb-6">
                   <span className="text-xs text-gray-400 font-bold uppercase tracking-widest">Available for Payout</span>
                   <div className="text-4xl md:text-5xl font-extrabold text-amber-400 font-mono mt-1 mb-2">
-                    💎 {eligibleAmount.toLocaleString()}
+                    💎 {formatAmount(eligibleAmount)}
                   </div>
                   <div className="text-xl md:text-2xl font-semibold text-gray-300">
                     ₦{eligibleNaira.toLocaleString('en-NG')}
@@ -369,7 +370,7 @@ const ProviderPayout: React.FC = () => {
                   disabled={eligibleAmount === 0 || isSubmitting}
                   className="w-full py-4 bg-amber-500 hover:bg-amber-600 disabled:bg-gray-800 disabled:text-gray-500 text-[#0d040e] font-bold rounded-2xl text-base tracking-wide transition-all shadow-lg"
                 >
-                  {isSubmitting ? 'Queueing Payout...' : `Request Payout — 💎 ${eligibleAmount.toLocaleString()}`}
+                  {isSubmitting ? 'Queueing Payout...' : `Request Payout — 💎 ${formatAmount(eligibleAmount)}`}
                 </button>
 
                 <p className="text-[11px] text-gray-500 text-center mt-4">
@@ -383,27 +384,27 @@ const ProviderPayout: React.FC = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-[#0d040e]/50 p-4 rounded-xl border border-gray-800">
                     <span className="text-xs text-gray-500 block">Tips & Cams</span>
-                    <span className="font-mono text-sm text-gray-300">💎 {breakdown.tips?.toLocaleString()}</span>
+                    <span className="font-mono text-sm text-gray-300">💎 {formatAmount(breakdown.tips)}</span>
                   </div>
                   <div className="bg-[#0d040e]/50 p-4 rounded-xl border border-gray-800">
                     <span className="text-xs text-gray-500 block">Calls</span>
-                    <span className="font-mono text-sm text-gray-300">💎 {breakdown.calls?.toLocaleString()}</span>
+                    <span className="font-mono text-sm text-gray-300">💎 {formatAmount(breakdown.calls)}</span>
                   </div>
                   <div className="bg-[#0d040e]/50 p-4 rounded-xl border border-gray-800">
                     <span className="text-xs text-gray-500 block">Arrangements</span>
-                    <span className="font-mono text-sm text-gray-300">💎 {breakdown.service_charges?.toLocaleString()}</span>
+                    <span className="font-mono text-sm text-gray-300">💎 {formatAmount(breakdown.service_charges)}</span>
                   </div>
                   <div className="bg-[#0d040e]/50 p-4 rounded-xl border border-gray-800">
                     <span className="text-xs text-gray-500 block">Gifts</span>
-                    <span className="font-mono text-sm text-gray-300">💎 {breakdown.gifts?.toLocaleString()}</span>
+                    <span className="font-mono text-sm text-gray-300">💎 {formatAmount(breakdown.gifts)}</span>
                   </div>
                   <div className="bg-[#0d040e]/50 p-4 rounded-xl border border-gray-800">
                     <span className="text-xs text-gray-500 block">Premium Media</span>
-                    <span className="font-mono text-sm text-gray-300">💎 {breakdown.paid_media?.toLocaleString()}</span>
+                    <span className="font-mono text-sm text-gray-300">💎 {formatAmount(breakdown.paid_media)}</span>
                   </div>
                   <div className="bg-[#0d040e]/50 p-4 rounded-xl border border-gray-800">
                     <span className="text-xs text-gray-500 block">Spin Earnings</span>
-                    <span className="font-mono text-sm text-gray-300">💎 {breakdown.spin_wheel?.toLocaleString()}</span>
+                    <span className="font-mono text-sm text-gray-300">💎 {formatAmount(breakdown.spin_wheel)}</span>
                   </div>
                 </div>
               </div>
@@ -444,7 +445,7 @@ const ProviderPayout: React.FC = () => {
                   {history.map((h) => (
                     <tr key={h._id} className="hover:bg-[#1b0a14]/40 transition-colors">
                       <td className="py-4 px-4 text-gray-300 font-medium">{formatDate(h.requestedAt)}</td>
-                      <td className="py-4 px-4 font-mono font-semibold text-amber-400">💎 {h.amount?.toLocaleString()}</td>
+                      <td className="py-4 px-4 font-mono font-semibold text-amber-400">💎 {formatAmount(h.amount)}</td>
                       <td className="py-4 px-4 font-mono text-gray-300">₦{h.amountNaira?.toLocaleString('en-NG')}</td>
                       <td className="py-4 px-4 text-gray-400">{formatPayoutDestination(h)}</td>
                       <td className="py-4 px-4 text-center">
