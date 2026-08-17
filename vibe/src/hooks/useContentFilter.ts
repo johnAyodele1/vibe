@@ -2,6 +2,8 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { detectContactSharing } from '@yourapp/content-filter';
 
 export const useContentFilter = (_accountType: 'member' | 'service_provider') => {
+  void _accountType;
+
   const [filterWarning, setFilterWarning] = useState<{
     show: boolean;
     category: 'phone' | 'platform' | 'email' | 'offplatform' | string | null;
