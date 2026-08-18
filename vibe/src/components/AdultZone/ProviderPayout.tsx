@@ -367,10 +367,14 @@ const ProviderPayout: React.FC = () => {
 
                 <button
                   onClick={handleRequestPayout}
-                  disabled={eligibleAmount === 0 || isSubmitting}
+                  disabled={eligibleAmount < 500 || isSubmitting}
                   className="w-full py-4 bg-amber-500 hover:bg-amber-600 disabled:bg-gray-800 disabled:text-gray-500 text-[#0d040e] font-bold rounded-2xl text-base tracking-wide transition-all shadow-lg"
                 >
-                  {isSubmitting ? 'Queueing Payout...' : `Request Payout — 💎 ${formatAmount(eligibleAmount)}`}
+                  {isSubmitting
+                    ? 'Queueing Payout...'
+                    : eligibleAmount < 500
+                    ? 'Minimum Payout Threshold: 💎 500 (₦50,000)'
+                    : `Request Payout — 💎 ${formatAmount(eligibleAmount)}`}
                 </button>
 
                 <p className="text-[11px] text-gray-500 text-center mt-4">

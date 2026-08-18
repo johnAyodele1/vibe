@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { API_BASE_URL } from '../../config';
 import { usePricingStore, formatNaira, formatAmount } from '../../lib/pricing';
@@ -13,7 +13,12 @@ const ProviderEarnings: React.FC = () => {
   const [grossEarned, setGrossEarned] = useState(0);
   const [platformFee, setPlatformFee] = useState(0);
   const [paidOut, setPaidOut] = useState(0);
-  const [pending, setPending] = useState(0);
+
+  // Reconciled balance state
+  const [unsettledNaira, setUnsettledNaira] = useState(0);
+  const [withdrawableNaira, setWithdrawableNaira] = useState(0);
+  const [earningsToBeClaimedCredits, setEarningsToBeClaimedCredits] = useState(0);
+
   const [transactions, setTransactions] = useState<any[]>([]);
   const [timeline, setTimeline] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -36,7 +41,12 @@ const ProviderEarnings: React.FC = () => {
         setGrossEarned(json.data.grossEarned !== undefined ? json.data.grossEarned : (json.data.totalEarned || 0));
         setPlatformFee(json.data.platformFee !== undefined ? json.data.platformFee : 0);
         setPaidOut(json.data.paidOut || 0);
-        setPending(json.data.pending || 0);
+
+        // Balance breakdown
+        setUnsettledNaira(json.data.unsettled !== undefined ? json.data.unsettled : (json.data.pending || 0));
+        setWithdrawableNaira(json.data.withdrawable !== undefined ? json.data.withdrawable : 0);
+        setEarningsToBeClaimedCredits(json.data.earningsToBeClaimedCredits || 0);
+
         setTransactions(json.data.transactions || []);
         setTimeline(json.data.timeline || []);
         setCurrentPage(1); // reset to first page on fetch / dateRange change
@@ -58,32 +68,6 @@ const ProviderEarnings: React.FC = () => {
     fetchEarnings();
   }, [token, navigate, dateRange]);
 
-  const requestEarlyPayout = async () => {
-    const rate = usePricingStore.getState().diamondNairaRate;
-    if (pending < (rate * 5000)) {
-      toast.error(`Minimum payout threshold is 5,000 diamonds (≈ ${formatNaira(5000 * rate)})`);
-      return;
-    }
-    try {
-      const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/payout`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      const json = await res.json();
-      if (json.success) {
-        toast.success('Your early payout request has been processed successfully!');
-        fetchEarnings(); // refresh the numbers and transactions
-      } else {
-        toast.error(json.error?.message || 'Failed to process payout');
-      }
-    } catch (err: any) {
-      toast.error('Error initiating payout request');
-    }
-  };
-
   if (isLoading && transactions.length === 0) {
     return (
       <div className="min-h-screen bg-[var(--az-bg-primary)] text-white flex items-center justify-center">
@@ -94,6 +78,8 @@ const ProviderEarnings: React.FC = () => {
       </div>
     );
   }
+
+  const rate = usePricingStore.getState().diamondNairaRate;
 
   return (
     <div className="min-h-screen bg-[var(--az-bg-primary)] text-white font-sans az-grain py-24 px-4 sm:px-6 lg:px-8">
@@ -119,6 +105,7 @@ const ProviderEarnings: React.FC = () => {
 
         {/* Financial metrics bar */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Card 1: Total Accumulated Balance */}
           <div className="bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-2xl p-6 flex flex-col justify-between">
             <div>
               <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-3">Total Accumulated Balance</p>
@@ -137,26 +124,46 @@ const ProviderEarnings: React.FC = () => {
                 </div>
               </div>
             </div>
-            <p className="text-xs text-[var(--az-text-muted)]">≈ {formatNaira(totalEarned * usePricingStore.getState().diamondNairaRate)} est. valuation</p>
+            <p className="text-xs text-[var(--az-text-muted)]">≈ {formatNaira(totalEarned * rate)} est. valuation</p>
           </div>
 
-          <div className="bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-2xl p-6">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-1">Paid Out to Date</p>
-            <p className="text-3xl font-mono font-bold text-green-400">{formatNaira(paidOut)}</p>
+          {/* Card 2: Paid Out to Date */}
+          <div className="bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-2xl p-6 flex flex-col justify-between">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-1">Paid Out to Date</p>
+              <p className="text-3xl font-mono font-bold text-green-400 mb-3">{formatNaira(paidOut)}</p>
+            </div>
             <p className="text-xs text-[var(--az-text-muted)]">Cleared to configured payout coordinates</p>
           </div>
 
+          {/* Card 3: Pending Clearance (Redesigned to resemble Total Accumulated Balance card) */}
           <div className="bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-2xl p-6 flex flex-col justify-between">
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-1">Pending Clearance</p>
-              <p className="text-3xl font-mono font-bold text-[var(--az-accent-rose)]">{formatNaira(pending)}</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-3">Pending Clearance</p>
+              <div className="space-y-2 text-xs mb-3 border-b border-[var(--az-border)]/30 pb-3">
+                <div className="flex justify-between font-bold">
+                  <span className="text-[var(--az-text-secondary)]">Earnings to be claimed</span>
+                  <span className="font-mono">💎 {formatAmount(earningsToBeClaimedCredits)}</span>
+                </div>
+                <div className="flex justify-between text-red-400 font-medium">
+                  <span>Unsettled payment</span>
+                  <span className="font-mono">- {formatNaira(unsettledNaira)}</span>
+                </div>
+                <div className="flex justify-between text-green-400 font-bold">
+                  <span>Withdrawable balance</span>
+                  <span className="font-mono">{formatNaira(withdrawableNaira)}</span>
+                </div>
+              </div>
             </div>
-            <button
-              onClick={requestEarlyPayout}
-              className="mt-4 w-full py-2 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-[10px] uppercase tracking-widest rounded-xl transition-all shadow-md"
-            >
-              Request Early Payout
-            </button>
+
+            <div className="pt-1">
+              <Link
+                to="/adult/provider/payout"
+                className="text-xs text-[var(--az-accent-gold)] hover:underline flex items-center gap-1 font-medium"
+              >
+                ≈ {formatNaira(withdrawableNaira)} est. valuation →
+              </Link>
+            </div>
           </div>
         </div>
 
@@ -226,7 +233,11 @@ const ProviderEarnings: React.FC = () => {
                       .map(tx => (
                         <tr key={tx.id} className="hover:bg-[var(--az-bg-tertiary)]/20 transition-colors">
                           <td className="p-4 text-xs font-mono text-white">{tx.date}</td>
-                          <td className="p-4 font-semibold text-white capitalize">{tx.type}</td>
+                          <td className="p-4 font-semibold text-white capitalize">
+                            <span className={tx.type === 'Revert' ? 'text-red-400 font-bold' : ''}>
+                              {tx.type}
+                            </span>
+                          </td>
                           <td className="p-4 text-[var(--az-text-secondary)]">{tx.from}</td>
                           <td className={`p-4 font-mono font-bold ${tx.amount > 0 ? 'text-green-400' : 'text-red-400'}`}>
                             {tx.amount > 0 ? `+${formatAmount(tx.amount)}` : formatAmount(tx.amount)}
@@ -237,7 +248,7 @@ const ProviderEarnings: React.FC = () => {
                             )}
                           </td>
                           <td className="p-4 font-mono text-white">
-                            {tx.naira !== undefined ? (tx.naira < 0 ? `-${formatNaira(Math.abs(tx.naira))}` : formatNaira(tx.naira)) : (tx.amount < 0 ? `-${formatNaira(Math.abs(tx.amount) * usePricingStore.getState().diamondNairaRate)}` : formatNaira(tx.amount * usePricingStore.getState().diamondNairaRate))}
+                            {tx.naira !== undefined ? (tx.naira < 0 ? `-${formatNaira(Math.abs(tx.naira))}` : formatNaira(tx.naira)) : (tx.amount < 0 ? `-${formatNaira(Math.abs(tx.amount) * rate)}` : formatNaira(tx.amount * rate))}
                           </td>
                           <td className="p-4">
                             <span className={`px-2.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest ${

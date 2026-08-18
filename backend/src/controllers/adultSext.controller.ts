@@ -2802,6 +2802,20 @@ export const endCall = async (req: Request, res: Response) => {
                 metadata: { callId: call._id.toString(), minuteIndex: 1, unrecoverableAmount },
               }], { session: refundSession });
 
+              // Explicit debit reversion record for provider trace
+              if (recoverableProviderAmount > 0) {
+                await CreditTransaction.create([{
+                  userId: providerUser._id,
+                  type: 'call_refund',
+                  amount: -recoverableProviderAmount,
+                  usdAmount: 0,
+                  description: `${call.type.charAt(0).toUpperCase() + call.type.slice(1)} call revert (<10s)`,
+                  relatedUserId: callerUser._id,
+                  status: 'completed',
+                  metadata: { callId: call._id.toString(), minuteIndex: 1, originalTxId: refundTx[0]._id },
+                }], { session: refundSession });
+              }
+
               if (platformFee > 0) {
                 await recordPlatformEarning({
                   source: 'call',
