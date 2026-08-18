@@ -1,17 +1,35 @@
+/* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { API_BASE_URL } from '../config';
 import { toast } from 'sonner';
 import { syncDeviceRegistration, deregisterDevice } from '../lib/pwa/subscriptionManager';
 
-export function extractErrorMessage(data: any): string {
+interface ApiErrorDetail {
+  message?: string;
+  path?: string[] | string;
+  msg?: string;
+  param?: string;
+}
+
+interface ApiResponseData {
+  error?: {
+    message?: string;
+    details?: ApiErrorDetail[];
+  };
+  details?: ApiErrorDetail[];
+  errors?: ApiErrorDetail[];
+  message?: string;
+}
+
+export function extractErrorMessage(data: ApiResponseData): string {
   if (!data) return 'An unknown error occurred';
 
-  let detailsList: string[] = [];
+  const detailsList: string[] = [];
 
   // Zod validation details
   const details = data.error?.details || data.details;
   if (Array.isArray(details)) {
-    details.forEach((issue: any) => {
+    details.forEach((issue) => {
       if (issue.message) {
         const field = Array.isArray(issue.path) ? issue.path[issue.path.length - 1] : '';
         const fieldName = field ? `${field}: ` : '';
@@ -23,7 +41,7 @@ export function extractErrorMessage(data: any): string {
   // Express validator errors
   const errors = data.errors;
   if (Array.isArray(errors)) {
-    errors.forEach((err: any) => {
+    errors.forEach((err) => {
       if (err.msg) {
         const field = err.path || err.param;
         const fieldName = field ? `${field}: ` : '';
@@ -61,8 +79,8 @@ interface AdultAuthContextType {
   user: AdultUser | null;
   isAuthenticated: boolean;
   loading: boolean;
-  login: (credentials: any) => Promise<any>;
-  signup: (data: any) => Promise<any>;
+  login: (credentials: Record<string, unknown>) => Promise<AdultUser>;
+  signup: (data: Record<string, unknown>) => Promise<AdultUser>;
   logout: () => void;
   refetchUser: () => Promise<void>;
   updateCredits: (credits: number) => void;
@@ -101,7 +119,7 @@ export const AdultAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   useEffect(() => {
-    checkAuth();
+    const load = async () => { await checkAuth(); }; void load();
   }, []);
 
   // Global fetch interceptor to handle any unhandled 401 (Session Expired) errors
@@ -129,7 +147,7 @@ export const AdultAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setUser(prev => prev ? { ...prev, credits } : null);
   };
 
-  const login = async (credentials: any) => {
+  const login = async (credentials: Record<string, unknown>) => {
     const response = await fetch(`${API_BASE_URL}/adult/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -147,7 +165,7 @@ export const AdultAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
-  const signup = async (data: any) => {
+  const signup = async (data: Record<string, unknown>) => {
     const response = await fetch(`${API_BASE_URL}/adult/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

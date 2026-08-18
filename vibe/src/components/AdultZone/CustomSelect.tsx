@@ -3,14 +3,14 @@ import React, { useState, useEffect, useRef } from 'react';
 interface SelectOption {
   value: string;
   label: string;
-  extra?: any;
+  extra?: unknown;
 }
 
 interface CustomSelectProps {
   label: string;
   value: string | null;
   options: SelectOption[];
-  onSelect: (value: string, label: string, extra?: any) => void;
+  onSelect: (value: string, label: string, extra?: unknown) => void;
   placeholder?: string;
   disabled?: boolean;
   loading?: boolean;
@@ -35,13 +35,20 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
+  if (isOpen !== prevIsOpen) {
+    setPrevIsOpen(isOpen);
+    if (!isOpen) {
+      setSearchQuery('');
+    }
+  }
+
   useEffect(() => {
     if (isOpen) {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         searchInputRef.current?.focus();
       }, 100);
-    } else {
-      setSearchQuery('');
+      return () => clearTimeout(timer);
     }
   }, [isOpen]);
 

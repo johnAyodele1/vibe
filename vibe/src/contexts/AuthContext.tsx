@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import React, {
   createContext,
   useContext,
@@ -7,15 +8,32 @@ import React, {
 } from "react";
 import { API_BASE_URL } from "../config";
 
-export function extractErrorMessage(data: any): string {
+interface ApiErrorDetail {
+  message?: string;
+  path?: string[] | string;
+  msg?: string;
+  param?: string;
+}
+
+interface ApiResponseData {
+  error?: {
+    message?: string;
+    details?: ApiErrorDetail[];
+  };
+  details?: ApiErrorDetail[];
+  errors?: ApiErrorDetail[];
+  message?: string;
+}
+
+export function extractErrorMessage(data: ApiResponseData): string {
   if (!data) return 'An unknown error occurred';
 
-  let detailsList: string[] = [];
+  const detailsList: string[] = [];
 
   // Zod validation details
   const details = data.error?.details || data.details;
   if (Array.isArray(details)) {
-    details.forEach((issue: any) => {
+    details.forEach((issue) => {
       if (issue.message) {
         const field = Array.isArray(issue.path) ? issue.path[issue.path.length - 1] : '';
         const fieldName = field ? `${field}: ` : '';
@@ -27,7 +45,7 @@ export function extractErrorMessage(data: any): string {
   // Express validator errors
   const errors = data.errors;
   if (Array.isArray(errors)) {
-    errors.forEach((err: any) => {
+    errors.forEach((err) => {
       if (err.msg) {
         const field = err.path || err.param;
         const fieldName = field ? `${field}: ` : '';
@@ -60,7 +78,7 @@ interface User {
     city?: string;
   };
   bio?: string;
-  photos?: any[];
+  photos?: unknown[];
   profileCompletion?: number;
   fcmTokens?: string[];
 }
@@ -70,7 +88,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   loading: boolean;
   login: (email: string, password: string) => Promise<User | null>;
-  signup: (userData: any) => Promise<User | null>;
+  signup: (userData: Record<string, unknown>) => Promise<User | null>;
   googleLogin: (idToken: string) => Promise<User | null>;
   logout: () => void;
   checkAuthStatus: () => Promise<User | null>;
@@ -188,7 +206,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const signup = async (userData: any): Promise<User | null> => {
+  const signup = async (userData: Record<string, unknown>): Promise<User | null> => {
     try {
       const response = await fetch(`${API_BASE_URL}/auth/signup`, {
         method: "POST",
@@ -223,7 +241,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   useEffect(() => {
-    checkAuthStatus();
+    const load = async () => { await checkAuthStatus(); }; void load();
   }, []);
 
   const value: AuthContextType = {

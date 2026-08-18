@@ -30,7 +30,7 @@ const AdminLogin: React.FC = () => {
       } else {
         toast.error(data.message || "Invalid admin credentials");
       }
-    } catch (error) {
+    } catch {
       toast.error("Login failed. Please try again.");
     } finally {
       setIsLoading(false);

@@ -1,14 +1,14 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { detectContactSharing } from '@yourapp/content-filter';
 
-export const useContentFilter = (_accountType: 'member' | 'service_provider') => {
+export const useContentFilter = () => {
   const [filterWarning, setFilterWarning] = useState<{
     show: boolean;
     category: 'phone' | 'platform' | 'email' | 'offplatform' | string | null;
   }>({ show: false, category: null });
 
   const lastWarnedText = useRef<string>('');
-  const timeoutRef = useRef<any>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const checkContent = useCallback((text: string) => {
     if (timeoutRef.current) {

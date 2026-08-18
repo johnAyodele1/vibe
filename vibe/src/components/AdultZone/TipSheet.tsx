@@ -12,7 +12,7 @@ export const TipSheet: React.FC = () => {
   const navigate = useNavigate();
   const token = localStorage.getItem('adultAccessToken') || '';
 
-  // ✅ Select only values, never call actions in selectors
+  // Select only values
   const isOpen          = useTipSheetStore(s => s.isOpen);
   const provider        = useTipSheetStore(s => s.provider);
   const selectedAmount  = useTipSheetStore(s => s.selectedAmount);
@@ -21,13 +21,13 @@ export const TipSheet: React.FC = () => {
   const step            = useTipSheetStore(s => s.step);
   const result          = useTipSheetStore(s => s.result);
 
-  // ✅ Get actions directly from state dynamically (completely bypassing rendering hooks)
+  // Get actions directly from state dynamically
   const closeSheet        = () => useTipSheetStore.getState().closeSheet();
   const setSelectedAmount = (amount: number | null) => useTipSheetStore.getState().setSelectedAmount(amount);
   const setCustomAmount   = (amount: string) => useTipSheetStore.getState().setCustomAmount(amount);
   const setMessage        = (msg: string) => useTipSheetStore.getState().setMessage(msg);
   const setStep           = (s: 'select' | 'processing' | 'success' | 'error') => useTipSheetStore.getState().setStep(s);
-  const setResult         = (res: any) => useTipSheetStore.getState().setResult(res);
+  const setResult         = (res: Record<string, unknown>) => useTipSheetStore.getState().setResult(res);
   const reset             = () => useTipSheetStore.getState().reset();
 
   const creditBalance     = useWalletStore(s => s.creditBalance);
@@ -54,7 +54,7 @@ export const TipSheet: React.FC = () => {
   // Keep displayedBalance updated on change
   useEffect(() => {
     if (step !== 'success') {
-      setDisplayedBalance(creditBalance);
+      setTimeout(() => setDisplayedBalance(creditBalance), 0);
     }
   }, [creditBalance, step]);
 
@@ -69,24 +69,24 @@ export const TipSheet: React.FC = () => {
     });
 
     socket.on('wallet:updated', (payload: { balance: number }) => {
-      setCreditBalance(payload.balance);
+      useWalletStore.getState().setCreditBalance(payload.balance);
     });
 
     return () => {
       socket.disconnect();
     };
-  }, [isOpen, token, setCreditBalance]);
+  }, [isOpen, token]);
 
   // Countdown timer for auto-close
   useEffect(() => {
     if (step !== 'success') return;
-    setSuccessCountdown(8);
+    setTimeout(() => setSuccessCountdown(8), 0);
 
     const timer = setInterval(() => {
       setSuccessCountdown((prev) => {
         if (prev <= 1) {
           clearInterval(timer);
-          closeSheet();
+          useTipSheetStore.getState().closeSheet();
           return 0;
         }
         return prev - 1;
@@ -94,14 +94,14 @@ export const TipSheet: React.FC = () => {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [step, closeSheet]);
+  }, [step]);
 
   // Count down animation effect for new balance on success screen
   useEffect(() => {
     if (step === 'success' && result) {
-      const start = result.newBalance + result.amount; // old balance
-      const end = result.newBalance;
-      setDisplayedBalance(start);
+      const start = (result.newBalance as number) + (result.amount as number); // old balance
+      const end = result.newBalance as number;
+      setTimeout(() => setDisplayedBalance(start), 0);
 
       let current = start;
       const duration = 800; // 800ms
@@ -130,12 +130,12 @@ export const TipSheet: React.FC = () => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        closeSheet();
+        useTipSheetStore.getState().closeSheet();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [closeSheet]);
+  }, []);
 
   if (!isOpen || !provider) return null;
 
@@ -226,9 +226,10 @@ export const TipSheet: React.FC = () => {
       // Dispatch visual event indicator for ProviderCard success highlight
       window.dispatchEvent(new CustomEvent('tip-success-highlight', { detail: { providerId: provider.userId } }));
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       setStep('select');
-      setApiError(err.message || 'Network error occurred. Please try again.');
+      const msg = err instanceof Error ? err.message : 'Network error occurred. Please try again.';
+      setApiError(msg);
     }
   };
 
@@ -253,7 +254,7 @@ export const TipSheet: React.FC = () => {
           navigate(`/adult/sext?conversation=${data.conversationId}`);
         }
       }
-    } catch (err) {
+    } catch {
       setApiError('Could not start conversation.');
     }
   };
@@ -507,7 +508,7 @@ export const TipSheet: React.FC = () => {
             <div className="space-y-1">
               <h2 className="text-2xl md:text-3xl font-serif italic text-white leading-tight">Tip Sent! 🎉</h2>
               <p className="text-sm text-[var(--az-text-secondary)] font-medium">
-                <span className="text-yellow-500">💎 {formatAmount(result?.amount)}</span> sent to {result?.recipientName}
+                <span className="text-yellow-500">💎 {formatAmount(result?.amount as number)}</span> sent to {String(result?.recipientName || '')}
               </p>
               <p className="text-xs text-[var(--az-text-muted)]">Your tip is on its way</p>
             </div>

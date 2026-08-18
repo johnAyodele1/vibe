@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import styles from "./UserProfileView.module.css";
 import { useNavigate } from "react-router-dom";
 import { API_BASE_URL } from "../../config";
@@ -25,7 +25,7 @@ interface User {
     uploadedAt: string;
   }>;
   interests: string[];
-  matches: any[];
+  matches: Array<{ isActive?: boolean }>;
   views: number;
   isVerified: boolean;
   isPremium: boolean;
@@ -43,7 +43,7 @@ const UserProfile: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchUserProfile = async () => {
+  const fetchUserProfile = useCallback(async () => {
     try {
       const token = localStorage.getItem("accessToken");
       if (!token) {
@@ -73,11 +73,11 @@ const UserProfile: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchUserProfile();
-  }, []);
+    void fetchUserProfile();
+  }, [fetchUserProfile]);
 
   if (loading) {
     return (
@@ -119,7 +119,10 @@ const UserProfile: React.FC = () => {
             <Icon name="error" className="text-4xl text-red-500 mb-4" />
             <p className="text-lg mb-4">{error}</p>
             <button
-              onClick={fetchUserProfile}
+              onClick={() => {
+                setLoading(true);
+                void fetchUserProfile();
+              }}
               className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/80"
             >
               Try Again

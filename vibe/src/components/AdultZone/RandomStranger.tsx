@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { API_BASE_URL, SOCKET_URL } from '../../config';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
@@ -8,21 +8,65 @@ const RandomMatchRoom = React.lazy(() => import('./RandomMatchRoom'));
 
 type RandomState = 'idle' | 'queued' | 'matched' | 'ended';
 
+interface RandomMatchPayload {
+  matchId: string;
+  appId: string | number;
+  token: string;
+  roomId: string;
+  status?: string;
+}
+
 const RandomStranger: React.FC = () => {
   const { user } = useAdultAuth();
   const token = localStorage.getItem('adultAccessToken') || '';
 
   const [state, setState] = useState<RandomState>('idle');
-  const [matchData, setMatchData] = useState<any>(null);
+  const [matchData, setMatchData] = useState<RandomMatchPayload | null>(null);
 
   const socketRef = useRef<Socket | null>(null);
 
-  const getHeaders = () => ({
+  const getHeaders = useCallback(() => ({
     'Authorization': `Bearer ${token}`,
     'Content-Type': 'application/json'
-  });
+  }), [token]);
 
-  // Listen for socket match events
+  const handleNext = useCallback(async () => {
+    if (matchData) {
+      try {
+        await fetch(`${API_BASE_URL}/v1/adult/random/${matchData.matchId}/next`, {
+          method: 'POST',
+          headers: getHeaders()
+        });
+      } catch (err) {
+        console.error(err);
+      }
+    }
+    setMatchData(null);
+    setState('queued');
+    // Re-queue
+    try {
+      const res = await fetch(`${API_BASE_URL}/v1/adult/random/queue`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ mode: 'video' })
+      });
+      const data = await res.json();
+      if (data.success && data.data && data.data.status === 'matched') {
+        setMatchData(data.data as RandomMatchPayload);
+        setState('matched');
+      }
+    } catch (err) {
+      console.error(err);
+      setState('idle');
+    }
+  }, [matchData, getHeaders]);
+
+  const handleNextRef = useRef(handleNext);
+  useEffect(() => {
+    handleNextRef.current = handleNext;
+  }, [handleNext]);
+
+  // Listen for socket match events - maintain stable socket connection across matches!
   useEffect(() => {
     if (!token) return;
 
@@ -34,7 +78,7 @@ const RandomStranger: React.FC = () => {
       console.log('Random Match Socket connected:', s.id);
     });
 
-    s.on('random:match_found', (data: any) => {
+    s.on('random:match_found', (data: RandomMatchPayload) => {
       console.log('Random Match found:', data);
       setMatchData(data);
       setState('matched');
@@ -43,7 +87,7 @@ const RandomStranger: React.FC = () => {
 
     s.on('random:partner_left', () => {
       toast.info('Stranger disconnected. Re-queuing...');
-      handleNext();
+      void handleNextRef.current();
     });
 
     socketRef.current = s;
@@ -68,43 +112,12 @@ const RandomStranger: React.FC = () => {
       const data = await res.json();
       if (data.success && data.data && data.data.status === 'matched') {
         // Matched immediately
-        setMatchData(data.data);
+        setMatchData(data.data as RandomMatchPayload);
         setState('matched');
       }
     } catch (err) {
       console.error(err);
       toast.error('Failed to join matching queue');
-      setState('idle');
-    }
-  };
-
-  const handleNext = async () => {
-    if (matchData) {
-      try {
-        await fetch(`${API_BASE_URL}/v1/adult/random/${matchData.matchId}/next`, {
-          method: 'POST',
-          headers: getHeaders()
-        });
-      } catch (err) {
-        console.error(err);
-      }
-    }
-    setMatchData(null);
-    setState('queued');
-    // Re-queue
-    try {
-      const res = await fetch(`${API_BASE_URL}/v1/adult/random/queue`, {
-        method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify({ mode: 'video' })
-      });
-      const data = await res.json();
-      if (data.success && data.data && data.data.status === 'matched') {
-        setMatchData(data.data);
-        setState('matched');
-      }
-    } catch (err) {
-      console.error(err);
       setState('idle');
     }
   };

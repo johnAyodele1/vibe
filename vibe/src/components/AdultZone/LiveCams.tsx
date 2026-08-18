@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_BASE_URL, SOCKET_URL } from '../../config';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
@@ -10,40 +10,91 @@ import { io, Socket } from 'socket.io-client';
 
 const CamViewerRoom = React.lazy(() => import('./CamViewerRoom'));
 
+interface ProviderUser {
+  _id?: string;
+  username?: string;
+  profilePhoto?: string;
+}
+
+interface CamSession {
+  _id: string;
+  title?: string;
+  totalViewerCount?: number;
+  streamKey?: string;
+  avatarUrl?: string;
+  providerId?: ProviderUser;
+}
+
+interface ProviderProfileData {
+  id: string;
+  stageName: string;
+  avatarUrl: string;
+}
+
+interface WheelSlice {
+  id: string;
+  label: string;
+  creditCost?: number;
+}
+
+interface WheelData {
+  isActive?: boolean;
+  items: WheelSlice[];
+}
+
 const LiveCams: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAdultAuth();
   const token = localStorage.getItem('adultAccessToken') || '';
 
   const filters = ['All', 'Girls', 'Guys', 'Couples', 'Trans', 'New', 'Top Rated', 'Free', 'HD'];
-  const [sessions, setSessions] = useState<any[]>([]);
+  const [sessions, setSessions] = useState<CamSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState('All');
 
   // Watch State
-  const [activeSession, setActiveSession] = useState<any | null>(null);
+  const [activeSession, setActiveSession] = useState<CamSession | null>(null);
   const [agoraToken, setAgoraToken] = useState<string | null>(null);
   const [agoraAppId, setAgoraAppId] = useState<number | null>(null);
   const [agoraRoomId, setAgoraRoomId] = useState<string | null>(null);
   const [viewerCount, setViewerCount] = useState<number>(0);
 
-  const [providerProfile, setProviderProfile] = useState<any | null>(null);
-  const [wheel, setWheel] = useState<any | null>(null);
+  const [providerProfile, setProviderProfile] = useState<ProviderProfileData | null>(null);
+  const [wheel, setWheel] = useState<WheelData | null>(null);
   const [spinning, setSpinning] = useState(false);
   const [landedIndex, setLandedIndex] = useState<number | null>(null);
   const [lastSpinResult, setLastSpinResult] = useState<string | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [wheelOpen, setWheelOpen] = useState(false);
 
-  const openTipSheet = (prov: any, amt?: number | null) => useTipSheetStore.getState().openSheet(prov, amt);
+  const openTipSheet = (prov: { userId: string; stageName: string; avatarUrl: string; isOnline: boolean }, amt?: number | null) =>
+    useTipSheetStore.getState().openSheet(prov, amt);
   const socketRef = useRef<Socket | null>(null);
 
-  const getHeaders = () => ({
+  const getHeaders = useCallback(() => ({
     'Authorization': `Bearer ${token}`,
     'Content-Type': 'application/json'
-  });
+  }), [token]);
 
-  const fetchSessions = async () => {
+  const handleCloseWatch = useCallback(() => {
+    if (activeSession && socketRef.current) {
+      socketRef.current.emit('cam:leave', activeSession._id);
+      socketRef.current.off('cam:viewerCount');
+      socketRef.current.off('cam:viewer_count');
+      socketRef.current.off('cam:wheel_spin');
+    }
+    setActiveSession(null);
+    setAgoraToken(null);
+    setAgoraAppId(null);
+    setAgoraRoomId(null);
+    setWheel(null);
+    setProviderProfile(null);
+    setSpinning(false);
+    setLandedIndex(null);
+    setLastSpinResult(null);
+  }, [activeSession]);
+
+  const fetchSessions = useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch(`${API_BASE_URL}/adult/cams?status=live`, {
@@ -58,11 +109,17 @@ const LiveCams: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [getHeaders]);
 
   useEffect(() => {
-    fetchSessions();
-  }, [activeFilter]);
+    let isMounted = true;
+    const load = async () => {
+      await fetchSessions();
+      if (!isMounted) return;
+    };
+    void load();
+    return () => { isMounted = false; };
+  }, [fetchSessions, activeFilter]);
 
   // Set up socket integration
   useEffect(() => {
@@ -76,9 +133,9 @@ const LiveCams: React.FC = () => {
 
     socketRef.current = socket;
 
-    socket.on('cam:session_started', (newSession) => {
+    socket.on('cam:session_started', (newSession: { sessionId: string; title?: string; viewerCount?: number; streamKey?: string; providerId?: string; providerName?: string; avatarUrl?: string }) => {
       // Map to shape expected in card list
-      const formatted = {
+      const formatted: CamSession = {
         _id: newSession.sessionId,
         title: newSession.title || 'Live Cam',
         totalViewerCount: newSession.viewerCount || 0,
@@ -97,7 +154,7 @@ const LiveCams: React.FC = () => {
       });
     });
 
-    socket.on('cam:session_ended', (data) => {
+    socket.on('cam:session_ended', (data: { sessionId: string }) => {
       setSessions(prev => prev.filter(s => s._id !== data.sessionId));
       if (activeSession && activeSession._id === data.sessionId) {
         toast.info('The stream session has ended');
@@ -108,9 +165,9 @@ const LiveCams: React.FC = () => {
     return () => {
       socket.disconnect();
     };
-  }, [token, activeSession?._id]);
+  }, [token, activeSession, handleCloseWatch]);
 
-  const handleWatchNow = async (session: any) => {
+  const handleWatchNow = async (session: CamSession) => {
     if (!token) {
       toast.error('Authentication required to watch streams');
       return;
@@ -159,10 +216,10 @@ const LiveCams: React.FC = () => {
         // Join live room on socket
         if (socketRef.current) {
           socketRef.current.emit('cam:join', session._id);
-          socketRef.current.on('cam:viewerCount', (count) => {
+          socketRef.current.on('cam:viewerCount', (count: number) => {
             setViewerCount(count);
           });
-          socketRef.current.on('cam:viewer_count', (data) => {
+          socketRef.current.on('cam:viewer_count', (data: { count?: number }) => {
             if (data && typeof data.count === 'number') {
               setViewerCount(data.count);
             }
@@ -178,7 +235,7 @@ const LiveCams: React.FC = () => {
                 });
                 const wData = await wRes.json();
                 if (wData.success && wData.data && wData.data.items) {
-                  const idx = wData.data.items.findIndex((item: any) => item.id === data.itemId);
+                  const idx = wData.data.items.findIndex((item: WheelSlice) => item.id === data.itemId);
                   if (idx !== -1) {
                     setLandedIndex(idx);
                     setSpinning(true);
@@ -189,7 +246,7 @@ const LiveCams: React.FC = () => {
                   }
                 }
               };
-              fetchWheelFresh();
+              void fetchWheelFresh();
             } catch (e) {
               console.error(e);
             }
@@ -202,24 +259,6 @@ const LiveCams: React.FC = () => {
       console.error(err);
       toast.error('Failed to connect to stream server');
     }
-  };
-
-  const handleCloseWatch = () => {
-    if (activeSession && socketRef.current) {
-      socketRef.current.emit('cam:leave', activeSession._id);
-      socketRef.current.off('cam:viewerCount');
-      socketRef.current.off('cam:viewer_count');
-      socketRef.current.off('cam:wheel_spin');
-    }
-    setActiveSession(null);
-    setAgoraToken(null);
-    setAgoraAppId(null);
-    setAgoraRoomId(null);
-    setWheel(null);
-    setProviderProfile(null);
-    setSpinning(false);
-    setLandedIndex(null);
-    setLastSpinResult(null);
   };
 
   const handleSpinWheel = async () => {
@@ -239,7 +278,7 @@ const LiveCams: React.FC = () => {
       }
       if (response.ok) {
         // Trigger local SVG rotation matching landed index
-        const idx = wheel.items.findIndex((item: any) => item.id === data.itemId);
+        const idx = wheel.items.findIndex((item: WheelSlice) => item.id === data.itemId);
         if (idx !== -1) {
           setLandedIndex(idx);
           setTimeout(() => {
@@ -255,7 +294,7 @@ const LiveCams: React.FC = () => {
         toast.error(data.error || 'Spin transaction failed');
         setSpinning(false);
       }
-    } catch (err) {
+    } catch {
       toast.error('Error spinning the wheel');
       setSpinning(false);
     }

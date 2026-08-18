@@ -7,25 +7,45 @@ import { DatingCrossPromo } from './DatingCrossPromo';
 import { RewardsButton } from './RewardsButton';
 import { io } from 'socket.io-client';
 
+interface PerformerItem {
+  _id?: string;
+  userId?: string;
+  displayName?: string;
+  firstName?: string;
+  profilePhoto?: string;
+  photos?: Array<{ url: string }>;
+  age?: number;
+  country?: string;
+  providerProfile?: {
+    stageName?: string;
+    isLive?: boolean;
+    isOnline?: boolean;
+    rating?: number | { average?: number };
+    totalResponseCount?: number;
+    totalResponseMinutes?: number;
+  };
+}
+
 const AdultHome: React.FC = () => {
   const navigate = useNavigate();
-  const openSheet = (prov: any, amt?: number | null) => useTipSheetStore.getState().openSheet(prov, amt);
+  const openSheet = (prov: { userId: string; stageName: string; avatarUrl: string; isOnline: boolean }, amt?: number | null) =>
+    useTipSheetStore.getState().openSheet(prov, amt);
   const serviceCardsRef = useRef<HTMLDivElement>(null);
 
-  const [performers, setPerformers] = useState<any[]>([]);
+  const [performers, setPerformers] = useState<PerformerItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [messageLoading, setMessageLoading] = useState<string | null>(null);
   const [flashingTips, setFlashingTips] = useState<Record<string, boolean>>({});
 
-  // Dynamic homepage stats initialized with randomized values
-  const [stats, setStats] = useState({
+  // Dynamic homepage stats initialized lazily with randomized values
+  const [stats, setStats] = useState(() => ({
     liveNow: Math.floor(1150 + Math.random() * 180),
     camsOnline: Math.floor(310 + Math.random() * 60),
     roomsActive: Math.floor(1100 + Math.random() * 200),
     sextChatting: Math.floor(3100 + Math.random() * 600),
     randomWaiting: Math.floor(820 + Math.random() * 140),
     hookupNearby: Math.floor(130 + Math.random() * 40),
-  });
+  }));
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -91,21 +111,21 @@ const AdultHome: React.FC = () => {
       } else {
         toast.error('Could not start conversation. Please try again.');
       }
-    } catch (err) {
+    } catch {
       toast.error('Could not start conversation. Please try again.');
     } finally {
       setMessageLoading(null);
     }
   };
 
-  const handleTipClick = (p: any) => {
+  const handleTipClick = (p: PerformerItem) => {
     if (!localStorage.getItem('adultAccessToken')) {
       window.dispatchEvent(new CustomEvent('open-adult-auth-modal'));
       return;
     }
     const photoUrl = p.profilePhoto || p.photos?.[0]?.url || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=600&auto=format&fit=crop";
-    const displayName = p.displayName || p.providerProfile?.stageName || p.firstName;
-    const userId = p.userId || p._id;
+    const displayName = p.displayName || p.providerProfile?.stageName || p.firstName || 'Provider';
+    const userId = p.userId || p._id || '';
     openSheet({
       userId,
       stageName: displayName,
@@ -393,7 +413,7 @@ const AdultHome: React.FC = () => {
                           <button
                             data-testid="provider-card-message-btn"
                             disabled={messageLoading !== null}
-                            onClick={() => handleMessageClick(p.userId || p._id)}
+                            onClick={() => handleMessageClick(p.userId || p._id || '')}
                             className="w-8 h-8 rounded-full border border-[var(--az-border)] flex items-center justify-center hover:bg-[var(--az-accent-primary)] transition-colors text-white/70 hover:text-white"
                           >
                             {messageLoading === (p.userId || p._id) ? (
@@ -410,7 +430,7 @@ const AdultHome: React.FC = () => {
                         <button
                           onClick={() => handleTipClick(p)}
                           className={`px-4 py-1.5 text-[10px] font-bold rounded-full border transition-all duration-300
-                            ${flashingTips[p.userId || p._id]
+                            ${flashingTips[p.userId || p._id || '']
                               ? 'bg-green-950/40 border-green-500 text-green-500 shadow-[0_0_12px_rgba(34,197,94,0.3)] scale-105'
                               : 'bg-[var(--az-bg-tertiary)] text-[var(--az-text-primary)] border-[var(--az-border)] hover:border-[var(--az-accent-gold)] hover:bg-[var(--az-accent-primary)]/10 hover:text-[var(--az-accent-gold)]'}`}
                         >

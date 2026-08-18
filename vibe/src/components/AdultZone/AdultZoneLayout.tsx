@@ -20,6 +20,24 @@ import { NotifSettingsDialog } from '../pwa/NotifSettingsDialog';
 import { syncPushSubscription } from '../../lib/pwa/subscriptionSync';
 import { removePushSubscriptionOnLogout } from '../../lib/pwa/pushSubscriptionLogout';
 
+interface SocketMessagePayload {
+  messageId?: string;
+  message?: {
+    receiverId: string;
+    conversationId: string;
+  };
+}
+
+interface SocketCallPayload {
+  callId: string;
+  callerId: string;
+  callerName: string;
+  callerAvatar?: string;
+  type?: 'video' | 'audio';
+  webrtcRoomId: string;
+  rate: number;
+}
+
 const NavBadge: React.FC = () => {
   const totalUnread = useUnreadStore(s => s.totalUnread);
   if (totalUnread === 0) return null;
@@ -39,7 +57,7 @@ const AdultZoneLayout: React.FC = () => {
       try {
         const { verified } = JSON.parse(stored);
         return !!verified;
-      } catch (e) {
+      } catch {
         return false;
       }
     }
@@ -50,7 +68,8 @@ const AdultZoneLayout: React.FC = () => {
   const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login');
   const [authModalRole, setAuthModalRole] = useState<'user' | 'provider'>('user');
   const { isAuthenticated, logout, user, loading } = useAdultAuth();
-  const { setUnread, increment } = useUnreadStore();
+  const setUnread = useUnreadStore(s => s.setUnread);
+  const increment = useUnreadStore(s => s.increment);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -117,11 +136,11 @@ const AdultZoneLayout: React.FC = () => {
       console.log('Global Adult Zone socket connected:', s.id);
     });
 
-    s.on('sext:new_message_notification', (payload: any) => {
+    s.on('sext:new_message_notification', (payload: SocketMessagePayload) => {
       s.emit('sext:message_delivered', { messageId: payload.messageId });
     });
 
-    s.on('sext:new_message', (payload: any) => {
+    s.on('sext:new_message', (payload: SocketMessagePayload) => {
       if (payload.message?.receiverId === user.id) {
         const isViewingChat = window.location.pathname.includes(`/sext/${payload.message.conversationId}`) || window.location.pathname.includes(`/adult/sext/${payload.message.conversationId}`);
         if (!isViewingChat) {
@@ -147,7 +166,7 @@ const AdultZoneLayout: React.FC = () => {
         .catch(err => console.error('Failed to fetch unread count:', err));
     });
 
-    s.on('call:incoming', (payload: any) => {
+    s.on('call:incoming', (payload: SocketCallPayload) => {
       const isChatPage = location.pathname === '/adult/provider/messages' || location.pathname === '/sext';
       if (isChatPage) return;
 
@@ -162,7 +181,7 @@ const AdultZoneLayout: React.FC = () => {
       });
     });
 
-    s.on('call:missed', (payload: any) => {
+    s.on('call:missed', (payload: SocketCallPayload) => {
       setIncomingCall(prev => {
         if (!payload?.callId || prev?.callId === payload.callId) {
           return null;
@@ -171,7 +190,7 @@ const AdultZoneLayout: React.FC = () => {
       });
     });
 
-    s.on('call:ended', (payload: any) => {
+    s.on('call:ended', (payload: SocketCallPayload) => {
       setIncomingCall(prev => {
         if (!payload?.callId || prev?.callId === payload.callId) {
           return null;
@@ -183,7 +202,7 @@ const AdultZoneLayout: React.FC = () => {
     return () => {
       s.disconnect();
     };
-  }, [isAuthenticated, user?.id, location.pathname]);
+  }, [isAuthenticated, user, increment, setUnread, location.pathname]);
 
   const handleDeclineIncomingCall = async () => {
     if (!incomingCall) return;
@@ -288,7 +307,7 @@ const AdultZoneLayout: React.FC = () => {
         }
       })
       .catch(err => console.error('Failed to fetch unread count:', err));
-  }, [user?.id, isAuthenticated]);
+  }, [user?.id, isAuthenticated, setUnread]);
 
   if (loading) {
     return <LoadingScreen />;

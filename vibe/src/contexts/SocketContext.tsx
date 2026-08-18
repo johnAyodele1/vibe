@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { io, Socket } from "socket.io-client";
 import { SOCKET_URL } from "../config";
@@ -26,6 +27,8 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
   const { isAuthenticated, user } = useAuth();
   const [socket, setSocket] = useState<Socket | null>(null);
   const [connected, setConnected] = useState(false);
+
+  const userId = user ? (('id' in user ? user.id : '') || ('_id' in user ? user._id : '')) : '';
 
   useEffect(() => {
     let newSocket: Socket | null = null;
@@ -56,7 +59,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
         setConnected(false);
       });
 
-      setSocket(newSocket);
+      setTimeout(() => setSocket(newSocket), 0);
     }
 
     return () => {
@@ -65,7 +68,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
         newSocket.disconnect();
       }
     };
-  }, [isAuthenticated, (user as any)?._id, (user as any)?.id]);
+  }, [isAuthenticated, userId]);
 
   return (
     <SocketContext.Provider value={{ socket, connected }}>

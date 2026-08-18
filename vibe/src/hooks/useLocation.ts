@@ -1,11 +1,18 @@
 import { useState, useEffect } from 'react';
 import { API_BASE_URL } from '../config';
 
-const cache = new Map<string, any>();
+interface LocationItem {
+  name: string;
+  code?: string;
+  isoCode?: string;
+  [key: string]: unknown;
+}
 
-async function fetchWithCache(url: string) {
+const cache = new Map<string, unknown>();
+
+async function fetchWithCache<T>(url: string): Promise<T> {
   if (cache.has(url)) {
-    return cache.get(url);
+    return cache.get(url) as T;
   }
   const response = await fetch(url);
   if (!response.ok) {
@@ -13,17 +20,17 @@ async function fetchWithCache(url: string) {
   }
   const data = await response.json();
   cache.set(url, data);
-  return data;
+  return data as T;
 }
 
 export const useCountries = () => {
-  const [data, setData] = useState<any[] | null>(null);
+  const [data, setData] = useState<LocationItem[] | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<any>(null);
+  const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
     let active = true;
-    fetchWithCache(`${API_BASE_URL}/v1/shared/countries`)
+    fetchWithCache<LocationItem[]>(`${API_BASE_URL}/v1/shared/countries`)
       .then(res => {
         if (active) {
           setData(res);
@@ -32,7 +39,7 @@ export const useCountries = () => {
       })
       .catch(err => {
         if (active) {
-          setError(err);
+          setError(err instanceof Error ? err : new Error(String(err)));
           setLoading(false);
         }
       });
@@ -43,19 +50,21 @@ export const useCountries = () => {
 };
 
 export const useStates = (countryCode: string | null) => {
-  const [data, setData] = useState<any[] | null>(null);
+  const [data, setData] = useState<LocationItem[] | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<any>(null);
+  const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
     if (!countryCode) {
-      setData(null);
-      setLoading(false);
+      setTimeout(() => {
+        setData(null);
+        setLoading(false);
+      }, 0);
       return;
     }
     let active = true;
-    setLoading(true);
-    fetchWithCache(`${API_BASE_URL}/v1/shared/countries/${countryCode}/states`)
+    setTimeout(() => setLoading(true), 0);
+    fetchWithCache<LocationItem[]>(`${API_BASE_URL}/v1/shared/countries/${countryCode}/states`)
       .then(res => {
         if (active) {
           setData(res);
@@ -64,7 +73,7 @@ export const useStates = (countryCode: string | null) => {
       })
       .catch(err => {
         if (active) {
-          setError(err);
+          setError(err instanceof Error ? err : new Error(String(err)));
           setLoading(false);
         }
       });
@@ -75,22 +84,24 @@ export const useStates = (countryCode: string | null) => {
 };
 
 export const useCities = (countryCode: string | null, stateCode: string | null, query: string = '') => {
-  const [data, setData] = useState<any[] | null>(null);
+  const [data, setData] = useState<LocationItem[] | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<any>(null);
+  const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
     if (!countryCode || !stateCode) {
-      setData(null);
-      setLoading(false);
+      setTimeout(() => {
+        setData(null);
+        setLoading(false);
+      }, 0);
       return;
     }
     let active = true;
-    setLoading(true);
+    setTimeout(() => setLoading(true), 0);
     const url = `${API_BASE_URL}/v1/shared/cities?country=${countryCode}&state=${stateCode}&q=${encodeURIComponent(query)}`;
     fetch(url)
       .then(res => res.json())
-      .then(res => {
+      .then((res: LocationItem[]) => {
         if (active) {
           setData(res);
           setLoading(false);
@@ -98,7 +109,7 @@ export const useCities = (countryCode: string | null, stateCode: string | null, 
       })
       .catch(err => {
         if (active) {
-          setError(err);
+          setError(err instanceof Error ? err : new Error(String(err)));
           setLoading(false);
         }
       });

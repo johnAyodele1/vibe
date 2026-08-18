@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
 import { API_BASE_URL } from "../../config";
 import { formatAmount } from "../../lib/pricing";
 import {
-  LineChart, Line, BarChart, Bar, AreaChart, Area,
+  LineChart, Line, AreaChart, Area,
   PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, ResponsiveContainer
+  Tooltip, Legend, ResponsiveContainer, BarChart, Bar
 } from 'recharts';
 
 const CHART_COLORS = {
@@ -20,31 +20,73 @@ const CHART_COLORS = {
   background: '#130d10',
 };
 
+interface AnalyticsOverview {
+  users: {
+    totalMembers: number;
+    totalProviders: number;
+    activeToday: number;
+    newToday: number;
+    onlineNow: number;
+  };
+  earnings: {
+    totalPlatformFees: number;
+    totalPlatformNaira: number;
+    pendingPayouts: number;
+    pendingPayoutsNaira: number;
+  };
+  content: {
+    activeCamSessions: number;
+    totalMessages: number;
+    totalTransactions: number;
+  };
+}
+
+interface TopProviderItem {
+  id?: string;
+  stageName: string;
+  profilePhoto?: string;
+  earnings: number;
+}
+
+interface RecentTxItem {
+  id?: string;
+  description?: string;
+  fromName?: string;
+  toName?: string;
+  type: string;
+  amount: number;
+}
+
+interface RetentionData {
+  day1: number;
+  day7: number;
+  day30: number;
+}
+
 const AdminAnalytics: React.FC = () => {
   const navigate = useNavigate();
   const [dateRange, setDateRange] = useState("30d");
   const [loading, setLoading] = useState(true);
 
   // Overview stats state
-  const [overview, setOverview] = useState<any>(null);
+  const [overview, setOverview] = useState<AnalyticsOverview | null>(null);
 
   // Chart data states
-  const [dauData, setDauData] = useState<any[]>([]);
-  const [earningsDaily, setEarningsDaily] = useState<any[]>([]);
-  const [earningsBreakdown, setEarningsBreakdown] = useState<any[]>([]);
-  const [topProviders, setTopProviders] = useState<any[]>([]);
-  const [recentTx, setRecentTx] = useState<any[]>([]);
-  const [retention, setRetention] = useState<any>(null);
+  const [dauData, setDauData] = useState<Record<string, unknown>[]>([]);
+  const [earningsDaily, setEarningsDaily] = useState<Record<string, unknown>[]>([]);
+  const [earningsBreakdown, setEarningsBreakdown] = useState<Record<string, unknown>[]>([]);
+  const [topProviders, setTopProviders] = useState<TopProviderItem[]>([]);
+  const [recentTx, setRecentTx] = useState<RecentTxItem[]>([]);
+  const [retention, setRetention] = useState<RetentionData | null>(null);
 
-  const fetchAllData = async () => {
+  const fetchAllData = useCallback(async () => {
     try {
-      setLoading(true);
       const token = localStorage.getItem("adminToken");
       const headers = { Authorization: `Bearer ${token}` };
 
       // Determine date filters
       const today = new Date();
-      let fromDate = new Date();
+      const fromDate = new Date();
       if (dateRange === "7d") fromDate.setDate(today.getDate() - 7);
       else if (dateRange === "30d") fromDate.setDate(today.getDate() - 30);
       else if (dateRange === "90d") fromDate.setDate(today.getDate() - 90);
@@ -101,14 +143,19 @@ const AdminAnalytics: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [dateRange]);
 
   useEffect(() => {
     if (localStorage.getItem("isAdminAuthenticated") !== "true") {
       navigate("/admin/login");
       return;
     }
-    fetchAllData();
+    let isMounted = true;
+    const load = async () => {
+      await fetchAllData();
+      if (!isMounted) return;
+    };
+    void load();
 
     // Auto-refresh recent transactions every 10s
     const interval = setInterval(async () => {
@@ -120,11 +167,16 @@ const AdminAnalytics: React.FC = () => {
         if (json.success) {
           setRecentTx(json.data);
         }
-      } catch (err) {}
+      } catch {
+        /* Ignore background polling errors silently */
+      }
     }, 10000);
 
-    return () => clearInterval(interval);
-  }, [dateRange]);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [fetchAllData, navigate]);
 
   const handleLogout = () => {
     localStorage.removeItem("isAdminAuthenticated");
