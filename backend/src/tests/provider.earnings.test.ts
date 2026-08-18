@@ -91,8 +91,7 @@ describe('Provider Earnings & Payout API', () => {
     expect(res.body.data.grossEarned).toBe(0);
     expect(res.body.data.platformFee).toBe(0);
     expect(res.body.data.paidOut).toBe(0);
-    // Pending payout uses lifetime total earnings (15000 * 100 = 1500000)
-    expect(res.body.data.pending).toBe(1500000);
+    expect(res.body.data.pending).toBe(0);
     expect(res.body.data.timeline).toHaveLength(6);
     expect(res.body.data.transactions).toHaveLength(0);
   });
@@ -158,7 +157,7 @@ describe('Provider Earnings & Payout API', () => {
       .expect(400);
 
     expect(res.body.success).toBe(false);
-    expect(res.body.error).toBe('NO_ELIGIBLE_BALANCE');
+    expect(res.body.error).toBe('MINIMUM_THRESHOLD_NOT_MET');
   });
 
   it('proves canonical aggregation consistency across Dashboard and Detailed Earnings endpoints', async () => {

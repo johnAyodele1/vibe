@@ -24,6 +24,11 @@ describe('ProviderEarnings Component', () => {
               platformFee: 13094.12,
               paidOut: 45000,
               pending: 600000,
+              unsettled: 100000,
+              withdrawable: 500000,
+              earningsToBeClaimedCredits: 6000,
+              unsettledCredits: 1000,
+              withdrawableCredits: 5000,
               timeline: [
                 { dayName: 'Mon', credits: 1000 },
                 { dayName: 'Tue', credits: 2000 },
@@ -58,7 +63,8 @@ describe('ProviderEarnings Component', () => {
       expect(screen.getByText(/💎 87,?294\.12/)).toBeInTheDocument();
       expect(screen.getByText(/- 💎 13,?094\.12/)).toBeInTheDocument();
       expect(screen.getByText('₦45,000')).toBeInTheDocument();
-      expect(screen.getByText('₦600,000')).toBeInTheDocument();
+      expect(screen.getByText(/₦100,000/)).toBeInTheDocument();
+      expect(screen.getAllByText(/₦500,000/).length).toBeGreaterThan(0);
       expect(screen.getByText('Member_3821')).toBeInTheDocument();
       expect(screen.getByText('Member_2214')).toBeInTheDocument();
       expect(screen.getByText('Bank Transfer')).toBeInTheDocument();
@@ -149,7 +155,7 @@ describe('ProviderEarnings Component', () => {
 
     mockFetch.mockImplementation(async (input: any) => {
       const url = typeof input === 'string' ? input : input.url;
-      if (url.includes('/v1/adult/providers/me/payout')) {
+      if (url.includes('/v1/adult/providers/me/payout/request')) {
         return {
           ok: true,
           json: async () => ({ success: true })
@@ -165,7 +171,12 @@ describe('ProviderEarnings Component', () => {
               grossEarned: 87294.12,
               platformFee: 13094.12,
               paidOut: 55650,
-              pending: 0.00,
+              pending: 0,
+              unsettled: 0,
+              withdrawable: 0,
+              earningsToBeClaimedCredits: 0,
+              unsettledCredits: 0,
+              withdrawableCredits: 0,
               timeline: [],
               transactions: [
                 { id: '5', date: 'Jul 16', type: 'Payout', from: 'Bank Transfer', amount: -14200, naira: -1420000, status: 'Completed' }
@@ -181,7 +192,7 @@ describe('ProviderEarnings Component', () => {
 
     await waitFor(() => {
       expect(screen.getByText('₦55,650')).toBeInTheDocument();
-      expect(screen.getByText('₦0')).toBeInTheDocument();
+      expect(screen.getAllByText('₦0').length).toBeGreaterThan(0);
     });
   });
 });

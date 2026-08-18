@@ -267,6 +267,15 @@ export const requestPayout = async (req: Request, res: Response) => {
     });
 
     const eligibleTotal = eligibleTxs.reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+    const rate = await getDiamondNairaRate();
+
+    if (eligibleTotal < 500) {
+      return res.status(400).json({
+        success: false,
+        error: 'MINIMUM_THRESHOLD_NOT_MET',
+        message: `Minimum payout threshold is 500 diamonds (≈ ₦${(500 * rate).toLocaleString('en-NG')}).`,
+      });
+    }
 
     if (eligibleTotal <= 0) {
       return res.status(400).json({
@@ -289,9 +298,6 @@ export const requestPayout = async (req: Request, res: Response) => {
         message: 'No withdrawable balance remaining in your wallet',
       });
     }
-
-    // 4. Get current rate and calculate Naira
-    const rate = await getDiamondNairaRate();
     const amountNaira = finalAmount * rate;
 
     // 5. Get queue position

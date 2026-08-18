@@ -1,5 +1,6 @@
 import { Types } from 'mongoose';
 import CreditTransaction from '../models/CreditTransaction';
+import { getDiamondNairaRate } from './pricing';
 
 export const PROVIDER_EARNING_TYPES = [
   'tip_received',
@@ -12,6 +13,14 @@ export const PROVIDER_EARNING_TYPES = [
   'paid_media_unlock',
   'spin_earning',
   'spin_wheel',
+];
+
+export const REVERT_TYPES = [
+  'call_refund',
+  'dispute_refund',
+  'refund',
+  'chargeback',
+  'reversion',
 ];
 
 /**
@@ -38,6 +47,26 @@ export interface ProviderEarningsSummary {
   totalEarned: number; // Net provider earnings
   platformFee: number; // Total platform fees
   grossEarned: number; // Gross earnings (net + platformFee)
+}
+
+export interface ProviderBalanceBreakdown {
+  totalAccumulatedCredits: number;
+  totalAccumulatedNaira: number;
+  grossEarnedCredits: number;
+  grossEarnedNaira: number;
+  platformFeeCredits: number;
+  platformFeeNaira: number;
+  paidOutCredits: number;
+  paidOutNaira: number;
+  unsettledCredits: number;
+  unsettledNaira: number;
+  disputedCredits: number;
+  disputedNaira: number;
+  withdrawableCredits: number;
+  withdrawableNaira: number;
+  earningsToBeClaimedCredits: number;
+  earningsToBeClaimedNaira: number;
+  rate: number;
 }
 
 /**
@@ -77,5 +106,85 @@ export const calculateProviderEarnings = async (
     totalEarned,
     platformFee,
     grossEarned,
+  };
+};
+
+/**
+ * Calculates a unified, reconciled provider balance breakdown across all transaction states.
+ * Single source of truth for Pending Clearance, Total Accumulated Balance, and Payout Eligibility.
+ */
+export const calculateProviderBalanceBreakdown = async (
+  userId: Types.ObjectId | string
+): Promise<ProviderBalanceBreakdown> => {
+  const rate = await getDiamondNairaRate();
+
+  // Fetch all transactions for the provider
+  const transactions = await CreditTransaction.find({ userId });
+
+  let grossEarnedCredits = 0;
+  let platformFeeCredits = 0;
+  let totalEarnedCredits = 0;
+  let paidOutCredits = 0;
+  let unsettledCredits = 0;
+  let disputedCredits = 0;
+  let withdrawableCredits = 0;
+  let totalReversionCredits = 0;
+
+  for (const tx of transactions) {
+    const isEarningType = PROVIDER_EARNING_TYPES.includes(tx.type);
+    const isRevertType = REVERT_TYPES.includes(tx.type) || tx.amount < 0;
+
+    if (tx.status === 'completed' && isEarningType) {
+      const netAmount = tx.amount;
+      const fee = tx.platformFee || 0;
+
+      grossEarnedCredits += netAmount + fee;
+      platformFeeCredits += fee;
+      totalEarnedCredits += netAmount;
+
+      if (tx.paidOut === true) {
+        // Already paid out (accounted for in payout transactions)
+      } else if (tx.inDispute === true) {
+        // Disputed payment
+        disputedCredits += netAmount;
+      } else if (tx.eligibleForPayout === false) {
+        // Unsettled / unconfirmed payment
+        unsettledCredits += netAmount;
+      } else if (!tx.inPayoutRequest) {
+        // Eligible for withdrawal
+        withdrawableCredits += netAmount;
+      }
+    } else if (tx.type === 'payout' && tx.status === 'completed') {
+      paidOutCredits += Math.abs(tx.amount);
+    } else if (tx.status === 'completed' && isRevertType && tx.type !== 'payout') {
+      // Reversion/refund reduces total earnings and withdrawable balance
+      const revertAmt = Math.abs(tx.amount);
+      totalReversionCredits += revertAmt;
+      withdrawableCredits = Math.max(0, withdrawableCredits - revertAmt);
+    }
+  }
+
+  // Net earnings after reversions
+  const totalAccumulatedCredits = Math.max(0, totalEarnedCredits - totalReversionCredits - paidOutCredits);
+  const earningsToBeClaimedCredits = totalAccumulatedCredits;
+
+  return {
+    totalAccumulatedCredits,
+    totalAccumulatedNaira: totalAccumulatedCredits * rate,
+    grossEarnedCredits,
+    grossEarnedNaira: grossEarnedCredits * rate,
+    platformFeeCredits,
+    platformFeeNaira: platformFeeCredits * rate,
+    paidOutCredits,
+    paidOutNaira: paidOutCredits * rate,
+    unsettledCredits,
+    unsettledNaira: unsettledCredits * rate,
+    disputedCredits,
+    disputedNaira: disputedCredits * rate,
+    withdrawableCredits,
+    withdrawableNaira: withdrawableCredits * rate,
+    earningsToBeClaimedCredits,
+    earningsToBeClaimedNaira: earningsToBeClaimedCredits * rate,
+    rate,
   };
 };
