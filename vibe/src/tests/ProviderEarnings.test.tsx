@@ -140,7 +140,7 @@ describe('ProviderEarnings Component', () => {
     });
   });
 
-  it('allows requesting a payout which triggers the payout API and refreshes the component', async () => {
+  it('navigates to payout page when est valuation link is present', async () => {
     render(
       <MemoryRouter>
         <ProviderEarnings />
@@ -151,48 +151,7 @@ describe('ProviderEarnings Component', () => {
       expect(screen.getByText(/💎 74,?200/)).toBeInTheDocument();
     });
 
-    const payoutButton = screen.getByRole('button', { name: /Request Early Payout/i });
-
-    mockFetch.mockImplementation(async (input: any) => {
-      const url = typeof input === 'string' ? input : input.url;
-      if (url.includes('/v1/adult/providers/me/payout/request')) {
-        return {
-          ok: true,
-          json: async () => ({ success: true })
-        };
-      }
-      if (url.includes('/v1/adult/providers/me/earnings')) {
-        return {
-          ok: true,
-          json: async () => ({
-            success: true,
-            data: {
-              totalEarned: 74200,
-              grossEarned: 87294.12,
-              platformFee: 13094.12,
-              paidOut: 55650,
-              pending: 0,
-              unsettled: 0,
-              withdrawable: 0,
-              earningsToBeClaimedCredits: 0,
-              unsettledCredits: 0,
-              withdrawableCredits: 0,
-              timeline: [],
-              transactions: [
-                { id: '5', date: 'Jul 16', type: 'Payout', from: 'Bank Transfer', amount: -14200, naira: -1420000, status: 'Completed' }
-              ]
-            }
-          })
-        };
-      }
-      return { ok: true, json: async () => ({}) };
-    });
-
-    fireEvent.click(payoutButton);
-
-    await waitFor(() => {
-      expect(screen.getByText('₦55,650')).toBeInTheDocument();
-      expect(screen.getAllByText('₦0').length).toBeGreaterThan(0);
-    });
+    const valuationLink = screen.getByRole('link', { name: /est\. valuation/i });
+    expect(valuationLink).toHaveAttribute('href', '/adult/provider/payout');
   });
 });

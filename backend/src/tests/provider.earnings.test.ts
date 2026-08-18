@@ -151,6 +151,19 @@ describe('Provider Earnings & Payout API', () => {
   });
 
   it('POST /api/v1/adult/providers/me/payout fails if pending payout is below threshold', async () => {
+    await CreditTransaction.create({
+      userId: providerId,
+      type: 'tip_received',
+      amount: 200,
+      platformFee: 35.29,
+      usdAmount: 1.5,
+      nairaAmount: 20000,
+      description: 'Small tip below threshold',
+      status: 'completed',
+      eligibleForPayout: true,
+      paidOut: false
+    });
+
     const res = await request(app)
       .post('/api/v1/adult/providers/me/payout')
       .set('Authorization', `Bearer ${providerToken}`)

@@ -191,12 +191,6 @@ const ProviderEarnings: React.FC = () => {
               >
                 ≈ {formatNaira(withdrawableNaira)} est. valuation →
               </Link>
-              <button
-                onClick={requestEarlyPayout}
-                className="mt-3 w-full py-2 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-[10px] uppercase tracking-widest rounded-xl transition-all shadow-md"
-              >
-                Request Early Payout
-              </button>
             </div>
           </div>
         </div>
