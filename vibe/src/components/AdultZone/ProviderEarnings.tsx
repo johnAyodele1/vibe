@@ -18,7 +18,6 @@ const ProviderEarnings: React.FC = () => {
   const [unsettledNaira, setUnsettledNaira] = useState(0);
   const [withdrawableNaira, setWithdrawableNaira] = useState(0);
   const [earningsToBeClaimedCredits, setEarningsToBeClaimedCredits] = useState(0);
-  const [withdrawableCredits, setWithdrawableCredits] = useState(0);
 
   const [transactions, setTransactions] = useState<any[]>([]);
   const [timeline, setTimeline] = useState<any[]>([]);
@@ -47,7 +46,6 @@ const ProviderEarnings: React.FC = () => {
         setUnsettledNaira(json.data.unsettled !== undefined ? json.data.unsettled : (json.data.pending || 0));
         setWithdrawableNaira(json.data.withdrawable !== undefined ? json.data.withdrawable : 0);
         setEarningsToBeClaimedCredits(json.data.earningsToBeClaimedCredits || 0);
-        setWithdrawableCredits(json.data.withdrawableCredits || 0);
 
         setTransactions(json.data.transactions || []);
         setTimeline(json.data.timeline || []);
@@ -69,32 +67,6 @@ const ProviderEarnings: React.FC = () => {
     }
     fetchEarnings();
   }, [token, navigate, dateRange]);
-
-  const requestEarlyPayout = async () => {
-    const rate = usePricingStore.getState().diamondNairaRate;
-    if (withdrawableCredits < 500) {
-      toast.error(`Minimum payout threshold is 500 diamonds (≈ ${formatNaira(500 * rate)})`);
-      return;
-    }
-    try {
-      const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/payout/request`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      const json = await res.json();
-      if (json.success) {
-        toast.success('Your early payout request has been processed successfully!');
-        fetchEarnings(); // refresh the numbers and transactions
-      } else {
-        toast.error(json.message || json.error?.message || 'Failed to process payout');
-      }
-    } catch (err: any) {
-      toast.error('Error initiating payout request');
-    }
-  };
 
   if (isLoading && transactions.length === 0) {
     return (
