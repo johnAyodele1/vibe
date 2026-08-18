@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { API_BASE_URL } from '../../config';
@@ -8,6 +8,12 @@ import { useOnboardingStore } from './useOnboardingStore';
 import { compressToWebP } from '../../lib/media/compressImage';
 import { usePricingStore } from '../../lib/pricing';
 import { uploadMedia } from '../../lib/media/uploadMedia';
+
+interface LocationValue {
+  country?: { code: string; name: string };
+  state?: { code: string; name: string };
+  city?: { name: string; lat: number; lng: number };
+}
 
 const ProviderOnboarding: React.FC = () => {
   const navigate = useNavigate();
@@ -26,7 +32,6 @@ const ProviderOnboarding: React.FC = () => {
   const [profileData, setProfileData] = useState({
     bio: '',
     gender: 'female',
-    dateOfBirth: '',
   });
 
   // DOB Dropdowns State
@@ -51,7 +56,6 @@ const ProviderOnboarding: React.FC = () => {
   const [dobDay, setDobDay] = useState<number>(1);
   const [dobMonth, setDobMonth] = useState<number>(1);
   const [dobYear, setDobYear] = useState<number>(currentYear - 18);
-  const [dobError, setDobError] = useState<string | null>(null);
 
   const [photos, setPhotos] = useState<string[]>([]);
   const [videos, setVideos] = useState<string[]>([]);
@@ -70,7 +74,7 @@ const ProviderOnboarding: React.FC = () => {
     { amount: 100, action: 'Special shoutout' },
   ]);
 
-  const [locationValue, setLocationValue] = useState<any>({});
+  const [locationValue, setLocationValue] = useState<LocationValue>({});
   const [coverageArea, setCoverageArea] = useState('My city only');
 
   const [payoutMethod, setPayoutMethod] = useState('bank');
@@ -92,24 +96,24 @@ const ProviderOnboarding: React.FC = () => {
   // Suggested values for calculation
   const [calcMinutes, setCalcMinutes] = useState(30);
 
-  // DOB validation effect
-  useEffect(() => {
-    if (dobDay && dobMonth && dobYear) {
-      const dobStr = `${dobYear}-${String(dobMonth).padStart(2, '0')}-${String(dobDay).padStart(2, '0')}`;
-      const dob = new Date(dobStr);
-      const ageDiff = Date.now() - dob.getTime();
-      const ageDate = new Date(ageDiff);
-      const age = Math.abs(ageDate.getUTCFullYear() - 1970);
-      if (dob.getTime() > Date.now()) {
-        setDobError('Date of birth cannot be in the future');
-      } else if (age < 18) {
-        setDobError('Must be 18 years or older');
-      } else {
-        setDobError(null);
-      }
-      setProfileData(prev => ({ ...prev, dateOfBirth: dobStr }));
-    }
+  // Derive DOB string and error
+  const dobStr = useMemo(() => {
+    return `${dobYear}-${String(dobMonth).padStart(2, '0')}-${String(dobDay).padStart(2, '0')}`;
   }, [dobDay, dobMonth, dobYear]);
+
+  const dobError = useMemo(() => {
+    if (!dobDay || !dobMonth || !dobYear) return null;
+    const dob = new Date(dobStr);
+    const ageDiff = Date.now() - dob.getTime();
+    const ageDate = new Date(ageDiff);
+    const age = Math.abs(ageDate.getUTCFullYear() - 1970);
+    if (dob.getTime() > Date.now()) {
+      return 'Date of birth cannot be in the future';
+    } else if (age < 18) {
+      return 'Must be 18 years or older';
+    }
+    return null;
+  }, [dobDay, dobMonth, dobYear, dobStr]);
 
   // Fetch onboarding progress on mount to pre-populate form
   useEffect(() => {
@@ -137,7 +141,7 @@ const ProviderOnboarding: React.FC = () => {
           // Populate local states
           if (data.stepData[1]) {
             const s1 = data.stepData[1];
-            setProfileData(s1);
+            setProfileData({ bio: s1.bio || '', gender: s1.gender || 'female' });
             if (s1.dateOfBirth) {
               const parts = s1.dateOfBirth.split('-');
               if (parts.length === 3) {
@@ -219,8 +223,8 @@ const ProviderOnboarding: React.FC = () => {
       }
     };
 
-    fetchOnboardingProgress();
-  }, [user?.role, token, navigate, setStep, setCompletedSteps, setIsComplete]);
+    void fetchOnboardingProgress();
+  }, [user, token, navigate, setStep, setCompletedSteps, setIsComplete]);
 
   const handleProfilePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -248,8 +252,9 @@ const ProviderOnboarding: React.FC = () => {
       const photoUrl = result.url;
       setPhotos(prev => [...prev, photoUrl]);
       toast.success('Photo uploaded and optimized successfully');
-    } catch (err: any) {
-      toast.error(err.message || 'Photo upload failed');
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'Photo upload failed';
+      toast.error(errMsg);
       setCompressing(false);
     } finally {
       setUploading(false);
@@ -282,8 +287,9 @@ const ProviderOnboarding: React.FC = () => {
       const videoUrl = result.url;
       setVideos(prev => [...prev, videoUrl]);
       toast.success('Video preview uploaded successfully');
-    } catch (err: any) {
-      toast.error(err.message || 'Video upload failed');
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'Video upload failed';
+      toast.error(errMsg);
     } finally {
       setUploading(false);
     }
@@ -311,17 +317,17 @@ const ProviderOnboarding: React.FC = () => {
     setTipMenu(prev => prev.filter((_, i) => i !== idx));
   };
 
-  const updateTipItem = (idx: number, field: 'amount' | 'action', value: any) => {
+  const updateTipItem = (idx: number, field: 'amount' | 'action', value: number | string) => {
     setTipMenu(prev => prev.map((item, i) => i === idx ? { ...item, [field]: value } : item));
   };
 
   const saveStep = async (setUpLater: boolean = false) => {
     setSaving(true);
     try {
-      let stepPayload: any = {};
+      let stepPayload: Record<string, unknown> = {};
 
       if (step === 1) {
-        if (!profileData.bio || !profileData.dateOfBirth) {
+        if (!profileData.bio || !dobStr) {
           toast.error('Please fill in bio and Date of Birth');
           setSaving(false);
           return;
@@ -333,7 +339,7 @@ const ProviderOnboarding: React.FC = () => {
         }
         stepPayload = {
           bio: profileData.bio,
-          dateOfBirth: profileData.dateOfBirth,
+          dateOfBirth: dobStr,
           gender: profileData.gender
         };
       }
@@ -394,7 +400,7 @@ const ProviderOnboarding: React.FC = () => {
             payoutMethod: 'pending'
           };
         } else {
-          let pDetails: any = {};
+          let pDetails: Record<string, unknown> = {};
           if (payoutMethod === 'bank') {
             pDetails = {
               bankName: payoutDetails.bankName,
@@ -454,8 +460,9 @@ const ProviderOnboarding: React.FC = () => {
       }
 
       toast.success(`Step ${step} saved successfully!`);
-    } catch (err: any) {
-      toast.error(err.message || 'Operation failed');
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'Operation failed';
+      toast.error(errMsg);
     } finally {
       setSaving(false);
     }
