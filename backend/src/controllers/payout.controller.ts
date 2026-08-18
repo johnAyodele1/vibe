@@ -285,6 +285,14 @@ export const requestPayout = async (req: Request, res: Response) => {
       });
     }
 
+    if (req.body.amount !== undefined && req.body.amount < 500) {
+      return res.status(400).json({
+        success: false,
+        error: 'MINIMUM_THRESHOLD_NOT_MET',
+        message: `Requested payout amount must be at least 500 diamonds (≈ ₦${(500 * rate).toLocaleString('en-NG')}).`,
+      });
+    }
+
     const requestedAmount = req.body.amount
       ? Math.min(req.body.amount, eligibleTotal)
       : eligibleTotal;

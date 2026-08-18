@@ -728,15 +728,12 @@ export const getProviderEarnings = async (req: Request, res: Response) => {
       filteredTransactions = transactions.filter(tx => new Date(tx.createdAt) >= startDate);
     }
 
-    // 4. Calculate period metrics
-    const periodEarningTxs = filteredTransactions.filter(tx =>
-      tx.status === 'completed' && PROVIDER_EARNING_TYPES.includes(tx.type)
-    );
-    const totalEarned = periodEarningTxs.reduce((sum, tx) => sum + tx.amount, 0);
-    const platformFee = periodEarningTxs.reduce((sum, tx) => sum + (tx.platformFee || 0), 0);
-    const grossEarned = totalEarned + platformFee;
-
     const rate = breakdown.rate;
+
+    // Lifetime metrics for financial summary cards
+    const totalEarned = breakdown.totalAccumulatedCredits;
+    const grossEarned = breakdown.grossEarnedCredits;
+    const platformFee = breakdown.platformFeeCredits;
 
     // 5. Calculate Earnings Timeline (last 6 days) using completed earning transactions
     const timeline: any[] = [];

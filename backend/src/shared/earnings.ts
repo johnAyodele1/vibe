@@ -112,6 +112,11 @@ export const calculateProviderEarnings = async (
 /**
  * Calculates a unified, reconciled provider balance breakdown across all transaction states.
  * Single source of truth for Pending Clearance, Total Accumulated Balance, and Payout Eligibility.
+ *
+ * Accounting Invariants:
+ * 1. Total Accumulated Balance (lifetimeProviderEarnings) = grossEarned - platformFee (Payouts do NOT deduct from this).
+ * 2. earningsToBeClaimed = lifetimeProviderEarnings - paidOut - reversions.
+ * 3. earningsToBeClaimed = withdrawable + unsettled + disputed.
  */
 export const calculateProviderBalanceBreakdown = async (
   userId: Types.ObjectId | string
@@ -123,16 +128,16 @@ export const calculateProviderBalanceBreakdown = async (
 
   let grossEarnedCredits = 0;
   let platformFeeCredits = 0;
-  let totalEarnedCredits = 0;
+  let lifetimeProviderEarnings = 0;
   let paidOutCredits = 0;
   let unsettledCredits = 0;
   let disputedCredits = 0;
-  let withdrawableCredits = 0;
+  let rawWithdrawableCredits = 0;
   let totalReversionCredits = 0;
 
   for (const tx of transactions) {
     const isEarningType = PROVIDER_EARNING_TYPES.includes(tx.type);
-    const isRevertType = REVERT_TYPES.includes(tx.type) || tx.amount < 0;
+    const isRevertType = REVERT_TYPES.includes(tx.type);
 
     if (tx.status === 'completed' && isEarningType) {
       const netAmount = tx.amount;
@@ -140,33 +145,57 @@ export const calculateProviderBalanceBreakdown = async (
 
       grossEarnedCredits += netAmount + fee;
       platformFeeCredits += fee;
-      totalEarnedCredits += netAmount;
+      lifetimeProviderEarnings += netAmount;
 
       if (tx.paidOut === true) {
-        // Already paid out (accounted for in payout transactions)
+        // Handled via paidOut flag on earning transactions
       } else if (tx.inDispute === true) {
-        // Disputed payment
         disputedCredits += netAmount;
-      } else if (tx.eligibleForPayout === false) {
-        // Unsettled / unconfirmed payment
+      } else if (tx.eligibleForPayout === false || !!tx.inPayoutRequest) {
         unsettledCredits += netAmount;
-      } else if (!tx.inPayoutRequest) {
-        // Eligible for withdrawal
-        withdrawableCredits += netAmount;
+      } else {
+        rawWithdrawableCredits += netAmount;
       }
     } else if (tx.type === 'payout' && tx.status === 'completed') {
       paidOutCredits += Math.abs(tx.amount);
     } else if (tx.status === 'completed' && isRevertType && tx.type !== 'payout') {
-      // Reversion/refund reduces total earnings and withdrawable balance
-      const revertAmt = Math.abs(tx.amount);
-      totalReversionCredits += revertAmt;
-      withdrawableCredits = Math.max(0, withdrawableCredits - revertAmt);
+      totalReversionCredits += Math.abs(tx.amount);
     }
   }
 
-  // Net earnings after reversions
-  const totalAccumulatedCredits = Math.max(0, totalEarnedCredits - totalReversionCredits - paidOutCredits);
-  const earningsToBeClaimedCredits = totalAccumulatedCredits;
+  // Calculate paid out amounts
+  const paidOutFromFlag = transactions
+    .filter(tx => tx.status === 'completed' && PROVIDER_EARNING_TYPES.includes(tx.type) && tx.paidOut === true)
+    .reduce((sum, tx) => sum + tx.amount, 0);
+
+  paidOutCredits = Math.max(paidOutCredits, paidOutFromFlag);
+
+  // Unflagged paidOut is any payout amount not already reflected by paidOut: true flags on individual earning txs
+  const unflaggedPaidOut = Math.max(0, paidOutCredits - paidOutFromFlag);
+
+  // Total deductions from claimable balance = unflagged payouts + reversions
+  let remainingDeduction = unflaggedPaidOut + totalReversionCredits;
+  let withdrawableCredits = 0;
+
+  if (rawWithdrawableCredits >= remainingDeduction) {
+    withdrawableCredits = rawWithdrawableCredits - remainingDeduction;
+    remainingDeduction = 0;
+  } else {
+    withdrawableCredits = 0;
+    remainingDeduction -= rawWithdrawableCredits;
+
+    if (unsettledCredits >= remainingDeduction) {
+      unsettledCredits -= remainingDeduction;
+      remainingDeduction = 0;
+    } else {
+      remainingDeduction -= unsettledCredits;
+      unsettledCredits = 0;
+      disputedCredits = Math.max(0, disputedCredits - remainingDeduction);
+    }
+  }
+
+  const earningsToBeClaimedCredits = withdrawableCredits + unsettledCredits + disputedCredits;
+  const totalAccumulatedCredits = lifetimeProviderEarnings;
 
   return {
     totalAccumulatedCredits,

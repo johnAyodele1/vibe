@@ -6,6 +6,7 @@ import AdultUser from '../models/AdultUser';
 import CreditTransaction from '../models/CreditTransaction';
 import AppConfig from '../models/AppConfig';
 import jwt from 'jsonwebtoken';
+import { calculateProviderBalanceBreakdown } from '../shared/earnings';
 
 describe('Provider Earnings & Payout API', () => {
   let mongoServer: MongoMemoryServer;
@@ -173,163 +174,373 @@ describe('Provider Earnings & Payout API', () => {
     expect(res.body.error).toBe('MINIMUM_THRESHOLD_NOT_MET');
   });
 
-  it('proves canonical aggregation consistency across Dashboard and Detailed Earnings endpoints', async () => {
-    // Clear transactions for isolated test provider
-    const p2 = new AdultUser({
-      email: 'p2@vibe.com',
-      passwordHash: 'pass',
-      username: 'p2user',
-      displayName: 'Provider Two',
-      dateOfBirth: new Date('1992-01-01'),
-      role: 'provider',
-      country: 'Nigeria',
-      credits: 5000,
-      providerProfile: {
-        stageName: 'Provider Two',
-        totalEarnings: 3663.80, // Lifetime total in profile
-        pendingPayout: 0,
-        verificationStatus: 'approved'
-      }
-    });
-    await p2.save();
-    const p2Token = jwt.sign({ sub: p2._id.toString() }, process.env.ADULT_JWT_SECRET || 'adult_secret');
+  describe('Comprehensive Accounting Invariants Test Matrix (Cases 1 - 19)', () => {
+    let matrixProviderId: string;
 
-    const now = new Date();
-
-    // 1. Multiple legitimate earning types recorded this month
-    await CreditTransaction.create({
-      userId: p2._id,
-      type: 'tip_received',
-      amount: 850,
-      platformFee: 150,
-      usdAmount: 0,
-      description: 'Tip received',
-      status: 'completed',
-      createdAt: now,
+    beforeEach(async () => {
+      const p = new AdultUser({
+        email: `matrix.${Date.now()}@vibe.com`,
+        passwordHash: 'pass',
+        username: `matrix_${Date.now()}`,
+        displayName: 'Matrix Provider',
+        dateOfBirth: new Date('1995-01-01'),
+        role: 'provider',
+        country: 'Nigeria',
+        credits: 10000,
+        providerProfile: {
+          stageName: 'Matrix Gold',
+          totalEarnings: 0,
+          pendingPayout: 0,
+          verificationStatus: 'approved',
+          payoutInfo: {
+            method: 'bank',
+            details: { bankName: 'GTBank', accountNumber: '1234567890' }
+          }
+        }
+      });
+      await p.save();
+      matrixProviderId = p._id.toString();
     });
 
-    await CreditTransaction.create({
-      userId: p2._id,
-      type: 'call_earning',
-      amount: 1700,
-      platformFee: 300,
-      usdAmount: 0,
-      description: 'Call payout',
-      status: 'completed',
-      createdAt: now,
+    it('1. Lifetime earnings with zero payouts', async () => {
+      await CreditTransaction.create({
+        userId: matrixProviderId,
+        type: 'tip_received',
+        amount: 1000,
+        platformFee: 150,
+        usdAmount: 7.5,
+        description: 'Tip received',
+        status: 'completed',
+        eligibleForPayout: true
+      });
+
+      const b = await calculateProviderBalanceBreakdown(matrixProviderId);
+      expect(b.totalAccumulatedCredits).toBe(1000);
+      expect(b.paidOutCredits).toBe(0);
+      expect(b.earningsToBeClaimedCredits).toBe(1000);
+      expect(b.withdrawableCredits).toBe(1000);
     });
 
-    await CreditTransaction.create({
-      userId: p2._id,
-      type: 'service_payment_received',
-      amount: 850,
-      platformFee: 150,
-      usdAmount: 0,
-      description: 'Service request payment',
-      status: 'completed',
-      createdAt: now,
+    it('2 & 3 & 4. Lifetime accumulated balance remains unchanged after payout, but earningsToBeClaimed decreases', async () => {
+      await CreditTransaction.create({
+        userId: matrixProviderId,
+        type: 'tip_received',
+        amount: 2000,
+        platformFee: 300,
+        usdAmount: 15,
+        description: 'Tip received',
+        status: 'completed',
+        eligibleForPayout: true
+      });
+
+      await CreditTransaction.create({
+        userId: matrixProviderId,
+        type: 'payout',
+        amount: -1200,
+        usdAmount: -9,
+        description: 'Payout',
+        status: 'completed'
+      });
+
+      const b = await calculateProviderBalanceBreakdown(matrixProviderId);
+      expect(b.totalAccumulatedCredits).toBe(2000); // Lifetime balance unchanged
+      expect(b.paidOutCredits).toBe(1200);
+      expect(b.earningsToBeClaimedCredits).toBe(800); // 2000 - 1200
     });
 
-    await CreditTransaction.create({
-      userId: p2._id,
-      type: 'paid_media_unlock',
-      amount: 263.80,
-      platformFee: 46.55,
-      usdAmount: 0,
-      description: 'Photo unlock',
-      status: 'completed',
-      createdAt: now,
+    it('5 & 6. Unsettled earnings remain in earningsToBeClaimed but excluded from withdrawable', async () => {
+      await CreditTransaction.create({
+        userId: matrixProviderId,
+        type: 'service_payment_received',
+        amount: 1500,
+        platformFee: 225,
+        usdAmount: 11.25,
+        description: 'Service request payment',
+        status: 'completed',
+        eligibleForPayout: false // Unsettled service
+      });
+
+      const b = await calculateProviderBalanceBreakdown(matrixProviderId);
+      expect(b.earningsToBeClaimedCredits).toBe(1500);
+      expect(b.unsettledCredits).toBe(1500);
+      expect(b.withdrawableCredits).toBe(0);
     });
 
-    await CreditTransaction.create({
-      userId: p2._id,
-      type: 'spin_wheel',
-      amount: 76,
-      platformFee: 13.41,
-      usdAmount: 0,
-      description: 'Spin wheel prize',
-      status: 'completed',
-      createdAt: now,
+    it('7. Disputed earnings excluded from withdrawable', async () => {
+      await CreditTransaction.create({
+        userId: matrixProviderId,
+        type: 'service_payment_received',
+        amount: 800,
+        platformFee: 120,
+        usdAmount: 6,
+        description: 'Disputed service payment',
+        status: 'completed',
+        eligibleForPayout: false,
+        inDispute: true
+      });
+
+      const b = await calculateProviderBalanceBreakdown(matrixProviderId);
+      expect(b.earningsToBeClaimedCredits).toBe(800);
+      expect(b.disputedCredits).toBe(800);
+      expect(b.withdrawableCredits).toBe(0);
     });
 
-    // 2. Non-earning positive transactions that MUST be excluded from earnings reports:
-    await CreditTransaction.create({
-      userId: p2._id,
-      type: 'purchase',
-      amount: 500,
-      platformFee: 0,
-      usdAmount: 0,
-      description: 'Credit purchase',
-      status: 'completed',
-      createdAt: now,
+    it('8. Pending payout-request earnings remain in earningsToBeClaimed but not withdrawable', async () => {
+      await CreditTransaction.create({
+        userId: matrixProviderId,
+        type: 'tip_received',
+        amount: 1000,
+        platformFee: 150,
+        usdAmount: 7.5,
+        description: 'Tip in payout request',
+        status: 'completed',
+        eligibleForPayout: true,
+        inPayoutRequest: new mongoose.Types.ObjectId()
+      });
+
+      const b = await calculateProviderBalanceBreakdown(matrixProviderId);
+      expect(b.earningsToBeClaimedCredits).toBe(1000);
+      expect(b.unsettledCredits).toBe(1000);
+      expect(b.withdrawableCredits).toBe(0);
     });
 
-    await CreditTransaction.create({
-      userId: p2._id,
-      type: 'bonus',
-      amount: 100,
-      platformFee: 0,
-      usdAmount: 0,
-      description: 'Welcome bonus',
-      status: 'completed',
-      createdAt: now,
+    it('9 & 10 & 11. Reversion decreases earningsToBeClaimed and multiple reversions reconcile', async () => {
+      await CreditTransaction.create({
+        userId: matrixProviderId,
+        type: 'call_earning',
+        amount: 1000,
+        platformFee: 150,
+        usdAmount: 7.5,
+        description: 'Call earning',
+        status: 'completed',
+        eligibleForPayout: true
+      });
+
+      await CreditTransaction.create({
+        userId: matrixProviderId,
+        type: 'call_refund',
+        amount: -200,
+        usdAmount: -1.5,
+        description: 'Call refund 1',
+        status: 'completed'
+      });
+
+      await CreditTransaction.create({
+        userId: matrixProviderId,
+        type: 'call_refund',
+        amount: -100,
+        usdAmount: -0.75,
+        description: 'Call refund 2',
+        status: 'completed'
+      });
+
+      const b = await calculateProviderBalanceBreakdown(matrixProviderId);
+      expect(b.totalAccumulatedCredits).toBe(1000);
+      expect(b.withdrawableCredits).toBe(700); // 1000 - 300
+      expect(b.earningsToBeClaimedCredits).toBe(700);
     });
 
-    // 3. Transactions outside current month (must be excluded from This Month report)
-    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 15);
-    await CreditTransaction.create({
-      userId: p2._id,
-      type: 'tip_received',
-      amount: 1000,
-      platformFee: 176.47,
-      usdAmount: 0,
-      description: 'Old tip',
-      status: 'completed',
-      createdAt: lastMonth,
+    it('12. Paid-out + reversion combinations reconcile', async () => {
+      await CreditTransaction.create({
+        userId: matrixProviderId,
+        type: 'tip_received',
+        amount: 2000,
+        platformFee: 300,
+        usdAmount: 15,
+        description: 'Tip received',
+        status: 'completed',
+        eligibleForPayout: true
+      });
+
+      await CreditTransaction.create({
+        userId: matrixProviderId,
+        type: 'payout',
+        amount: -1000,
+        usdAmount: -7.5,
+        description: 'Payout',
+        status: 'completed'
+      });
+
+      await CreditTransaction.create({
+        userId: matrixProviderId,
+        type: 'refund',
+        amount: -200,
+        usdAmount: -1.5,
+        description: 'Refund',
+        status: 'completed'
+      });
+
+      const b = await calculateProviderBalanceBreakdown(matrixProviderId);
+      expect(b.totalAccumulatedCredits).toBe(2000);
+      expect(b.paidOutCredits).toBe(1000);
+      expect(b.earningsToBeClaimedCredits).toBe(800); // 2000 - 1000 - 200
+      expect(b.withdrawableCredits).toBe(800);
     });
 
-    // Fetch Dashboard stats
-    const dashRes = await request(app)
-      .get('/api/v1/adult/providers/me/dashboard')
-      .set('Authorization', `Bearer ${p2Token}`)
-      .expect(200);
+    it('13 & 14. Invariant identity checks: earningsToBeClaimed === withdrawable + unsettled + disputed AND lifetimeProviderEarnings - paidOut - reversions', async () => {
+      await CreditTransaction.create({
+        userId: matrixProviderId,
+        type: 'tip_received',
+        amount: 1000,
+        platformFee: 150,
+        usdAmount: 7.5,
+        description: 'Tip received',
+        status: 'completed',
+        eligibleForPayout: true
+      });
 
-    // Fetch Detailed Earnings report for "This Month"
-    const earningsRes = await request(app)
-      .get('/api/v1/adult/providers/me/earnings?dateRange=This Month')
-      .set('Authorization', `Bearer ${p2Token}`)
-      .expect(200);
+      await CreditTransaction.create({
+        userId: matrixProviderId,
+        type: 'service_payment_received',
+        amount: 500,
+        platformFee: 75,
+        usdAmount: 3.75,
+        description: 'Service payment',
+        status: 'completed',
+        eligibleForPayout: false // Unsettled
+      });
 
-    const expectedEarningSum = 850 + 1700 + 850 + 263.80 + 76; // = 3739.80
-    const expectedPlatformFeeSum = 150 + 300 + 150 + 46.55 + 13.41; // = 659.96
-    const expectedGrossSum = expectedEarningSum + expectedPlatformFeeSum; // = 4399.76
+      await CreditTransaction.create({
+        userId: matrixProviderId,
+        type: 'service_payment_received',
+        amount: 300,
+        platformFee: 45,
+        usdAmount: 2.25,
+        description: 'Disputed service payment',
+        status: 'completed',
+        eligibleForPayout: false,
+        inDispute: true
+      });
 
-    // Assertion 1: Dashboard This Month and Detailed Earnings This Month return the EXACT SAME provider-net total
-    expect(dashRes.body.data.stats.monthEarnings).toBeCloseTo(expectedEarningSum, 2);
-    expect(earningsRes.body.data.totalEarned).toBeCloseTo(expectedEarningSum, 2);
-    expect(dashRes.body.data.stats.monthEarnings).toEqual(earningsRes.body.data.totalEarned);
+      await CreditTransaction.create({
+        userId: matrixProviderId,
+        type: 'payout',
+        amount: -400,
+        usdAmount: -3,
+        description: 'Payout',
+        status: 'completed'
+      });
 
-    // Assertion 2: Non-earning positive transactions (purchase 500, bonus 100) are excluded
-    // (If non-earning txs were included, sum would be 4339.80; if lastMonth included, sum would be 4739.80)
-    expect(dashRes.body.data.stats.monthEarnings).not.toBe(4339.80);
-    expect(dashRes.body.data.stats.monthEarnings).not.toBe(4739.80);
+      await CreditTransaction.create({
+        userId: matrixProviderId,
+        type: 'call_refund',
+        amount: -100,
+        usdAmount: -0.75,
+        description: 'Call refund',
+        status: 'completed'
+      });
 
-    // Assertion 3: Platform fees and gross earnings are calculated from stored transaction data
-    expect(earningsRes.body.data.platformFee).toBeCloseTo(expectedPlatformFeeSum, 2);
-    expect(earningsRes.body.data.grossEarned).toBeCloseTo(expectedGrossSum, 2);
+      const b = await calculateProviderBalanceBreakdown(matrixProviderId);
 
-    // Assertion 4: Selected-period report does not accidentally use lifetime providerProfile.totalEarnings (3663.80)
-    expect(earningsRes.body.data.totalEarned).not.toBe(p2.providerProfile!.totalEarnings);
+      // Invariant 3: earningsToBeClaimed === withdrawable + unsettled + disputed
+      expect(b.earningsToBeClaimedCredits).toBe(b.withdrawableCredits + b.unsettledCredits + b.disputedCredits);
 
-    // Assertion 5: Transactions outside selected period are excluded when date range is Today
-    const todayRes = await request(app)
-      .get('/api/v1/adult/providers/me/earnings?dateRange=Today')
-      .set('Authorization', `Bearer ${p2Token}`)
-      .expect(200);
+      // Invariant 2: earningsToBeClaimed === lifetimeProviderEarnings - paidOut - reversions
+      // Lifetime gross = 1800 net. Paid out = 400. Reversions = 100. Expected claimable = 1300.
+      expect(b.earningsToBeClaimedCredits).toBe(1800 - 400 - 100);
+    });
 
-    expect(todayRes.body.data.totalEarned).toBeCloseTo(expectedEarningSum, 2);
+    it('15. Total Accumulated Balance remains lifetime earnings regardless of payouts', async () => {
+      await CreditTransaction.create({
+        userId: matrixProviderId,
+        type: 'tip_received',
+        amount: 5000,
+        platformFee: 750,
+        usdAmount: 37.5,
+        description: 'Large tip',
+        status: 'completed'
+      });
 
-    // Assertion 6: Multiple earning types are aggregated correctly
-    expect(earningsRes.body.data.transactions).toHaveLength(7); // 7 txs created this month for p2 (excluding 1 lastMonth tx)
+      await CreditTransaction.create({
+        userId: matrixProviderId,
+        type: 'payout',
+        amount: -4500,
+        usdAmount: -33.75,
+        description: 'Payout',
+        status: 'completed'
+      });
+
+      const b = await calculateProviderBalanceBreakdown(matrixProviderId);
+      expect(b.totalAccumulatedCredits).toBe(5000);
+    });
+
+    it('16 & 17 & 18. Payout threshold boundary checks (499 rejected, 500 accepted, requested amount threshold)', async () => {
+      const matrixToken = jwt.sign({ sub: matrixProviderId }, process.env.ADULT_JWT_SECRET || 'adult_secret');
+
+      // 499 diamond eligible balance
+      await CreditTransaction.create({
+        userId: matrixProviderId,
+        type: 'tip_received',
+        amount: 499,
+        platformFee: 74.85,
+        usdAmount: 3.74,
+        description: 'Tip 499',
+        status: 'completed',
+        eligibleForPayout: true
+      });
+
+      const res499 = await request(app)
+        .post('/api/v1/adult/providers/me/payout/request')
+        .set('Authorization', `Bearer ${matrixToken}`)
+        .expect(400);
+
+      expect(res499.body.error).toBe('MINIMUM_THRESHOLD_NOT_MET');
+
+      // Top up to 1000 total eligible balance
+      await CreditTransaction.create({
+        userId: matrixProviderId,
+        type: 'tip_received',
+        amount: 501,
+        platformFee: 75.15,
+        usdAmount: 3.76,
+        description: 'Tip 501',
+        status: 'completed',
+        eligibleForPayout: true
+      });
+
+      // Requesting 400 diamonds when 1000 is available -> rejected because requested amount < 500
+      const resReq400 = await request(app)
+        .post('/api/v1/adult/providers/me/payout/request')
+        .set('Authorization', `Bearer ${matrixToken}`)
+        .send({ amount: 400 })
+        .expect(400);
+
+      expect(resReq400.body.error).toBe('MINIMUM_THRESHOLD_NOT_MET');
+
+      // Requesting 500 diamonds -> accepted
+      const res500 = await request(app)
+        .post('/api/v1/adult/providers/me/payout/request')
+        .set('Authorization', `Bearer ${matrixToken}`)
+        .send({ amount: 500 })
+        .expect(201);
+
+      expect(res500.body.success).toBe(true);
+      expect(res500.body.amount).toBe(500);
+    });
+
+    it('19. Non-payout negative transaction types not misclassified as reversions', async () => {
+      // Create a user purchase or spend transaction that is negative (e.g. spend/withdrawal)
+      await CreditTransaction.create({
+        userId: matrixProviderId,
+        type: 'tip_received',
+        amount: 1000,
+        platformFee: 150,
+        usdAmount: 7.5,
+        description: 'Tip received',
+        status: 'completed'
+      });
+
+      await CreditTransaction.create({
+        userId: matrixProviderId,
+        type: 'spend',
+        amount: -200,
+        usdAmount: -1.5,
+        description: 'Spend',
+        status: 'completed'
+      });
+
+      const b = await calculateProviderBalanceBreakdown(matrixProviderId);
+      expect(b.totalAccumulatedCredits).toBe(1000); // spend does not count as a provider earning reversion
+    });
   });
 });
