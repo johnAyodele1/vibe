@@ -317,7 +317,7 @@ export interface IMessage extends Document {
 export interface ICamSession extends Document {
   providerId: Types.ObjectId;
   sessionType: 'public' | 'private' | 'vip_only' | 'premium_only';
-  status: 'scheduled' | 'pending' | 'live' | 'ended' | 'interrupted';
+  status: 'scheduled' | 'live' | 'ended' | 'interrupted';
   streamKey: string;
   streamPlaybackUrl: string;
   thumbnailUrl?: string;

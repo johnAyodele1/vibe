@@ -94,14 +94,9 @@ const ProviderLive: React.FC = () => {
 
     socketRef.current = socket;
 
-    socket.on('connect', () => {
-      if (agoraSessionId) {
-        socket.emit('cam:host_start', { sessionId: agoraSessionId });
-      }
-    });
-
-    socket.on('cam:tip_received', (data) => {
-      const myId = user.id || (user as any)._id;
+    socket.on('cam:tip_received', (data: { recipientId?: string; amount?: number; fromName?: string }) => {
+      const userObj = user as unknown as { id?: string; _id?: string };
+      const myId = userObj.id || userObj._id;
       if (data && data.recipientId === myId) {
         const tipAmt = data.amount || 0;
         const fromName = data.fromName || 'Someone';
@@ -302,8 +297,7 @@ const ProviderLive: React.FC = () => {
                       userId={user?.id || ''}
                       userName={user?.firstName || 'Provider'}
                       sessionId={agoraSessionId}
-                      socket={socketRef.current}
-                      providerAvatar={(user as any)?.avatarUrl || user?.profilePhoto}
+                      providerAvatar={(user as any)?.avatarUrl || (user as any)?.profilePhoto}
                       providerName={user?.firstName || 'Provider'}
                       onEnd={handleEndStream}
                     />

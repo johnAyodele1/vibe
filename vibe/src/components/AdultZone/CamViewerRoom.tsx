@@ -71,6 +71,9 @@ const CamViewerRoom: React.FC<CamViewerRoomProps> = ({
         await client.setClientRole('audience');
         await client.join(String(appId), roomId, token, userId);
 
+        if (onUserCountUpdate) {
+          onUserCountUpdate(client.remoteUsers.length + 1);
+        }
       } catch (err) {
         console.error('Agora CamViewer failed to join:', err);
       }

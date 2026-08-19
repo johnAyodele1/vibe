@@ -1,66 +1,6 @@
 import mongoose, { Types } from 'mongoose';
 import AdultCall from '../models/AdultCall';
 import CamSession from '../models/CamSession';
-import AdultUser from '../models/AdultUser';
-
-/**
- * Atomically ends a CamSession and synchronizes providerProfile.isLive = false.
- * Idempotent: Only transitions if status is currently live, pending, or scheduled.
- */
-export const endCamSessionAtomic = async (
-  sessionId: string | Types.ObjectId,
-  reason: string = 'ended',
-  ns?: any
-) => {
-  if (mongoose.connection.readyState !== 1) return null;
-
-  const session = await CamSession.findOne({
-    _id: sessionId,
-    status: { $in: ['live', 'pending', 'scheduled'] },
-  });
-  if (!session) return null;
-
-  const now = new Date();
-  const startedAt = session.startedAt || session.get('createdAt') || now;
-  const durationSeconds = Math.max(0, Math.floor((now.getTime() - new Date(startedAt).getTime()) / 1000));
-
-  const updatedSession = await CamSession.findOneAndUpdate(
-    {
-      _id: sessionId,
-      status: { $in: ['live', 'pending', 'scheduled'] },
-    },
-    {
-      $set: {
-        status: 'ended',
-        endedAt: now,
-        durationSeconds,
-      },
-    },
-    { new: true }
-  );
-
-  if (!updatedSession) return null;
-
-  // Sync provider isLive status
-  await AdultUser.findByIdAndUpdate(updatedSession.providerId, {
-    $set: {
-      'providerProfile.isLive': false,
-    },
-  });
-
-  if (ns) {
-    ns.to(`cam:${sessionId.toString()}`).emit('cam:session_ended', {
-      sessionId: sessionId.toString(),
-      reason,
-    });
-    ns.emit('cam:session_ended', {
-      sessionId: sessionId.toString(),
-      reason,
-    });
-  }
-
-  return updatedSession;
-};
 
 /**
  * Explicit state transition to expire a stale ringing call (>60s without acceptance).
@@ -114,42 +54,8 @@ export const checkActiveCall = async (userId: string | Types.ObjectId) => {
 export const checkActiveCamSession = async (providerId: string | Types.ObjectId) => {
   const pid = typeof providerId === 'string' ? new Types.ObjectId(providerId) : providerId;
 
-  const session = await CamSession.findOne({
+  return await CamSession.findOne({
     providerId: pid,
-    status: { $in: ['live', 'pending'] },
+    status: 'live',
   });
-
-  if (!session) return null;
-
-  const now = Date.now();
-  const createdTime = new Date(session.get('createdAt') || session.startedAt || now).getTime();
-
-  // If session is pending:
-  if (session.status === 'pending') {
-    if (now - createdTime > 15000) {
-      // Over 15s without host socket going live -> auto-end orphaned startup attempt
-      await endCamSessionAtomic(session._id, 'startup_timeout');
-      return null;
-    }
-    // Within 15s startup window: session is actively initializing
-    return session;
-  }
-
-  // If session is live: verify host socket health via adultSocket helper
-  if (session.status === 'live') {
-    try {
-      const { isHostSocketActive } = require('../socket/adultSocket');
-      if (typeof isHostSocketActive === 'function') {
-        const active = isHostSocketActive(session._id.toString());
-        if (!active) {
-          await endCamSessionAtomic(session._id, 'provider_disconnected');
-          return null;
-        }
-      }
-    } catch (err) {
-      // Ignore require circularity if socket module is still initializing
-    }
-  }
-
-  return session;
 };

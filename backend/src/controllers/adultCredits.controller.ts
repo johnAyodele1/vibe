@@ -67,17 +67,6 @@ export const tip = async (req: Request, res: Response) => {
     if (recipient.providerProfile) recipient.providerProfile.totalEarnings += providerAmount;
     await recipient.save({ session });
 
-    const activeCamSession = await mongoose.model('CamSession').findOne({ providerId: recipient._id, status: 'live' }).session(session);
-    let camSessionId = null;
-    if (activeCamSession) {
-      camSessionId = activeCamSession._id;
-      await mongoose.model('CamSession').findByIdAndUpdate(
-        activeCamSession._id,
-        { $inc: { totalTipsReceived: providerAmount } },
-        { session }
-      );
-    }
-
     const senderTx = await CreditTransaction.create([{
       userId: sender._id,
       type: 'tip',
@@ -86,7 +75,6 @@ export const tip = async (req: Request, res: Response) => {
       description: `Tip to ${recipient.username}`,
       relatedUserId: recipient._id,
       status: 'completed',
-      metadata: camSessionId ? { camSessionId } : undefined,
     }], { session });
 
     await CreditTransaction.create([{
@@ -98,7 +86,6 @@ export const tip = async (req: Request, res: Response) => {
       description: `Tip from ${sender.username}`,
       relatedUserId: sender._id,
       status: 'completed',
-      metadata: camSessionId ? { camSessionId } : undefined,
     }], { session });
 
     // Record Platform Earnings

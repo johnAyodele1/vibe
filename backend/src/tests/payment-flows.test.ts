@@ -677,8 +677,8 @@ describe('PAYMENT FLOWS — COMPLETE COVERAGE', () => {
         .set('Authorization', `Bearer ${memberToken}`)
         .expect(200);
 
-      const memberRefundTxs = await CreditTransaction.find({ 'metadata.callId': callId, type: 'call_refund', userId: memberId });
-      expect(memberRefundTxs).toHaveLength(1);
+      const refundTxs = await CreditTransaction.find({ 'metadata.callId': callId, type: 'call_refund' });
+      expect(refundTxs).toHaveLength(1);
     });
   });
 

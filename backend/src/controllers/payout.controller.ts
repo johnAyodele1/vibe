@@ -6,7 +6,6 @@ import PayoutRequest from '../models/PayoutRequest';
 import Report from '../models/Report';
 import { getDiamondNairaRate } from '../shared/pricing';
 import { sendPushToUser } from '../shared/push';
-import { PROVIDER_EARNING_TYPES } from '../shared/earnings';
 
 /**
  * Helper to construct payout details snapshot from provider profile.
@@ -39,9 +38,23 @@ export const getEligiblePayout = async (req: Request, res: Response) => {
     }
 
     // Unpaid, eligible transactions for this provider
+    // Allowed earning types
+    const earningTypes = [
+      'tip_received',
+      'cam_tip',
+      'tip',
+      'call_earning',
+      'service_payment_received',
+      'gift_received',
+      'paid_media_earning',
+      'paid_media_unlock',
+      'spin_earning',
+      'spin_wheel'
+    ];
+
     const eligibleTxs = await CreditTransaction.find({
       userId: user._id,
-      type: { $in: PROVIDER_EARNING_TYPES },
+      type: { $in: earningTypes },
       status: 'completed',
       eligibleForPayout: true,
       paidOut: { $ne: true },
@@ -256,9 +269,22 @@ export const requestPayout = async (req: Request, res: Response) => {
     }
 
     // 3. Calculate eligible amount
+    const earningTypes = [
+      'tip_received',
+      'cam_tip',
+      'tip',
+      'call_earning',
+      'service_payment_received',
+      'gift_received',
+      'paid_media_earning',
+      'paid_media_unlock',
+      'spin_earning',
+      'spin_wheel'
+    ];
+
     const eligibleTxs = await CreditTransaction.find({
       userId: user._id,
-      type: { $in: PROVIDER_EARNING_TYPES },
+      type: { $in: earningTypes },
       status: 'completed',
       eligibleForPayout: true,
       paidOut: { $ne: true },
@@ -267,29 +293,12 @@ export const requestPayout = async (req: Request, res: Response) => {
     });
 
     const eligibleTotal = eligibleTxs.reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
-    const rate = await getDiamondNairaRate();
 
     if (eligibleTotal <= 0) {
       return res.status(400).json({
         success: false,
         error: 'NO_ELIGIBLE_BALANCE',
         message: 'You have no earnings available for payout. Earnings become available after services are confirmed.',
-      });
-    }
-
-    if (eligibleTotal < 500) {
-      return res.status(400).json({
-        success: false,
-        error: 'MINIMUM_THRESHOLD_NOT_MET',
-        message: `Minimum payout threshold is 500 diamonds (≈ ₦${(500 * rate).toLocaleString('en-NG')}).`,
-      });
-    }
-
-    if (req.body.amount !== undefined && req.body.amount < 500) {
-      return res.status(400).json({
-        success: false,
-        error: 'MINIMUM_THRESHOLD_NOT_MET',
-        message: `Requested payout amount must be at least 500 diamonds (≈ ₦${(500 * rate).toLocaleString('en-NG')}).`,
       });
     }
 
@@ -306,6 +315,9 @@ export const requestPayout = async (req: Request, res: Response) => {
         message: 'No withdrawable balance remaining in your wallet',
       });
     }
+
+    // 4. Get current rate and calculate Naira
+    const rate = await getDiamondNairaRate();
     const amountNaira = finalAmount * rate;
 
     // 5. Get queue position

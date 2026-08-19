@@ -2326,7 +2326,7 @@ export const initiateCall = async (req: Request, res: Response) => {
 
     const receiverActive = await checkActiveCall(receiver._id);
     if (receiverActive) {
-      return res.status(409).json({ success: false, error: 'This provider is busy. Try again later.' });
+      return res.status(409).json({ success: false, error: 'The other user is currently in another call.' });
     }
 
     const webrtcRoomId = `room_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
@@ -2351,7 +2351,7 @@ export const initiateCall = async (req: Request, res: Response) => {
         if (checkCallerAgain && checkCallerAgain._id.toString() !== call._id.toString()) {
           return res.status(409).json({ success: false, error: 'You are already on a call on another device.' });
         }
-        return res.status(409).json({ success: false, error: 'This provider is busy. Try again later.' });
+        return res.status(409).json({ success: false, error: 'The other user is currently in another call.' });
       }
       throw err;
     }
@@ -2598,39 +2598,31 @@ export const acceptCall = async (req: Request, res: Response) => {
       return res.status(409).json({ success: false, error: 'You are already on a call on another device.' });
     }
 
-    if (call.status !== 'ringing') {
-      return res.status(409).json({ success: false, error: 'Call is no longer available or already active.' });
-    }
-
     // Bill Minute 1 atomically before transitioning to active
     const billResult = await billCallMinute(call._id.toString(), 1, ns);
     if (!billResult.success) {
       return res.status(402).json({ success: false, error: billResult.error || 'Insufficient credits to start call' });
     }
 
-    const updatedCall = await AdultCall.findOneAndUpdate(
-      { _id: call._id, status: 'ringing', isActiveSession: true },
-      { $set: { status: 'active', startedAt: new Date() } },
-      { new: true }
-    );
-
-    if (!updatedCall) {
-      return res.status(409).json({ success: false, error: 'Call is no longer available or already active.' });
-    }
+    call.status = 'active';
+    call.isActiveSession = true;
+    call.activeParticipants = [call.callerId, call.receiverId];
+    call.startedAt = new Date();
+    await call.save();
 
     if (ns) {
-      ns.to(`user:${updatedCall.callerId.toString()}`).emit('call:accepted', {
+      ns.to(`user:${call.callerId.toString()}`).emit('call:accepted', {
         callId,
-        webrtcRoomId: updatedCall.webrtcRoomId,
+        webrtcRoomId: call.webrtcRoomId,
         iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
       });
     }
 
     return res.json({
-      roomId: updatedCall.webrtcRoomId,
-      webrtcRoomId: updatedCall.webrtcRoomId,
+      roomId: call.webrtcRoomId,
+      webrtcRoomId: call.webrtcRoomId,
       iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-      perMinuteRate: updatedCall.perMinuteRate
+      perMinuteRate: call.perMinuteRate
     });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
@@ -2801,20 +2793,6 @@ export const endCall = async (req: Request, res: Response) => {
                 status: 'completed',
                 metadata: { callId: call._id.toString(), minuteIndex: 1, unrecoverableAmount },
               }], { session: refundSession });
-
-              // Explicit debit reversion record for provider trace
-              if (recoverableProviderAmount > 0) {
-                await CreditTransaction.create([{
-                  userId: providerUser._id,
-                  type: 'call_refund',
-                  amount: -recoverableProviderAmount,
-                  usdAmount: 0,
-                  description: `${call.type.charAt(0).toUpperCase() + call.type.slice(1)} call revert (<10s)`,
-                  relatedUserId: callerUser._id,
-                  status: 'completed',
-                  metadata: { callId: call._id.toString(), minuteIndex: 1, originalTxId: refundTx[0]._id },
-                }], { session: refundSession });
-              }
 
               if (platformFee > 0) {
                 await recordPlatformEarning({

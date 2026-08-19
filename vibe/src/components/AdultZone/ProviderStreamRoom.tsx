@@ -2,8 +2,6 @@ import React, { useEffect, useRef } from 'react';
 import AgoraRTC, { IAgoraRTCClient, ICameraVideoTrack, IMicrophoneAudioTrack } from 'agora-rtc-sdk-ng';
 import { useVideoReadiness } from '../../hooks/useVideoReadiness';
 import VideoFallbackOverlay from './VideoFallbackOverlay';
-import { Socket } from 'socket.io-client';
-import { toast } from 'sonner';
 
 interface ProviderStreamRoomProps {
   appId: string | number;
@@ -12,11 +10,9 @@ interface ProviderStreamRoomProps {
   userId: string;
   userName: string;
   sessionId: string;
-  socket?: Socket | null;
   providerAvatar?: string;
   providerName?: string;
   onEnd: () => void;
-  onStreamEstablished?: () => void;
 }
 
 const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
@@ -26,11 +22,9 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
   userId,
   userName,
   sessionId,
-  socket,
   providerAvatar,
   providerName,
   onEnd,
-  onStreamEstablished,
 }) => {
   const videoState = useVideoReadiness();
   const clientRef = useRef<IAgoraRTCClient | null>(null);
@@ -68,18 +62,8 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
         }
 
         await client.publish([audioTrack, videoTrack]);
-
-        // Register host broadcast connection ONLY after media tracks are successfully published
-        if (socket && socket.connected) {
-          socket.emit('cam:host_start', { sessionId });
-        }
-        if (onStreamEstablished) {
-          onStreamEstablished();
-        }
       } catch (err) {
         console.error('Agora Host Stream failed to initialize:', err);
-        toast.error('Failed to start camera/microphone broadcast. Session cancelled.');
-        onEnd();
       }
     };
 
