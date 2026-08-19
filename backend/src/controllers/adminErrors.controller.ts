@@ -80,7 +80,8 @@ export const resolveError = async (req: Request, res: Response) => {
   try {
     const { note } = req.body;
     // Extract decoded userId if any (authenticated admin)
-    const adminUserId = (req as any).user?.sub || (req as any).user?._id || (req as any).user?.id || null;
+    const rawUserId = (req as any).user?.sub || (req as any).user?._id || (req as any).user?.id || null;
+    const adminUserId = (rawUserId && typeof rawUserId === 'string' && rawUserId.length === 24) ? rawUserId : null;
 
     const err = await AppError.findOneAndUpdate(
       { errorId: req.params.errorId },

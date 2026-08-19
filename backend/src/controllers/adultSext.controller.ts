@@ -665,15 +665,11 @@ export const reportServiceRequest = async (req: Request, res: Response) => {
           status: 'open',
         });
       } catch (err: any) {
-        if (err.code === 11000 || err.name === 'MongoServerError' || err.message?.includes('duplicate key')) {
-          report = await Report.findOne({
-            reporter: user._id,
-            serviceRequestId: message._id,
-          });
-          if (!report) {
-            throw err;
-          }
-        } else {
+        report = await Report.findOne({
+          reporter: user._id,
+          serviceRequestId: message._id,
+        });
+        if (!report) {
           throw err;
         }
       }
