@@ -24,14 +24,36 @@ export const getWallet = async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
     }
 
-    // Since we store balance directly in user.credits, we fetch it from the user document
-    const transactions = await CreditTransaction.find({ userId: user._id });
-    const purchased = transactions
-      .filter(tx => tx.type === 'purchase' && tx.status === 'completed')
-      .reduce((sum, tx) => sum + tx.amount, 0);
-    const spent = transactions
-      .filter(tx => (tx.type === 'tip' || tx.type === 'tip_sent') && tx.status === 'completed')
-      .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+    // Optimization (⚡ Bolt): Use MongoDB aggregation pipeline to compute lifetime purchased and spent credits.
+    // Instead of instantiating and transferring thousands of full Mongoose document objects into Node.js memory (O(N)),
+    // the aggregation calculates exact totals in the database engine in O(1) transfer payload size.
+    const totals = await CreditTransaction.aggregate([
+      {
+        $match: {
+          userId: user._id,
+          status: 'completed',
+          type: { $in: ['purchase', 'tip', 'tip_sent'] }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          purchased: {
+            $sum: {
+              $cond: [{ $eq: ['$type', 'purchase'] }, '$amount', 0]
+            }
+          },
+          spent: {
+            $sum: {
+              $cond: [{ $in: ['$type', ['tip', 'tip_sent']] }, { $abs: '$amount' }, 0]
+            }
+          }
+        }
+      }
+    ]);
+
+    const purchased = totals[0]?.purchased || 0;
+    const spent = totals[0]?.spent || 0;
 
     const rate = await getDiamondNairaRate();
     const estimatedNairaValue = user.credits * rate;
