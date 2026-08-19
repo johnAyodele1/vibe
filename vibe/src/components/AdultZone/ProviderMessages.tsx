@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { Avatar } from './Avatar';
 import { detectContactSharing } from '@yourapp/content-filter';
@@ -13,8 +13,6 @@ import { usePricingStore, formatNaira, formatAmount } from '../../lib/pricing';
 import { uploadMedia } from '../../lib/media/uploadMedia';
 import { compressToWebP } from '../../lib/media/compressImage';
 import { VoiceNotePlayer } from './VoiceNotePlayer';
-
-const CallRoom = React.lazy(() => import('./CallRoom'));
 
 const FALLBACK_AVATAR = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=150&auto=format&fit=crop";
 
@@ -184,13 +182,13 @@ const ProviderMessages: React.FC = () => {
     }
   }, [showServiceRequestDialog]);
 
-  // S3 general upload states for regular attachments
+  // S3 general upload states
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadPreview, setUploadPreview] = useState<string>('');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
 
-  // Voice recording states (TAP-TO-START / TAP-TO-SEND)
+  // Voice recording states
   const { setHideGlobalHeader, setHideFooter } = useUIStore();
   const [recState, setRecState] = useState<'idle' | 'recording' | 'sending'>('idle');
   const [recDuration, setRecDuration] = useState(0);
@@ -204,21 +202,6 @@ const ProviderMessages: React.FC = () => {
   const animationFrameRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recDurationRef = useRef<number>(0);
-
-  // Calling states (Providers only receive, can accept/decline or end)
-  const [callState, setCallState] = useState<'idle' | 'calling' | 'ringing' | 'active' | 'summary'>('idle');
-  const [activeCallId, setActiveCallId] = useState<string | null>(null);
-  const [callType, setCallType] = useState<'video' | 'audio'>('video');
-  const [callDuration, setCallDuration] = useState(0);
-  const [callRate, setCallRate] = useState<number>(0);
-  const [callSummary, setCallSummary] = useState<{ duration: string; cost: number; wasBilled: boolean; status?: string } | null>(null);
-  const [acceptLoading, setAcceptLoading] = useState(false);
-  const [callData, setCallData] = useState<any>(null);
-
-  // Zego states
-  const [zegoToken, setZegoToken] = useState<string | null>(null);
-  const [zegoAppId, setZegoAppId] = useState<number | null>(null);
-  const [zegoRoomId, setZegoRoomId] = useState<string | null>(null);
 
   // UI responsive states
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list');
@@ -243,12 +226,10 @@ const ProviderMessages: React.FC = () => {
     }
   };
 
-  // Fetch conversations on mount / search
   useEffect(() => {
     fetchConversations(true);
   }, [user?.id]);
 
-  // Auto-mark unread messages as read when loaded or changed
   useEffect(() => {
     if (!selectedConv || !messages?.length) return;
 
@@ -261,77 +242,6 @@ const ProviderMessages: React.FC = () => {
     }
   }, [selectedConv?.conversationId, messages]);
 
-  // Global auto-accept call check on load/mount
-  useEffect(() => {
-    const searchParams = new URLSearchParams(window.location.search);
-    const autoAcceptCallId = searchParams.get('autoAcceptCallId');
-    const callerId = searchParams.get('callerId');
-    const type = searchParams.get('type') || 'video';
-
-    if (autoAcceptCallId && callerId && conversations.length > 0) {
-      const conv = conversations.find(c => c.otherUser?.id === callerId);
-      if (conv) {
-        // Clear search parameters from address bar immediately to prevent re-execution
-        window.history.replaceState(null, '', window.location.pathname);
-
-        selectConversation(conv);
-
-        // Pre-fill calling states so accept call flow can resolve
-        setCallType(type as any);
-        setActiveCallId(autoAcceptCallId);
-        setCallRate(5);
-        setCallData({
-          callId: autoAcceptCallId,
-          roomId: `room_${autoAcceptCallId}`,
-          callerName: conv.otherUser?.displayName || 'User'
-        });
-
-        // Trigger the accept API call
-        const triggerAutoAccept = async () => {
-          const hasPermissions = await checkMediaPermissions(type as any);
-          if (!hasPermissions) {
-            await fetch(`${API_BASE_URL}/v1/adult/sext/calls/${autoAcceptCallId}/decline`, {
-              method: 'PUT',
-              headers: getHeaders()
-            });
-            return;
-          }
-          setAcceptLoading(true);
-          try {
-            const res = await fetch(`${API_BASE_URL}/v1/adult/sext/calls/${autoAcceptCallId}/accept`, {
-              method: 'PUT',
-              headers: getHeaders()
-            });
-            const data = await res.json();
-
-            const tokenRes = await fetch(`${API_BASE_URL}/v1/adult/zego/token?roomId=${data.roomId}&type=call`, {
-              headers: getHeaders()
-            });
-            const tokenData = await tokenRes.json();
-            if (tokenData.token) {
-              setZegoToken(tokenData.token);
-              setZegoAppId(tokenData.appId);
-              setZegoRoomId(data.roomId);
-              setCallState('active');
-            } else {
-              setAcceptLoading(false);
-              toast.error('Failed to get call token');
-            }
-          } catch (err) {
-            setAcceptLoading(false);
-            console.error('Auto-accept call error:', err);
-          }
-        };
-
-        // Let selectConversation render and initialize before auto-accept
-        setTimeout(() => {
-          triggerAutoAccept();
-        }, 500);
-      }
-    }
-  }, [conversations]);
-
-  // Handle window resizing for responsive navigation and layout adjustments
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth >= 768) {
@@ -348,14 +258,12 @@ const ProviderMessages: React.FC = () => {
     };
   }, []);
 
-  // Sync Global Header and Footer hide states based on selected conversation and view mode
   useEffect(() => {
     const isMobileChat = window.innerWidth < 768 && selectedConv !== null && mobileView === 'chat';
     setHideGlobalHeader(isMobileChat);
     setHideFooter(selectedConv !== null && mobileView === 'chat');
   }, [selectedConv, mobileView, setHideGlobalHeader, setHideFooter]);
 
-  // Ensure header and footer are restored on component unmount
   useEffect(() => {
     return () => {
       setHideGlobalHeader(false);
@@ -413,7 +321,6 @@ const ProviderMessages: React.FC = () => {
       });
       setConversations(prev => prev.map(c => c.conversationId === convId ? { ...c, unreadCount: 0 } : c));
 
-      // Update local unread received messages as read
       setMessages(prev => prev.map(m =>
         m.senderId !== (user?.id || (user as any)?._id) && !m.readAt
           ? { ...m, readAt: new Date().toISOString() }
@@ -552,12 +459,10 @@ const ProviderMessages: React.FC = () => {
     s.on('sext:messages_seen', (payload: { conversationId: string, seenAt: string }) => {
       if (payload.conversationId !== selectedConv?.conversationId) return;
 
-      // Update all sent messages that don't have readAt with a 30ms stagger delay
       setMessages(prev => {
         const unreadSent = prev.filter(m => m.senderId === (user?.id || (user as any)?._id) && !m.readAt);
         if (unreadSent.length === 0) return prev;
 
-        // Schedule staggered state updates for each unread sent message
         unreadSent.forEach((m, idx) => {
           setTimeout(() => {
             setMessages(current => current.map(msg => msg.id === m.id ? { ...msg, readAt: payload.seenAt } : msg));
@@ -573,48 +478,6 @@ const ProviderMessages: React.FC = () => {
       fetchConversations();
     });
 
-    // Inbound Call signaling for provider
-    s.on('call:incoming', (payload: { callId: string; callerName: string; type: 'video' | 'audio'; rate: number; webrtcRoomId: string }) => {
-      setCallType(payload.type);
-      setActiveCallId(payload.callId);
-      setCallRate(payload.rate);
-      setCallData({
-        callId: payload.callId,
-        roomId: payload.webrtcRoomId,
-        perMinuteRate: payload.rate,
-        callerName: payload.callerName
-      });
-      setCallState('ringing');
-    });
-
-    s.on('call:accepted', async () => {
-      setCallDuration(0);
-      setCallState('active');
-    });
-
-    s.on('call:ended', (payload: { callId: string; durationSeconds: number; creditsDeducted: number }) => {
-      cleanupWebRTC();
-      setCallSummary({
-        duration: `${Math.floor(payload.durationSeconds / 60)} min ${payload.durationSeconds % 60} sec`,
-        cost: payload.creditsDeducted,
-        wasBilled: payload.creditsDeducted > 0
-      });
-      setCallState('summary');
-    });
-
-    s.on('call:missed', () => {
-      cleanupWebRTC();
-      setCallSummary({
-        duration: '0 sec',
-        cost: 0,
-        wasBilled: false,
-        status: 'missed'
-      });
-      setCallState('summary');
-      toast.info('Call missed');
-    });
-
-    // Real-time online status updates
     const handleStatusChange = (userId: string, isOnline: boolean) => {
       setConversations(prev => prev.map(conv => {
         if (conv.otherUser && conv.otherUser.id === userId) {
@@ -661,7 +524,6 @@ const ProviderMessages: React.FC = () => {
     };
   }, [token, selectedConv?.conversationId]);
 
-  // Scroll behaviors — scroll to bottom instantly when entering a chat and messages are loaded
   useEffect(() => {
     if (!selectedConv) {
       activeConvIdRef.current = null;
@@ -697,135 +559,6 @@ const ProviderMessages: React.FC = () => {
     prevMessagesLengthRef.current = messages.length;
   }, [messages]);
 
-  // Duration timer for calls
-  useEffect(() => {
-    let interval: any = null;
-    if (callState === 'active') {
-      interval = setInterval(() => {
-        setCallDuration(prev => prev + 1);
-      }, 1000);
-    } else {
-      setCallDuration(0);
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [callState]);
-
-  const cleanupWebRTC = () => {
-    setZegoToken(null);
-    setZegoAppId(null);
-    setZegoRoomId(null);
-    setAcceptLoading(false);
-  };
-
-  const checkMediaPermissions = async (type: 'video' | 'audio') => {
-    if (typeof navigator === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      return true;
-    }
-    try {
-      const constraints = {
-        audio: true,
-        video: type === 'video',
-      };
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      stream.getTracks().forEach(t => t.stop());
-      return true;
-    } catch (err) {
-      if ((err as DOMException).name === 'NotAllowedError') {
-        toast.error(
-          type === 'video'
-            ? 'Camera and microphone access denied. Please allow permissions and try again.'
-            : 'Microphone access denied. Please allow permissions and try again.'
-        );
-      } else {
-        toast.error('Could not access media devices. Please check your browser settings.');
-      }
-      return false;
-    }
-  };
-
-  const handleDeclineCall = async () => {
-    if (!activeCallId) return;
-    try {
-      await fetch(`${API_BASE_URL}/v1/adult/sext/calls/${activeCallId}/decline`, {
-        method: 'PUT',
-        headers: getHeaders()
-      });
-      setCallState('idle');
-    } catch (err) {
-      console.error(err);
-      setCallState('idle');
-    }
-  };
-
-  const handleAcceptCall = async () => {
-    if (!activeCallId || !callData) return;
-    const hasPermissions = await checkMediaPermissions(callType);
-    if (!hasPermissions) {
-      await handleDeclineCall();
-      return;
-    }
-    setAcceptLoading(true);
-    try {
-      const res = await fetch(`${API_BASE_URL}/v1/adult/sext/calls/${activeCallId}/accept`, {
-        method: 'PUT',
-        headers: getHeaders()
-      });
-      const data = await res.json();
-
-      if (!res.ok || data.error) {
-        setAcceptLoading(false);
-        const errorMsg = typeof data.error === 'string' ? data.error : (data.error?.message || 'Failed to accept call');
-        toast.error(errorMsg);
-        return;
-      }
-
-      const tokenRes = await fetch(`${API_BASE_URL}/v1/adult/zego/token?roomId=${data.roomId || callData.roomId}&type=call`, {
-        headers: getHeaders()
-      });
-      const tokenData = await tokenRes.json();
-      if (tokenData.token) {
-        setZegoToken(tokenData.token);
-        setZegoAppId(tokenData.appId);
-        setZegoRoomId(data.roomId || callData.roomId);
-        setCallState('active');
-      } else {
-        setAcceptLoading(false);
-        toast.error('Failed to get call token');
-      }
-    } catch (err) {
-      setAcceptLoading(false);
-      console.error(err);
-    }
-  };
-
-  const handleEndCall = useCallback(async () => {
-    if (!activeCallId) return;
-    try {
-      const res = await fetch(`${API_BASE_URL}/v1/adult/sext/calls/${activeCallId}/end`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ reason: 'hung_up' })
-      });
-      const data = await res.json();
-      cleanupWebRTC();
-      setCallSummary({
-        duration: `${Math.floor((data.durationSeconds || 0) / 60)} min ${(data.durationSeconds || 0) % 60} sec`,
-        cost: data.creditsDeducted || 0,
-        wasBilled: (data.creditsDeducted || 0) > 0
-      });
-      setCallState('summary');
-    } catch (err) {
-      cleanupWebRTC();
-      setCallState('idle');
-    }
-  }, [activeCallId, token]);
-
-  // Retry Send Message
   const handleRetrySend = async (msg: Message) => {
     const tempId = msg.id;
     setMessages(prev => prev.map(m => m.id === tempId ? { ...m, isOptimistic: true, isFailed: false } : m));
@@ -863,7 +596,6 @@ const ProviderMessages: React.FC = () => {
     }
   };
 
-  // Send Text Message
   const handleSendText = async () => {
     if (!selectedConv || (!inputText.trim() && !uploadPreview)) return;
 
@@ -872,7 +604,6 @@ const ProviderMessages: React.FC = () => {
       return;
     }
 
-    // Run final content check
     const result = detectContactSharing(inputText);
     if (result.detected) {
       setFilterWarning({ show: true, category: result.category });
@@ -882,7 +613,7 @@ const ProviderMessages: React.FC = () => {
 
     const contentToSend = inputText;
     setInputText('');
-    dismissWarning(); // dismiss warning popup
+    dismissWarning();
 
     const tempId = `temp_${Date.now()}`;
     const optimisticMessage: Message = {
@@ -935,7 +666,6 @@ const ProviderMessages: React.FC = () => {
     }
   };
 
-  // File Upload flow
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -972,7 +702,7 @@ const ProviderMessages: React.FC = () => {
       const context = isVideo ? 'chat_video' : 'chat_image';
 
       const result = await uploadMedia(fileToUpload, context, false, (percent) => {
-        setUploadProgress(10 + Math.round(percent * 0.7)); // scale from 10 to 80
+        setUploadProgress(10 + Math.round(percent * 0.7));
       });
 
       setUploadProgress(80);
@@ -1006,7 +736,6 @@ const ProviderMessages: React.FC = () => {
     }
   };
 
-  // Send Paid Media dialog flow
   const handlePaidMediaFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1039,7 +768,7 @@ const ProviderMessages: React.FC = () => {
       const context = isVideo ? 'paid_video' : 'paid_image';
 
       const result = await uploadMedia(paidMediaFile, context, true, (percent) => {
-        setMediaUploadProgress(10 + Math.round(percent * 0.7)); // scale from 10 to 80
+        setMediaUploadProgress(10 + Math.round(percent * 0.7));
       });
 
       setMediaUploadProgress(80);
@@ -1103,7 +832,6 @@ const ProviderMessages: React.FC = () => {
     }
   };
 
-  // Send Gift Request Picker Dialog
   const openGiftRequestPicker = async () => {
     setShowGiftRequestDialog(true);
     setIsGiftsLoading(true);
@@ -1148,7 +876,6 @@ const ProviderMessages: React.FC = () => {
     }
   };
 
-  // Send Service Request Dialog
   const handleAddExtraChargeRow = () => {
     if (serviceExtras.length >= 5) return;
     setServiceExtras(prev => [...prev, { label: '', amount: 10 }]);
@@ -1236,7 +963,6 @@ const ProviderMessages: React.FC = () => {
     }
   };
 
-  // Handle Actionable Photo Requests received from members
   const handleFulfillPhotoRequestFree = async (msgId: string) => {
     if (processingIds[msgId]) return;
     const input = document.createElement('input');
@@ -1298,7 +1024,6 @@ const ProviderMessages: React.FC = () => {
     }
   };
 
-  // Reactions
   const handleReactToMessage = async (msgId: string, emoji: string) => {
     try {
       const res = await fetch(`${API_BASE_URL}/v1/adult/sext/messages/${msgId}/react`, {
@@ -1325,7 +1050,6 @@ const ProviderMessages: React.FC = () => {
     }
   };
 
-  // Audio Visualizers for recordings
   const startAudioVisualizer = (stream: MediaStream) => {
     try {
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
@@ -1529,10 +1253,8 @@ const ProviderMessages: React.FC = () => {
     toast.info('Recording cancelled');
   };
 
-  // Calculations
   const totalServiceChargeAmount = (dynTonightRate || tonightRate) + serviceExtras.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
 
-  // Filters
   const filteredConversations = conversations.filter(c => {
     if (!c.otherUser) return false;
     const nameMatch = c.otherUser.displayName.toLowerCase().includes(searchText.toLowerCase());
@@ -1729,7 +1451,6 @@ const ProviderMessages: React.FC = () => {
                         ── {m.systemText || m.content} ──
                       </div>
                     ) : m.mediaType === 'locked_image' || m.mediaType === 'locked_video' ? (
-                      /* LOCKED MEDIA - PROVIDER SENT VIEW */
                       <div data-testid="message-locked-media" className="relative w-64 h-80 rounded-2xl overflow-hidden border border-amber-500/30 bg-[#160c14] flex flex-col items-center justify-center p-4 shadow-xl message-locked-media">
                         <div
                           className="absolute inset-0 bg-cover bg-center filter blur-xl opacity-30 scale-110"
@@ -1753,7 +1474,6 @@ const ProviderMessages: React.FC = () => {
                         )}
                       </div>
                     ) : m.mediaType === 'gift_request' ? (
-                      /* GIFT REQUEST (PROVIDER VIEW) */
                       <div data-testid="gift-request-message" className="w-72 bg-gradient-to-br from-[#200e1b] to-[#120711] border-2 border-amber-500/50 rounded-2xl p-5 shadow-2xl text-center relative overflow-hidden flex flex-col items-center">
                         <div className="absolute top-1.5 right-2.5 text-[8px] text-amber-400 font-bold uppercase tracking-widest">WISH REQUEST</div>
                         <span className="text-5xl my-3 animate-bounce">🎁</span>
@@ -1773,7 +1493,6 @@ const ProviderMessages: React.FC = () => {
                         </div>
                       </div>
                     ) : m.mediaType === 'service_request' ? (
-                      /* SERVICE REQUEST (PROVIDER SENT VIEW) */
                       <div data-testid="service-request-message" className="w-72 bg-gradient-to-br from-[#1b0a14] to-[#0d040a] border-2 border-amber-500/50 rounded-2xl p-5 shadow-2xl relative overflow-hidden flex flex-col text-left">
                         <div className="flex items-center gap-2 mb-3 border-b border-white/5 pb-2">
                           <span className="text-lg">🌙</span>
@@ -1839,7 +1558,6 @@ const ProviderMessages: React.FC = () => {
                         )}
                       </div>
                     ) : m.mediaType === 'request_photo' ? (
-                      /* PHOTO REQUEST received by provider - ACTIONABLE CARD */
                       <div data-testid="message-photo-request" className="w-64 bg-[#1b0d19] border-2 border-dashed border-pink-500/40 rounded-xl p-4 flex flex-col gap-3 message-photo-request">
                         <div className="flex items-center gap-2">
                           <span className="text-xl">📷</span>
@@ -1891,7 +1609,6 @@ const ProviderMessages: React.FC = () => {
                         )}
                       </div>
                     ) : m.mediaType === 'request_service' ? (
-                      /* SERVICE TONIGHT REQUEST received by provider - ACTIONABLE CARD */
                       <div data-testid="message-service-tonight-request" className="w-64 bg-[#140b13] border-2 border-dashed border-purple-500/40 rounded-xl p-4 flex flex-col gap-3 message-service-tonight-request">
                         <div className="flex items-center gap-2">
                           <span className="text-xl">🌙</span>
@@ -1947,13 +1664,11 @@ const ProviderMessages: React.FC = () => {
                         isFailed={m.isFailed}
                       />
                     ) : (
-                      // STANDARD TEXT MESSAGE
                       <div data-testid="message-bubble" className={`p-3.5 max-w-xs text-sm rounded-2xl shadow-md leading-relaxed message-bubble break-words ${isMe ? 'bg-pink-600 text-white rounded-tr-none' : 'bg-[#1b0d19] border border-pink-500/20 text-gray-200 rounded-tl-none'} ${m.isFailed ? 'msg-bubble--failed' : ''}`}>
                         {m.content}
                       </div>
                     )}
 
-                    {/* Time & seen tick mark */}
                     <div className="msg-meta flex items-center gap-1.5 mt-1 text-[9px] text-gray-400 uppercase tracking-widest font-mono">
                       <span className="msg-time">{new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                       {isMe && !m.isFailed && (
@@ -1969,7 +1684,6 @@ const ProviderMessages: React.FC = () => {
                       </button>
                     )}
 
-                    {/* Hover tools */}
                     <div className="flex gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       {['❤️', '🔥', '😂', '👍'].map(em => (
                         <button
@@ -1990,7 +1704,6 @@ const ProviderMessages: React.FC = () => {
                       )}
                     </div>
 
-                    {/* Render existing reactions */}
                     {m.reactions && m.reactions.length > 0 && (
                       <div className="flex gap-1 mt-1 flex-wrap">
                         {m.reactions.map((r, i) => (
@@ -2008,7 +1721,6 @@ const ProviderMessages: React.FC = () => {
               <div ref={messagesEndRef} style={{ height: 1 }} />
             </div>
 
-            {/* QUICK ACTIONS BAR ABOVE INPUT */}
             {uploadPreview && (
               <div className="p-3 bg-[#1e0f1d] border-t border-[var(--az-border)] flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
@@ -2036,7 +1748,6 @@ const ProviderMessages: React.FC = () => {
 
             {/* BOTTOM INPUT BAR */}
             <div data-testid="chat-input-bar" className="chat-input-bar p-4 border-t border-[var(--az-border)] bg-[#10070e] flex flex-col gap-2 flex-shrink-0 relative">
-              {/* Content violation warnings */}
               {filterWarning.show && (
                 <ProviderContentWarning
                   onDismiss={dismissWarning}
@@ -2222,10 +1933,6 @@ const ProviderMessages: React.FC = () => {
         )}
       </div>
 
-      {/* ======================================================== */}
-      {/* MODALS AND DIALOGS */}
-      {/* ======================================================== */}
-
       {/* SEND PAID MEDIA DIALOG */}
       {showPaidMediaDialog && (
         <div data-testid="send-paid-media-dialog" className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[9999]">
@@ -2343,7 +2050,6 @@ const ProviderMessages: React.FC = () => {
               Pick a gift you'd like {selectedConv?.otherUser?.displayName} to send you.
             </p>
 
-            {/* Category selection */}
             <div className="flex gap-2 border-b border-pink-500/20 pb-3 mb-4 overflow-x-auto no-scrollbar">
               {['all', 'romantic', 'spicy', 'luxury', 'fun'].map(tab => (
                 <button
@@ -2356,7 +2062,6 @@ const ProviderMessages: React.FC = () => {
               ))}
             </div>
 
-            {/* Gift list grid */}
             <div className="grid grid-cols-3 gap-3 max-h-60 overflow-y-auto pr-1 no-scrollbar mb-6">
               {isGiftsLoading ? (
                 Array.from({ length: 6 }).map((_, i) => (
@@ -2538,208 +2243,6 @@ const ProviderMessages: React.FC = () => {
           </div>
         </div>
       )}
-
-      {/* FULL CALL TAKE-OVER OVERLAY */}
-      {callState !== 'idle' && (
-        <div className={`fixed inset-0 bg-black z-[10000] flex flex-col text-center text-white ${
-          callState === 'active' ? 'p-0 justify-stretch items-stretch' : 'items-center justify-between p-8'
-        }`}>
-
-          {/* Incoming Call Layout */}
-          {callState === 'ringing' && (
-            <div className="flex-grow flex flex-col items-center justify-center">
-              <div className="w-32 h-32 rounded-full border-4 border-pink-500 animate-pulse mb-6 flex items-center justify-center overflow-hidden">
-                <Avatar src={selectedConv?.otherUser?.avatarUrl} name={selectedConv?.otherUser?.displayName} size={128} />
-              </div>
-              <h2 className="text-3xl font-serif italic mb-2 truncate max-w-xs px-4 text-center" title={selectedConv?.otherUser?.displayName}>{selectedConv?.otherUser?.displayName}</h2>
-              <p className="text-xs text-pink-400 uppercase tracking-widest animate-pulse">Incoming {callType} Call...</p>
-              <p className="text-xs text-yellow-400 mt-2 font-mono">Rate: 💎 {formatAmount(callRate)} credits / min</p>
-
-              <div className="flex gap-8 mt-12">
-                <button
-                  onClick={handleDeclineCall}
-                  className="w-16 h-16 bg-red-600 hover:bg-red-700 text-white text-2xl rounded-full flex items-center justify-center hover:scale-105 transition-transform"
-                >
-                  ✕
-                </button>
-                <button
-                  onClick={handleAcceptCall}
-                  disabled={acceptLoading}
-                  className="incoming-call-accept w-16 h-16 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-2xl rounded-full flex items-center justify-center hover:scale-105 transition-transform animate-bounce"
-                >
-                  {acceptLoading ? (
-                    <span className="animate-spin text-xl">⏳</span>
-                  ) : (
-                    '✓'
-                  )}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Active Call Layout with ZegoCloud WebRTC */}
-          {callState === 'active' && (
-            <div className="relative w-full h-full bg-[#0a0608]">
-              <div className="absolute inset-0 bg-[#0a0608] z-0">
-                {callState === 'active' && zegoToken && zegoAppId && zegoRoomId && user?.id && (
-                  <React.Suspense fallback={<div className="flex items-center justify-center h-full text-pink-500">Loading call...</div>}>
-                    <CallRoom
-                      key={zegoRoomId}
-                      appId={zegoAppId}
-                      token={zegoToken}
-                      roomId={zegoRoomId}
-                      userId={user.id}
-                      userName={user.firstName || 'User'}
-                      callType={callType}
-                      onCallEnd={handleEndCall}
-                      partnerName={selectedConv?.otherUser?.displayName}
-                      partnerAvatar={selectedConv?.otherUser?.avatarUrl}
-                      providerAvatar={(user as any)?.avatarUrl || user?.profilePhoto}
-                      providerName={user?.firstName || 'Provider'}
-                    />
-                  </React.Suspense>
-                )}
-              </div>
-
-              {/* Credit ticker / Call Info — top-right corner, does not interfere with ZegoCloud */}
-              <div
-                className="call-credit-ticker"
-                style={{
-                  position: 'absolute',
-                  top: '16px',
-                  right: '16px',
-                  zIndex: 1001,             /* above ZegoCloud UI */
-                  pointerEvents: 'none',      /* clicks pass through to ZegoCloud */
-                  background: 'rgba(10, 6, 8, 0.75)',
-                  backdropFilter: 'blur(8px)',
-                  border: '1px solid rgba(201, 168, 76, 0.4)',
-                  borderRadius: '100px',
-                  padding: '6px 14px',
-                  font: "600 14px/1 'JetBrains Mono', monospace",
-                  color: '#c9a84c',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                }}
-              >
-                <span>💎 Credits (Earned)</span>
-                <span style={{ borderLeft: '1px solid rgba(201,168,76,0.3)', paddingLeft: '8px' }}>
-                  {Math.floor(callDuration / 60).toString().padStart(2, '0')}:
-                  {(callDuration % 60).toString().padStart(2, '0')}
-                </span>
-              </div>
-
-              {/* Caller name overlay — top-left corner */}
-              <div
-                style={{
-                  position: 'absolute',
-                  top: '16px',
-                  left: '16px',
-                  zIndex: 1001,
-                  pointerEvents: 'none',
-                  background: 'rgba(10, 6, 8, 0.75)',
-                  backdropFilter: 'blur(8px)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                  borderRadius: '100px',
-                  padding: '6px 14px',
-                  fontSize: '12px',
-                  color: '#fff',
-                }}
-              >
-                {selectedConv?.otherUser?.displayName}
-              </div>
-            </div>
-          )}
-
-          {/* Call Ending Summary */}
-          {callState === 'summary' && callSummary && (
-            <div className="flex-grow flex flex-col items-center justify-center max-w-sm flex">
-              <span className="text-5xl mb-4">
-                {callSummary.status === 'declined' || callSummary.status === 'missed' ? '📵' : callType === 'video' ? '📹' : '📞'}
-              </span>
-              <h2 className="text-2xl font-serif italic text-pink-300 mb-2">
-                {callSummary.status === 'declined'
-                  ? 'Call Declined'
-                  : callSummary.status === 'missed'
-                  ? 'No Answer'
-                  : 'Call Ended'}
-              </h2>
-
-              <div className="w-full bg-[#160b13] border border-pink-500/20 rounded-xl p-6 space-y-4 mb-8 text-left">
-                {callSummary.status === 'declined' || callSummary.status === 'missed' ? (
-                  <div className="text-center space-y-1">
-                    <p className="text-sm font-bold text-red-400">
-                      {callSummary.status === 'declined' ? 'Call was declined' : 'No answer from provider'}
-                    </p>
-                    <p className="text-xs text-gray-400">No charge</p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-gray-400">Duration:</span>
-                      <span className="font-bold">{callSummary.duration}</span>
-                    </div>
-                    <div className="flex justify-between text-xs border-t border-pink-500/10 pt-3">
-                      {user?.role === 'provider' ? (
-                        <>
-                          <span className="text-gray-400">Credits Earned:</span>
-                          <span className="font-bold text-yellow-400">💎 {formatAmount(callSummary.cost)}</span>
-                        </>
-                      ) : (
-                        <>
-                          <span className="text-gray-400">Credits Charged:</span>
-                          <span className="font-bold text-yellow-400">💎 {formatAmount(callSummary.cost)}  ≈  {formatNaira(callSummary.cost * usePricingStore.getState().diamondNairaRate)}</span>
-                        </>
-                      )}
-                    </div>
-                    {callSummary.cost === 0 && (
-                      <p className="text-[10px] text-gray-400 text-center mt-2 font-mono uppercase tracking-wider">
-                        No charge — calls under 10 seconds are free
-                      </p>
-                    )}
-                  </>
-                )}
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex flex-col gap-3 w-full">
-                {user?.role !== 'provider' && callSummary.cost > 0 && (
-                  <div className="flex flex-col items-center mb-2">
-                    <span className="text-xs text-pink-300 mb-1">Rate this call:</span>
-                    <div className="flex gap-1 text-lg">
-                      {['⭐', '⭐', '⭐', '⭐', '⭐'].map((star, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => {
-                            toast.success('Thank you for your rating!');
-                          }}
-                          className="hover:scale-125 transition-transform"
-                        >
-                          {star}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex gap-3 w-full">
-                  <button
-                    onClick={() => {
-                      setCallState('idle');
-                      setCallSummary(null);
-                    }}
-                    className="flex-grow py-2.5 bg-pink-600 hover:bg-pink-700 text-white font-bold text-xs uppercase tracking-widest rounded-full transition-colors"
-                  >
-                    Done
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-        </div>
-      )}
-
     </div>
   );
 };

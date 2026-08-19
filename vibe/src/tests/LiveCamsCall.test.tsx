@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act, fireEvent, waitFor } from '@testing-library/react';
 import LiveCams from '../components/AdultZone/LiveCams';
+import { AdultCallProvider } from '../components/AdultZone/AdultCallContext';
 import { MemoryRouter } from 'react-router-dom';
 
 // Mock AdultAuthContext
@@ -71,7 +72,9 @@ describe('LiveCams 1-to-1 Video Call Flow', () => {
     await act(async () => {
       render(
         <MemoryRouter>
-          <LiveCams />
+          <AdultCallProvider>
+            <LiveCams />
+          </AdultCallProvider>
         </MemoryRouter>
       );
     });
@@ -136,7 +139,9 @@ describe('LiveCams 1-to-1 Video Call Flow', () => {
     await act(async () => {
       render(
         <MemoryRouter>
-          <LiveCams />
+          <AdultCallProvider>
+            <LiveCams />
+          </AdultCallProvider>
         </MemoryRouter>
       );
     });
@@ -231,7 +236,9 @@ describe('LiveCams 1-to-1 Video Call Flow', () => {
     await act(async () => {
       render(
         <MemoryRouter>
-          <LiveCams />
+          <AdultCallProvider>
+            <LiveCams />
+          </AdultCallProvider>
         </MemoryRouter>
       );
     });
@@ -254,7 +261,7 @@ describe('LiveCams 1-to-1 Video Call Flow', () => {
 
     // Verify outgoing call ringing overlay is rendered over top of stream with rate
     await waitFor(() => {
-      expect(screen.getByText('Requesting 1-to-1 Video Call...')).toBeInTheDocument();
+      expect(screen.getByText('Requesting 1-to-1 video call...')).toBeInTheDocument();
       expect(screen.getByText('Rate: 💎 8 credits / min')).toBeInTheDocument();
     });
   });

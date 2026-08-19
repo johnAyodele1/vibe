@@ -70,6 +70,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
 
   useEffect(() => {
     const currentGen = ++effectGenRef.current;
+    const genRef = effectGenRef;
     isMountedRef.current = true;
     hasEndedRef.current = false;
 
@@ -88,7 +89,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
 
     const rect = mainContainerRef.current.getBoundingClientRect();
     const globalObj = globalThis as unknown as { process?: { env?: { NODE_ENV?: string } } };
-    const isTest = typeof globalObj.process !== 'undefined' && globalObj.process.env?.NODE_ENV === 'test';
+    const isTest = typeof globalObj.process !== 'undefined' && globalObj.process?.env?.NODE_ENV === 'test';
     if (!isTest && (rect.width === 0 || rect.height === 0)) {
       console.error('[CallRoom] Container has zero dimensions. Retrying...');
       const frame = requestAnimationFrame(() => {
@@ -106,11 +107,11 @@ const CallRoom: React.FC<CallRoomProps> = ({
     clientRef.current = client;
 
     const handleUserPublished = async (user: IAgoraRTCRemoteUser, mediaType: 'audio' | 'video' | 'datachannel') => {
-      if (currentGen !== effectGenRef.current) return;
+      if (currentGen !== genRef.current) return;
       if (mediaType === 'datachannel') return;
       try {
         await client.subscribe(user, mediaType);
-        if (currentGen !== effectGenRef.current) return;
+        if (currentGen !== genRef.current) return;
         if (mediaType === 'video' && user.videoTrack) {
           if (remoteContainerRef.current) {
             user.videoTrack.play(remoteContainerRef.current);
@@ -118,7 +119,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
           const vTrack = user.videoTrack as unknown as { on?: (evt: string, cb: () => void) => void };
           if (typeof vTrack.on === 'function') {
             vTrack.on('first-frame-decoded', () => {
-              if (currentGen === effectGenRef.current) remoteMarkReady();
+              if (currentGen === genRef.current) remoteMarkReady();
             });
           }
         }
@@ -162,7 +163,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
     const initCall = async () => {
       try {
         await client.join(String(appId), roomId, token, userId);
-        if (currentGen !== effectGenRef.current) {
+        if (currentGen !== genRef.current) {
           await client.leave();
           return;
         }
@@ -173,7 +174,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
 
         // Audio track is always initialized and published
         const audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
-        if (currentGen !== effectGenRef.current) {
+        if (currentGen !== genRef.current) {
           audioTrack.stop();
           audioTrack.close();
           await client.leave();
@@ -185,7 +186,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
         // Video track is only initialized and published for video calls
         if (callType === 'video') {
           const videoTrack = await AgoraRTC.createCameraVideoTrack();
-          if (currentGen !== effectGenRef.current) {
+          if (currentGen !== genRef.current) {
             audioTrack.stop();
             audioTrack.close();
             videoTrack.stop();
@@ -202,12 +203,12 @@ const CallRoom: React.FC<CallRoomProps> = ({
           const vTrack = videoTrack as unknown as { on?: (evt: string, cb: () => void) => void };
           if (typeof vTrack.on === 'function') {
             vTrack.on('first-frame-decoded', () => {
-              if (currentGen === effectGenRef.current) localMarkReady();
+              if (currentGen === genRef.current) localMarkReady();
             });
           }
         }
 
-        if (tracksToPublish.length > 0 && currentGen === effectGenRef.current) {
+        if (tracksToPublish.length > 0 && currentGen === genRef.current) {
           await client.publish(tracksToPublish);
         }
       } catch (err) {
@@ -218,7 +219,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
     initCall();
 
     return () => {
-      effectGenRef.current++;
+      genRef.current++;
       isMountedRef.current = false;
       remoteResetReadiness();
       localResetReadiness();
@@ -453,7 +454,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
               cameraEnabled
                 ? 'bg-zinc-800 text-white hover:bg-zinc-700 border border-zinc-700'
                 : 'bg-red-950 text-red-500 border border-red-500/50 hover:bg-red-900/50'
-            }`}
+          }`}
           >
             {cameraEnabled ? (
               <svg className="w-5 h-5 md:w-6 md:h-6 fill-current" viewBox="0 0 24 24">

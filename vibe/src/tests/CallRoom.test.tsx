@@ -57,7 +57,7 @@ describe('CallRoom component stability and settings with Agora SDK', () => {
   it('renders container element and initialises Agora client exactly once', async () => {
     const onCallEndMock = vi.fn();
 
-    let wrapper: any = null;
+    let wrapper: ReturnType<typeof render> | null = null;
     await act(async () => {
       wrapper = render(
         <CallRoom
@@ -75,7 +75,7 @@ describe('CallRoom component stability and settings with Agora SDK', () => {
     expect(screen.getByTestId('zego-call-room')).toBeInTheDocument();
 
     if (wrapper) {
-      wrapper.unmount();
+      (wrapper as ReturnType<typeof render>).unmount();
     }
   });
 
@@ -84,7 +84,7 @@ describe('CallRoom component stability and settings with Agora SDK', () => {
     const partnerName = "Premium Partner";
     const partnerAvatar = "https://images.unsplash.com/photo-1534528741775-53994a69daeb";
 
-    let wrapper: any = null;
+    let wrapper: ReturnType<typeof render> | null = null;
     await act(async () => {
       wrapper = render(
         <CallRoom
@@ -111,7 +111,7 @@ describe('CallRoom component stability and settings with Agora SDK', () => {
     expect(screen.getByText('In Call')).toBeInTheDocument();
 
     if (wrapper) {
-      wrapper.unmount();
+      (wrapper as ReturnType<typeof render>).unmount();
     }
   });
 
