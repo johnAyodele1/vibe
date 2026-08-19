@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { API_BASE_URL, SOCKET_URL } from '../../config';
-import { useTipSheetStore } from './useTipSheetStore';
+import { useTipSheetStore, type TipSheetState } from './useTipSheetStore';
 import { useWalletStore } from './useWalletStore';
 import { usePricingStore, formatAmount } from '../../lib/pricing';
 
@@ -27,7 +27,7 @@ export const TipSheet: React.FC = () => {
   const setCustomAmount   = (amount: string) => useTipSheetStore.getState().setCustomAmount(amount);
   const setMessage        = (msg: string) => useTipSheetStore.getState().setMessage(msg);
   const setStep           = (s: 'select' | 'processing' | 'success' | 'error') => useTipSheetStore.getState().setStep(s);
-  const setResult         = (res: Record<string, unknown>) => useTipSheetStore.getState().setResult(res);
+  const setResult         = (res: TipSheetState['result']) => useTipSheetStore.getState().setResult(res);
   const reset             = () => useTipSheetStore.getState().reset();
 
   const creditBalance     = useWalletStore(s => s.creditBalance);

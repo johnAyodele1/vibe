@@ -134,8 +134,7 @@ const PrivateSext: React.FC = () => {
   const [showGiftPicker, setShowGiftPicker] = useState(false);
 
   // Content Filtering
-  const accountType = user?.role === 'provider' ? 'service_provider' : 'member';
-  const { filterWarning, checkContent, dismissWarning, setFilterWarning } = useContentFilter(accountType);
+  const { filterWarning, checkContent, dismissWarning, setFilterWarning } = useContentFilter();
   const [selectedGift, setSelectedGift] = useState<Gift | null>(null);
   const [giftNote, setGiftNote] = useState('');
   const [giftsCatalogue, setGiftsCatalogue] = useState<Gift[]>([]);

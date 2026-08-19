@@ -129,7 +129,7 @@ const ProviderMessages: React.FC = () => {
   const [inputText, setInputText] = useState('');
 
   // Content Filtering (Provider-side)
-  const { filterWarning, checkContent, dismissWarning, setFilterWarning } = useContentFilter('service_provider');
+  const { filterWarning, checkContent, dismissWarning, setFilterWarning } = useContentFilter();
 
   // Dialog states
   const [showPaidMediaDialog, setShowPaidMediaDialog] = useState(false);

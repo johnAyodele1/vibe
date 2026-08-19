@@ -4,7 +4,7 @@ import { API_BASE_URL, SOCKET_URL } from '../../config';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { useTipSheetStore } from './useTipSheetStore';
 import { CamLiveChat } from './CamLiveChat';
-import { WheelPreview } from './WheelEditor';
+import { WheelPreview, type WheelItem } from './WheelEditor';
 import { toast } from 'sonner';
 import { io, Socket } from 'socket.io-client';
 
@@ -34,7 +34,9 @@ interface ProviderProfileData {
 interface WheelSlice {
   id: string;
   label: string;
-  creditCost?: number;
+  creditCost: number;
+  probability?: number;
+  color?: string;
 }
 
 interface WheelData {
@@ -300,6 +302,14 @@ const LiveCams: React.FC = () => {
     }
   };
 
+  const formattedWheelItems: WheelItem[] = (wheel?.items || []).map((item, idx) => ({
+    id: item.id,
+    label: item.label,
+    creditCost: item.creditCost,
+    probability: item.probability || 1,
+    color: item.color || ['#c8102e', '#e8496a', '#c9a84c', '#a78bfa', '#22c55e', '#3b82f6', '#f97316', '#ec4899'][idx % 8]
+  }));
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-10">
       {/* Filter Bar */}
@@ -500,7 +510,7 @@ const LiveCams: React.FC = () => {
                   <button onClick={() => setWheelOpen(false)} className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-xs text-white/50">✕</button>
                   <h3 className="text-base font-serif italic text-white mb-2">Performer Spin Wheel</h3>
 
-                  <WheelPreview items={wheel.items} spinning={spinning} landedIndex={landedIndex} />
+                  <WheelPreview items={formattedWheelItems} spinning={spinning} landedIndex={landedIndex} />
 
                   <button
                     onClick={handleSpinWheel}
@@ -526,7 +536,7 @@ const LiveCams: React.FC = () => {
             {wheel && (
               <div className="p-4 flex flex-col items-center bg-[#10070c]/50">
                 <h4 className="text-xs font-serif italic text-pink-400 uppercase tracking-widest">Interactive Wheel</h4>
-                <WheelPreview items={wheel.items} spinning={spinning} landedIndex={landedIndex} />
+                <WheelPreview items={formattedWheelItems} spinning={spinning} landedIndex={landedIndex} />
                 <button
                   onClick={handleSpinWheel}
                   disabled={spinning}

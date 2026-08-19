@@ -127,7 +127,7 @@ export const LocationSelect: React.FC<LocationSelectProps> = ({ value = {}, onCh
             {activeSheet !== 'city' && (
               <input
                 type="text"
-                placeholder={`Search {activeSheet}...`}
+                placeholder={`Search ${activeSheet}...`}
                 className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white focus:border-[var(--az-accent-rose)] outline-none mb-4"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
@@ -148,21 +148,21 @@ export const LocationSelect: React.FC<LocationSelectProps> = ({ value = {}, onCh
             <div className="flex-grow overflow-y-auto space-y-1 pr-1">
               {activeSheet === 'country' && filteredCountries.map(c => (
                 <button
-                  key={c.code}
+                  key={c.code || c.name}
                   type="button"
-                  onClick={() => handleCountrySelect({ code: c.code, name: c.name })}
+                  onClick={() => handleCountrySelect({ code: c.code || '', name: c.name })}
                   className="w-full text-left py-3 px-4 rounded-xl hover:bg-[var(--az-bg-tertiary)] text-white flex items-center gap-3 transition-colors"
                 >
-                  <span className="text-xl">{c.flag}</span>
+                  <span className="text-xl">{c.flag || '🏳️'}</span>
                   <span>{c.name}</span>
                 </button>
               ))}
 
               {activeSheet === 'state' && filteredStates.map(s => (
                 <button
-                  key={s.code}
+                  key={s.code || s.name}
                   type="button"
-                  onClick={() => handleStateSelect({ code: s.code, name: s.name })}
+                  onClick={() => handleStateSelect({ code: s.code || '', name: s.name })}
                   className="w-full text-left py-3 px-4 rounded-xl hover:bg-[var(--az-bg-tertiary)] text-white transition-colors"
                 >
                   {s.name}
@@ -173,7 +173,7 @@ export const LocationSelect: React.FC<LocationSelectProps> = ({ value = {}, onCh
                 <button
                   key={c.name + idx}
                   type="button"
-                  onClick={() => handleCitySelect({ name: c.name, lat: c.lat, lng: c.lng })}
+                  onClick={() => handleCitySelect({ name: c.name, lat: typeof c.lat === 'number' ? c.lat : 0, lng: typeof c.lng === 'number' ? c.lng : 0 })}
                   className="w-full text-left py-3 px-4 rounded-xl hover:bg-[var(--az-bg-tertiary)] text-white transition-colors"
                 >
                   {c.name}

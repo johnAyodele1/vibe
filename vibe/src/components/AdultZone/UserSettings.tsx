@@ -6,14 +6,6 @@ import { API_BASE_URL } from '../../config';
 import { PushNotificationTestCard } from '../Settings/PushNotificationTestCard';
 import { LocationSelect } from './LocationSelect';
 
-interface UserLocation {
-  country?: string;
-  state?: string;
-  city?: string;
-  lat?: number;
-  lng?: number;
-  [key: string]: unknown;
-}
 
 const UserSettings: React.FC = () => {
   const navigate = useNavigate();
@@ -22,7 +14,7 @@ const UserSettings: React.FC = () => {
 
   const [displayName, setDisplayName] = useState('');
   const [bio, setBio] = useState('');
-  const [location, setLocation] = useState<UserLocation>({});
+  const [location, setLocation] = useState<any>({});
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
 

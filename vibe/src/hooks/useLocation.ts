@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
 import { API_BASE_URL } from '../config';
 
-interface LocationItem {
+export interface LocationItem {
   name: string;
   code?: string;
   isoCode?: string;
+  flag?: string;
+  lat?: number;
+  lng?: number;
   [key: string]: unknown;
 }
 

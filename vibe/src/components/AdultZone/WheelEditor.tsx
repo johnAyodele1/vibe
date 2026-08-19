@@ -14,7 +14,7 @@ const WHEEL_COLORS = [
   '#ec4899'  // Pink
 ];
 
-interface WheelItem {
+export interface WheelItem {
   id: string;
   label: string;
   creditCost: number;

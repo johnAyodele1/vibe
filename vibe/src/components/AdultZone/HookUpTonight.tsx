@@ -279,19 +279,19 @@ const HookUpTonight: React.FC = () => {
 
   // Pre-mapping locations list options for CustomSelect components
   const countryOptions = countries?.map((c) => ({
-    value: c.code,
+    value: c.code || '',
     label: `${c.flag || '🌍'} ${c.name}`,
     extra: c,
   })) || [];
 
   const stateOptions = states?.map((s) => ({
-    value: s.code,
+    value: s.code || '',
     label: s.name,
     extra: s,
   })) || [];
 
   const cityOptions = cities?.map((ct, idx) => ({
-    value: ct.name + '_' + idx,
+    value: (ct.name || '') + '_' + idx,
     label: ct.name,
     extra: ct,
   })) || [];
