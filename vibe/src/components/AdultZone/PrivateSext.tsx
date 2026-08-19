@@ -1483,22 +1483,26 @@ const PrivateSext: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-2 conversation-header__actions flex-shrink-0">
-                <button
-                  onClick={() => handleStartCall('audio')}
-                  disabled={isInitiating}
-                  className="text-lg hover:scale-110 transition-transform p-1.5 conversation-header__action-btn disabled:opacity-50"
-                  title="Audio Call"
-                >
-                  📞
-                </button>
-                <button
-                  onClick={() => handleStartCall('video')}
-                  disabled={isInitiating}
-                  className="text-lg hover:scale-110 transition-transform p-1.5 conversation-header__action-btn disabled:opacity-50"
-                  title="Video Call"
-                >
-                  📹
-                </button>
+                {selectedConv.conversationId !== 'official_notifications' && selectedConv.type !== 'official_notification' && (
+                  <>
+                    <button
+                      onClick={() => handleStartCall('audio')}
+                      disabled={isInitiating}
+                      className="text-lg hover:scale-110 transition-transform p-1.5 conversation-header__action-btn disabled:opacity-50"
+                      title="Audio Call"
+                    >
+                      📞
+                    </button>
+                    <button
+                      onClick={() => handleStartCall('video')}
+                      disabled={isInitiating}
+                      className="text-lg hover:scale-110 transition-transform p-1.5 conversation-header__action-btn disabled:opacity-50"
+                      title="Video Call"
+                    >
+                      📹
+                    </button>
+                  </>
+                )}
                 <span className="text-yellow-400 font-bold text-xs flex items-center gap-1 conversation-header__credits">
                   💎 {formatAmount(creditsRemaining)}
                 </span>
@@ -1929,180 +1933,190 @@ const PrivateSext: React.FC = () => {
 
             {/* BOTTOM INPUT BAR */}
             <div data-testid="chat-input-bar" className="chat-input-bar p-4 border-t border-[var(--az-border)] bg-[#10070e] flex flex-col gap-2 flex-shrink-0 relative">
-              {filterWarning.show && (
-                user?.role === 'provider' ? (
-                  <ProviderContentWarning
-                    onDismiss={dismissWarning}
-                  />
-                ) : (
-                  <ContentFilterWarning
-                    category={filterWarning.category}
-                    onDismiss={dismissWarning}
-                  />
-                )
-              )}
-
-              {recState === 'sending' ? (
-                <div className="recording-bar flex items-center justify-center gap-3 h-14 bg-[#150a12] rounded-full px-4 border border-[var(--az-border)] w-full">
-                  <span className="animate-spin text-sm">⏳</span>
-                  <span className="text-xs font-mono text-pink-300">Sending voice note...</span>
-                </div>
-              ) : recState === 'recording' ? (
-                <div data-testid="recording-bar" className="recording-bar flex items-center justify-between h-14 bg-[#150a12] rounded-full px-4 border border-[var(--az-border)] transition-all duration-200 w-full">
-                  <button
-                    data-testid="recording-cancel-btn"
-                    onClick={handleCancelRecording}
-                    onTouchStart={(e) => {
-                      e.preventDefault();
-                      handleCancelRecording();
-                    }}
-                    className="recording-bar__cancel flex items-center justify-center p-1 text-gray-400 hover:text-red-500 transition-colors flex-shrink-0"
-                    aria-label="Cancel recording"
-                  >
-                    🗑️
-                  </button>
-
-                  <div className="recording-bar__center flex-grow flex items-center gap-3 px-2 min-w-0">
-                    <span data-testid="recording-dot" className="recording-dot w-2 h-2 rounded-full bg-red-500 flex-shrink-0 animate-ping" aria-hidden="true" />
-
-                    <div data-testid="recording-waveform" className="recording-waveform flex-grow flex items-center gap-0.5 h-8 overflow-hidden">
-                      {amplitudeData.map((h, i) => (
-                        <div
-                          key={i}
-                          className="recording-waveform__bar w-[3px] rounded-full bg-[var(--az-accent-rose)] transition-all duration-75 flex-shrink-0"
-                          style={{ height: `${h}px` }}
-                        />
-                      ))}
-                    </div>
-
-                    <span data-testid="recording-timer" className="recording-timer text-xs font-mono text-[var(--az-text-primary)] flex-shrink-0">
-                      {Math.floor(recDuration / 60)}:{(recDuration % 60).toString().padStart(2, '0')}
-                    </span>
-                  </div>
-
-                  <button
-                    data-testid="recording-send-btn"
-                    onClick={handleStopAndSend}
-                    onTouchStart={(e) => {
-                      e.preventDefault();
-                      handleStopAndSend();
-                    }}
-                    className="recording-bar__send w-10 h-10 bg-[var(--az-accent-primary)] hover:scale-105 active:scale-95 text-white rounded-full flex items-center justify-center shadow-lg shadow-red-500/20 flex-shrink-0"
-                    aria-label="Send voice message"
-                  >
-                    →
-                  </button>
+              {selectedConv.conversationId === 'official_notifications' || selectedConv.type === 'official_notification' ? (
+                <div className="p-3 bg-pink-950/20 border border-pink-500/30 rounded-xl text-center text-xs text-pink-300 font-medium">
+                  📢 Only admins can send messages to this channel.
                 </div>
               ) : (
-                <div className="chat-input-row flex items-center gap-3 bg-[#150a12] rounded-full px-4 py-1.5 border border-[var(--az-border)] w-full">
-                  <button
-                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                    className="chat-input__emoji text-lg opacity-70 hover:opacity-100 transition-opacity p-1 flex-shrink-0"
-                  >
-                    😀
-                  </button>
+                <>
+                  {filterWarning.show && (
+                    user?.role === 'provider' ? (
+                      <ProviderContentWarning
+                        onDismiss={dismissWarning}
+                      />
+                    ) : (
+                      <ContentFilterWarning
+                        category={filterWarning.category}
+                        onDismiss={dismissWarning}
+                      />
+                    )
+                  )}
 
-                  <label className="chat-input__media text-lg opacity-70 hover:opacity-100 transition-opacity cursor-pointer p-1 flex-shrink-0" title={user?.role === 'provider' ? "Upload photo or video" : "Upload photo"}>
-                    📸
-                    <input
-                      type="file"
-                      accept={user?.role === 'provider' ? "image/*,video/*" : "image/*"}
-                      onChange={handleFileChange}
-                      className="hidden"
-                    />
-                  </label>
-
-                  <input
-                    data-testid="chat-text-input"
-                    type="text"
-                    placeholder="Send a naughty message..."
-                    value={inputText}
-                    onChange={(e) => {
-                      setInputText(e.target.value);
-                      checkContent(e.target.value);
-                    }}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSendText()}
-                    className="chat-input__field flex-grow bg-transparent border-none outline-none text-sm text-[var(--az-text-primary)] py-2 min-w-0"
-                  />
-
-                  <button
-                    data-testid="mic-button"
-                    onClick={() => {
-                      if (recState === 'idle') {
-                        handleStartRecording();
-                      } else if (recState === 'recording') {
-                        handleStopAndSend();
-                      }
-                    }}
-                    onTouchStart={(e) => {
-                      e.preventDefault();
-                      if (recState === 'idle') {
-                        handleStartRecording();
-                      } else if (recState === 'recording') {
-                        handleStopAndSend();
-                      }
-                    }}
-                    onTouchEnd={(e) => {
-                      e.preventDefault();
-                    }}
-                    className="chat-input__mic p-1 rounded-full transition-all opacity-70 hover:opacity-100 relative flex-shrink-0"
-                    title="Tap to record voice note"
-                  >
-                    🎙️
-                  </button>
-
-                  <button
-                    onClick={() => handleSendText()}
-                    className="chat-input__send w-8 h-8 bg-pink-600 hover:bg-pink-700 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-lg shadow-pink-500/20 active:scale-95 transition-all flex-shrink-0"
-                  >
-                    →
-                  </button>
-                </div>
-              )}
-
-              {showEmojiPicker && (
-                <div className="absolute bottom-24 left-10 z-50 bg-[#160c14] border border-[var(--az-border)] rounded-xl p-3 shadow-2xl w-64">
-                  <div className="text-xs font-serif italic text-pink-300 mb-2 border-b border-pink-500/20 pb-1 flex justify-between">
-                    <span>Recent Emojis</span>
-                    <button onClick={() => setShowEmojiPicker(false)}>×</button>
-                  </div>
-                  <div className="grid grid-cols-5 gap-2 text-center">
-                    {recentEmojis.map(em => (
+                  {recState === 'sending' ? (
+                    <div className="recording-bar flex items-center justify-center gap-3 h-14 bg-[#150a12] rounded-full px-4 border border-[var(--az-border)] w-full">
+                      <span className="animate-spin text-sm">⏳</span>
+                      <span className="text-xs font-mono text-pink-300">Sending voice note...</span>
+                    </div>
+                  ) : recState === 'recording' ? (
+                    <div data-testid="recording-bar" className="recording-bar flex items-center justify-between h-14 bg-[#150a12] rounded-full px-4 border border-[var(--az-border)] transition-all duration-200 w-full">
                       <button
-                        key={em}
-                        onClick={() => {
-                          setInputText(prev => prev + em);
-                          setShowEmojiPicker(false);
+                        data-testid="recording-cancel-btn"
+                        onClick={handleCancelRecording}
+                        onTouchStart={(e) => {
+                          e.preventDefault();
+                          handleCancelRecording();
                         }}
-                        className="text-lg hover:scale-125 transition-transform"
+                        className="recording-bar__cancel flex items-center justify-center p-1 text-gray-400 hover:text-red-500 transition-colors flex-shrink-0"
+                        aria-label="Cancel recording"
                       >
-                        {em}
+                        🗑️
                       </button>
-                    ))}
-                  </div>
-                </div>
-              )}
 
-              <div className="flex justify-center gap-8 mt-2 border-t border-[var(--az-border)]/20 pt-2 chat-quick-actions">
-                <button
-                  onClick={openGiftPicker}
-                  className="text-[10px] font-bold uppercase tracking-widest text-amber-400 hover:text-amber-500 flex items-center gap-1.5 transition-colors"
-                >
-                  🎁 Send Gift
-                </button>
-                <button
-                  onClick={() => setShowPhotoRequestModal(true)}
-                  className="text-[10px] font-bold uppercase tracking-widest text-pink-400 hover:text-pink-500 flex items-center gap-1.5 transition-colors"
-                >
-                  📸 Request Photo
-                </button>
-                <button
-                  onClick={() => setShowServiceRequestModal(true)}
-                  className="text-[10px] font-bold uppercase tracking-widest text-purple-400 hover:text-purple-500 flex items-center gap-1.5 transition-colors"
-                >
-                  🌙 Request Service
-                </button>
-              </div>
+                      <div className="recording-bar__center flex-grow flex items-center gap-3 px-2 min-w-0">
+                        <span data-testid="recording-dot" className="recording-dot w-2 h-2 rounded-full bg-red-500 flex-shrink-0 animate-ping" aria-hidden="true" />
+
+                        <div data-testid="recording-waveform" className="recording-waveform flex-grow flex items-center gap-0.5 h-8 overflow-hidden">
+                          {amplitudeData.map((h, i) => (
+                            <div
+                              key={i}
+                              className="recording-waveform__bar w-[3px] rounded-full bg-[var(--az-accent-rose)] transition-all duration-75 flex-shrink-0"
+                              style={{ height: `${h}px` }}
+                            />
+                          ))}
+                        </div>
+
+                        <span data-testid="recording-timer" className="recording-timer text-xs font-mono text-[var(--az-text-primary)] flex-shrink-0">
+                          {Math.floor(recDuration / 60)}:{(recDuration % 60).toString().padStart(2, '0')}
+                        </span>
+                      </div>
+
+                      <button
+                        data-testid="recording-send-btn"
+                        onClick={handleStopAndSend}
+                        onTouchStart={(e) => {
+                          e.preventDefault();
+                          handleStopAndSend();
+                        }}
+                        className="recording-bar__send w-10 h-10 bg-[var(--az-accent-primary)] hover:scale-105 active:scale-95 text-white rounded-full flex items-center justify-center shadow-lg shadow-red-500/20 flex-shrink-0"
+                        aria-label="Send voice message"
+                      >
+                        →
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="chat-input-row flex items-center gap-3 bg-[#150a12] rounded-full px-4 py-1.5 border border-[var(--az-border)] w-full">
+                      <button
+                        onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                        className="chat-input__emoji text-lg opacity-70 hover:opacity-100 transition-opacity p-1 flex-shrink-0"
+                      >
+                        😀
+                      </button>
+
+                      <label className="chat-input__media text-lg opacity-70 hover:opacity-100 transition-opacity cursor-pointer p-1 flex-shrink-0" title={user?.role === 'provider' ? "Upload photo or video" : "Upload photo"}>
+                        📸
+                        <input
+                          type="file"
+                          accept={user?.role === 'provider' ? "image/*,video/*" : "image/*"}
+                          onChange={handleFileChange}
+                          className="hidden"
+                        />
+                      </label>
+
+                      <input
+                        data-testid="chat-text-input"
+                        type="text"
+                        placeholder="Send a message..."
+                        value={inputText}
+                        onChange={(e) => {
+                          setInputText(e.target.value);
+                          checkContent(e.target.value);
+                        }}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSendText()}
+                        className="chat-input__field flex-grow bg-transparent border-none outline-none text-sm text-[var(--az-text-primary)] py-2 min-w-0"
+                      />
+
+                      <button
+                        data-testid="mic-button"
+                        onClick={() => {
+                          if (recState === 'idle') {
+                            handleStartRecording();
+                          } else if (recState === 'recording') {
+                            handleStopAndSend();
+                          }
+                        }}
+                        onTouchStart={(e) => {
+                          e.preventDefault();
+                          if (recState === 'idle') {
+                            handleStartRecording();
+                          } else if (recState === 'recording') {
+                            handleStopAndSend();
+                          }
+                        }}
+                        onTouchEnd={(e) => {
+                          e.preventDefault();
+                        }}
+                        className="chat-input__mic p-1 rounded-full transition-all opacity-70 hover:opacity-100 relative flex-shrink-0"
+                        title="Tap to record voice note"
+                      >
+                        🎙️
+                      </button>
+
+                      <button
+                        onClick={() => handleSendText()}
+                        className="chat-input__send w-8 h-8 bg-pink-600 hover:bg-pink-700 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-lg shadow-pink-500/20 active:scale-95 transition-all flex-shrink-0"
+                      >
+                        →
+                      </button>
+                    </div>
+                  )}
+
+                  {showEmojiPicker && (
+                    <div className="absolute bottom-24 left-10 z-50 bg-[#160c14] border border-[var(--az-border)] rounded-xl p-3 shadow-2xl w-64">
+                      <div className="text-xs font-serif italic text-pink-300 mb-2 border-b border-pink-500/20 pb-1 flex justify-between">
+                        <span>Recent Emojis</span>
+                        <button onClick={() => setShowEmojiPicker(false)}>×</button>
+                      </div>
+                      <div className="grid grid-cols-5 gap-2 text-center">
+                        {recentEmojis.map(em => (
+                          <button
+                            key={em}
+                            onClick={() => {
+                              setInputText(prev => prev + em);
+                              setShowEmojiPicker(false);
+                            }}
+                            className="text-lg hover:scale-125 transition-transform"
+                          >
+                            {em}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedConv.type !== 'support' && !selectedConv.conversationId.startsWith('support_') && (
+                    <div className="flex justify-center gap-8 mt-2 border-t border-[var(--az-border)]/20 pt-2 chat-quick-actions">
+                      <button
+                        onClick={openGiftPicker}
+                        className="text-[10px] font-bold uppercase tracking-widest text-amber-400 hover:text-amber-500 flex items-center gap-1.5 transition-colors"
+                      >
+                        🎁 Send Gift
+                      </button>
+                      <button
+                        onClick={() => setShowPhotoRequestModal(true)}
+                        className="text-[10px] font-bold uppercase tracking-widest text-pink-400 hover:text-pink-500 flex items-center gap-1.5 transition-colors"
+                      >
+                        📸 Request Photo
+                      </button>
+                      <button
+                        onClick={() => setShowServiceRequestModal(true)}
+                        className="text-[10px] font-bold uppercase tracking-widest text-purple-400 hover:text-purple-500 flex items-center gap-1.5 transition-colors"
+                      >
+                        🌙 Request Service
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </>
         ) : (

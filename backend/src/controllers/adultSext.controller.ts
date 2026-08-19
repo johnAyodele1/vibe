@@ -1320,6 +1320,61 @@ export const getMessages = async (req: Request, res: Response) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 30;
 
+    if (conversationId === 'official_notifications') {
+      const audienceFilter = user.role === 'provider'
+        ? { targetAudience: { $in: ['providers', 'both'] } }
+        : { targetAudience: { $in: ['users', 'both'] } };
+
+      const notifQuery: any = { ...audienceFilter };
+      if (before) {
+        notifQuery._id = { $lt: new mongoose.Types.ObjectId(before) };
+      }
+
+      let notifBuilder = OfficialNotification.find(notifQuery).sort({ createdAt: -1 });
+      if (!before) {
+        notifBuilder = notifBuilder.skip((page - 1) * limit);
+      }
+
+      const notifications = await notifBuilder.limit(limit);
+
+      const readDocs = await OfficialNotificationRead.find({
+        userId: user._id,
+        notificationId: { $in: notifications.map(n => n._id) }
+      });
+      const readSet = new Set(readDocs.map(r => r.notificationId.toString()));
+
+      // Automatically mark fetched notifications as read
+      if (notifications.length > 0) {
+        const bulkOps = notifications.map(n => ({
+          updateOne: {
+            filter: { userId: user._id, notificationId: n._id },
+            update: { $setOnInsert: { readAt: new Date() } },
+            upsert: true
+          }
+        }));
+        OfficialNotificationRead.bulkWrite(bulkOps).catch(err => {
+          console.error('[OfficialNotificationRead] Error marking as read:', err);
+        });
+      }
+
+      const formattedNotifs = notifications.map(n => ({
+        id: n._id,
+        conversationId: 'official_notifications',
+        senderId: 'official_notifications',
+        receiverId: user._id,
+        content: n.title ? `${n.title}\n\n${n.content}` : n.content,
+        mediaUrl: n.mediaUrl || '',
+        mediaType: 'official_notification',
+        isUnlocked: true,
+        createdAt: n.createdAt,
+        readAt: readSet.has(n._id.toString()) ? n.createdAt : new Date(),
+        isOfficialNotification: true,
+        title: n.title
+      }));
+
+      return res.json(formattedNotifs);
+    }
+
     const query: any = {
       conversationId,
       deletedBy: { $ne: user._id },
@@ -1422,17 +1477,60 @@ export const sendMessage = async (req: Request, res: Response) => {
       cloudinaryPublicId = ''
     } = req.body;
 
-    const conversation = await AdultConversation.findById(conversationId);
+    if (conversationId === 'official_notifications') {
+      return res.status(400).json({ success: false, error: 'Cannot send messages to Official Notifications' });
+    }
+
+    const convIdStr = Array.isArray(conversationId) ? conversationId[0] : conversationId;
+
+    let conversation = await AdultConversation.findById(convIdStr);
+    if (!conversation) {
+      if (convIdStr.startsWith('support_')) {
+        conversation = await AdultConversation.findOneAndUpdate(
+          { _id: convIdStr },
+          {
+            $setOnInsert: {
+              type: 'support',
+              participants: [user._id],
+              participantProfiles: [
+                {
+                  userId: user._id,
+                  displayName: user.displayName || user.username,
+                  avatarUrl: user.profilePhoto || '/placeholder.svg',
+                  accountType: user.role === 'provider' ? 'provider' : 'member',
+                  isOnline: true,
+                },
+              ],
+              supportMetadata: {
+                status: 'open',
+                tags: [],
+                welcomeSent: false,
+              },
+              unreadCounts: {
+                [user._id.toString()]: 0,
+              },
+            },
+          },
+          { upsert: true, new: true }
+        );
+      }
+    }
+
     if (!conversation) {
       return res.status(404).json({ success: false, error: 'Conversation not found' });
+    }
+
+    if (conversation.type === 'official_notification') {
+      return res.status(400).json({ success: false, error: 'Cannot send messages to Official Notifications' });
     }
 
     if (conversation.blockedBy.length > 0) {
       return res.status(403).json({ success: false, error: 'This conversation is blocked' });
     }
 
-    const otherParticipantId = conversation.participants.find(id => id.toString() !== user._id.toString());
-    if (!otherParticipantId) {
+    const isSupport = conversation.type === 'support' || convIdStr.startsWith('support_');
+    let otherParticipantId = conversation.participants.find(id => id.toString() !== user._id.toString());
+    if (!otherParticipantId && !isSupport) {
       return res.status(400).json({ success: false, error: 'Recipient not found' });
     }
 
@@ -1496,7 +1594,7 @@ export const sendMessage = async (req: Request, res: Response) => {
     const message = new AdultMessage({
       conversationId,
       senderId: user._id,
-      receiverId: otherParticipantId,
+      receiverId: otherParticipantId || null,
       content: encrypt(content || (type === 'voice_note' || type === 'voice' ? '[Voice Note]' : '[Attachment]')),
       messageType: type,
       mediaUrl,
@@ -1520,7 +1618,7 @@ export const sendMessage = async (req: Request, res: Response) => {
     await message.save();
 
     // Response time tracking for providers
-    if (user.role === 'provider') {
+    if (user.role === 'provider' && otherParticipantId) {
       try {
         // Check if there's an unanswered message from the member
         const unansweredMsg = await AdultMessage.findOne({
@@ -1558,13 +1656,12 @@ export const sendMessage = async (req: Request, res: Response) => {
       }
     }
 
-    const receiverIdStr = otherParticipantId.toString();
-    let currentUnread = conversation.unreadCounts.get(receiverIdStr) || 0;
+    const receiverIdStr = otherParticipantId ? otherParticipantId.toString() : null;
 
     const ns = req.app.get('adultNamespace');
     let deliveredAt: Date | null = null;
 
-    if (ns && !isFlagged) {
+    if (ns && !isFlagged && receiverIdStr) {
       try {
         const socketsInRoom = await ns.in(`conv:${conversationId}`).fetchSockets();
         const recipientInRoom = socketsInRoom.some(
@@ -1591,11 +1688,55 @@ export const sendMessage = async (req: Request, res: Response) => {
         sentAt: new Date()
       };
 
-      // Increment unread count for other party
-      currentUnread = currentUnread + 1;
-      conversation.unreadCounts.set(receiverIdStr, currentUnread);
+      if (receiverIdStr) {
+        let currentUnread = conversation.unreadCounts.get(receiverIdStr) || 0;
+        conversation.unreadCounts.set(receiverIdStr, currentUnread + 1);
+      }
 
       await conversation.save();
+    }
+
+    // Support Automated Welcome Message & Socket Dispatch
+    if (isSupport) {
+      const updatedConv = await AdultConversation.findOneAndUpdate(
+        { _id: conversationId, 'supportMetadata.welcomeSent': { $ne: true } },
+        { $set: { 'supportMetadata.welcomeSent': true } },
+        { new: true }
+      );
+
+      if (updatedConv) {
+        const autoText = 'Thanks for contacting us. An admin will follow up with you shortly.';
+        const systemOfficialId = new mongoose.Types.ObjectId('000000000000000000000000');
+        const autoMsg = new AdultMessage({
+          conversationId,
+          senderId: systemOfficialId,
+          receiverId: user._id,
+          content: encrypt(autoText),
+          messageType: 'system',
+          systemText: autoText,
+        });
+        await autoMsg.save();
+
+        const autoReplyPayload = {
+          id: autoMsg._id,
+          conversationId,
+          senderId: autoMsg.senderId,
+          receiverId: autoMsg.receiverId,
+          content: autoText,
+          mediaType: 'system',
+          systemText: autoText,
+          createdAt: autoMsg.createdAt,
+          isOfficialSystemMessage: true,
+        };
+
+        if (ns) {
+          ns.to(`conv:${conversationId}`).emit('sext:new_message', { message: autoReplyPayload });
+        }
+      }
+
+      if (ns) {
+        ns.emit('admin:support_message', { conversationId, userId: user._id });
+      }
     }
 
     const responsePayload = {
@@ -1634,23 +1775,23 @@ export const sendMessage = async (req: Request, res: Response) => {
         ns.to(`user:${user._id.toString()}`).emit('sext:new_message', { message: responsePayload });
       } else {
         ns.to(`conv:${conversationId}`).emit('sext:new_message', { message: responsePayload });
-        ns.to(`user:${receiverIdStr}`).emit('sext:conversation_updated', {
-          conversationId,
-          lastMessage: responsePayload,
-          unreadCount: currentUnread
-        });
-      }
-
-      if (!isFlagged) {
-        ns.to(`user:${receiverIdStr}`).emit('sext:new_message_notification', {
-          conversationId,
-          messageId: message._id,
-          preview: content ? content.slice(0, 50) : '',
-        });
+        if (receiverIdStr) {
+          const recipientUnread = conversation.unreadCounts.get(receiverIdStr) || 0;
+          ns.to(`user:${receiverIdStr}`).emit('sext:conversation_updated', {
+            conversationId,
+            lastMessage: responsePayload,
+            unreadCount: recipientUnread
+          });
+          ns.to(`user:${receiverIdStr}`).emit('sext:new_message_notification', {
+            conversationId,
+            messageId: message._id,
+            preview: content ? content.slice(0, 50) : '',
+          });
+        }
       }
     }
 
-    if (!isFlagged) {
+    if (!isFlagged && otherParticipantId && receiverIdStr) {
       // Send push notification if recipient is offline
       let recipientOnline = false;
       if (ns) {
