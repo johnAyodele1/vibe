@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act, fireEvent, waitFor } from '@testing-library/react';
-import React from 'react';
 import LiveCams from '../components/AdultZone/LiveCams';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -44,7 +43,7 @@ describe('LiveCams 1-to-1 Video Call Flow', () => {
   });
 
   it('renders live session cards and fetches sessions on load', async () => {
-    global.fetch = vi.fn().mockImplementation((url: string) => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
       if (url.includes('/adult/cams?status=live')) {
         return Promise.resolve({
           json: () => Promise.resolve({
@@ -67,7 +66,7 @@ describe('LiveCams 1-to-1 Video Call Flow', () => {
         });
       }
       return Promise.reject(new Error('Unknown url'));
-    });
+    }));
 
     await act(async () => {
       render(
@@ -82,7 +81,7 @@ describe('LiveCams 1-to-1 Video Call Flow', () => {
   });
 
   it('opens viewer room and displays 1-to-1 video call button with provider rate', async () => {
-    global.fetch = vi.fn().mockImplementation((url: string) => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
       if (url.includes('/adult/cams?status=live')) {
         return Promise.resolve({
           json: () => Promise.resolve({
@@ -132,7 +131,7 @@ describe('LiveCams 1-to-1 Video Call Flow', () => {
         });
       }
       return Promise.reject(new Error('Unknown url ' + url));
-    });
+    }));
 
     await act(async () => {
       render(
@@ -156,7 +155,7 @@ describe('LiveCams 1-to-1 Video Call Flow', () => {
   it('handles 1-to-1 call creation, shows rate while ringing, and prevents double click', async () => {
     let callInitiatedCount = 0;
 
-    global.fetch = vi.fn().mockImplementation((url: string) => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
       if (url.includes('/adult/cams?status=live')) {
         return Promise.resolve({
           json: () => Promise.resolve({
@@ -227,7 +226,7 @@ describe('LiveCams 1-to-1 Video Call Flow', () => {
         });
       }
       return Promise.reject(new Error('Unknown url ' + url));
-    });
+    }));
 
     await act(async () => {
       render(
