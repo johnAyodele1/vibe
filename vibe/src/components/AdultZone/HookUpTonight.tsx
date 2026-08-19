@@ -12,6 +12,22 @@ interface LocationValue {
   city?: { name: string; lat: number; lng: number };
 }
 
+interface HookupProviderItem {
+  id: string;
+  stageName: string;
+  photoUrl: string;
+  avatarUrl: string;
+  age: number;
+  isOnline: boolean;
+  isVerified?: boolean;
+  intention: string;
+  tonightRate?: number;
+  coordinates: [number, number];
+  location?: {
+    city?: { name: string };
+  };
+}
+
 const HookUpTonight: React.FC = () => {
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<'grid' | 'map'>('grid');
@@ -22,8 +38,8 @@ const HookUpTonight: React.FC = () => {
   const [isOnlineOnly, setIsOnlineOnly] = useState<boolean>(false);
 
   // Providers lists
-  const [providers, setProviders] = useState<any[]>([]);
-  const [mapProviders, setMapProviders] = useState<any[]>([]);
+  const [providers, setProviders] = useState<HookupProviderItem[]>([]);
+  const [mapProviders, setMapProviders] = useState<HookupProviderItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -53,7 +69,7 @@ const HookUpTonight: React.FC = () => {
       transports: ['websocket', 'polling']
     });
 
-    socket.on('provider:online', ({ providerId }) => {
+    socket.on('provider:online', ({ providerId }: { providerId: string }) => {
       setProviders(prev => prev.map(p => {
         if (p.id === providerId) {
           return { ...p, isOnline: true };
@@ -68,7 +84,7 @@ const HookUpTonight: React.FC = () => {
       }));
     });
 
-    socket.on('provider:offline', ({ providerId }) => {
+    socket.on('provider:offline', ({ providerId }: { providerId: string }) => {
       setProviders(prev => prev.map(p => {
         if (p.id === providerId) {
           return { ...p, isOnline: false };
@@ -112,37 +128,39 @@ const HookUpTonight: React.FC = () => {
 
   // Update map center and zoom level dynamically when location changes
   useEffect(() => {
-    if (location.city?.lat && location.city?.lng) {
-      setMapCenter([location.city.lat, location.city.lng]);
-      setMapZoom(12);
-    } else if (location.state) {
-      const fetchFirstCity = async () => {
+    let isMounted = true;
+    const updateCenter = async () => {
+      if (location.city?.lat && location.city?.lng) {
+        setMapCenter([location.city.lat, location.city.lng]);
+        setMapZoom(12);
+      } else if (location.state) {
         try {
           const res = await fetch(`${API_BASE_URL}/v1/shared/cities?country=${location.country?.code}&state=${location.state?.code}&q=`);
           const citiesData = await res.json();
-          if (citiesData && citiesData[0] && citiesData[0].lat) {
+          if (isMounted && citiesData && citiesData[0] && citiesData[0].lat) {
             setMapCenter([citiesData[0].lat, citiesData[0].lng]);
             setMapZoom(10);
           }
         } catch (err) {
           console.error('Failed to center on state capital:', err);
         }
-      };
-      fetchFirstCity();
-    } else if (location.country) {
-      const centroids: Record<string, [number, number]> = {
-        US: [37.0902, -95.7129],
-        GB: [55.3781, -3.4360],
-        NG: [9.0820, 8.6753],
-        CA: [56.1304, -106.3468],
-        AU: [-25.2744, 133.7751]
-      };
-      const code = location.country.code.toUpperCase();
-      if (centroids[code]) {
-        setMapCenter(centroids[code]);
-        setMapZoom(5);
+      } else if (location.country) {
+        const centroids: Record<string, [number, number]> = {
+          US: [37.0902, -95.7129],
+          GB: [55.3781, -3.4360],
+          NG: [9.0820, 8.6753],
+          CA: [56.1304, -106.3468],
+          AU: [-25.2744, 133.7751]
+        };
+        const code = location.country.code.toUpperCase();
+        if (centroids[code]) {
+          setMapCenter(centroids[code]);
+          setMapZoom(5);
+        }
       }
-    }
+    };
+    void updateCenter();
+    return () => { isMounted = false; };
   }, [location]);
 
   // Debounced Provider search for Grid view
@@ -158,7 +176,7 @@ const HookUpTonight: React.FC = () => {
       queryParams.append('page', String(page));
       queryParams.append('limit', '12');
 
-      const headers: any = {
+      const headers: Record<string, string> = {
         'Content-Type': 'application/json'
       };
       if (token) {
@@ -191,7 +209,7 @@ const HookUpTonight: React.FC = () => {
       if (isOnlineOnly) queryParams.append('isOnline', 'true');
       queryParams.append('view', 'map');
 
-      const headers: any = {
+      const headers: Record<string, string> = {
         'Content-Type': 'application/json'
       };
       if (token) {
@@ -261,19 +279,19 @@ const HookUpTonight: React.FC = () => {
 
   // Pre-mapping locations list options for CustomSelect components
   const countryOptions = countries?.map((c) => ({
-    value: c.code,
+    value: c.code || '',
     label: `${c.flag || '🌍'} ${c.name}`,
     extra: c,
   })) || [];
 
   const stateOptions = states?.map((s) => ({
-    value: s.code,
+    value: s.code || '',
     label: s.name,
     extra: s,
   })) || [];
 
   const cityOptions = cities?.map((ct, idx) => ({
-    value: ct.name + '_' + idx,
+    value: (ct.name || '') + '_' + idx,
     label: ct.name,
     extra: ct,
   })) || [];
@@ -291,8 +309,9 @@ const HookUpTonight: React.FC = () => {
           icon="🌍"
           searchPlaceholder="Search Country..."
           onSelect={(_val, _label, extra) => {
+            const ext = extra as { code: string; name: string };
             setLocation({
-              country: { code: extra.code, name: extra.name },
+              country: { code: ext.code, name: ext.name },
               state: undefined,
               city: undefined,
             });
@@ -313,9 +332,10 @@ const HookUpTonight: React.FC = () => {
           icon="📍"
           searchPlaceholder="Search State/Region..."
           onSelect={(_val, _label, extra) => {
+            const ext = extra as { code: string; name: string };
             setLocation((prev) => ({
               ...prev,
-              state: { code: extra.code, name: extra.name },
+              state: { code: ext.code, name: ext.name },
               city: undefined,
             }));
             setPage(1);
@@ -336,9 +356,10 @@ const HookUpTonight: React.FC = () => {
           searchPlaceholder="Type city name..."
           onSearchChange={(q) => setCityQuery(q)}
           onSelect={(_val, _label, extra) => {
+            const ext = extra as { name: string; lat: number; lng: number };
             setLocation((prev) => ({
               ...prev,
-              city: { name: extra.name, lat: extra.lat, lng: extra.lng },
+              city: { name: ext.name, lat: ext.lat, lng: ext.lng },
             }));
             setPage(1);
           }}
@@ -484,8 +505,9 @@ const HookUpTonight: React.FC = () => {
                 icon="🌍"
                 searchPlaceholder="Search Country..."
                 onSelect={(_val, _label, extra) => {
+                  const ext = extra as { code: string; name: string };
                   setLocation({
-                    country: { code: extra.code, name: extra.name },
+                    country: { code: ext.code, name: ext.name },
                     state: undefined,
                     city: undefined,
                   });

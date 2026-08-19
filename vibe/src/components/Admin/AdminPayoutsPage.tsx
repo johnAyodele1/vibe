@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
 import styles from "./Admin.module.css";
@@ -73,7 +73,7 @@ export const AdminPayoutsPage: React.FC = () => {
   const [disputeResolution, setDisputeResolution] = useState<'upheld' | 'dismissed'>('upheld');
   const [disputeNotes, setDisputeNotes] = useState("");
 
-  const fetchPayoutsAndDisputes = async () => {
+  const fetchPayoutsAndDisputes = useCallback(async () => {
     try {
       const token = localStorage.getItem("adminToken");
 
@@ -109,7 +109,7 @@ export const AdminPayoutsPage: React.FC = () => {
       const disputesData = await disputesRes.json();
       if (disputesData.success) {
         setDisputes(disputesData.disputes || []);
-        const openDisputes = (disputesData.disputes || []).filter((d: any) => d.status === 'open');
+        const openDisputes = (disputesData.disputes || []).filter((d: Dispute) => d.status === 'open');
         setCounts(prev => ({
           ...prev,
           disputes: openDisputes.length,
@@ -122,15 +122,21 @@ export const AdminPayoutsPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeTab]);
 
   useEffect(() => {
     if (localStorage.getItem("isAdminAuthenticated") !== "true") {
       navigate("/admin/login");
       return;
     }
-    fetchPayoutsAndDisputes();
-  }, [activeTab]);
+    let isMounted = true;
+    const load = async () => {
+      await fetchPayoutsAndDisputes();
+      if (!isMounted) return;
+    };
+    void load();
+    return () => { isMounted = false; };
+  }, [fetchPayoutsAndDisputes, navigate]);
 
   const handleVerify = async (requestId: string) => {
     try {
@@ -146,7 +152,7 @@ export const AdminPayoutsPage: React.FC = () => {
       } else {
         toast.error(data.message || "Failed to verify payout");
       }
-    } catch (err) {
+    } catch {
       toast.error("Network error occurred");
     }
   };
@@ -165,7 +171,7 @@ export const AdminPayoutsPage: React.FC = () => {
       } else {
         toast.error(data.message || "Failed to process payout");
       }
-    } catch (err) {
+    } catch {
       toast.error("Network error occurred");
     }
   };
@@ -198,7 +204,7 @@ export const AdminPayoutsPage: React.FC = () => {
       } else {
         toast.error(data.message || "Failed to complete payout");
       }
-    } catch (err) {
+    } catch {
       toast.error("Network error occurred");
     }
   };
@@ -234,7 +240,7 @@ export const AdminPayoutsPage: React.FC = () => {
       } else {
         toast.error(data.message || "Failed to reject payout");
       }
-    } catch (err) {
+    } catch {
       toast.error("Network error occurred");
     }
   };
@@ -271,7 +277,7 @@ export const AdminPayoutsPage: React.FC = () => {
       } else {
         toast.error(data.message || "Failed to resolve dispute");
       }
-    } catch (err) {
+    } catch {
       toast.error("Network error occurred");
     }
   };

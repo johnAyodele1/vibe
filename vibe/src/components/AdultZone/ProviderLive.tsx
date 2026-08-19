@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
 import { API_BASE_URL, SOCKET_URL } from '../../config';
@@ -9,6 +9,17 @@ import { io, Socket } from 'socket.io-client';
 import { WheelEditor } from './WheelEditor';
 
 const ProviderStreamRoom = React.lazy(() => import('./ProviderStreamRoom'));
+
+interface ChatMessageItem {
+  id: string;
+  senderName?: string;
+  user?: string;
+  content?: string;
+  text?: string;
+  type?: string;
+  amount?: number;
+  tip?: number;
+}
 
 const ProviderLive: React.FC = () => {
   const navigate = useNavigate();
@@ -34,8 +45,7 @@ const ProviderLive: React.FC = () => {
   const socketRef = useRef<Socket | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const [chatMessages, setChatMessages] = useState<any[]>([]);
-
+  const [chatMessages, setChatMessages] = useState<ChatMessageItem[]>([]);
   const [inputText, setInputText] = useState('');
 
   useEffect(() => {
@@ -44,10 +54,10 @@ const ProviderLive: React.FC = () => {
     }
   }, [chatMessages]);
 
-  const getHeaders = () => ({
+  const getHeaders = useCallback(() => ({
     'Authorization': `Bearer ${token}`,
     'Content-Type': 'application/json'
-  });
+  }), [token]);
 
   useEffect(() => {
     if (!token) {
@@ -56,15 +66,14 @@ const ProviderLive: React.FC = () => {
   }, [token, navigate]);
 
   useEffect(() => {
-    let timer: any;
-    if (isLive) {
-      timer = setInterval(() => {
-        setDuration(prev => prev + 1);
-      }, 1000);
-    } else {
+    if (!isLive) return;
+    const timer = setInterval(() => {
+      setDuration(prev => prev + 1);
+    }, 1000);
+    return () => {
+      clearInterval(timer);
       setDuration(0);
-    }
-    return () => clearInterval(timer);
+    };
   }, [isLive]);
 
   const formatDuration = (sec: number) => {
@@ -112,7 +121,7 @@ const ProviderLive: React.FC = () => {
       }
     });
 
-    socket.on('cam:new_message', (message: any) => {
+    socket.on('cam:new_message', (message: ChatMessageItem) => {
       // If it's a live tip in the room, increment cumulative tips!
       if (message.type === 'tip') {
         const amt = message.amount || 0;
@@ -124,13 +133,13 @@ const ProviderLive: React.FC = () => {
       });
     });
 
-    socket.on('cam:wheel_spin', (data: any) => {
+    socket.on('cam:wheel_spin', (data: { spinnerName?: string; itemLabel?: string; creditsPaid?: number }) => {
       setChatMessages(prev => [
         ...prev,
         {
           id: 'spin-' + Date.now() + '-' + Math.random(),
           senderName: 'System',
-          content: `🎡 ${data.spinnerName} spun the wheel and got: "${data.itemLabel}" (💎 ${formatAmount(data.creditsPaid)})`,
+          content: `🎡 ${data.spinnerName || 'Someone'} spun the wheel and got: "${data.itemLabel || ''}" (💎 ${formatAmount(data.creditsPaid || 0)})`,
           type: 'spin'
         }
       ]);
@@ -141,7 +150,7 @@ const ProviderLive: React.FC = () => {
     };
   }, [token, user]);
 
-  const handleStartStream = async () => {
+  const handleStartStream = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/adult/cams/stream/start`, {
         method: 'POST',
@@ -164,10 +173,10 @@ const ProviderLive: React.FC = () => {
         // Join live room on socket
         if (socketRef.current) {
           socketRef.current.emit('cam:join', sessionId);
-          socketRef.current.on('cam:viewerCount', (count) => {
+          socketRef.current.on('cam:viewerCount', (count: number) => {
             setViewerCount(count);
           });
-          socketRef.current.on('cam:viewer_count', (data) => {
+          socketRef.current.on('cam:viewer_count', (data: { count?: number }) => {
             if (data && typeof data.count === 'number') {
               setViewerCount(data.count);
             }
@@ -181,11 +190,18 @@ const ProviderLive: React.FC = () => {
       console.error(err);
       toast.error('Failed to connect to stream server');
     }
-  };
+  }, [getHeaders]);
 
   useEffect(() => {
     if (autoStart && !isLive && token && user) {
-      handleStartStream();
+      let isMounted = true;
+      const start = async () => {
+        await Promise.resolve();
+        if (isMounted) {
+          void handleStartStream();
+        }
+      };
+      void start();
       // Remove ?autoStart param from URL immediately
       const params = new URLSearchParams(window.location.search);
       if (params.has('autoStart')) {
@@ -193,8 +209,11 @@ const ProviderLive: React.FC = () => {
         const newRelativePathQuery = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
         window.history.replaceState(null, '', newRelativePathQuery);
       }
+      return () => {
+        isMounted = false;
+      };
     }
-  }, [autoStart, isLive, token, user]);
+  }, [autoStart, isLive, token, user, handleStartStream]);
 
   const handleEndStream = async () => {
     if (!window.confirm('Are you sure you want to end this webcam session?')) return;
@@ -360,7 +379,7 @@ const ProviderLive: React.FC = () => {
               const isSpin = msg.type === 'spin';
               const sender = msg.senderName || msg.user || 'Spectator';
               const text = msg.content || msg.text || '';
-              const tipAmount = msg.amount || msg.tip;
+              const tipAmount = msg.amount || msg.tip || 0;
 
               if (isTip) {
                 return (

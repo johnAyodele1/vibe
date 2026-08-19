@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
 import styles from "./Admin.module.css";
@@ -43,7 +43,7 @@ export const AdminRewardsPage: React.FC = () => {
   const [sortOrder, setSortOrder] = useState<number>(0);
   const [isActive, setIsActive] = useState(true);
 
-  const fetchTasksAndStats = async () => {
+  const fetchTasksAndStats = useCallback(async () => {
     try {
       const token = localStorage.getItem("adminToken");
       const [tasksRes, statsRes] = await Promise.all([
@@ -66,15 +66,21 @@ export const AdminRewardsPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (localStorage.getItem("isAdminAuthenticated") !== "true") {
       navigate("/admin/login");
       return;
     }
-    fetchTasksAndStats();
-  }, []);
+    let isMounted = true;
+    const load = async () => {
+      await fetchTasksAndStats();
+      if (!isMounted) return;
+    };
+    void load();
+    return () => { isMounted = false; };
+  }, [fetchTasksAndStats, navigate]);
 
   const openCreateModal = () => {
     setEditingTask(null);

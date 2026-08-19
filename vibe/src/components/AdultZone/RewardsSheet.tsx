@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { API_BASE_URL } from '../../config';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { toast } from 'sonner';
@@ -26,7 +26,7 @@ export const RewardsSheet: React.FC<RewardsSheetProps> = ({ onClose }) => {
   const [loading, setLoading] = useState(true);
   const [completing, setCompleting] = useState<string | null>(null);
 
-  const fetchTasks = async () => {
+  const fetchTasks = useCallback(async () => {
     if (!isAuthenticated) {
       setLoading(false);
       return;
@@ -47,11 +47,11 @@ export const RewardsSheet: React.FC<RewardsSheetProps> = ({ onClose }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [isAuthenticated]);
 
   useEffect(() => {
-    fetchTasks();
-  }, [isAuthenticated]);
+    const load = async () => { await fetchTasks(); }; void load();
+  }, [isAuthenticated, fetchTasks]);
 
   const handleCheckin = async () => {
     if (!isAuthenticated) {
@@ -72,7 +72,7 @@ export const RewardsSheet: React.FC<RewardsSheetProps> = ({ onClose }) => {
         if (data.newBalance !== undefined) {
           updateCredits(data.newBalance);
         }
-        fetchTasks();
+        const load = async () => { await fetchTasks(); }; void load();
       } else {
         toast.info(data.message || 'Already checked in today. Come back tomorrow!');
       }
@@ -103,7 +103,7 @@ export const RewardsSheet: React.FC<RewardsSheetProps> = ({ onClose }) => {
         if (data.newBalance !== undefined) {
           updateCredits(data.newBalance);
         }
-        fetchTasks();
+        const load = async () => { await fetchTasks(); }; void load();
       } else {
         toast.error(data.message || 'Could not complete task');
       }
@@ -197,7 +197,7 @@ export const RewardsSheet: React.FC<RewardsSheetProps> = ({ onClose }) => {
                           if (!task.actionUrl) {
                             e.preventDefault();
                           }
-                          handleTaskComplete(task.id);
+                          void handleTaskComplete(task.id);
                           onClose();
                         }}
                       >

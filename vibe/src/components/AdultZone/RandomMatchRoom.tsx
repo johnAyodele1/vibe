@@ -15,6 +15,10 @@ interface RandomMatchRoomProps {
   onEnd: () => void;
 }
 
+type TrackWithEvents = {
+  on?: (event: string, callback: () => void) => void;
+};
+
 const RandomMatchRoom: React.FC<RandomMatchRoomProps> = ({
   appId,
   token,
@@ -34,12 +38,14 @@ const RandomMatchRoom: React.FC<RandomMatchRoomProps> = ({
 
   const {
     containerRef: remoteContainerRef,
+    isVideoReady: isRemoteVideoReady,
     markReady: remoteMarkReady,
     resetReadiness: remoteResetReadiness,
   } = remoteVideoState;
 
   const {
     containerRef: localContainerRef,
+    isVideoReady: isLocalVideoReady,
     markReady: localMarkReady,
     resetReadiness: localResetReadiness,
   } = localVideoState;
@@ -55,8 +61,9 @@ const RandomMatchRoom: React.FC<RandomMatchRoomProps> = ({
         if (remoteContainerRef.current) {
           user.videoTrack.play(remoteContainerRef.current);
         }
-        if (typeof (user.videoTrack as any).on === 'function') {
-          (user.videoTrack as any).on('first-frame-decoded', () => {
+        const trackWithEvents = user.videoTrack as unknown as TrackWithEvents;
+        if (typeof trackWithEvents.on === 'function') {
+          trackWithEvents.on('first-frame-decoded', () => {
             remoteMarkReady();
           });
         }
@@ -100,8 +107,9 @@ const RandomMatchRoom: React.FC<RandomMatchRoomProps> = ({
         if (localContainerRef.current) {
           videoTrack.play(localContainerRef.current);
         }
-        if (typeof (videoTrack as any).on === 'function') {
-          (videoTrack as any).on('first-frame-decoded', () => {
+        const trackWithEvents = videoTrack as unknown as TrackWithEvents;
+        if (typeof trackWithEvents.on === 'function') {
+          trackWithEvents.on('first-frame-decoded', () => {
             localMarkReady();
           });
         }
@@ -112,7 +120,7 @@ const RandomMatchRoom: React.FC<RandomMatchRoomProps> = ({
       }
     };
 
-    initCall();
+    void initCall();
 
     return () => {
       remoteResetReadiness();
@@ -142,7 +150,7 @@ const RandomMatchRoom: React.FC<RandomMatchRoomProps> = ({
       <div className="absolute inset-0 flex flex-col md:flex-row gap-4 p-4 pb-24">
         {/* Remote Partner */}
         <div className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl relative overflow-hidden flex items-center justify-center">
-          {!remoteVideoState.isVideoReady && (
+          {!isRemoteVideoReady && (
             <VideoFallbackOverlay
               avatarUrl={partnerAvatar}
               displayName={partnerName || 'Stranger'}
@@ -150,9 +158,9 @@ const RandomMatchRoom: React.FC<RandomMatchRoomProps> = ({
             />
           )}
           <div
-            ref={remoteVideoState.containerRef}
+            ref={remoteContainerRef}
             className={`w-full h-full absolute inset-0 transition-opacity duration-300 ${
-              remoteVideoState.isVideoReady ? 'opacity-100 z-0' : 'opacity-0 pointer-events-none'
+              isRemoteVideoReady ? 'opacity-100 z-0' : 'opacity-0 pointer-events-none'
             }`}
           />
           <div className="absolute top-4 left-4 bg-black/60 px-3 py-1 rounded text-xs text-white uppercase tracking-widest z-20">
@@ -162,7 +170,7 @@ const RandomMatchRoom: React.FC<RandomMatchRoomProps> = ({
 
         {/* Local Video */}
         <div className="w-full md:w-1/3 bg-zinc-950 border border-zinc-800 rounded-xl relative overflow-hidden flex items-center justify-center aspect-video md:aspect-auto">
-          {!localVideoState.isVideoReady && (
+          {!isLocalVideoReady && (
             <VideoFallbackOverlay
               avatarUrl={partnerAvatar}
               displayName="You"
@@ -170,9 +178,9 @@ const RandomMatchRoom: React.FC<RandomMatchRoomProps> = ({
             />
           )}
           <div
-            ref={localVideoState.containerRef}
+            ref={localContainerRef}
             className={`w-full h-full absolute inset-0 transition-opacity duration-300 ${
-              localVideoState.isVideoReady ? 'opacity-100 z-0' : 'opacity-0 pointer-events-none'
+              isLocalVideoReady ? 'opacity-100 z-0' : 'opacity-0 pointer-events-none'
             }`}
           />
           <div className="absolute top-4 left-4 bg-black/60 px-3 py-1 rounded text-xs text-white uppercase tracking-widest z-20">

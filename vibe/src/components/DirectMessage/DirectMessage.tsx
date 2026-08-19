@@ -4,13 +4,17 @@ import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { API_BASE_URL } from "../../config";
 
-// TODO: Use configurable backend URL for socket connection
 import { useAuth } from "../../contexts/AuthContext";
 import { useSocket } from "../../contexts/SocketContext";
 import { useVideoReadiness } from "../../hooks/useVideoReadiness";
 import VideoFallbackOverlay from "../AdultZone/VideoFallbackOverlay";
 
 type CallStatus = "idle" | "calling" | "receiving" | "connected" | "ended";
+
+interface PhotoItem {
+  url: string;
+  isMain: boolean;
+}
 
 interface Message {
   _id: string;
@@ -20,10 +24,7 @@ interface Message {
     _id: string;
     firstName: string;
     lastName: string;
-    photos: {
-      url: string;
-      isMain: boolean;
-    }[];
+    photos: PhotoItem[];
   };
   receiver: string;
   conversation: string;
@@ -73,10 +74,7 @@ interface Conversation {
       _id: string;
       firstName: string;
       lastName: string;
-      photos: {
-        url: string;
-        isMain: boolean;
-      }[];
+      photos: PhotoItem[];
       isOnline: boolean;
       lastActive?: string;
     };
@@ -109,7 +107,7 @@ const DirectMessage: React.FC = () => {
   const pendingCandidatesRef = useRef<RTCIceCandidate[]>([]);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
-  const [incomingOffer, setIncomingOffer] = useState<any>(null);
+  const [incomingOffer, setIncomingOffer] = useState<{ offer: RTCSessionDescriptionInit; isVideoCall?: boolean } | null>(null);
   const [callStartTime, setCallStartTime] = useState<Date | null>(null);
   const [callDuration, setCallDuration] = useState(0);
   const localAudioRef = useRef<HTMLAudioElement>(null);
@@ -120,10 +118,9 @@ const DirectMessage: React.FC = () => {
   const remoteVideoState = useVideoReadiness();
   const localVideoState = useVideoReadiness();
 
-  const currentUserId = (user as any)?._id || "";
+  const userObj = user as unknown as { _id?: string; photos?: PhotoItem[]; firstName?: string };
+  const currentUserId = userObj?._id || "";
   const token = localStorage.getItem("accessToken");
-
-  console.log("DirectMessage rendered with conversationId:", conversationId);
 
   // Synchronize body background color
   useEffect(() => {
@@ -170,30 +167,26 @@ const DirectMessage: React.FC = () => {
     };
   }, [conversationId]);
 
-  // FIXED: Bind local stream to video/audio elements whenever it changes
+  // Bind local stream to video/audio elements whenever it changes
   useEffect(() => {
     if (localStream) {
       if (localAudioRef.current) {
         localAudioRef.current.srcObject = localStream;
-        console.log("Bound local stream to audio element");
       }
       if (localVideoRef.current && isVideoCall) {
         localVideoRef.current.srcObject = localStream;
-        console.log("Bound local stream to video element");
       }
     }
   }, [localStream, isVideoCall]);
 
-  // FIXED: Bind remote stream to video/audio elements whenever it changes
+  // Bind remote stream to video/audio elements whenever it changes
   useEffect(() => {
     if (remoteStream) {
       if (remoteAudioRef.current) {
         remoteAudioRef.current.srcObject = remoteStream;
-        console.log("Bound remote stream to audio element");
       }
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = remoteStream;
-        console.log("Bound remote stream to video element");
       }
     }
   }, [remoteStream]);
@@ -210,7 +203,6 @@ const DirectMessage: React.FC = () => {
           return prev;
         }
 
-        // If it's a message from current user, try to match it with an optimistic message
         if (message.sender._id === currentUserId) {
           const tempMsg = prev.find(
             (m) => m._id.startsWith("temp-") && m.content === message.content,
@@ -266,16 +258,14 @@ const DirectMessage: React.FC = () => {
       });
     };
 
-    const handleCallOffer = async (data: any) => {
-      console.log("Received call offer:", data);
+    const handleCallOffer = async (data: { offer: RTCSessionDescriptionInit; isVideoCall?: boolean }) => {
       isVideoCallRef.current = data.isVideoCall || false;
       setIncomingOffer(data);
       setIsVideoCall(data.isVideoCall || false);
       setCallStatus("receiving");
     };
 
-    const handleCallAnswer = async (data: any) => {
-      console.log("Received call answer:", data);
+    const handleCallAnswer = async (data: { answer: RTCSessionDescriptionInit }) => {
       const pc = peerConnectionRef.current;
       if (pc) {
         try {
@@ -295,8 +285,7 @@ const DirectMessage: React.FC = () => {
       }
     };
 
-    const handleIceCandidate = async (data: any) => {
-      console.log("Received ICE candidate:", data);
+    const handleIceCandidate = async (data: { candidate: RTCIceCandidateInit }) => {
       const pc = peerConnectionRef.current;
       if (pc) {
         const candidate = new RTCIceCandidate(data.candidate);
@@ -313,7 +302,6 @@ const DirectMessage: React.FC = () => {
     };
 
     const handleCallEnd = () => {
-      console.log("Remote peer ended the call");
       endCall();
     };
 
@@ -332,9 +320,8 @@ const DirectMessage: React.FC = () => {
 
     const handleMessageExtended = (message: Message) => {
       handleMessage(message);
-      // If we receive a message from the other person while in this chat, mark it as read
       if (message.sender._id !== currentUserId) {
-        markConversationAsRead();
+        void markConversationAsRead();
       }
     };
 
@@ -357,7 +344,7 @@ const DirectMessage: React.FC = () => {
       socket.off("call:ice-candidate", handleIceCandidate);
       socket.off("call:end", handleCallEnd);
     };
-  }, [socket, conversationId, token]);
+  }, [socket, conversationId, token, currentUserId]);
 
   // Fetch conversation and messages
   useEffect(() => {
@@ -365,7 +352,6 @@ const DirectMessage: React.FC = () => {
       if (!conversationId || !token) return;
 
       try {
-        // Fetch messages
         const messagesResponse = await fetch(
           `${API_BASE_URL}/messages/${conversationId}`,
           { headers: { Authorization: `Bearer ${token}` } },
@@ -375,7 +361,6 @@ const DirectMessage: React.FC = () => {
           setMessages(messagesData.data.messages);
         }
 
-        // Fetch conversation details
         const convResponse = await fetch(
           `${API_BASE_URL}/messages/conversation/${conversationId}`,
           { headers: { Authorization: `Bearer ${token}` } },
@@ -391,7 +376,7 @@ const DirectMessage: React.FC = () => {
       }
     };
 
-    fetchData();
+    void fetchData();
   }, [conversationId, token]);
 
   const sendMessage = async (contentOverride?: string, typeOverride: string = "text") => {
@@ -406,9 +391,9 @@ const DirectMessage: React.FC = () => {
       messageType: typeOverride,
       sender: {
         _id: currentUserId,
-        firstName: user?.firstName || "Me",
+        firstName: userObj?.firstName || "Me",
         lastName: "",
-        photos: user?.photos || [],
+        photos: userObj?.photos || [],
       },
       receiver: otherParticipant._id,
       conversation: conversationId || "",
@@ -416,7 +401,6 @@ const DirectMessage: React.FC = () => {
       isRead: false,
     };
 
-    // Optimistically add the message to the UI immediately
     setMessages((prev) => [...prev, optimisticMessage]);
     if (!contentOverride) setInputValue("");
 
@@ -436,9 +420,7 @@ const DirectMessage: React.FC = () => {
 
       const data = await response.json();
       if (data.success) {
-        // Replace optimistic message with the real one from server
         setMessages((prev) => {
-          // If the message was already added by socket, just remove the optimistic one
           if (prev.some((m) => m._id === data.data.message._id)) {
             return prev.filter((m) => m._id !== tempId);
           }
@@ -450,9 +432,7 @@ const DirectMessage: React.FC = () => {
     } catch (error) {
       console.error("Error sending message:", error);
       toast.error("Failed to send message");
-      // Remove optimistic message on error
       setMessages((prev) => prev.filter((m) => m._id !== tempId));
-      // Restore input value if it was a text message
       if (!contentOverride) setInputValue(content);
     }
   };
@@ -461,7 +441,6 @@ const DirectMessage: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file || !token) return;
 
-    // Check if it's an image
     if (!file.type.startsWith("image/")) {
       toast.error("Please select an image file");
       return;
@@ -491,7 +470,6 @@ const DirectMessage: React.FC = () => {
       toast.error("Failed to upload image");
     } finally {
       setIsUploading(false);
-      // Reset file input
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
@@ -499,7 +477,7 @@ const DirectMessage: React.FC = () => {
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      void sendMessage();
     }
   };
 
@@ -509,28 +487,22 @@ const DirectMessage: React.FC = () => {
 
     if (!socket || !conversationId || !currentUserId) return;
 
-    // Clear existing timeout
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }
 
     if (value.trim()) {
-      // Emit typing event when there's text
       socket.emit("typing", { conversationId, userId: currentUserId });
 
-      // Set timeout to stop typing after 2 seconds of inactivity
       typingTimeoutRef.current = setTimeout(() => {
         socket.emit("stopTyping", { conversationId, userId: currentUserId });
       }, 2000);
     } else {
-      // Stop typing immediately when input is cleared
       socket.emit("stopTyping", { conversationId, userId: currentUserId });
     }
   };
 
-  // FIXED: Simplified peer connection creation
   const createPeerConnection = () => {
-    // Always create a fresh PC per call
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
@@ -552,7 +524,6 @@ const DirectMessage: React.FC = () => {
 
     pc.onicecandidate = (event) => {
       if (event.candidate && socket) {
-        console.log("Sending ICE candidate:", event.candidate);
         socket.emit("call:ice-candidate", {
           conversationId,
           candidate: event.candidate,
@@ -560,87 +531,53 @@ const DirectMessage: React.FC = () => {
       }
     };
 
-    // FIXED: Simplified ontrack - just update state, let useEffect handle binding
     pc.ontrack = (event) => {
-      console.log("Received remote track:", event.track.kind, event.streams[0]);
       const incomingStream = event.streams[0];
-
-      // Update state - useEffect will handle the binding
       setRemoteStream(incomingStream);
-      console.log("Remote stream state updated");
     };
 
     pc.onconnectionstatechange = () => {
-      console.log("Connection state:", pc.connectionState);
       if (pc.connectionState === "connected") {
-        console.log("Peer connection established");
         setCallStatus("connected");
       } else if (
         pc.connectionState === "disconnected" ||
         pc.connectionState === "failed"
       ) {
-        console.log("Peer connection failed/disconnected");
         setCallStatus("ended");
       }
-    };
-
-    // Additional debugging
-    pc.oniceconnectionstatechange = () => {
-      console.log("ICE connection state:", pc.iceConnectionState);
-    };
-
-    pc.onicegatheringstatechange = () => {
-      console.log("ICE gathering state:", pc.iceGatheringState);
     };
 
     return pc;
   };
 
   const startCall = async (videoCall = false) => {
-    // Guard against duplicate offers
     if (callStatus !== "idle") {
-      console.log("Call already in progress, ignoring start call");
       return;
     }
 
     try {
-      // Set caller role and video mode
       isCallerRef.current = true;
       setIsVideoCall(videoCall);
       isVideoCallRef.current = videoCall;
 
-      // Get user media first
       const constraints = videoCall
         ? { audio: true, video: { width: 640, height: 480 } }
         : { audio: true };
 
-      console.log("Requesting user media with constraints:", constraints);
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
-
-      console.log(
-        "Local stream obtained:",
-        stream.getTracks().map((t) => `${t.kind} (${t.id})`),
-      );
-
-      // Update state - useEffect will handle binding
       setLocalStream(stream);
 
-      // Create peer connection and add tracks
       const pc = createPeerConnection();
 
-      // Add all tracks to the peer connection
       stream.getTracks().forEach((track) => {
-        console.log("Adding track to peer connection:", track.kind, track.id);
         pc.addTrack(track, stream);
       });
 
-      // Now create the offer
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
       setCallStatus("calling");
 
-      console.log("Sending offer to remote peer");
       if (socket) {
         socket.emit("call:offer", {
           conversationId,
@@ -656,55 +593,34 @@ const DirectMessage: React.FC = () => {
   };
 
   const handleCallAnswer = async () => {
-    // Guard against duplicate answers
     if (callStatus !== "receiving" || !incomingOffer) {
-      console.log(
-        "Not in receiving state or no incoming offer, ignoring answer",
-      );
       return;
     }
 
     try {
-      // Set callee role
       isCallerRef.current = false;
       const videoCall = isVideoCallRef.current;
 
-      // Get user media first
       const constraints = videoCall
         ? { audio: true, video: { width: 640, height: 480 } }
         : { audio: true };
 
-      console.log("Answerer requesting user media:", constraints);
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
-
-      console.log(
-        "Answerer local stream obtained:",
-        stream.getTracks().map((t) => `${t.kind} (${t.id})`),
-      );
-
-      // Update state - useEffect will handle binding
       setLocalStream(stream);
 
-      // Create peer connection
       const pc = createPeerConnection();
 
-      // Add tracks BEFORE setting remote description
       stream.getTracks().forEach((track) => {
-        console.log("Answerer adding track:", track.kind, track.id);
         pc.addTrack(track, stream);
       });
 
-      // Set remote description from the offer
-      console.log("Setting remote description from offer");
       await pc.setRemoteDescription(
         new RTCSessionDescription(incomingOffer.offer),
       );
 
-      // Create and set local answer
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
 
-      console.log("Sending answer to remote peer");
       if (socket) {
         socket.emit("call:answer", {
           conversationId,
@@ -712,7 +628,6 @@ const DirectMessage: React.FC = () => {
         });
       }
 
-      // Clear incoming offer
       setIncomingOffer(null);
     } catch (error) {
       console.error("Error answering call:", error);
@@ -722,24 +637,19 @@ const DirectMessage: React.FC = () => {
   };
 
   const endCall = () => {
-    // Notify remote peer that call is ending
     if (socket && callStatus !== "idle" && callStatus !== "ended") {
       socket.emit("call:end", { conversationId });
     }
 
-    // Stop all local tracks
     if (localStream) {
       localStream.getTracks().forEach((track) => {
         track.stop();
-        console.log("Stopped local track:", track.kind);
       });
       setLocalStream(null);
     }
 
-    // Clear remote stream
     setRemoteStream(null);
 
-    // Clear all media element srcObjects to prevent resource leaks
     if (localAudioRef.current) {
       localAudioRef.current.srcObject = null;
     }
@@ -753,13 +663,11 @@ const DirectMessage: React.FC = () => {
       remoteVideoRef.current.srcObject = null;
     }
 
-    // Close peer connection
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
     }
 
-    // Reset all refs
     isVideoCallRef.current = false;
     isCallerRef.current = false;
     pendingCandidatesRef.current = [];
@@ -790,7 +698,6 @@ const DirectMessage: React.FC = () => {
     };
   }, [callStatus, callStartTime]);
 
-  // Update call start time when connected
   useEffect(() => {
     if (callStatus === "connected" && !callStartTime) {
       setCallStartTime(new Date());
@@ -799,35 +706,33 @@ const DirectMessage: React.FC = () => {
     }
   }, [callStatus, callStartTime]);
 
-  // Format call duration
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // Ringtone functionality using Web Audio API
+  // Ringtone functionality
   const ringtoneContextRef = useRef<AudioContext | null>(null);
   const ringtoneIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
 
   const playRingtone = () => {
-    if (ringtoneIntervalRef.current) return; // Already playing
+    if (ringtoneIntervalRef.current) return;
 
     const playBeep = () => {
       try {
         const audioContext =
           ringtoneContextRef.current ||
-          new (window.AudioContext || (window as any).webkitAudioContext)();
+          new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
 
         if (!ringtoneContextRef.current) {
           ringtoneContextRef.current = audioContext;
         }
 
-        // Resume audio context if suspended (required by some browsers)
         if (audioContext.state === "suspended") {
-          audioContext.resume();
+          void audioContext.resume();
         }
 
         const oscillator = audioContext.createOscillator();
@@ -852,7 +757,6 @@ const DirectMessage: React.FC = () => {
       }
     };
 
-    // Play double beep pattern every 3 seconds
     const playRingPattern = () => {
       playBeep();
       setTimeout(() => {
@@ -870,17 +774,15 @@ const DirectMessage: React.FC = () => {
       ringtoneIntervalRef.current = null;
     }
 
-    // Close audio context to free resources
     if (
       ringtoneContextRef.current &&
       ringtoneContextRef.current.state !== "closed"
     ) {
-      ringtoneContextRef.current.close();
+      void ringtoneContextRef.current.close();
       ringtoneContextRef.current = null;
     }
   };
 
-  // Handle ringtone when call status changes
   useEffect(() => {
     if (callStatus === "receiving") {
       playRingtone();
@@ -893,7 +795,6 @@ const DirectMessage: React.FC = () => {
     };
   }, [callStatus]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       endCall();
@@ -995,7 +896,7 @@ const DirectMessage: React.FC = () => {
             <div className={styles.actions}>
               <button
                 className={`${styles.iconBtn} ${styles.btnSecondary}`}
-                onClick={() => startCall(false)}
+                onClick={() => void startCall(false)}
                 disabled={callStatus !== "idle"}
               >
                 <span
@@ -1007,7 +908,7 @@ const DirectMessage: React.FC = () => {
               </button>
               <button
                 className={`${styles.iconBtn} ${styles.btnPrimary}`}
-                onClick={() => startCall(true)}
+                onClick={() => void startCall(true)}
                 disabled={callStatus !== "idle"}
               >
                 <span
@@ -1174,7 +1075,7 @@ const DirectMessage: React.FC = () => {
               </button>
               <button
                 className={styles.sendBtn}
-                onClick={() => sendMessage()}
+                onClick={() => void sendMessage()}
                 disabled={!inputValue.trim() || isUploading}
               >
                 <span
@@ -1194,7 +1095,7 @@ const DirectMessage: React.FC = () => {
             <div className={styles.callContainer}>
               {isVideoCall && callStatus === "connected" ? (
                 <div className={styles.videoContainer}>
-                  <div className={styles.remoteVideoWrapper} style={{ position: 'relative' }}>
+                  <div className={styles.remoteVideoWrapper} ref={remoteVideoState.containerRef} style={{ position: 'relative' }}>
                     {!remoteVideoState.isVideoReady && (
                       <VideoFallbackOverlay
                         avatarUrl={otherParticipant?.photos.find((p) => p.isMain)?.url}
@@ -1203,10 +1104,7 @@ const DirectMessage: React.FC = () => {
                       />
                     )}
                     <video
-                      ref={(el) => {
-                        (remoteVideoRef as any).current = el;
-                        (remoteVideoState.containerRef as any).current = el;
-                      }}
+                      ref={remoteVideoRef}
                       autoPlay
                       playsInline
                       className={styles.remoteVideo}
@@ -1222,7 +1120,7 @@ const DirectMessage: React.FC = () => {
                       </p>
                     </div>
 
-                    <div className={styles.localVideoWrapper} style={{ position: 'relative' }}>
+                    <div className={styles.localVideoWrapper} ref={localVideoState.containerRef} style={{ position: 'relative' }}>
                       {!localVideoState.isVideoReady && (
                         <VideoFallbackOverlay
                           avatarUrl={otherParticipant?.photos.find((p) => p.isMain)?.url}
@@ -1231,10 +1129,7 @@ const DirectMessage: React.FC = () => {
                         />
                       )}
                       <video
-                        ref={(el) => {
-                          (localVideoRef as any).current = el;
-                          (localVideoState.containerRef as any).current = el;
-                        }}
+                        ref={localVideoRef}
                         autoPlay
                         playsInline
                         muted
@@ -1291,7 +1186,7 @@ const DirectMessage: React.FC = () => {
                     </button>
                     <button
                       className={`${styles.callBtn} ${styles.acceptBtn}`}
-                      onClick={handleCallAnswer}
+                      onClick={() => void handleCallAnswer()}
                     >
                       <span className="material-symbols-outlined">
                         {isVideoCall ? "videocam" : "call"}
@@ -1320,4 +1215,3 @@ const DirectMessage: React.FC = () => {
 };
 
 export default DirectMessage;
-

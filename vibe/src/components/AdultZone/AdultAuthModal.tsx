@@ -14,13 +14,20 @@ const AdultAuthModal: React.FC<AdultAuthModalProps> = ({ isOpen, onClose, defaul
   const [mode, setMode] = React.useState<'login' | 'signup'>(defaultMode);
   const [role, setRole] = React.useState<'user' | 'provider'>(defaultRole);
 
-  // Sync mode and role whenever defaultMode or defaultRole changes, or when modal opens
-  React.useEffect(() => {
-    if (isOpen) {
-      setMode(defaultMode);
-      setRole(defaultRole);
-    }
-  }, [isOpen, defaultMode, defaultRole]);
+  const [prevIsOpen, setPrevIsOpen] = React.useState(isOpen);
+  const [prevDefaultMode, setPrevDefaultMode] = React.useState(defaultMode);
+  const [prevDefaultRole, setPrevDefaultRole] = React.useState(defaultRole);
+
+  if (isOpen && (!prevIsOpen || defaultMode !== prevDefaultMode || defaultRole !== prevDefaultRole)) {
+    setPrevIsOpen(true);
+    setPrevDefaultMode(defaultMode);
+    setPrevDefaultRole(defaultRole);
+    setMode(defaultMode);
+    setRole(defaultRole);
+  } else if (!isOpen && prevIsOpen) {
+    setPrevIsOpen(false);
+  }
+
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
@@ -81,8 +88,8 @@ const AdultAuthModal: React.FC<AdultAuthModalProps> = ({ isOpen, onClose, defaul
       } else {
         window.location.href = '/';
       }
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }

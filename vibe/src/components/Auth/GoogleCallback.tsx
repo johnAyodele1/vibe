@@ -3,12 +3,19 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
 
+interface AuthUser {
+  location?: { city?: string };
+  bio?: string;
+  photos?: unknown[];
+  profileCompletion?: number;
+}
+
 const GoogleCallback: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { checkAuthStatus } = useAuth();
 
-  const isProfileComplete = (currentUser: any) => {
+  const isProfileComplete = (currentUser: AuthUser | null) => {
     if (!currentUser) return false;
 
     const requiredProfileFields =

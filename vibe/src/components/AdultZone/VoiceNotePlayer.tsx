@@ -27,7 +27,7 @@ export const VoiceNotePlayer: React.FC<VoiceNotePlayerProps> = ({
 
   useEffect(() => {
     if (mediaDurationSeconds && mediaDurationSeconds > 0) {
-      setDuration(mediaDurationSeconds);
+      setTimeout(() => setDuration(mediaDurationSeconds), 0);
     }
   }, [mediaDurationSeconds]);
 
@@ -44,7 +44,7 @@ export const VoiceNotePlayer: React.FC<VoiceNotePlayerProps> = ({
       if (audioRef.current.readyState === 0 && typeof audioRef.current.load === 'function') {
         try {
           audioRef.current.load();
-        } catch (err) {
+        } catch {
           // Ignore load error in mock environments
         }
       }

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, memo } from 'react';
-import AgoraRTC, { IAgoraRTCClient, ICameraVideoTrack, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
+import AgoraRTC, { IAgoraRTCClient, ICameraVideoTrack, IMicrophoneAudioTrack, IAgoraRTCRemoteUser, ILocalTrack } from 'agora-rtc-sdk-ng';
 import { useVideoReadiness } from '../../hooks/useVideoReadiness';
 import VideoFallbackOverlay from './VideoFallbackOverlay';
 
@@ -30,10 +30,13 @@ const CallRoom: React.FC<CallRoomProps> = ({
   providerAvatar,
   providerName,
 }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const mainContainerRef = useRef<HTMLDivElement>(null);
 
   const remoteVideoState = useVideoReadiness();
   const localVideoState = useVideoReadiness();
+
+  const { containerRef: remoteContainerRef, isVideoReady: isRemoteVideoReady, markReady: remoteMarkReady, resetReadiness: remoteResetReadiness } = remoteVideoState;
+  const { containerRef: localContainerRef, isVideoReady: isLocalVideoReady, markReady: localMarkReady, resetReadiness: localResetReadiness } = localVideoState;
 
   const clientRef = useRef<IAgoraRTCClient | null>(null);
   const localAudioTrackRef = useRef<IMicrophoneAudioTrack | null>(null);
@@ -54,21 +57,9 @@ const CallRoom: React.FC<CallRoomProps> = ({
     onCallEndRef.current = onCallEnd;
   }, [onCallEnd]);
 
-  const {
-    containerRef: remoteContainerRef,
-    markReady: remoteMarkReady,
-    resetReadiness: remoteResetReadiness,
-  } = remoteVideoState;
-
-  const {
-    containerRef: localContainerRef,
-    markReady: localMarkReady,
-    resetReadiness: localResetReadiness,
-  } = localVideoState;
-
   useEffect(() => {
     if (hasJoined.current) return;
-    if (!containerRef.current) return;
+    if (!mainContainerRef.current) return;
 
     if (!appId || !token || !roomId || !userId) {
       console.error('CallRoom: missing required props', {
@@ -80,8 +71,9 @@ const CallRoom: React.FC<CallRoomProps> = ({
       return;
     }
 
-    const rect = containerRef.current.getBoundingClientRect();
-    const isTest = typeof (globalThis as any).process !== 'undefined' && (globalThis as any).process.env?.NODE_ENV === 'test';
+    const rect = mainContainerRef.current.getBoundingClientRect();
+    const globalObj = globalThis as unknown as { process?: { env?: { NODE_ENV?: string } } };
+    const isTest = typeof globalObj.process !== 'undefined' && globalObj.process.env?.NODE_ENV === 'test';
     if (!isTest && (rect.width === 0 || rect.height === 0)) {
       console.error('[CallRoom] Container has zero dimensions. Agora cannot render video.');
       const frame = requestAnimationFrame(() => {
@@ -103,8 +95,9 @@ const CallRoom: React.FC<CallRoomProps> = ({
         if (remoteContainerRef.current) {
           user.videoTrack.play(remoteContainerRef.current);
         }
-        if (typeof (user.videoTrack as any).on === 'function') {
-          (user.videoTrack as any).on('first-frame-decoded', () => {
+        const vTrack = user.videoTrack as unknown as { on?: (evt: string, cb: () => void) => void };
+        if (typeof vTrack.on === 'function') {
+          vTrack.on('first-frame-decoded', () => {
             remoteMarkReady();
           });
         }
@@ -132,7 +125,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
       onCallEndRef.current(durationSeconds);
     };
 
-    const handleVolumeIndicator = (volumes: any[]) => {
+    const handleVolumeIndicator = (volumes: Array<{ uid: string | number; level: number }>) => {
       const remoteSpeakers = volumes.filter(v => String(v.uid) !== String(userId) && v.level > 15);
       setIsPartnerSpeaking(remoteSpeakers.length > 0);
     };
@@ -147,7 +140,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
         await client.join(String(appId), roomId, token, userId);
         client.enableAudioVolumeIndicator();
 
-        const tracksToPublish: any[] = [];
+        const tracksToPublish: ILocalTrack[] = [];
 
         // Audio track is always initialized and published
         const audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
@@ -163,8 +156,9 @@ const CallRoom: React.FC<CallRoomProps> = ({
           if (localContainerRef.current) {
             videoTrack.play(localContainerRef.current);
           }
-          if (typeof (videoTrack as any).on === 'function') {
-            (videoTrack as any).on('first-frame-decoded', () => {
+          const vTrack = videoTrack as unknown as { on?: (evt: string, cb: () => void) => void };
+          if (typeof vTrack.on === 'function') {
+            vTrack.on('first-frame-decoded', () => {
               localMarkReady();
             });
           }
@@ -201,7 +195,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
           clientRef.current.off('volume-indicator', handleVolumeIndicator);
           try {
             await clientRef.current.leave();
-          } catch (e) {
+          } catch {
             // Ignore leave errors
           }
           clientRef.current = null;
@@ -248,7 +242,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
       }
       try {
         await clientRef.current.leave();
-      } catch (e) {
+      } catch {
         // ignore
       }
       clientRef.current = null;
@@ -259,7 +253,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
 
   return (
     <div
-      ref={containerRef}
+      ref={mainContainerRef}
       data-testid="zego-call-room"
       style={{
         width: '100%',
@@ -275,7 +269,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
         <div className="absolute inset-0 flex flex-col md:flex-row gap-4 p-4">
           {/* Remote Video Container */}
           <div className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl relative overflow-hidden flex items-center justify-center">
-            {!remoteVideoState.isVideoReady && (
+            {!isRemoteVideoReady && (
               <VideoFallbackOverlay
                 avatarUrl={effectiveProviderAvatar}
                 displayName={partnerName || effectiveProviderName}
@@ -283,9 +277,9 @@ const CallRoom: React.FC<CallRoomProps> = ({
               />
             )}
             <div
-              ref={remoteVideoState.containerRef}
+              ref={remoteContainerRef}
               className={`w-full h-full absolute inset-0 transition-opacity duration-300 ${
-                remoteVideoState.isVideoReady ? 'opacity-100 z-0' : 'opacity-0 pointer-events-none'
+                isRemoteVideoReady ? 'opacity-100 z-0' : 'opacity-0 pointer-events-none'
               }`}
             />
             <div className="absolute top-4 left-4 bg-black/60 px-3 py-1 rounded text-xs text-white uppercase tracking-widest z-20">
@@ -295,7 +289,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
 
           {/* Local Video Container */}
           <div className="w-full md:w-1/3 bg-zinc-950 border border-zinc-800 rounded-xl relative overflow-hidden flex items-center justify-center aspect-video md:aspect-auto">
-            {!localVideoState.isVideoReady && (
+            {!isLocalVideoReady && (
               <VideoFallbackOverlay
                 avatarUrl={effectiveProviderAvatar}
                 displayName="You"
@@ -303,9 +297,9 @@ const CallRoom: React.FC<CallRoomProps> = ({
               />
             )}
             <div
-              ref={localVideoState.containerRef}
+              ref={localContainerRef}
               className={`w-full h-full absolute inset-0 transition-opacity duration-300 ${
-                localVideoState.isVideoReady ? 'opacity-100 z-0' : 'opacity-0 pointer-events-none'
+                isLocalVideoReady ? 'opacity-100 z-0' : 'opacity-0 pointer-events-none'
               }`}
             />
             <div className="absolute top-4 left-4 bg-black/60 px-3 py-1 rounded text-xs text-white uppercase tracking-widest z-20">
@@ -318,8 +312,8 @@ const CallRoom: React.FC<CallRoomProps> = ({
         <>
           {/* Hidden containers for track binding so Agora doesn't complain, keeping refs unique */}
           <div style={{ display: 'none' }}>
-            <div ref={remoteVideoState.containerRef} />
-            <div ref={localVideoState.containerRef} />
+            <div ref={remoteContainerRef} />
+            <div ref={localContainerRef} />
           </div>
 
           <div className="absolute inset-0 flex flex-col items-center justify-center p-6 bg-gradient-to-b from-zinc-900 via-zinc-950 to-black overflow-hidden select-none">

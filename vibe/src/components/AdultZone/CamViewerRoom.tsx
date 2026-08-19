@@ -25,13 +25,8 @@ const CamViewerRoom: React.FC<CamViewerRoomProps> = ({
   onUserCountUpdate,
 }) => {
   const videoState = useVideoReadiness();
+  const { containerRef, isVideoReady, markReady, resetReadiness } = videoState;
   const clientRef = useRef<IAgoraRTCClient | null>(null);
-
-  const {
-    containerRef,
-    markReady,
-    resetReadiness,
-  } = videoState;
 
   useEffect(() => {
     const client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
@@ -44,8 +39,9 @@ const CamViewerRoom: React.FC<CamViewerRoomProps> = ({
         if (containerRef.current) {
           user.videoTrack.play(containerRef.current);
         }
-        if (typeof (user.videoTrack as any).on === 'function') {
-          (user.videoTrack as any).on('first-frame-decoded', () => {
+        const vTrack = user.videoTrack as unknown as { on?: (evt: string, cb: () => void) => void };
+        if (typeof vTrack.on === 'function') {
+          vTrack.on('first-frame-decoded', () => {
             markReady();
           });
         }
@@ -98,7 +94,7 @@ const CamViewerRoom: React.FC<CamViewerRoomProps> = ({
       style={{ position: 'relative', width: '100%', height: '100%', minHeight: '400px', background: '#0a0608' }}
       data-testid="zego-cam-viewer-room"
     >
-      {!videoState.isVideoReady && (
+      {!isVideoReady && (
         <VideoFallbackOverlay
           avatarUrl={providerAvatar}
           displayName={providerName}
@@ -106,9 +102,9 @@ const CamViewerRoom: React.FC<CamViewerRoomProps> = ({
         />
       )}
       <div
-        ref={videoState.containerRef}
+        ref={containerRef}
         className={`w-full h-full absolute inset-0 transition-opacity duration-300 ${
-          videoState.isVideoReady ? 'opacity-100 z-0' : 'opacity-0 pointer-events-none'
+          isVideoReady ? 'opacity-100 z-0' : 'opacity-0 pointer-events-none'
         }`}
       />
     </div>

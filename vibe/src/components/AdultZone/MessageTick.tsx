@@ -3,7 +3,12 @@ import React from 'react';
 export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'seen';
 
 interface MessageTickProps {
-  status: MessageStatus;
+  status?: MessageStatus;
+  message?: {
+    deliveredAt?: string | Date | null;
+    readAt?: string | Date | null;
+    isOptimistic?: boolean;
+  };
 }
 
 // Simple SVG tick — lighter than importing a whole icon library
@@ -32,45 +37,8 @@ export const ClockIcon: React.FC<{ size?: number }> = ({ size = 12 }) => (
   </svg>
 );
 
-const MessageTick: React.FC<MessageTickProps> = ({ status }) => {
-  if (status === 'sending') {
-    return (
-      <span className="msg-tick msg-tick--sending" aria-label="Sending">
-        <ClockIcon size={12} />
-      </span>
-    );
-  }
-
-  if (status === 'sent') {
-    return (
-      <span className="msg-tick msg-tick--sent" aria-label="Sent">
-        <CheckIcon size={12} />
-      </span>
-    );
-  }
-
-  if (status === 'delivered') {
-    return (
-      <span className="msg-tick msg-tick--delivered" aria-label="Delivered">
-        <CheckIcon size={12} />
-        <CheckIcon size={12} className="msg-tick__second" />
-      </span>
-    );
-  }
-
-  if (status === 'seen') {
-    return (
-      <span className="msg-tick msg-tick--seen" aria-label="Seen">
-        <CheckIcon size={12} />
-        <CheckIcon size={12} className="msg-tick__second" />
-      </span>
-    );
-  }
-
-  return null;
-};
-
 // Derive status from message fields:
+/* eslint-disable-next-line react-refresh/only-export-components */
 export const getMessageStatus = (message: {
   deliveredAt?: string | Date | null;
   readAt?:       string | Date | null;
@@ -80,6 +48,46 @@ export const getMessageStatus = (message: {
   if (message.readAt)       return 'seen';
   if (message.deliveredAt)  return 'delivered';
   return 'sent';
+};
+
+const MessageTick: React.FC<MessageTickProps> = ({ status, message }) => {
+  const effectiveStatus = status || (message ? getMessageStatus(message) : 'sent');
+
+  if (effectiveStatus === 'sending') {
+    return (
+      <span className="msg-tick msg-tick--sending" aria-label="Sending">
+        <ClockIcon size={12} />
+      </span>
+    );
+  }
+
+  if (effectiveStatus === 'sent') {
+    return (
+      <span className="msg-tick msg-tick--sent" aria-label="Sent">
+        <CheckIcon size={12} />
+      </span>
+    );
+  }
+
+  if (effectiveStatus === 'delivered') {
+    return (
+      <span className="msg-tick msg-tick--delivered" aria-label="Delivered">
+        <CheckIcon size={12} />
+        <CheckIcon size={12} className="msg-tick__second" />
+      </span>
+    );
+  }
+
+  if (effectiveStatus === 'seen') {
+    return (
+      <span className="msg-tick msg-tick--seen" aria-label="Seen">
+        <CheckIcon size={12} />
+        <CheckIcon size={12} className="msg-tick__second" />
+      </span>
+    );
+  }
+
+  return null;
 };
 
 export default MessageTick;

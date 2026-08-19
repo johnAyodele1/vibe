@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+/* eslint-disable react-refresh/only-export-components */
+import React, { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
 import { API_BASE_URL } from '../config';
 import { useAuth } from './AuthContext';
 import { toast } from 'sonner';
@@ -9,6 +10,22 @@ export type InstallResult =
   | { status: 'dismissed' }
   | { status: 'unavailable' }
   | { status: 'error' };
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
+
+interface CustomWindow extends Window {
+  _deferredInstallPrompt?: BeforeInstallPromptEvent | null;
+  getPwaDiagnostics?: () => Record<string, unknown>;
+  MSStream?: unknown;
+}
+
+interface CustomNavigator extends Navigator {
+  standalone?: boolean;
+  permissions: Permissions;
+}
 
 interface PWAContextType {
   isInstallable: boolean;
@@ -23,54 +40,68 @@ const PWAContext = createContext<PWAContextType | undefined>(undefined);
 
 export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { isAuthenticated, user } = useAuth();
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isInstallable, setIsInstallable] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default');
 
-  const getDiagnostics = () => ({
-    protocol: typeof window !== 'undefined' ? window.location.protocol : '',
-    userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
-    isStandalone,
-    displayModeStandalone: typeof window !== 'undefined' ? window.matchMedia('(display-mode: standalone)').matches : false,
-    serviceWorkerSupported: typeof navigator !== 'undefined' && 'serviceWorker' in navigator,
-    serviceWorkerController: typeof navigator !== 'undefined' && !!navigator.serviceWorker?.controller,
-    manifestUrl: '/manifest.json',
-    notificationPermission,
-    isInstallable,
-    hasDeferredPrompt: !!(deferredPrompt || (typeof window !== 'undefined' && (window as any)._deferredInstallPrompt)),
-  });
+  const userId = user?._id;
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') (window as any).getPwaDiagnostics = getDiagnostics;
+  const getDiagnostics = useCallback(() => {
+    const customWin = typeof window !== 'undefined' ? (window as CustomWindow) : null;
+    return {
+      protocol: typeof window !== 'undefined' ? window.location.protocol : '',
+      userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+      isStandalone,
+      displayModeStandalone: typeof window !== 'undefined' ? window.matchMedia('(display-mode: standalone)').matches : false,
+      serviceWorkerSupported: typeof navigator !== 'undefined' && 'serviceWorker' in navigator,
+      serviceWorkerController: typeof navigator !== 'undefined' && !!navigator.serviceWorker?.controller,
+      manifestUrl: '/manifest.json',
+      notificationPermission,
+      isInstallable,
+      hasDeferredPrompt: !!(deferredPrompt || customWin?._deferredInstallPrompt),
+    };
   }, [isStandalone, isInstallable, deferredPrompt, notificationPermission]);
 
   useEffect(() => {
+    if (typeof window !== 'undefined') (window as CustomWindow).getPwaDiagnostics = getDiagnostics;
+  }, [getDiagnostics]);
+
+  useEffect(() => {
     const checkStandalone = () => {
-      const standalone = window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone || document.referrer.includes('android-app://');
+      const customNav = navigator as CustomNavigator;
+      const standalone = window.matchMedia('(display-mode: standalone)').matches || customNav.standalone || document.referrer.includes('android-app://');
       setIsStandalone(!!standalone);
     };
-    const checkIOS = () => setIsIOS(/iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream);
+    const checkIOS = () => {
+      const customWin = window as CustomWindow;
+      setIsIOS(/iPad|iPhone|iPod/.test(navigator.userAgent) && !customWin.MSStream);
+    };
     checkStandalone();
     checkIOS();
 
-    if ((window as any)._deferredInstallPrompt) {
-      setDeferredPrompt((window as any)._deferredInstallPrompt);
-      setIsInstallable(true);
+    const customWin = window as CustomWindow;
+    if (customWin._deferredInstallPrompt) {
+      const promptObj = customWin._deferredInstallPrompt;
+      setTimeout(() => {
+        setDeferredPrompt(promptObj);
+        setIsInstallable(true);
+      }, 0);
     }
 
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
-      setDeferredPrompt(e);
+      const promptEvent = e as BeforeInstallPromptEvent;
+      setDeferredPrompt(promptEvent);
       setIsInstallable(true);
-      (window as any)._deferredInstallPrompt = e;
+      (window as CustomWindow)._deferredInstallPrompt = promptEvent;
     };
     const handleAppInstalled = () => {
       setIsStandalone(true);
       setIsInstallable(false);
       setDeferredPrompt(null);
-      (window as any)._deferredInstallPrompt = null;
+      (window as CustomWindow)._deferredInstallPrompt = null;
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -82,8 +113,7 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, []);
 
   useEffect(() => {
-    if (!isAuthenticated || !user) return;
-    const userId = user._id;
+    if (!isAuthenticated || !userId) return;
     const adultToken = localStorage.getItem('adultAccessToken');
 
     if (adultToken) {
@@ -94,30 +124,9 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (notificationPermission === 'granted') {
       void syncStandardUserPushRegistration().catch(err => console.error('[PWA] Push sync failed:', err));
     }
-    // Permission onboarding is rendered by NotificationPrompt so standard users and adult users get the same flow.
-  }, [isAuthenticated, user?._id, notificationPermission]);
+  }, [isAuthenticated, userId, notificationPermission]);
 
-  useEffect(() => {
-    if (!isAuthenticated || !user) return;
-    const checkAndUpdateLocation = async () => {
-      const hasRequested = sessionStorage.getItem('locationRequestedThisSession');
-      if ('permissions' in navigator && (navigator.permissions as any).query) {
-        try {
-          const status = await (navigator.permissions as any).query({ name: 'geolocation' });
-          if (status.state === 'denied' || (status.state === 'prompt' && hasRequested)) return;
-        } catch (e) {
-          console.error('Error checking geolocation permission:', e);
-        }
-      } else if (hasRequested) return;
-      updateUserLocation();
-      sessionStorage.setItem('locationRequestedThisSession', 'true');
-    };
-    const interval = setInterval(checkAndUpdateLocation, 1000 * 60 * 15);
-    checkAndUpdateLocation();
-    return () => clearInterval(interval);
-  }, [isAuthenticated]);
-
-  const updateUserLocation = () => {
+  const updateUserLocation = useCallback(() => {
     if (!('geolocation' in navigator)) return;
     navigator.geolocation.getCurrentPosition(async position => {
       const { latitude, longitude } = position.coords;
@@ -131,18 +140,39 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         console.error('Error updating location:', error);
       }
     }, error => console.warn('Geolocation update failed:', error), { enableHighAccuracy: true });
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || !userId) return;
+    const checkAndUpdateLocation = async () => {
+      const hasRequested = sessionStorage.getItem('locationRequestedThisSession');
+      if ('permissions' in navigator && navigator.permissions.query) {
+        try {
+          const status = await navigator.permissions.query({ name: 'geolocation' as PermissionName });
+          if (status.state === 'denied' || (status.state === 'prompt' && hasRequested)) return;
+        } catch (e) {
+          console.error('Error checking geolocation permission:', e);
+        }
+      } else if (hasRequested) return;
+      updateUserLocation();
+      sessionStorage.setItem('locationRequestedThisSession', 'true');
+    };
+    const interval = setInterval(checkAndUpdateLocation, 1000 * 60 * 15);
+    void checkAndUpdateLocation();
+    return () => clearInterval(interval);
+  }, [isAuthenticated, userId, updateUserLocation]);
 
   const installApp = async (): Promise<InstallResult> => {
-    const promptObj = deferredPrompt || (typeof window !== 'undefined' && (window as any)._deferredInstallPrompt);
+    const customWin = typeof window !== 'undefined' ? (window as CustomWindow) : null;
+    const promptObj = deferredPrompt || customWin?._deferredInstallPrompt;
     if (!promptObj) return { status: 'unavailable' };
     try {
-      promptObj.prompt();
+      await promptObj.prompt();
       const { outcome } = await promptObj.userChoice;
       if (outcome === 'accepted') {
         setIsInstallable(false);
         setDeferredPrompt(null);
-        (window as any)._deferredInstallPrompt = null;
+        if (customWin) customWin._deferredInstallPrompt = null;
         return { status: 'accepted' };
       }
       return { status: 'dismissed' };
@@ -165,7 +195,7 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
     try {
       const adultToken = localStorage.getItem('adultAccessToken');
-      if (adultToken && user) await syncDeviceRegistration(String(user._id));
+      if (adultToken && userId) await syncDeviceRegistration(String(userId));
       else await syncStandardUserPushRegistration();
       toast.success('Notifications enabled and connected.');
     } catch (error) {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
 import { io } from "socket.io-client";
@@ -15,10 +15,10 @@ interface ErrorRecord {
   request?: {
     method?: string;
     route?: string;
-    params?: any;
-    query?: any;
-    body?: any;
-    headers?: any;
+    params?: Record<string, unknown>;
+    query?: Record<string, unknown>;
+    body?: Record<string, unknown>;
+    headers?: Record<string, unknown>;
     ip?: string;
     userAgent?: string;
   };
@@ -39,6 +39,14 @@ interface ErrorRecord {
   escalated?: boolean;
   escalatedAt?: string;
   createdAt: string;
+}
+
+interface SocketErrorPayload {
+  priority?: string;
+  message?: string;
+  route?: string;
+  operation?: string;
+  count?: number;
 }
 
 const PRIORITY_CONFIG = {
@@ -79,7 +87,7 @@ export const AdminErrorsPage: React.FC = () => {
   // Resolution note
   const [resolutionNote, setResolutionNote] = useState("");
 
-  const fetchErrors = async () => {
+  const fetchErrors = useCallback(async () => {
     try {
       const token = localStorage.getItem("adminToken");
       const queryParams = new URLSearchParams({
@@ -105,7 +113,7 @@ export const AdminErrorsPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [priority, zone, category, resolved]);
 
   // Socket setup
   useEffect(() => {
@@ -121,8 +129,8 @@ export const AdminErrorsPage: React.FC = () => {
       console.log("Admin socket connected for error monitoring:", socket.id);
     });
 
-    socket.on("admin:new_error", (err: any) => {
-      fetchErrors();
+    socket.on("admin:new_error", (err: SocketErrorPayload) => {
+      void fetchErrors();
       // Toast for critical and high
       if (err.priority === 'critical') {
         toast.error(`🔴 CRITICAL: ${err.message} on ${err.route || err.operation || ''}`);
@@ -131,35 +139,45 @@ export const AdminErrorsPage: React.FC = () => {
       }
     });
 
-    socket.on("admin:error_escalated", (err: any) => {
-      fetchErrors();
+    socket.on("admin:error_escalated", (err: SocketErrorPayload) => {
+      void fetchErrors();
       toast.error(`🔴 ESCALATED TO CRITICAL: ${err.route || err.operation || ''} (${err.count} occurrences)`);
     });
 
     socket.on("admin:error_count_update", () => {
-      fetchErrors();
+      void fetchErrors();
     });
 
     socket.on("admin:error_resolved", () => {
-      fetchErrors();
+      void fetchErrors();
     });
 
     return () => {
       socket.disconnect();
     };
-  }, [priority, zone, category, resolved]);
+  }, [fetchErrors]);
 
   useEffect(() => {
     if (localStorage.getItem("isAdminAuthenticated") !== "true") {
       navigate("/admin/login");
       return;
     }
-    fetchErrors();
+    let isMounted = true;
+    const load = async () => {
+      await fetchErrors();
+      if (!isMounted) return;
+    };
+    void load();
 
     // Auto-refresh every 15s fallback
-    const interval = setInterval(fetchErrors, 15000);
-    return () => clearInterval(interval);
-  }, [priority, zone, category, resolved]);
+    const interval = setInterval(() => {
+      void fetchErrors();
+    }, 15000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [fetchErrors, navigate]);
 
   const handleResolve = async (errorId: string) => {
     try {
@@ -177,11 +195,11 @@ export const AdminErrorsPage: React.FC = () => {
         toast.success("Error resolved!");
         setResolutionNote("");
         setSelected(null);
-        fetchErrors();
+        void fetchErrors();
       } else {
         toast.error(data.message || "Failed to resolve error");
       }
-    } catch (err) {
+    } catch {
       toast.error("Network error occurred");
     }
   };
@@ -197,11 +215,11 @@ export const AdminErrorsPage: React.FC = () => {
       const data = await res.json();
       if (data.success) {
         toast.success(`Successfully cleared ${data.deleted} resolved errors!`);
-        fetchErrors();
+        void fetchErrors();
       } else {
         toast.error(data.message || "Failed to clear resolved errors");
       }
-    } catch (err) {
+    } catch {
       toast.error("Network error occurred");
     }
   };
@@ -218,7 +236,7 @@ export const AdminErrorsPage: React.FC = () => {
       } else {
         setSelected(err);
       }
-    } catch (error) {
+    } catch {
       setSelected(err);
     }
   };

@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
 import { API_BASE_URL } from '../../config';
 import { PushNotificationTestCard } from '../Settings/PushNotificationTestCard';
 import { LocationSelect } from './LocationSelect';
+
 
 const UserSettings: React.FC = () => {
   const navigate = useNavigate();
@@ -32,15 +33,7 @@ const UserSettings: React.FC = () => {
 
   const CONFIRM_PHRASE = 'DELETE MY ACCOUNT';
 
-  useEffect(() => {
-    if (!token) {
-      navigate('/');
-      return;
-    }
-    fetchProfile();
-  }, [token]);
-
-  const fetchProfile = async () => {
+  const fetchProfile = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/v1/adult/profiles/me`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -51,12 +44,20 @@ const UserSettings: React.FC = () => {
         setBio(data.data.bio || '');
         setLocation(data.data.location || {});
       }
-    } catch (err) {
-      console.error('Failed to fetch profile:', err);
+    } catch {
+      console.error('Failed to fetch profile');
     } finally {
       setLoadingProfile(false);
     }
-  };
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) {
+      navigate('/');
+      return;
+    }
+    const load = async () => { await fetchProfile(); }; void load();
+  }, [token, navigate, fetchProfile]);
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,7 +77,7 @@ const UserSettings: React.FC = () => {
       } else {
         toast.error(data.message || 'Failed to update profile');
       }
-    } catch (err) {
+    } catch {
       toast.error('Network error updating profile');
     } finally {
       setSavingProfile(false);
@@ -113,7 +114,7 @@ const UserSettings: React.FC = () => {
       } else {
         toast.error(data.message || 'Failed to change password');
       }
-    } catch (err) {
+    } catch {
       toast.error('Network error changing password');
     } finally {
       setPasswordLoading(false);
@@ -143,7 +144,7 @@ const UserSettings: React.FC = () => {
         const data = await res.json();
         toast.error(data.message || 'Failed to deactivate account');
       }
-    } catch (err) {
+    } catch {
       toast.error('Network error deactivating account');
     } finally {
       setDeactivateLoading(false);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
 import styles from "./Admin.module.css";
@@ -30,6 +30,12 @@ interface User {
   createdAt: string;
 }
 
+interface RateHistoryItem {
+  value: number;
+  changedAt: string;
+  changedBy: string;
+}
+
 const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
@@ -37,7 +43,7 @@ const AdminDashboard: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const token = localStorage.getItem("adminToken");
       const [analyticsRes, reportsRes, usersRes] = await Promise.all([
@@ -59,15 +65,21 @@ const AdminDashboard: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (localStorage.getItem("isAdminAuthenticated") !== "true") {
       navigate("/admin/login");
       return;
     }
-    fetchData();
-  }, []);
+    let isMounted = true;
+    const load = async () => {
+      await fetchData();
+      if (!isMounted) return;
+    };
+    void load();
+    return () => { isMounted = false; };
+  }, [fetchData, navigate]);
 
   const handleAction = async (action: string, targetId: string, reportId?: string) => {
     if (!window.confirm(`Are you sure you want to ${action} this user?`)) return;
@@ -90,7 +102,7 @@ const AdminDashboard: React.FC = () => {
       } else {
         toast.error(data.message);
       }
-    } catch (error) {
+    } catch {
       toast.error("Action failed");
     }
   };
@@ -250,11 +262,11 @@ const AdminDashboard: React.FC = () => {
 };
 
 const RateConfigPanel: React.FC = () => {
-  const [config, setConfig] = useState<{ rate: number; history: any[] } | null>(null);
+  const [config, setConfig] = useState<{ rate: number; history: RateHistoryItem[] } | null>(null);
   const [newRate, setNewRate] = useState<string>("");
   const [saving, setSaving] = useState(false);
 
-  const fetchRateConfig = async () => {
+  const fetchRateConfig = useCallback(async () => {
     try {
       const token = localStorage.getItem("adminToken");
       const res = await fetch(`${API_BASE_URL}/admin/config/diamond-rate`, {
@@ -267,11 +279,17 @@ const RateConfigPanel: React.FC = () => {
     } catch (err) {
       console.error("Failed to fetch rate config:", err);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchRateConfig();
-  }, []);
+    let isMounted = true;
+    const load = async () => {
+      await fetchRateConfig();
+      if (!isMounted) return;
+    };
+    void load();
+    return () => { isMounted = false; };
+  }, [fetchRateConfig]);
 
   const handleSave = async () => {
     const rate = parseInt(newRate, 10);
@@ -299,7 +317,7 @@ const RateConfigPanel: React.FC = () => {
       } else {
         toast.error(data.message || "Failed to update rate");
       }
-    } catch (err) {
+    } catch {
       toast.error("Could not update rate");
     } finally {
       setSaving(false);

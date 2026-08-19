@@ -5,6 +5,13 @@ import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
 import { API_BASE_URL } from "../../config";
 
+interface AuthUser {
+  location?: { city?: string };
+  bio?: string;
+  photos?: unknown[];
+  profileCompletion?: number;
+}
+
 const Connect: React.FC = () => {
   const navigate = useNavigate();
   const { login, signup } = useAuth();
@@ -25,7 +32,7 @@ const Connect: React.FC = () => {
     window.location.href = `${API_BASE_URL}/auth/google`;
   };
 
-  const isProfileComplete = (currentUser: any) => {
+  const isProfileComplete = (currentUser: AuthUser | null) => {
     if (!currentUser) return false;
 
     const requiredProfileFields =
@@ -92,9 +99,9 @@ const Connect: React.FC = () => {
           toast.error("Login failed");
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Auth error:", error);
-      const errorMessage = error.message || "Network error. Please try again.";
+      const errorMessage = error instanceof Error ? error.message : "Network error. Please try again.";
       toast.error(errorMessage);
     } finally {
       setLoading(false);

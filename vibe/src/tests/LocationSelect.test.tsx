@@ -21,7 +21,7 @@ vi.mock('../hooks/useLocation', () => {
       loading: false,
       error: null
     }),
-    useCities: (countryCode: string | null, stateCode: string | null, _query: string) => ({
+    useCities: (countryCode: string | null, stateCode: string | null) => ({
       data: countryCode === 'NG' && stateCode === 'LA' ? [
         { name: 'Ikeja', lat: 6.596, lng: 3.336 },
         { name: 'Lekki', lat: 6.428, lng: 3.518 }
