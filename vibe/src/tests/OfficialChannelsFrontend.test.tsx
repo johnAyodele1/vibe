@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react';
-import React from 'react';
+import { vi, describe, beforeEach, afterEach, it, expect } from 'vitest';
 import { BrowserRouter } from 'react-router-dom';
 import PrivateSext from '../components/AdultZone/PrivateSext';
 import { AdultAuthProvider } from '../contexts/AdultAuthContext';
@@ -66,7 +66,7 @@ describe('Official Channels UI Verification', () => {
       },
     ];
 
-    vi.spyOn(global, 'fetch').mockImplementation((url) => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((url: RequestInfo | URL) => {
       if (url.toString().includes('/v1/adult/auth/me') || url.toString().includes('/auth/me')) {
         return Promise.resolve({
           ok: true,
