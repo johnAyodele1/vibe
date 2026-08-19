@@ -73,13 +73,18 @@ const LiveCams: React.FC = () => {
 
   // 1-to-1 Call States
   const isInitiatingRef = useRef(false);
+  const privateCallDataRef = useRef<any>(null);
   const [isInitiatingCall, setIsInitiatingCall] = useState(false);
   const [privateCallState, setPrivateCallState] = useState<'idle' | 'calling' | 'active'>('idle');
   const [privateCallData, setPrivateCallData] = useState<any>(null);
-  const [privateCallRate, setPrivateCallRate] = useState<number>(5);
+  const [privateCallRate, setPrivateCallRate] = useState<number | null>(null);
   const [privateZegoToken, setPrivateZegoToken] = useState<string | null>(null);
   const [privateZegoAppId, setPrivateZegoAppId] = useState<number | null>(null);
   const [privateZegoRoomId, setPrivateZegoRoomId] = useState<string | null>(null);
+
+  useEffect(() => {
+    privateCallDataRef.current = privateCallData;
+  }, [privateCallData]);
 
   const openTipSheet = (prov: { userId: string; stageName: string; avatarUrl: string; isOnline: boolean }, amt?: number | null) =>
     useTipSheetStore.getState().openSheet(prov, amt);
@@ -107,6 +112,16 @@ const LiveCams: React.FC = () => {
     setLandedIndex(null);
     setLastSpinResult(null);
   }, [activeSession]);
+
+  const resetPrivateCallState = () => {
+    privateCallDataRef.current = null;
+    setPrivateCallData(null);
+    setPrivateCallState('idle');
+    setPrivateCallRate(null);
+    setPrivateZegoToken(null);
+    setPrivateZegoAppId(null);
+    setPrivateZegoRoomId(null);
+  };
 
   const handleInitiatePrivateCall = async () => {
     if (isInitiatingRef.current || isInitiatingCall || privateCallState !== 'idle') return;
@@ -145,11 +160,19 @@ const LiveCams: React.FC = () => {
       const callDataRes = await callRes.json();
 
       if (callDataRes.callId) {
+        const rate = (providerProfile as any)?.videoCallPrice || (providerProfile as any)?.pricePerMinute || callDataRes.perMinuteRate;
+        if (!rate) {
+          toast.error('Provider call rate not configured');
+          setIsInitiatingCall(false);
+          return;
+        }
+
+        privateCallDataRef.current = callDataRes;
         setPrivateCallData(callDataRes);
-        setPrivateCallRate(callDataRes.perMinuteRate || 5);
+        setPrivateCallRate(rate);
         setPrivateCallState('calling');
 
-        // Fetch Zego/WebRTC token right away
+        // Pre-fetch Zego/WebRTC token
         const tokenRes = await fetch(`${API_BASE_URL}/v1/adult/zego/token?roomId=${callDataRes.roomId}&type=call`, {
           headers: getHeaders()
         });
@@ -172,9 +195,10 @@ const LiveCams: React.FC = () => {
   };
 
   const handleCancelPrivateCall = async () => {
-    if (privateCallData?.callId) {
+    const currentCall = privateCallDataRef.current || privateCallData;
+    if (currentCall?.callId) {
       try {
-        await fetch(`${API_BASE_URL}/v1/adult/sext/calls/${privateCallData.callId}/end`, {
+        await fetch(`${API_BASE_URL}/v1/adult/sext/calls/${currentCall.callId}/end`, {
           method: 'PUT',
           headers: getHeaders(),
           body: JSON.stringify({ reason: 'cancelled_by_caller' })
@@ -183,14 +207,14 @@ const LiveCams: React.FC = () => {
         console.error(e);
       }
     }
-    setPrivateCallState('idle');
-    setPrivateCallData(null);
+    resetPrivateCallState();
   };
 
   const handleEndPrivateCall = async () => {
-    if (privateCallData?.callId) {
+    const currentCall = privateCallDataRef.current || privateCallData;
+    if (currentCall?.callId) {
       try {
-        await fetch(`${API_BASE_URL}/v1/adult/sext/calls/${privateCallData.callId}/end`, {
+        await fetch(`${API_BASE_URL}/v1/adult/sext/calls/${currentCall.callId}/end`, {
           method: 'PUT',
           headers: getHeaders(),
           body: JSON.stringify({ reason: 'hung_up' })
@@ -199,9 +223,7 @@ const LiveCams: React.FC = () => {
         console.error(e);
       }
     }
-    setPrivateCallState('idle');
-    setPrivateCallData(null);
-    setPrivateZegoToken(null);
+    resetPrivateCallState();
   };
 
   const fetchSessions = useCallback(async () => {
@@ -244,16 +266,17 @@ const LiveCams: React.FC = () => {
     socketRef.current = socket;
 
     socket.on('call:accepted', async () => {
-      if (privateCallData?.roomId) {
+      const activeData = privateCallDataRef.current;
+      if (activeData?.roomId) {
         try {
-          const tokenRes = await fetch(`${API_BASE_URL}/v1/adult/zego/token?roomId=${privateCallData.roomId}&type=call`, {
+          const tokenRes = await fetch(`${API_BASE_URL}/v1/adult/zego/token?roomId=${activeData.roomId}&type=call`, {
             headers: getHeaders()
           });
           const tokenData = await tokenRes.json();
           if (tokenData.token) {
             setPrivateZegoToken(tokenData.token);
             setPrivateZegoAppId(tokenData.appId);
-            setPrivateZegoRoomId(privateCallData.roomId);
+            setPrivateZegoRoomId(activeData.roomId);
             setPrivateCallState('active');
           } else {
             toast.error('Failed to get call connection token');
@@ -269,20 +292,16 @@ const LiveCams: React.FC = () => {
     });
 
     socket.on('call:declined', () => {
-      setPrivateCallState('idle');
-      setPrivateCallData(null);
+      resetPrivateCallState();
       toast.error('Provider declined the private call request');
     });
 
     socket.on('call:ended', () => {
-      setPrivateCallState('idle');
-      setPrivateCallData(null);
-      setPrivateZegoToken(null);
+      resetPrivateCallState();
     });
 
     socket.on('call:missed', () => {
-      setPrivateCallState('idle');
-      setPrivateCallData(null);
+      resetPrivateCallState();
       toast.info('No answer from provider');
     });
 
@@ -598,52 +617,6 @@ const LiveCams: React.FC = () => {
               </div>
             </div>
 
-            {/* Outgoing Private Call Ringing Overlay */}
-            {privateCallState === 'calling' && (
-              <div className="absolute inset-0 bg-black/80 backdrop-blur-md z-30 flex flex-col items-center justify-center p-6 text-white text-center">
-                <div className="w-28 h-28 rounded-full border-4 border-pink-500 animate-pulse mb-4 overflow-hidden">
-                  <img
-                    src={providerProfile?.avatarUrl || activeSession?.providerId?.profilePhoto || activeSession?.avatarUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=150&auto=format&fit=crop"}
-                    alt="Provider"
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-                <h3 className="text-2xl font-serif italic text-white mb-1">
-                  {providerProfile?.stageName || activeSession?.providerId?.username || 'Performer'}
-                </h3>
-                <p className="text-xs text-pink-400 uppercase tracking-widest font-mono animate-pulse">Requesting 1-to-1 Video Call...</p>
-                <p className="text-xs text-yellow-400 mt-2 font-mono">Rate: 💎 {formatAmount(privateCallRate)} credits / min</p>
-
-                <button
-                  onClick={handleCancelPrivateCall}
-                  className="mt-8 px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-full transition-all"
-                >
-                  Cancel Call ✕
-                </button>
-              </div>
-            )}
-
-            {/* Active Private 1-to-1 Call Overlay */}
-            {privateCallState === 'active' && privateZegoToken && privateZegoAppId && privateZegoRoomId && (
-              <div className="absolute inset-0 z-40 bg-black">
-                <React.Suspense fallback={<div className="flex items-center justify-center h-full text-pink-500">Loading call...</div>}>
-                  <CallRoom
-                    key={privateZegoRoomId}
-                    appId={privateZegoAppId}
-                    token={privateZegoToken}
-                    roomId={privateZegoRoomId}
-                    userId={user?.id || ''}
-                    userName={user?.firstName || 'User'}
-                    callType="video"
-                    onCallEnd={handleEndPrivateCall}
-                    partnerName={providerProfile?.stageName || activeSession?.providerId?.username}
-                    partnerAvatar={providerProfile?.avatarUrl || activeSession?.providerId?.profilePhoto || activeSession?.avatarUrl}
-                    providerAvatar={providerProfile?.avatarUrl || activeSession?.providerId?.profilePhoto || activeSession?.avatarUrl}
-                    providerName={providerProfile?.stageName || activeSession?.providerId?.username}
-                  />
-                </React.Suspense>
-              </div>
-            )}
 
             {/* Support Performer and direct tip quick trigger (Bottom overlay footer on the video player) */}
             <div className="absolute bottom-4 left-4 right-4 z-10 flex justify-between items-center bg-black/40 backdrop-blur-md p-4 rounded-2xl border border-white/5">
@@ -780,6 +753,61 @@ const LiveCams: React.FC = () => {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Outgoing Private Call Ringing Overlay (Top-level, independent of activeSession) */}
+      {privateCallState === 'calling' && (
+        <div
+          style={{ paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))' }}
+          className="fixed inset-0 bg-black/90 backdrop-blur-md z-[11000] flex flex-col items-center justify-center p-6 text-white text-center"
+        >
+          <div className="w-28 h-28 rounded-full border-4 border-pink-500 animate-pulse mb-4 overflow-hidden">
+            <img
+              src={providerProfile?.avatarUrl || (typeof activeSession?.providerId === 'object' ? activeSession.providerId.profilePhoto : activeSession?.avatarUrl) || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=150&auto=format&fit=crop"}
+              alt="Provider"
+              className="w-full h-full object-cover"
+            />
+          </div>
+          <h3 className="text-2xl font-serif italic text-white mb-1">
+            {providerProfile?.stageName || (typeof activeSession?.providerId === 'object' ? activeSession.providerId.username : 'Performer')}
+          </h3>
+          <p className="text-xs text-pink-400 uppercase tracking-widest font-mono animate-pulse">Requesting 1-to-1 Video Call...</p>
+          {privateCallRate !== null && (
+            <p className="text-xs text-yellow-400 mt-2 font-mono">Rate: 💎 {formatAmount(privateCallRate)} credits / min</p>
+          )}
+
+          <button
+            onClick={handleCancelPrivateCall}
+            className="mt-8 px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-full transition-all"
+          >
+            Cancel Call ✕
+          </button>
+        </div>
+      )}
+
+      {/* Active Private 1-to-1 Call Overlay (Top-level, independent of activeSession) */}
+      {privateCallState === 'active' && privateZegoToken && privateZegoAppId && privateZegoRoomId && (
+        <div
+          style={{ paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))' }}
+          className="fixed inset-0 z-[12000] bg-black"
+        >
+          <React.Suspense fallback={<div className="flex items-center justify-center h-full text-pink-500">Loading call...</div>}>
+            <CallRoom
+              key={privateZegoRoomId}
+              appId={privateZegoAppId}
+              token={privateZegoToken}
+              roomId={privateZegoRoomId}
+              userId={user?.id || ''}
+              userName={user?.firstName || 'User'}
+              callType="video"
+              onCallEnd={handleEndPrivateCall}
+              partnerName={providerProfile?.stageName || (typeof activeSession?.providerId === 'object' ? activeSession.providerId.username : 'Performer')}
+              partnerAvatar={providerProfile?.avatarUrl || (typeof activeSession?.providerId === 'object' ? activeSession.providerId.profilePhoto : activeSession?.avatarUrl)}
+              providerAvatar={providerProfile?.avatarUrl || (typeof activeSession?.providerId === 'object' ? activeSession.providerId.profilePhoto : activeSession?.avatarUrl)}
+              providerName={providerProfile?.stageName || (typeof activeSession?.providerId === 'object' ? activeSession.providerId.username : 'Performer')}
+            />
+          </React.Suspense>
         </div>
       )}
     </div>
