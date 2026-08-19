@@ -43,8 +43,12 @@ const CallRoom: React.FC<CallRoomProps> = ({
   const localVideoTrackRef = useRef<ICameraVideoTrack | null>(null);
 
   const hasJoined = useRef(false);
-  const [retry, setRetry] = useState(0);
+  const startTimeRef = useRef<number>(0);
+  const hasEndedRef = useRef(false);
+  const isMountedRef = useRef(true);
+  const effectGenRef = useRef(0);
 
+  const [retry, setRetry] = useState(0);
   const [micEnabled, setMicEnabled] = useState(true);
   const [cameraEnabled, setCameraEnabled] = useState(callType === 'video');
   const [isPartnerSpeaking, setIsPartnerSpeaking] = useState(false);
@@ -57,7 +61,19 @@ const CallRoom: React.FC<CallRoomProps> = ({
     onCallEndRef.current = onCallEnd;
   }, [onCallEnd]);
 
+  const triggerCallEndOnce = (durationSeconds: number) => {
+    if (!hasEndedRef.current) {
+      hasEndedRef.current = true;
+      onCallEndRef.current(durationSeconds);
+    }
+  };
+
   useEffect(() => {
+    const currentGen = ++effectGenRef.current;
+    const genRef = effectGenRef;
+    isMountedRef.current = true;
+    hasEndedRef.current = false;
+
     if (hasJoined.current) return;
     if (!mainContainerRef.current) return;
 
@@ -73,37 +89,45 @@ const CallRoom: React.FC<CallRoomProps> = ({
 
     const rect = mainContainerRef.current.getBoundingClientRect();
     const globalObj = globalThis as unknown as { process?: { env?: { NODE_ENV?: string } } };
-    const isTest = typeof globalObj.process !== 'undefined' && globalObj.process.env?.NODE_ENV === 'test';
+    const isTest = typeof globalObj.process !== 'undefined' && globalObj.process?.env?.NODE_ENV === 'test';
     if (!isTest && (rect.width === 0 || rect.height === 0)) {
-      console.error('[CallRoom] Container has zero dimensions. Agora cannot render video.');
+      console.error('[CallRoom] Container has zero dimensions. Retrying...');
       const frame = requestAnimationFrame(() => {
-        setRetry(prev => prev + 1);
+        if (isMountedRef.current) {
+          setRetry(prev => prev + 1);
+        }
       });
       return () => cancelAnimationFrame(frame);
     }
 
     hasJoined.current = true;
-    const startTime = Date.now();
+    startTimeRef.current = Date.now();
 
     const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
     clientRef.current = client;
 
     const handleUserPublished = async (user: IAgoraRTCRemoteUser, mediaType: 'audio' | 'video' | 'datachannel') => {
+      if (currentGen !== genRef.current) return;
       if (mediaType === 'datachannel') return;
-      await client.subscribe(user, mediaType);
-      if (mediaType === 'video' && user.videoTrack) {
-        if (remoteContainerRef.current) {
-          user.videoTrack.play(remoteContainerRef.current);
+      try {
+        await client.subscribe(user, mediaType);
+        if (currentGen !== genRef.current) return;
+        if (mediaType === 'video' && user.videoTrack) {
+          if (remoteContainerRef.current) {
+            user.videoTrack.play(remoteContainerRef.current);
+          }
+          const vTrack = user.videoTrack as unknown as { on?: (evt: string, cb: () => void) => void };
+          if (typeof vTrack.on === 'function') {
+            vTrack.on('first-frame-decoded', () => {
+              if (currentGen === genRef.current) remoteMarkReady();
+            });
+          }
         }
-        const vTrack = user.videoTrack as unknown as { on?: (evt: string, cb: () => void) => void };
-        if (typeof vTrack.on === 'function') {
-          vTrack.on('first-frame-decoded', () => {
-            remoteMarkReady();
-          });
+        if (mediaType === 'audio' && user.audioTrack) {
+          user.audioTrack.play();
         }
-      }
-      if (mediaType === 'audio' && user.audioTrack) {
-        user.audioTrack.play();
+      } catch (err) {
+        console.error('Subscribe remote track error:', err);
       }
     };
 
@@ -121,11 +145,12 @@ const CallRoom: React.FC<CallRoomProps> = ({
 
     const handleUserLeft = () => {
       remoteResetReadiness();
-      const durationSeconds = Math.floor((Date.now() - startTime) / 1000);
-      onCallEndRef.current(durationSeconds);
+      const elapsed = Math.max(1, Math.floor((Date.now() - startTimeRef.current) / 1000));
+      triggerCallEndOnce(elapsed);
     };
 
     const handleVolumeIndicator = (volumes: Array<{ uid: string | number; level: number }>) => {
+      if (!isMountedRef.current) return;
       const remoteSpeakers = volumes.filter(v => String(v.uid) !== String(userId) && v.level > 15);
       setIsPartnerSpeaking(remoteSpeakers.length > 0);
     };
@@ -138,18 +163,37 @@ const CallRoom: React.FC<CallRoomProps> = ({
     const initCall = async () => {
       try {
         await client.join(String(appId), roomId, token, userId);
+        if (currentGen !== genRef.current) {
+          await client.leave();
+          return;
+        }
+
         client.enableAudioVolumeIndicator();
 
         const tracksToPublish: ILocalTrack[] = [];
 
         // Audio track is always initialized and published
         const audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+        if (currentGen !== genRef.current) {
+          audioTrack.stop();
+          audioTrack.close();
+          await client.leave();
+          return;
+        }
         localAudioTrackRef.current = audioTrack;
         tracksToPublish.push(audioTrack);
 
         // Video track is only initialized and published for video calls
         if (callType === 'video') {
           const videoTrack = await AgoraRTC.createCameraVideoTrack();
+          if (currentGen !== genRef.current) {
+            audioTrack.stop();
+            audioTrack.close();
+            videoTrack.stop();
+            videoTrack.close();
+            await client.leave();
+            return;
+          }
           localVideoTrackRef.current = videoTrack;
           tracksToPublish.push(videoTrack);
 
@@ -159,12 +203,12 @@ const CallRoom: React.FC<CallRoomProps> = ({
           const vTrack = videoTrack as unknown as { on?: (evt: string, cb: () => void) => void };
           if (typeof vTrack.on === 'function') {
             vTrack.on('first-frame-decoded', () => {
-              localMarkReady();
+              if (currentGen === genRef.current) localMarkReady();
             });
           }
         }
 
-        if (tracksToPublish.length > 0) {
+        if (tracksToPublish.length > 0 && currentGen === genRef.current) {
           await client.publish(tracksToPublish);
         }
       } catch (err) {
@@ -175,34 +219,29 @@ const CallRoom: React.FC<CallRoomProps> = ({
     initCall();
 
     return () => {
-      const leaveAndCleanup = async () => {
-        remoteResetReadiness();
-        localResetReadiness();
-        if (localAudioTrackRef.current) {
-          localAudioTrackRef.current.stop();
-          localAudioTrackRef.current.close();
-          localAudioTrackRef.current = null;
-        }
-        if (localVideoTrackRef.current) {
-          localVideoTrackRef.current.stop();
-          localVideoTrackRef.current.close();
-          localVideoTrackRef.current = null;
-        }
-        if (clientRef.current) {
-          clientRef.current.off('user-published', handleUserPublished);
-          clientRef.current.off('user-unpublished', handleUserUnpublished);
-          clientRef.current.off('user-left', handleUserLeft);
-          clientRef.current.off('volume-indicator', handleVolumeIndicator);
-          try {
-            await clientRef.current.leave();
-          } catch {
-            // Ignore leave errors
-          }
-          clientRef.current = null;
-        }
-        hasJoined.current = false;
-      };
-      leaveAndCleanup();
+      genRef.current++;
+      isMountedRef.current = false;
+      remoteResetReadiness();
+      localResetReadiness();
+      if (localAudioTrackRef.current) {
+        localAudioTrackRef.current.stop();
+        localAudioTrackRef.current.close();
+        localAudioTrackRef.current = null;
+      }
+      if (localVideoTrackRef.current) {
+        localVideoTrackRef.current.stop();
+        localVideoTrackRef.current.close();
+        localVideoTrackRef.current = null;
+      }
+      if (clientRef.current) {
+        clientRef.current.off('user-published', handleUserPublished);
+        clientRef.current.off('user-unpublished', handleUserUnpublished);
+        clientRef.current.off('user-left', handleUserLeft);
+        clientRef.current.off('volume-indicator', handleVolumeIndicator);
+        clientRef.current.leave().catch(() => {});
+        clientRef.current = null;
+      }
+      hasJoined.current = false;
     };
   }, [retry, appId, token, roomId, userId, callType, remoteContainerRef, localContainerRef, remoteMarkReady, remoteResetReadiness, localMarkReady, localResetReadiness]);
 
@@ -227,19 +266,20 @@ const CallRoom: React.FC<CallRoomProps> = ({
   };
 
   const handleEndCallLocal = async () => {
+    const elapsed = Math.max(1, Math.floor((Date.now() - (startTimeRef.current || Date.now())) / 1000));
     remoteResetReadiness();
     localResetReadiness();
+    if (localAudioTrackRef.current) {
+      localAudioTrackRef.current.stop();
+      localAudioTrackRef.current.close();
+      localAudioTrackRef.current = null;
+    }
+    if (localVideoTrackRef.current) {
+      localVideoTrackRef.current.stop();
+      localVideoTrackRef.current.close();
+      localVideoTrackRef.current = null;
+    }
     if (clientRef.current) {
-      if (localAudioTrackRef.current) {
-        localAudioTrackRef.current.stop();
-        localAudioTrackRef.current.close();
-        localAudioTrackRef.current = null;
-      }
-      if (localVideoTrackRef.current) {
-        localVideoTrackRef.current.stop();
-        localVideoTrackRef.current.close();
-        localVideoTrackRef.current = null;
-      }
       try {
         await clientRef.current.leave();
       } catch {
@@ -248,7 +288,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
       clientRef.current = null;
     }
     hasJoined.current = false;
-    onCallEnd(10); // Trigger standard onCallEnd
+    triggerCallEndOnce(elapsed);
   };
 
   return (
@@ -308,7 +348,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
           </div>
         </div>
       ) : (
-        /* Premium Audio Call Layout */
+        /* Audio Call Layout */
         <>
           {/* Hidden containers for track binding so Agora doesn't complain, keeping refs unique */}
           <div style={{ display: 'none' }}>
@@ -317,7 +357,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
           </div>
 
           <div className="absolute inset-0 flex flex-col items-center justify-center p-6 bg-gradient-to-b from-zinc-900 via-zinc-950 to-black overflow-hidden select-none">
-            {/* Subtle blurred full-bleed background for luxury dark-editorial feel */}
+            {/* Subtle blurred full-bleed background */}
             {partnerAvatar && (
               <div
                 className="absolute inset-0 bg-cover bg-center filter blur-3xl opacity-25 scale-110 pointer-events-none transition-all duration-1000"
@@ -356,7 +396,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
                   />
                 </div>
 
-                {/* Tiny Speaking Indicator Badge */}
+                {/* Speaking Indicator Badge */}
                 {isPartnerSpeaking && (
                   <span className="absolute -bottom-1 bg-green-500 text-black text-[9px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-full border border-black shadow-lg">
                     Speaking
@@ -364,12 +404,12 @@ const CallRoom: React.FC<CallRoomProps> = ({
                 )}
               </div>
 
-              {/* Restyled Username below the avatar with Premium Typography */}
+              {/* Username */}
               <h2 className="text-2xl md:text-3xl font-serif italic text-white tracking-wide font-semibold drop-shadow-md text-center truncate max-w-xs px-4 mx-auto" title={partnerName || userName || 'Partner'}>
                 {partnerName || userName || 'Partner'}
               </h2>
 
-              {/* Subtle Call Status Label with pulsing light indicator */}
+              {/* Subtle Call Status Label */}
               <div className="flex items-center gap-2 mt-3 text-xs tracking-widest uppercase font-mono text-zinc-400">
                 <span className={`w-1.5 h-1.5 rounded-full bg-green-500 ${isPartnerSpeaking ? 'animate-ping' : 'animate-pulse'}`} />
                 <span>In Call</span>
@@ -379,36 +419,65 @@ const CallRoom: React.FC<CallRoomProps> = ({
         </>
       )}
 
-      {/* Control Overlay */}
+      {/* Control Overlay with Modern SVG Icons */}
       <div className="absolute bottom-6 inset-x-0 flex justify-center items-center gap-4 z-20 pointer-events-auto">
+        {/* Mic Toggle Button */}
         <button
           onClick={toggleMic}
-          className={`p-4 rounded-full transition-all ${
-            micEnabled ? 'bg-zinc-800 text-white hover:bg-zinc-700' : 'bg-red-950 text-red-500 border border-red-500/30'
+          aria-label={micEnabled ? "Mute Microphone" : "Unmute Microphone"}
+          title={micEnabled ? "Mute Microphone" : "Unmute Microphone"}
+          className={`w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center transition-all shadow-lg active:scale-95 ${
+            micEnabled
+              ? 'bg-zinc-800 text-white hover:bg-zinc-700 border border-zinc-700'
+              : 'bg-red-950 text-red-500 border border-red-500/50 hover:bg-red-900/50'
           }`}
-          title="Toggle Microphone"
         >
-          {micEnabled ? '🎤' : '🎙️'}
+          {micEnabled ? (
+            <svg className="w-5 h-5 md:w-6 md:h-6 fill-current" viewBox="0 0 24 24">
+              <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+              <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+            </svg>
+          ) : (
+            <svg className="w-5 h-5 md:w-6 md:h-6 fill-current" viewBox="0 0 24 24">
+              <path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zM14.98 11.17L9 5.18V5c0-1.66 1.34-3 3-3s3 1.34 3 3v6c0 .06-.01.11-.02.17zM4.27 3L3 4.27l6.01 6.01V11c0 1.66 1.33 3 2.99 3 .22 0 .44-.03.65-.08l1.66 1.66c-.71.33-1.5.52-2.31.52-2.76 0-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c1.33-.19 2.56-.73 3.57-1.53l3.16 3.16L21 18.28 4.27 3z"/>
+            </svg>
+          )}
         </button>
 
+        {/* Camera Toggle Button */}
         {callType === 'video' && (
           <button
             onClick={toggleCamera}
-            className={`p-4 rounded-full transition-all ${
-              cameraEnabled ? 'bg-zinc-800 text-white hover:bg-zinc-700' : 'bg-red-950 text-red-500 border border-red-500/30'
-            }`}
-            title="Toggle Camera"
+            aria-label={cameraEnabled ? "Turn Off Camera" : "Turn On Camera"}
+            title={cameraEnabled ? "Turn Off Camera" : "Turn On Camera"}
+            className={`w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center transition-all shadow-lg active:scale-95 ${
+              cameraEnabled
+                ? 'bg-zinc-800 text-white hover:bg-zinc-700 border border-zinc-700'
+                : 'bg-red-950 text-red-500 border border-red-500/50 hover:bg-red-900/50'
+          }`}
           >
-            {cameraEnabled ? '📹' : '📸'}
+            {cameraEnabled ? (
+              <svg className="w-5 h-5 md:w-6 md:h-6 fill-current" viewBox="0 0 24 24">
+                <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/>
+              </svg>
+            ) : (
+              <svg className="w-5 h-5 md:w-6 md:h-6 fill-current" viewBox="0 0 24 24">
+                <path d="M21 6.5l-4 4V7c0-.55-.45-1-1-1H9.82l2 2H16v4.18l2 2V6.5zM3.27 2L2 3.27 4.73 6H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.21 0 .39-.08.55-.18L19.73 21 21 19.73 3.27 2zM5 16V8h1.73l8 8H5z"/>
+              </svg>
+            )}
           </button>
         )}
 
+        {/* End Call Button */}
         <button
           onClick={handleEndCallLocal}
-          className="p-4 bg-red-600 text-white rounded-full hover:bg-red-700 transition-all shadow-[0_0_15px_rgba(220,38,38,0.5)]"
+          aria-label="End Call"
           title="End Call"
+          className="w-12 h-12 md:w-14 md:h-14 bg-red-600 hover:bg-red-700 text-white rounded-full flex items-center justify-center transition-all shadow-[0_0_20px_rgba(220,38,38,0.6)] active:scale-95 border border-red-500"
         >
-          ❌
+          <svg className="w-6 h-6 md:w-7 md:h-7 fill-current transform rotate-[135deg]" viewBox="0 0 24 24">
+            <path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56a.977.977 0 00-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z"/>
+          </svg>
         </button>
       </div>
     </div>

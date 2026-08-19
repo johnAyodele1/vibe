@@ -83,9 +83,23 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
       }
     };
 
+    const handleSessionEnded = (data: { sessionId?: string }) => {
+      if (!data?.sessionId || data.sessionId === sessionId) {
+        toast.info('Public stream session ended');
+        onEnd();
+      }
+    };
+
+    if (socket) {
+      socket.on('cam:session_ended', handleSessionEnded);
+    }
+
     initHost();
 
     return () => {
+      if (socket) {
+        socket.off('cam:session_ended', handleSessionEnded);
+      }
       resetReadiness();
       if (localAudioTrackRef.current) {
         localAudioTrackRef.current.stop();

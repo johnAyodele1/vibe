@@ -8,6 +8,7 @@ import AdultConversation from '../models/AdultConversation';
 import AdultCall from '../models/AdultCall';
 import AdultGift from '../models/AdultGift';
 import CreditTransaction from '../models/CreditTransaction';
+import CamSession from '../models/CamSession';
 import Report from '../models/Report';
 import AppConfig from '../models/AppConfig';
 import OfficialNotification from '../models/OfficialNotification';
@@ -18,7 +19,7 @@ import { calculateFees, recordPlatformEarning } from '../shared/fees';
 import { getSignedUrl } from '../shared/media/cloudinaryUpload';
 import { sendPushToUser } from '../shared/push';
 import { sendNewMessageEmail } from '../shared/email/providerEmail';
-import { checkActiveCall } from '../services/sessionInvariantService';
+import { checkActiveCall, endCamSessionAtomic } from '../services/sessionInvariantService';
 
 // Backwards compatibility startConversation route
 export const startConversation = async (req: Request, res: Response) => {
@@ -2839,12 +2840,7 @@ export const acceptCall = async (req: Request, res: Response) => {
       return res.status(409).json({ success: false, error: 'Call is no longer available or already active.' });
     }
 
-    // Bill Minute 1 atomically before transitioning to active
-    const billResult = await billCallMinute(call._id.toString(), 1, ns);
-    if (!billResult.success) {
-      return res.status(402).json({ success: false, error: billResult.error || 'Insufficient credits to start call' });
-    }
-
+    // 1. Atomically transition call status from ringing to active first
     const updatedCall = await AdultCall.findOneAndUpdate(
       { _id: call._id, status: 'ringing', isActiveSession: true },
       { $set: { status: 'active', startedAt: new Date() } },
@@ -2853,6 +2849,26 @@ export const acceptCall = async (req: Request, res: Response) => {
 
     if (!updatedCall) {
       return res.status(409).json({ success: false, error: 'Call is no longer available or already active.' });
+    }
+
+    // 2. Attempt Minute 1 billing
+    const billResult = await billCallMinute(updatedCall._id.toString(), 1, ns);
+    if (!billResult.success) {
+      // If billing fails (e.g. caller ran out of credits before accept), revert call state safely without disrupting public stream
+      await AdultCall.updateOne(
+        { _id: updatedCall._id },
+        { $set: { status: 'failed', endReason: 'insufficient_credits', isActiveSession: false, activeParticipants: [] } }
+      );
+      return res.status(402).json({ success: false, error: billResult.error || 'Insufficient credits to start call' });
+    }
+
+    // 3. Upon successful billing, end active public cam stream if provider is currently streaming
+    const activeCamSession = await CamSession.findOne({
+      providerId: { $in: [updatedCall.callerId, updatedCall.receiverId] },
+      status: { $in: ['live', 'pending'] }
+    });
+    if (activeCamSession) {
+      await endCamSessionAtomic(activeCamSession._id, 'accepted_private_call', ns);
     }
 
     if (ns) {
