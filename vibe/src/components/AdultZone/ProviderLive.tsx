@@ -261,8 +261,6 @@ const ProviderLive: React.FC = () => {
     setInputText('');
   };
 
-  const userWithAvatar = user as unknown as { avatarUrl?: string; profilePhoto?: string };
-
   return (
     <div className="min-h-screen bg-[var(--az-bg-primary)] text-white font-sans az-grain py-24 px-4 sm:px-6 lg:px-8">
       <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
