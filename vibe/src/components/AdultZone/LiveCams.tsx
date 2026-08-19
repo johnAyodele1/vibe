@@ -243,8 +243,29 @@ const LiveCams: React.FC = () => {
 
     socketRef.current = socket;
 
-    socket.on('call:accepted', () => {
-      setPrivateCallState('active');
+    socket.on('call:accepted', async () => {
+      if (privateCallData?.roomId) {
+        try {
+          const tokenRes = await fetch(`${API_BASE_URL}/v1/adult/zego/token?roomId=${privateCallData.roomId}&type=call`, {
+            headers: getHeaders()
+          });
+          const tokenData = await tokenRes.json();
+          if (tokenData.token) {
+            setPrivateZegoToken(tokenData.token);
+            setPrivateZegoAppId(tokenData.appId);
+            setPrivateZegoRoomId(privateCallData.roomId);
+            setPrivateCallState('active');
+          } else {
+            toast.error('Failed to get call connection token');
+            handleCancelPrivateCall();
+          }
+        } catch (e) {
+          toast.error('Call token error');
+          handleCancelPrivateCall();
+        }
+      } else {
+        setPrivateCallState('active');
+      }
     });
 
     socket.on('call:declined', () => {
@@ -558,14 +579,14 @@ const LiveCams: React.FC = () => {
                   onClick={handleInitiatePrivateCall}
                   disabled={isInitiatingCall || privateCallState !== 'idle'}
                   data-testid="live-cam-video-call-btn"
-                  className="px-4 py-2 bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 disabled:opacity-50 text-white font-bold text-xs uppercase tracking-wider rounded-full shadow-[0_0_15px_rgba(225,29,72,0.4)] hover:scale-105 active:scale-95 transition-all flex items-center gap-1.5"
+                  className="px-3 py-1.5 bg-pink-600/80 hover:bg-pink-600 border border-pink-500/30 text-white rounded-full text-xs font-medium backdrop-blur-sm transition-all flex items-center gap-1.5 shrink-0 shadow-sm disabled:opacity-50"
                   aria-label="Start 1-to-1 video call"
-                  title={`Start 1-to-1 video call (💎 ${formatAmount((providerProfile as any)?.videoCallPrice || (providerProfile as any)?.pricePerMinute || 5)}/min)`}
+                  title="1-to-1 Video Call"
                 >
-                  <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                  <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
                     <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/>
                   </svg>
-                  <span>{isInitiatingCall ? 'Calling...' : `1-to-1 Call (💎 ${formatAmount((providerProfile as any)?.videoCallPrice || (providerProfile as any)?.pricePerMinute || 5)}/min)`}</span>
+                  <span>{isInitiatingCall ? 'Calling...' : '1-to-1 Call'}</span>
                 </button>
 
                 <button

@@ -2659,7 +2659,7 @@ const PrivateSext: React.FC = () => {
       {/* FULL CALL TAKE-OVER OVERLAY */}
       {callState !== 'idle' && (
         <div
-          style={{ paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))' }}
+          style={{ paddingTop: 'calc(3px + env(safe-area-inset-top, 0px))' }}
           className={`fixed inset-0 bg-black z-[10000] flex flex-col text-center text-white ${
             callState === 'active' ? 'p-0 justify-stretch items-stretch' : 'items-center justify-between p-8'
           }`}
@@ -2747,7 +2747,7 @@ const PrivateSext: React.FC = () => {
                 className="call-credit-ticker"
                 style={{
                   position: 'absolute',
-                  top: 'calc(12px + env(safe-area-inset-top, 0px))',
+                  top: 'calc(3px + env(safe-area-inset-top, 0px))',
                   right: '16px',
                   zIndex: 1001,
                   pointerEvents: 'none',
@@ -2774,7 +2774,7 @@ const PrivateSext: React.FC = () => {
               <div
                 style={{
                   position: 'absolute',
-                  top: 'calc(12px + env(safe-area-inset-top, 0px))',
+                  top: 'calc(3px + env(safe-area-inset-top, 0px))',
                   left: '16px',
                   zIndex: 1001,
                   pointerEvents: 'none',

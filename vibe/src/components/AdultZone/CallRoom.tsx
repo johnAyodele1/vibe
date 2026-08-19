@@ -46,6 +46,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
   const startTimeRef = useRef<number>(0);
   const hasEndedRef = useRef(false);
   const isMountedRef = useRef(true);
+  const effectGenRef = useRef(0);
 
   const [retry, setRetry] = useState(0);
   const [micEnabled, setMicEnabled] = useState(true);
@@ -68,6 +69,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
   };
 
   useEffect(() => {
+    const currentGen = ++effectGenRef.current;
     isMountedRef.current = true;
     hasEndedRef.current = false;
 
@@ -104,11 +106,11 @@ const CallRoom: React.FC<CallRoomProps> = ({
     clientRef.current = client;
 
     const handleUserPublished = async (user: IAgoraRTCRemoteUser, mediaType: 'audio' | 'video' | 'datachannel') => {
-      if (!isMountedRef.current) return;
+      if (currentGen !== effectGenRef.current) return;
       if (mediaType === 'datachannel') return;
       try {
         await client.subscribe(user, mediaType);
-        if (!isMountedRef.current) return;
+        if (currentGen !== effectGenRef.current) return;
         if (mediaType === 'video' && user.videoTrack) {
           if (remoteContainerRef.current) {
             user.videoTrack.play(remoteContainerRef.current);
@@ -116,7 +118,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
           const vTrack = user.videoTrack as unknown as { on?: (evt: string, cb: () => void) => void };
           if (typeof vTrack.on === 'function') {
             vTrack.on('first-frame-decoded', () => {
-              if (isMountedRef.current) remoteMarkReady();
+              if (currentGen === effectGenRef.current) remoteMarkReady();
             });
           }
         }
@@ -160,7 +162,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
     const initCall = async () => {
       try {
         await client.join(String(appId), roomId, token, userId);
-        if (!isMountedRef.current) {
+        if (currentGen !== effectGenRef.current) {
           await client.leave();
           return;
         }
@@ -171,7 +173,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
 
         // Audio track is always initialized and published
         const audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
-        if (!isMountedRef.current) {
+        if (currentGen !== effectGenRef.current) {
           audioTrack.stop();
           audioTrack.close();
           await client.leave();
@@ -183,7 +185,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
         // Video track is only initialized and published for video calls
         if (callType === 'video') {
           const videoTrack = await AgoraRTC.createCameraVideoTrack();
-          if (!isMountedRef.current) {
+          if (currentGen !== effectGenRef.current) {
             audioTrack.stop();
             audioTrack.close();
             videoTrack.stop();
@@ -200,12 +202,12 @@ const CallRoom: React.FC<CallRoomProps> = ({
           const vTrack = videoTrack as unknown as { on?: (evt: string, cb: () => void) => void };
           if (typeof vTrack.on === 'function') {
             vTrack.on('first-frame-decoded', () => {
-              if (isMountedRef.current) localMarkReady();
+              if (currentGen === effectGenRef.current) localMarkReady();
             });
           }
         }
 
-        if (tracksToPublish.length > 0 && isMountedRef.current) {
+        if (tracksToPublish.length > 0 && currentGen === effectGenRef.current) {
           await client.publish(tracksToPublish);
         }
       } catch (err) {
@@ -216,6 +218,7 @@ const CallRoom: React.FC<CallRoomProps> = ({
     initCall();
 
     return () => {
+      effectGenRef.current++;
       isMountedRef.current = false;
       remoteResetReadiness();
       localResetReadiness();

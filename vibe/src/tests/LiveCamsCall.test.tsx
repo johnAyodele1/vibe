@@ -149,7 +149,7 @@ describe('LiveCams 1-to-1 Video Call Flow', () => {
     // Check video call button is rendered inside the viewer room modal
     const callBtn = screen.getByTestId('live-cam-video-call-btn');
     expect(callBtn).toBeInTheDocument();
-    expect(callBtn).toHaveTextContent('1-to-1 Call (💎 8/min)');
+    expect(callBtn).toHaveTextContent('1-to-1 Call');
   });
 
   it('handles 1-to-1 call creation, shows rate while ringing, and prevents double click', async () => {
