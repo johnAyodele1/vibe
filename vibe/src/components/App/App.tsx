@@ -19,6 +19,7 @@ import AdminRewardsPage from "../Admin/AdminRewardsPage";
 import AdminAnalytics from "../Admin/AdminAnalytics";
 import AdminPayoutsPage from "../Admin/AdminPayoutsPage";
 import AdminErrorsPage from "../Admin/AdminErrorsPage";
+import AdminOfficialChannels from "../Admin/AdminOfficialChannels";
 import LoadingScreen from "../LoadingScreen/LoadingScreen";
 import AdultZoneLayout from "../AdultZone/AdultZoneLayout";
 import AdultHome from "../AdultZone/AdultHome";
@@ -127,6 +128,7 @@ function App() {
           <Route path="adult/settings" element={<UserSettings />} />
         </Route>
         <Route path="/dating" element={isAuthenticated ? (isProfileComplete() ? <Navigate to="/discovery" replace /> : <Navigate to="/profile" replace />) : <Onboarding />} />
+        <Route path="/admin/official-channels" element={isAdminAuthenticated ? <AdminOfficialChannels /> : <Navigate to="/admin/login" replace />} />
         <Route path="/admin/errors" element={isAdminAuthenticated ? <AdminErrorsPage /> : <Navigate to="/admin/login" replace />} />
         <Route path="/admin/payouts" element={isAdminAuthenticated ? <AdminPayoutsPage /> : <Navigate to="/admin/login" replace />} />
         <Route path="/admin/analytics" element={isAdminAuthenticated ? <AdminAnalytics /> : <Navigate to="/admin/login" replace />} />
