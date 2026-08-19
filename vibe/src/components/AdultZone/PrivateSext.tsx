@@ -21,6 +21,9 @@ const FALLBACK_AVATAR = "https://images.unsplash.com/photo-1534528741775-53994a6
 
 interface Conversation {
   conversationId: string;
+  type?: string;
+  isOfficial?: boolean;
+  position?: number;
   otherUser: {
     id: string;
     displayName: string;

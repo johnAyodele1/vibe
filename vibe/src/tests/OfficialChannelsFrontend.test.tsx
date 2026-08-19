@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { vi, describe, beforeEach, afterEach, it, expect } from 'vitest';
 import { BrowserRouter } from 'react-router-dom';
 import PrivateSext from '../components/AdultZone/PrivateSext';
