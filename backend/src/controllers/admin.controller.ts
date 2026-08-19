@@ -16,6 +16,7 @@ import { generateAccessToken } from '../middleware/auth';
 import AppConfig from '../models/AppConfig';
 import { getDiamondNairaRate } from '../shared/pricing';
 import { deleteCache } from '../config/redisFallback';
+import { PROVIDER_EARNING_TYPES } from '../shared/earnings';
 import jwt from 'jsonwebtoken';
 
 // @desc    Admin login
@@ -242,7 +243,7 @@ export const getTopProviders = async (req: Request, res: Response) => {
     const topEarnings = await CreditTransaction.aggregate([
       {
         $match: {
-          type: { $in: ['tip_received', 'tip', 'call_earning', 'service_payment_received', 'paid_media_unlock', 'spin_wheel'] },
+          type: { $in: PROVIDER_EARNING_TYPES },
           amount: { $gt: 0 },
           createdAt: { $gte: startOfMonth },
           status: 'completed'

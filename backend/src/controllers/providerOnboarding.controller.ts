@@ -6,6 +6,7 @@ import CamSession from '../models/CamSession';
 import { decrypt } from '../services/encryptionService';
 import { getDiamondNairaRate } from '../shared/pricing';
 import { FOLDERS, uploadToCloudinary } from '../shared/media/cloudinaryUpload';
+import { PROVIDER_EARNING_TYPES, REVERT_TYPES, getDateRangeBounds, calculateProviderBalanceBreakdown } from '../shared/earnings';
 
 const geocodeLocation = async (city: string, state: string, country: string) => {
   try {
@@ -712,42 +713,29 @@ export const getProviderEarnings = async (req: Request, res: Response) => {
 
     const { dateRange = 'This Month' } = req.query;
 
-    // 1. Fetch all transactions for this user
+    // 1. Calculate unified balance breakdown
+    const breakdown = await calculateProviderBalanceBreakdown(user._id);
+
+    // 2. Fetch all transactions for this user
     const transactions = await CreditTransaction.find({ userId: user._id })
       .populate('relatedUserId', 'username displayName')
       .sort({ createdAt: -1 });
 
-    // 2. Filter transactions based on dateRange if specified
-    const now = new Date();
+    // 3. Filter transactions based on dateRange if specified
+    const startDate = getDateRangeBounds(dateRange as string);
     let filteredTransactions = transactions;
-
-    if (dateRange === 'Today') {
-      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      filteredTransactions = transactions.filter(tx => new Date(tx.createdAt) >= startOfToday);
-    } else if (dateRange === 'This Week') {
-      const startOfWeek = new Date();
-      startOfWeek.setDate(startOfWeek.getDate() - 7);
-      filteredTransactions = transactions.filter(tx => new Date(tx.createdAt) >= startOfWeek);
-    } else if (dateRange === 'This Month') {
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-      filteredTransactions = transactions.filter(tx => new Date(tx.createdAt) >= startOfMonth);
+    if (startDate) {
+      filteredTransactions = transactions.filter(tx => new Date(tx.createdAt) >= startDate);
     }
 
-    // 3. Calculate metrics
-    const totalEarned = user.providerProfile?.totalEarnings || 0;
+    const rate = breakdown.rate;
 
-    // paidOutCredits is the sum of completed payout transactions
-    const payoutTxs = transactions.filter(tx => tx.type === 'payout' && tx.status === 'completed');
-    const paidOutCredits = payoutTxs.reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+    // Lifetime metrics for financial summary cards
+    const totalEarned = breakdown.totalAccumulatedCredits;
+    const grossEarned = breakdown.grossEarnedCredits;
+    const platformFee = breakdown.platformFeeCredits;
 
-    // pendingCredits is remaining balance: totalEarned - paidOutCredits
-    const pendingCredits = Math.max(0, totalEarned - paidOutCredits);
-
-    const rate = await getDiamondNairaRate();
-    const paidOutNaira = paidOutCredits * rate;
-    const pendingNaira = pendingCredits * rate;
-
-    // 4. Calculate Earnings Timeline (last 6 days)
+    // 5. Calculate Earnings Timeline (last 6 days) using completed earning transactions
     const timeline: any[] = [];
     for (let i = 5; i >= 0; i--) {
       const d = new Date();
@@ -759,9 +747,9 @@ export const getProviderEarnings = async (req: Request, res: Response) => {
       });
     }
 
-    // Populate timeline with positive earnings transactions
+    // Populate timeline with positive earnings transactions matching PROVIDER_EARNING_TYPES
     transactions.forEach(tx => {
-      if (tx.amount > 0 && tx.status === 'completed') {
+      if (tx.status === 'completed' && PROVIDER_EARNING_TYPES.includes(tx.type)) {
         const txDateStr = new Date(tx.createdAt).toDateString();
         const dayObj = timeline.find(t => t.dateString === txDateStr);
         if (dayObj) {
@@ -770,7 +758,7 @@ export const getProviderEarnings = async (req: Request, res: Response) => {
       }
     });
 
-    // 5. Format transactions list for response
+    // 6. Format transactions list for response
     const formattedTransactions = filteredTransactions.map(tx => {
       const txDate = new Date(tx.createdAt);
       const dateLabel = txDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -779,6 +767,7 @@ export const getProviderEarnings = async (req: Request, res: Response) => {
       let typeLabel = tx.type.charAt(0).toUpperCase() + tx.type.slice(1);
       if (tx.type === 'tip') typeLabel = 'Tip';
       else if (tx.type === 'payout') typeLabel = 'Payout';
+      else if (REVERT_TYPES.includes(tx.type) || ((tx.type as string) === 'call_refund' && tx.amount < 0)) typeLabel = 'Revert';
 
       // Determine From/Method label
       let fromLabel = 'Anonymous';
@@ -792,15 +781,25 @@ export const getProviderEarnings = async (req: Request, res: Response) => {
         fromLabel = relatedUser.displayName || relatedUser.username || 'Anonymous';
       }
 
+      // Determine display status
+      let displayStatus = tx.status === 'completed' ? 'Completed' : tx.status.charAt(0).toUpperCase() + tx.status.slice(1);
+      if (tx.type === 'service_payment_received' && tx.eligibleForPayout === false && !tx.inDispute && tx.status === 'completed') {
+        displayStatus = 'Pending';
+      } else if (tx.inDispute) {
+        displayStatus = 'Disputed';
+      }
+
       return {
         id: tx._id,
         date: dateLabel,
         type: typeLabel,
         from: fromLabel,
         amount: tx.amount,
+        platformFee: tx.platformFee || 0,
         naira: Math.abs(tx.amount) * rate * (tx.amount < 0 ? -1 : 1),
         usd: Math.abs(tx.amount) * 0.0075 * (tx.amount < 0 ? -1 : 1),
-        status: tx.status === 'completed' ? 'Completed' : tx.status.charAt(0).toUpperCase() + tx.status.slice(1)
+        status: displayStatus,
+        eligibleForPayout: tx.eligibleForPayout,
       };
     });
 
@@ -808,8 +807,16 @@ export const getProviderEarnings = async (req: Request, res: Response) => {
       success: true,
       data: {
         totalEarned,
-        paidOut: paidOutNaira,
-        pending: pendingNaira,
+        grossEarned,
+        platformFee,
+        paidOut: breakdown.paidOutNaira,
+        pending: breakdown.unsettledNaira,
+        withdrawable: breakdown.withdrawableNaira,
+        unsettled: breakdown.unsettledNaira,
+        unsettledCredits: breakdown.unsettledCredits,
+        withdrawableCredits: breakdown.withdrawableCredits,
+        earningsToBeClaimedCredits: breakdown.earningsToBeClaimedCredits,
+        earningsToBeClaimedNaira: breakdown.earningsToBeClaimedNaira,
         timeline,
         transactions: formattedTransactions
       }
@@ -935,21 +942,19 @@ export const getProviderDashboard = async (req: Request, res: Response) => {
 
     const profile = user.providerProfile || getDefaultProviderProfile();
 
-    // 1. Calculate Earnings (Today, Week, Month) from Completed CreditTransactions
+    // 1. Calculate Earnings (Today, Week, Month) from Completed CreditTransactions using canonical PROVIDER_EARNING_TYPES
     const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfToday = getDateRangeBounds('Today')!;
+    const startOfWeek = getDateRangeBounds('This Week')!;
+    const startOfMonth = getDateRangeBounds('This Month')!;
 
-    // Start of week (7 days ago)
-    const startOfWeek = new Date(startOfToday);
-    startOfWeek.setDate(startOfWeek.getDate() - 7);
-
-    // Start of month (1st day of current month)
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const minDate = new Date(Math.min(startOfToday.getTime(), startOfWeek.getTime(), startOfMonth.getTime()));
 
     const txs = await CreditTransaction.find({
       userId: user._id,
+      type: { $in: PROVIDER_EARNING_TYPES },
       status: 'completed',
-      amount: { $gt: 0 }
+      createdAt: { $gte: minDate }
     });
 
     let todayEarnings = 0;

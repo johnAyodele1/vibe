@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import AdultUser from '../models/AdultUser';
 import CreditTransaction from '../models/CreditTransaction';
+import CamSession from '../models/CamSession';
 import { socketService } from '../services/socketService';
 import { getDiamondNairaRate } from '../shared/pricing';
 import { calculateFees, recordPlatformEarning } from '../shared/fees';
@@ -332,6 +333,18 @@ export const directTip = async (req: Request, res: Response) => {
 
       const recipientName = updatedRecipient?.providerProfile?.stageName || updatedRecipient?.displayName || updatedRecipient?.username || 'Provider';
 
+      // Check active cam session to associate tips
+      const activeCamSession = await CamSession.findOne({ providerId: recipient._id, status: 'live' }).session(session);
+      let camSessionId = null;
+      if (activeCamSession) {
+        camSessionId = activeCamSession._id;
+        await CamSession.findByIdAndUpdate(
+          activeCamSession._id,
+          { $inc: { totalTipsReceived: providerAmount } },
+          { session }
+        );
+      }
+
       // Create sender transaction
       const senderTx = await CreditTransaction.create([{
         userId: sender._id,
@@ -341,6 +354,7 @@ export const directTip = async (req: Request, res: Response) => {
         description: `Tip to ${recipientName}` + (message ? `: ${message}` : ''),
         relatedUserId: recipient._id,
         status: 'completed',
+        metadata: camSessionId ? { camSessionId } : undefined,
       }], { session });
 
       // Create recipient transaction
@@ -353,6 +367,7 @@ export const directTip = async (req: Request, res: Response) => {
         description: `Tip from member` + (message ? `: ${message}` : ''),
         relatedUserId: sender._id,
         status: 'completed',
+        metadata: camSessionId ? { camSessionId } : undefined,
       }], { session });
 
       // Record Platform Earnings

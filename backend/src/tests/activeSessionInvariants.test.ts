@@ -1,6 +1,6 @@
 import request from 'supertest';
 import mongoose from 'mongoose';
-import { MongoMemoryReplSet } from 'mongodb-memory-server';
+import { MongoMemoryServer } from 'mongodb-memory-server';
 import app from '../app';
 import AdultUser from '../models/AdultUser';
 import AdultCall from '../models/AdultCall';
@@ -9,7 +9,7 @@ import AdultConversation from '../models/AdultConversation';
 import jwt from 'jsonwebtoken';
 
 describe('Single-Active-Session Invariant Integration Tests', () => {
-  let mongoServer: MongoMemoryReplSet;
+  let mongoServer: MongoMemoryServer;
 
   let member1Token: string;
   let member1Id: string;
@@ -29,9 +29,46 @@ describe('Single-Active-Session Invariant Integration Tests', () => {
 
   const ADULT_JWT_SECRET = process.env.ADULT_JWT_SECRET || 'adult_secret';
 
+  const verifyDatabaseInvariants = async () => {
+    // 1. Verify no participant is in more than one active/ringing session
+    const activeCalls = await AdultCall.find({ isActiveSession: true });
+    const participantCounts = new Map<string, number>();
+
+    for (const call of activeCalls) {
+      expect(['ringing', 'active']).toContain(call.status);
+      expect(call.activeParticipants.length).toBeGreaterThan(0);
+      for (const p of call.activeParticipants) {
+        const pId = p.toString();
+        participantCounts.set(pId, (participantCounts.get(pId) || 0) + 1);
+      }
+    }
+
+    for (const [pId, count] of participantCounts.entries()) {
+      expect(count).toBeLessThanOrEqual(1);
+    }
+
+    // 2. Verify no non-active/ended calls have isActiveSession = true or non-empty activeParticipants
+    const inactiveCalls = await AdultCall.find({ isActiveSession: false });
+    for (const call of inactiveCalls) {
+      expect(call.activeParticipants).toHaveLength(0);
+      expect(['ended', 'declined', 'missed', 'failed']).toContain(call.status);
+    }
+
+    // 3. Verify no provider has more than one live or pending stream
+    const liveStreams = await CamSession.find({ status: 'live' });
+    const liveProviderCounts = new Map<string, number>();
+    for (const stream of liveStreams) {
+      const pId = stream.providerId.toString();
+      liveProviderCounts.set(pId, (liveProviderCounts.get(pId) || 0) + 1);
+    }
+    for (const [pId, count] of liveProviderCounts.entries()) {
+      expect(count).toBeLessThanOrEqual(1);
+    }
+  };
+
   beforeAll(async () => {
-    mongoServer = await MongoMemoryReplSet.create({
-      replSet: { count: 1 },
+    mongoServer = await MongoMemoryServer.create({
+      binary: { version: '6.0.14' }
     });
     const mongoUri = mongoServer.getUri();
     await mongoose.connect(mongoUri);
@@ -101,7 +138,7 @@ describe('Single-Active-Session Invariant Integration Tests', () => {
       status: 'active',
       isVerified: true,
       country: 'Nigeria',
-      credits: 0,
+      credits: 500,
       providerProfile: {
         stageName: 'Provider Two',
         videoCallPrice: 10,
@@ -164,6 +201,7 @@ describe('Single-Active-Session Invariant Integration Tests', () => {
       expect(res.status).toBe(200);
       expect(res.body.callId).toBeDefined();
       expect(res.body.status).toBe('ringing');
+      await verifyDatabaseInvariants();
     });
 
     it('B. User already caller in active call → new call rejected', async () => {
@@ -181,7 +219,8 @@ describe('Single-Active-Session Invariant Integration Tests', () => {
         .send({ conversationId: conv2Id, type: 'video' });
 
       expect(call2.status).toBe(409);
-      expect(call2.body.error).toMatch(/already on a call/i);
+      expect(call2.body.error).toBe('You are already on a call on another device.');
+      await verifyDatabaseInvariants();
     });
 
     it('C. User already receiver in active call → new call rejected', async () => {
@@ -199,7 +238,8 @@ describe('Single-Active-Session Invariant Integration Tests', () => {
         .send({ conversationId: conv3Id, type: 'video' });
 
       expect(call2.status).toBe(409);
-      expect(call2.body.error).toMatch(/already on a call/i);
+      expect(call2.body.error).toBe('You are already on a call on another device.');
+      await verifyDatabaseInvariants();
     });
 
     it('D. Same user on another device → rejected', async () => {
@@ -217,6 +257,7 @@ describe('Single-Active-Session Invariant Integration Tests', () => {
 
       expect(res.status).toBe(409);
       expect(res.body.error).toBe("You are already on a call on another device.");
+      await verifyDatabaseInvariants();
     });
 
     it('E. Both concurrent call requests → exactly one succeeds', async () => {
@@ -236,6 +277,7 @@ describe('Single-Active-Session Invariant Integration Tests', () => {
 
       expect(successCount).toBe(1);
       expect(rejectedCount).toBe(1);
+      await verifyDatabaseInvariants();
     });
 
     it('E2. Device A HTTP initiateCall and Device B HTTP initiateCall simultaneously → exactly one succeeds, one gets 409', async () => {
@@ -256,6 +298,7 @@ describe('Single-Active-Session Invariant Integration Tests', () => {
       expect(successes.length).toBe(1);
       expect(rejections.length).toBe(1);
       expect(rejections[0].body.error).toBe("You are already on a call on another device.");
+      await verifyDatabaseInvariants();
     });
 
     it('E3. Backend server restart does NOT end active calls in DB', async () => {
@@ -276,6 +319,7 @@ describe('Single-Active-Session Invariant Integration Tests', () => {
       expect(callAfterRestart).not.toBeNull();
       expect(callAfterRestart?.status).toBe('ringing');
       expect(callAfterRestart?.isActiveSession).toBe(true);
+      await verifyDatabaseInvariants();
     });
 
     it('F. End existing call → user can start another call', async () => {
@@ -306,6 +350,7 @@ describe('Single-Active-Session Invariant Integration Tests', () => {
         .send({ conversationId: conv2Id, type: 'video' });
 
       expect(newCallRes.status).toBe(200);
+      await verifyDatabaseInvariants();
     });
 
     it('G. Failed/cancelled call → user can start another call', async () => {
@@ -329,6 +374,7 @@ describe('Single-Active-Session Invariant Integration Tests', () => {
         .send({ conversationId: conv1Id, type: 'video' });
 
       expect(newCallRes.status).toBe(200);
+      await verifyDatabaseInvariants();
     });
 
     it('H. Stale/ended historical calls do not block new calls', async () => {
@@ -353,6 +399,7 @@ describe('Single-Active-Session Invariant Integration Tests', () => {
         .send({ conversationId: conv1Id, type: 'video' });
 
       expect(newCallRes.status).toBe(200);
+      await verifyDatabaseInvariants();
     });
 
     it('I. Both participants cannot create another call while active', async () => {
@@ -373,6 +420,7 @@ describe('Single-Active-Session Invariant Integration Tests', () => {
         .set('Authorization', `Bearer ${member1Token}`)
         .send({ conversationId: conv2Id, type: 'video' });
       expect(callerTry.status).toBe(409);
+      expect(callerTry.body.error).toBe("You are already on a call on another device.");
 
       // Receiver (Provider 1) tries another call
       const receiverTry = await request(app)
@@ -380,6 +428,7 @@ describe('Single-Active-Session Invariant Integration Tests', () => {
         .set('Authorization', `Bearer ${provider1Token}`)
         .send({ conversationId: conv3Id, type: 'video' });
       expect(receiverTry.status).toBe(409);
+      expect(receiverTry.body.error).toBe("You are already on a call on another device.");
 
       // Third party (Member 2) tries calling Provider 1
       const thirdPartyTry = await request(app)
@@ -387,11 +436,306 @@ describe('Single-Active-Session Invariant Integration Tests', () => {
         .set('Authorization', `Bearer ${member2Token}`)
         .send({ conversationId: conv3Id, type: 'video' });
       expect(thirdPartyTry.status).toBe(409);
-      expect(thirdPartyTry.body.error).toBe("The other user is currently in another call.");
+      expect(thirdPartyTry.body.error).toBe("This provider is busy. Try again later.");
+      await verifyDatabaseInvariants();
     });
   });
 
-  describe('2. Active Livestream Invariant Tests (J - O)', () => {
+  describe('3. Extended Single Session & Concurrency Matrix Tests (1 - 13)', () => {
+    it('1. Same member / same provider / simultaneous calls → exactly 1 reservation succeeds', async () => {
+      const [res1, res2] = await Promise.all([
+        request(app)
+          .post('/api/v1/adult/sext/calls/initiate')
+          .set('Authorization', `Bearer ${member1Token}`)
+          .send({ conversationId: conv1Id, type: 'video' }),
+        request(app)
+          .post('/api/v1/adult/sext/calls/initiate')
+          .set('Authorization', `Bearer ${member1Token}`)
+          .send({ conversationId: conv1Id, type: 'video' }),
+      ]);
+
+      const success = [res1, res2].filter(r => r.status === 200);
+      const rejected = [res1, res2].filter(r => r.status === 409);
+
+      expect(success.length).toBe(1);
+      expect(rejected.length).toBe(1);
+      expect(rejected[0].body.error).toBe("You are already on a call on another device.");
+      await verifyDatabaseInvariants();
+    });
+
+    it('2. Same member / different providers / simultaneous calls → exactly 1 succeeds', async () => {
+      const [res1, res2] = await Promise.all([
+        request(app)
+          .post('/api/v1/adult/sext/calls/initiate')
+          .set('Authorization', `Bearer ${member1Token}`)
+          .send({ conversationId: conv1Id, type: 'video' }),
+        request(app)
+          .post('/api/v1/adult/sext/calls/initiate')
+          .set('Authorization', `Bearer ${member1Token}`)
+          .send({ conversationId: conv2Id, type: 'video' }),
+      ]);
+
+      const success = [res1, res2].filter(r => r.status === 200);
+      const rejected = [res1, res2].filter(r => r.status === 409);
+
+      expect(success.length).toBe(1);
+      expect(rejected.length).toBe(1);
+      expect(rejected[0].body.error).toBe("You are already on a call on another device.");
+      await verifyDatabaseInvariants();
+    });
+
+    it('3. Same member / same device / rapid duplicate call → 1 ringing call, 1 rejected request', async () => {
+      const [res1, res2] = await Promise.all([
+        request(app)
+          .post('/api/v1/adult/sext/calls/initiate')
+          .set('Authorization', `Bearer ${member1Token}`)
+          .send({ conversationId: conv1Id, type: 'video' }),
+        request(app)
+          .post('/api/v1/adult/sext/calls/initiate')
+          .set('Authorization', `Bearer ${member1Token}`)
+          .send({ conversationId: conv1Id, type: 'video' }),
+      ]);
+
+      expect([res1.status, res2.status].sort()).toEqual([200, 409]);
+      const ringingCalls = await AdultCall.find({ callerId: member1Id, status: 'ringing', isActiveSession: true });
+      expect(ringingCalls).toHaveLength(1);
+      await verifyDatabaseInvariants();
+    });
+
+    it('4. Different members / same provider / simultaneous calls → 1 succeeds, 1 rejected with provider busy message', async () => {
+      const [m1Call, m2Call] = await Promise.all([
+        request(app)
+          .post('/api/v1/adult/sext/calls/initiate')
+          .set('Authorization', `Bearer ${member1Token}`)
+          .send({ conversationId: conv1Id, type: 'video' }),
+        request(app)
+          .post('/api/v1/adult/sext/calls/initiate')
+          .set('Authorization', `Bearer ${member2Token}`)
+          .send({ conversationId: conv3Id, type: 'video' }),
+      ]);
+
+      const successes = [m1Call, m2Call].filter(r => r.status === 200);
+      const rejections = [m1Call, m2Call].filter(r => r.status === 409);
+
+      expect(successes.length).toBe(1);
+      expect(rejections.length).toBe(1);
+      expect(rejections[0].body.error).toBe("This provider is busy. Try again later.");
+      await verifyDatabaseInvariants();
+    });
+
+    it('5. Provider busy while first call is ringing → competing request gets 409 provider busy', async () => {
+      // Call 1 created and ringing
+      const call1 = await request(app)
+        .post('/api/v1/adult/sext/calls/initiate')
+        .set('Authorization', `Bearer ${member1Token}`)
+        .send({ conversationId: conv1Id, type: 'video' });
+      expect(call1.status).toBe(200);
+
+      // Call 2 attempted while Call 1 is ringing
+      const call2 = await request(app)
+        .post('/api/v1/adult/sext/calls/initiate')
+        .set('Authorization', `Bearer ${member2Token}`)
+        .send({ conversationId: conv3Id, type: 'video' });
+
+      expect(call2.status).toBe(409);
+      expect(call2.body.error).toBe("This provider is busy. Try again later.");
+      await verifyDatabaseInvariants();
+    });
+
+    it('6. Provider busy while first call is active → competing request gets 409 provider busy', async () => {
+      // Call 1 created & accepted
+      const call1 = await request(app)
+        .post('/api/v1/adult/sext/calls/initiate')
+        .set('Authorization', `Bearer ${member1Token}`)
+        .send({ conversationId: conv1Id, type: 'video' });
+      await request(app)
+        .put(`/api/v1/adult/sext/calls/${call1.body.callId}/accept`)
+        .set('Authorization', `Bearer ${provider1Token}`)
+        .send();
+
+      // Call 2 attempted while Call 1 is active
+      const call2 = await request(app)
+        .post('/api/v1/adult/sext/calls/initiate')
+        .set('Authorization', `Bearer ${member2Token}`)
+        .send({ conversationId: conv3Id, type: 'video' });
+
+      expect(call2.status).toBe(409);
+      expect(call2.body.error).toBe("This provider is busy. Try again later.");
+      await verifyDatabaseInvariants();
+    });
+
+    it('7. Simultaneous provider acceptance → exactly one becomes active', async () => {
+      // Create Call 1
+      const call1 = await request(app)
+        .post('/api/v1/adult/sext/calls/initiate')
+        .set('Authorization', `Bearer ${member1Token}`)
+        .send({ conversationId: conv1Id, type: 'video' });
+      const call1Id = call1.body.callId;
+
+      // Two simultaneous accepts on Call 1
+      const [accept1, accept2] = await Promise.all([
+        request(app)
+          .put(`/api/v1/adult/sext/calls/${call1Id}/accept`)
+          .set('Authorization', `Bearer ${provider1Token}`)
+          .send(),
+        request(app)
+          .put(`/api/v1/adult/sext/calls/${call1Id}/accept`)
+          .set('Authorization', `Bearer ${provider1Token}`)
+          .send(),
+      ]);
+
+      const activeCall = await AdultCall.findById(call1Id);
+      expect(activeCall?.status).toBe('active');
+
+      const statuses = [accept1.status, accept2.status].sort();
+      expect(statuses[0]).toBe(200); // 1 succeeded
+      expect([200, 409]).toContain(statuses[1]); // 2nd got 200 (idempotent minute 1) or 409
+      await verifyDatabaseInvariants();
+    });
+
+    it('8. Provider starts two streams simultaneously → exactly 1 live stream, 1 gets 409', async () => {
+      const [s1, s2] = await Promise.all([
+        request(app)
+          .post('/api/adult/cams/stream/start')
+          .set('Authorization', `Bearer ${provider1Token}`)
+          .send({ title: 'Stream 1' }),
+        request(app)
+          .post('/api/adult/cams/stream/start')
+          .set('Authorization', `Bearer ${provider1Token}`)
+          .send({ title: 'Stream 2' }),
+      ]);
+
+      const successes = [s1, s2].filter(r => r.status === 201);
+      const rejections = [s1, s2].filter(r => r.status === 409);
+
+      expect(successes.length).toBe(1);
+      expect(rejections.length).toBe(1);
+      expect(rejections[0].body.error).toBe("You are already streaming on another device.");
+      await verifyDatabaseInvariants();
+    });
+
+    it('9. Decline releases provider reservation', async () => {
+      const call = await request(app)
+        .post('/api/v1/adult/sext/calls/initiate')
+        .set('Authorization', `Bearer ${member1Token}`)
+        .send({ conversationId: conv1Id, type: 'video' });
+
+      await request(app)
+        .put(`/api/v1/adult/sext/calls/${call.body.callId}/decline`)
+        .set('Authorization', `Bearer ${provider1Token}`)
+        .send();
+
+      const callInDb = await AdultCall.findById(call.body.callId);
+      expect(callInDb?.isActiveSession).toBe(false);
+      expect(callInDb?.activeParticipants).toHaveLength(0);
+
+      // New call now succeeds
+      const newCall = await request(app)
+        .post('/api/v1/adult/sext/calls/initiate')
+        .set('Authorization', `Bearer ${member2Token}`)
+        .send({ conversationId: conv3Id, type: 'video' });
+      expect(newCall.status).toBe(200);
+      await verifyDatabaseInvariants();
+    });
+
+    it('10. Timeout releases provider reservation', async () => {
+      const call = await request(app)
+        .post('/api/v1/adult/sext/calls/initiate')
+        .set('Authorization', `Bearer ${member1Token}`)
+        .send({ conversationId: conv1Id, type: 'video' });
+
+      await AdultCall.findByIdAndUpdate(call.body.callId, {
+        status: 'missed',
+        endReason: 'timeout',
+        isActiveSession: false,
+        activeParticipants: [],
+      });
+
+      const newCall = await request(app)
+        .post('/api/v1/adult/sext/calls/initiate')
+        .set('Authorization', `Bearer ${member2Token}`)
+        .send({ conversationId: conv3Id, type: 'video' });
+
+      expect(newCall.status).toBe(200);
+      await verifyDatabaseInvariants();
+    });
+
+    it('11. Missed call releases provider reservation', async () => {
+      const call = await request(app)
+        .post('/api/v1/adult/sext/calls/initiate')
+        .set('Authorization', `Bearer ${member1Token}`)
+        .send({ conversationId: conv1Id, type: 'video' });
+
+      const missedRes = await request(app)
+        .put(`/api/v1/adult/sext/calls/${call.body.callId}/missed`)
+        .set('Authorization', `Bearer ${member1Token}`)
+        .send();
+      expect(missedRes.status).toBe(200);
+
+      const newCall = await request(app)
+        .post('/api/v1/adult/sext/calls/initiate')
+        .set('Authorization', `Bearer ${member2Token}`)
+        .send({ conversationId: conv3Id, type: 'video' });
+
+      expect(newCall.status).toBe(200);
+      await verifyDatabaseInvariants();
+    });
+
+    it('12. Failed call releases provider reservation', async () => {
+      const call = await AdultCall.create({
+        conversationId: conv1Id,
+        callerId: member1Id,
+        receiverId: provider1Id,
+        activeParticipants: [],
+        isActiveSession: false,
+        type: 'video',
+        status: 'failed',
+        endReason: 'connection_error',
+        perMinuteRate: 10,
+        webrtcRoomId: 'room_failed',
+      });
+
+      const newCall = await request(app)
+        .post('/api/v1/adult/sext/calls/initiate')
+        .set('Authorization', `Bearer ${member1Token}`)
+        .send({ conversationId: conv1Id, type: 'video' });
+
+      expect(newCall.status).toBe(200);
+      await verifyDatabaseInvariants();
+    });
+
+    it('13. Ended call releases both participants', async () => {
+      const call = await request(app)
+        .post('/api/v1/adult/sext/calls/initiate')
+        .set('Authorization', `Bearer ${member1Token}`)
+        .send({ conversationId: conv1Id, type: 'video' });
+
+      await request(app)
+        .put(`/api/v1/adult/sext/calls/${call.body.callId}/accept`)
+        .set('Authorization', `Bearer ${provider1Token}`)
+        .send();
+
+      await request(app)
+        .put(`/api/v1/adult/sext/calls/${call.body.callId}/end`)
+        .set('Authorization', `Bearer ${member1Token}`)
+        .send({ reason: 'hung_up' });
+
+      const endedCallInDb = await AdultCall.findById(call.body.callId);
+      expect(endedCallInDb?.isActiveSession).toBe(false);
+      expect(endedCallInDb?.activeParticipants).toHaveLength(0);
+
+      // Caller can call someone else
+      const callerNewCall = await request(app)
+        .post('/api/v1/adult/sext/calls/initiate')
+        .set('Authorization', `Bearer ${member1Token}`)
+        .send({ conversationId: conv2Id, type: 'video' });
+      expect(callerNewCall.status).toBe(200);
+
+      await verifyDatabaseInvariants();
+    });
+  });
+
+  describe('4. Active Livestream Invariant Tests (J - O)', () => {
     it('J. No active stream → livestream succeeds', async () => {
       const res = await request(app)
         .post('/api/adult/cams/stream/start')
@@ -400,6 +744,7 @@ describe('Single-Active-Session Invariant Integration Tests', () => {
 
       expect(res.status).toBe(201);
       expect(res.body.data.sessionId).toBeDefined();
+      await verifyDatabaseInvariants();
     });
 
     it('K. Existing live stream → second device rejected', async () => {
@@ -417,6 +762,7 @@ describe('Single-Active-Session Invariant Integration Tests', () => {
 
       expect(res.status).toBe(409);
       expect(res.body.error).toBe("You are already streaming on another device.");
+      await verifyDatabaseInvariants();
     });
 
     it('L. Concurrent start-stream requests → exactly one succeeds', async () => {
@@ -436,6 +782,7 @@ describe('Single-Active-Session Invariant Integration Tests', () => {
 
       expect(successCount).toBe(1);
       expect(rejectedCount).toBe(1);
+      await verifyDatabaseInvariants();
     });
 
     it('M. End existing stream → streamer can go live again', async () => {
@@ -459,6 +806,7 @@ describe('Single-Active-Session Invariant Integration Tests', () => {
         .send({ title: 'Second Stream' });
 
       expect(newStreamRes.status).toBe(201);
+      await verifyDatabaseInvariants();
     });
 
     it('N. Failed/cancelled stream → streamer can retry', async () => {
@@ -481,6 +829,7 @@ describe('Single-Active-Session Invariant Integration Tests', () => {
         .send({ title: 'Retry Stream' });
 
       expect(res.status).toBe(201);
+      await verifyDatabaseInvariants();
     });
 
     it('O. Historical ended streams do not block new streams', async () => {
@@ -512,6 +861,7 @@ describe('Single-Active-Session Invariant Integration Tests', () => {
         .send({ title: 'New Active Stream' });
 
       expect(res.status).toBe(201);
+      await verifyDatabaseInvariants();
     });
   });
 });

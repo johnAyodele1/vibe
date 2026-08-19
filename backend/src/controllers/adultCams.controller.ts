@@ -2,11 +2,11 @@ import { Request, Response } from 'express';
 import CamSession from '../models/CamSession';
 import CamViewer from '../models/CamViewer';
 import { generateAgoraToken } from '../services/agora.service';
-import { checkActiveCamSession } from '../services/sessionInvariantService';
+import { checkActiveCamSession, endCamSessionAtomic } from '../services/sessionInvariantService';
 
 export const getCams = async (req: Request, res: Response) => {
-  const { page = 1, limit = 20, status = 'live' } = req.query;
-  const query: any = { status };
+  const { page = 1, limit = 20, status } = req.query;
+  const query: any = { status: status ? status : { $in: ['live', 'pending'] } };
 
   const sessions = await CamSession.find(query)
     .populate({
@@ -23,7 +23,40 @@ export const getCams = async (req: Request, res: Response) => {
   const total = filtered.length;
   const paginated = filtered.slice((Number(page) - 1) * Number(limit), Number(page) * Number(limit));
 
-  res.json({ success: true, data: { sessions: paginated, total, page: Number(page), pages: Math.ceil(total / Number(limit)) } });
+  const ns = req.app.get('adultNamespace');
+
+  const mappedSessions = paginated.map((session: any) => {
+    let currentViewerCount = session.totalViewerCount || 0;
+    if (ns && session.status === 'live') {
+      const room = ns.adapter?.rooms?.get(`cam:${session._id.toString()}`);
+      if (room) {
+        const uniqueViewers = new Set<string>();
+        const providerIdStr = session.providerId?._id ? session.providerId._id.toString() : '';
+        const socketsMap = ns.sockets?.sockets || ns.sockets;
+
+        for (const socketId of room) {
+          const socket = socketsMap?.get ? (socketsMap.get(socketId) || socketsMap.get(`/adult#${socketId}`) || socketsMap.get(socketId.replace(/^\/adult#/, ''))) : null;
+          if (socket && socket.data && socket.data.user) {
+            const uId = socket.data.user._id.toString();
+            if (uId !== providerIdStr) {
+              uniqueViewers.add(uId);
+            }
+          }
+        }
+        currentViewerCount = uniqueViewers.size;
+      } else {
+        currentViewerCount = 0;
+      }
+    }
+    const sessionObj = session.toObject ? session.toObject() : { ...session };
+    return {
+      ...sessionObj,
+      totalViewerCount: currentViewerCount,
+      peakViewerCount: session.peakViewerCount || 0
+    };
+  });
+
+  res.json({ success: true, data: { sessions: mappedSessions, total, page: Number(page), pages: Math.ceil(total / Number(limit)) } });
 };
 
 export const startStream = async (req: Request, res: Response) => {
@@ -65,7 +98,7 @@ export const startStream = async (req: Request, res: Response) => {
     recordingEnabled: recordingEnabled !== undefined ? recordingEnabled : false,
     streamKey: roomId, // roomId is stored in streamKey
     streamPlaybackUrl: roomId,
-    status: 'live',
+    status: 'pending',
     startedAt: new Date(),
   });
 
@@ -81,21 +114,6 @@ export const startStream = async (req: Request, res: Response) => {
     throw err;
   }
 
-  const ns = req.app.get('adultNamespace');
-  if (ns) {
-    ns.emit('cam:session_started', {
-      sessionId: session._id,
-      providerId: provider._id,
-      roomId,
-      streamKey: roomId,
-      providerName: provider.providerProfile?.stageName || provider.displayName || provider.username,
-      avatarUrl: provider.profilePhoto || '/placeholder.svg',
-      viewerCount: 0,
-      title: session.title,
-      tags: tags || []
-    });
-  }
-
   res.status(201).json({
     success: true,
     data: {
@@ -109,24 +127,20 @@ export const startStream = async (req: Request, res: Response) => {
 };
 
 export const endStream = async (req: Request, res: Response) => {
-  const { sessionId } = req.params;
+  const sessionId = Array.isArray(req.params.sessionId) ? req.params.sessionId[0] : req.params.sessionId;
   const session = await CamSession.findById(sessionId);
 
   if (!session || session.providerId.toString() !== req.adultUser?._id.toString()) {
     return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Access denied' } });
   }
 
-  session.status = 'ended';
-  session.endedAt = new Date();
-  session.durationSeconds = Math.floor((session.endedAt.getTime() - (session.startedAt?.getTime() || 0)) / 1000);
-  await session.save();
-
   const ns = req.app.get('adultNamespace');
-  if (ns) {
-    ns.emit('cam:session_ended', { sessionId: session._id });
-  }
+  const endedSession = await endCamSessionAtomic(sessionId, 'provider_ended', ns);
 
-  res.json({ success: true, data: { summary: { duration: session.durationSeconds, totalTips: session.totalTipsReceived } } });
+  const durationSeconds = endedSession ? endedSession.durationSeconds : 0;
+  const totalTips = endedSession ? endedSession.totalTipsReceived : session.totalTipsReceived;
+
+  res.json({ success: true, data: { summary: { duration: durationSeconds, totalTips } } });
 };
 
 export const joinStream = async (req: Request, res: Response) => {
@@ -175,39 +189,7 @@ export const getMyActiveSession = async (req: Request, res: Response) => {
       return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Only providers can access this endpoint' } });
     }
 
-    const activeSession = await CamSession.findOne({
-      providerId: provider._id,
-      status: 'live',
-    });
-
-    if (!activeSession) {
-      return res.json({ success: true, data: { activeSession: null } });
-    }
-
-    // Check if the socket is actually connected
-    const { getActiveConnectionCount } = require('../socket/adultSocket');
-    const activeConnections = await getActiveConnectionCount(provider._id.toString());
-
-    if (activeConnections === 0) {
-      // Stale session found: auto-end it
-      activeSession.status = 'ended';
-      activeSession.endedAt = new Date();
-      await activeSession.save();
-
-      const ns = req.app.get('adultNamespace');
-      if (ns) {
-        ns.to(`cam:${activeSession._id}`).emit('cam:session_ended', {
-          sessionId: activeSession._id.toString(),
-          reason: 'provider_disconnected',
-        });
-        ns.emit('cam:session_ended', {
-          sessionId: activeSession._id.toString(),
-        });
-      }
-
-      console.log(`Auto-ended stale cam session ${activeSession._id} during active session validation`);
-      return res.json({ success: true, data: { activeSession: null } });
-    }
+    const activeSession = await checkActiveCamSession(provider._id);
 
     return res.json({ success: true, data: { activeSession } });
   } catch (err: any) {
