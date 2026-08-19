@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import PrivateSext from '../components/AdultZone/PrivateSext';
+import { AdultCallProvider } from '../components/AdultZone/AdultCallContext';
 import { server } from './mocks';
 import { http, HttpResponse } from 'msw';
 
@@ -82,7 +83,9 @@ describe('PrivateSext Frontend Component', () => {
   it('renders standard empty state correctly', async () => {
     render(
       <MemoryRouter>
-        <PrivateSext />
+        <AdultCallProvider>
+          <PrivateSext />
+        </AdultCallProvider>
       </MemoryRouter>
     );
     await waitFor(() => {
@@ -105,7 +108,9 @@ describe('PrivateSext Frontend Component', () => {
 
     render(
       <MemoryRouter>
-        <PrivateSext />
+        <AdultCallProvider>
+          <PrivateSext />
+        </AdultCallProvider>
       </MemoryRouter>
     );
 

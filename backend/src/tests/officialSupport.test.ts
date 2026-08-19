@@ -215,25 +215,100 @@ describe('Comprehensive Official Notifications & Customer Support Integration Te
   describe('8-9. Automated Welcome Message Idempotency', () => {
     it('triggers automated welcome message exactly once on first contact and never again', async () => {
       const res1 = await request(app)
-        .post('/api/v1/adult/support/messages')
+        .post(`/api/v1/adult/sext/messages/support_${memberId}`)
         .set('Authorization', `Bearer ${memberToken}`)
         .send({ content: 'Hello support' });
 
       expect(res1.status).toBe(201);
-      expect(res1.body.autoReply).not.toBeNull();
+      expect(res1.body.id).toBeDefined();
+
+      const msgsRes1 = await request(app)
+        .get(`/api/v1/adult/sext/conversations/support_${memberId}/messages`)
+        .set('Authorization', `Bearer ${memberToken}`);
+
+      expect(msgsRes1.status).toBe(200);
+      expect(msgsRes1.body.length).toBe(2); // user message + system welcome message
 
       const res2 = await request(app)
-        .post('/api/v1/adult/support/messages')
+        .post(`/api/v1/adult/sext/messages/support_${memberId}`)
         .set('Authorization', `Bearer ${memberToken}`)
         .send({ content: 'Follow up 1' });
 
-      const res3 = await request(app)
-        .post('/api/v1/adult/support/messages')
-        .set('Authorization', `Bearer ${memberToken}`)
-        .send({ content: 'Follow up 2' });
+      expect(res2.status).toBe(201);
 
-      expect(res2.body.autoReply).toBeNull();
-      expect(res3.body.autoReply).toBeNull();
+      const msgsRes2 = await request(app)
+        .get(`/api/v1/adult/sext/conversations/support_${memberId}/messages`)
+        .set('Authorization', `Bearer ${memberToken}`);
+
+      expect(msgsRes2.status).toBe(200);
+      expect(msgsRes2.body.length).toBe(3); // no additional welcome message added
+    });
+  });
+
+  describe('12. Official Notifications Feed Detail Retrieval & Messaging Rejection', () => {
+    it('returns official notification history and rejects sending messages to official_notifications', async () => {
+      await request(app)
+        .post('/api/admin/official-notifications')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ title: 'Notif 1', content: 'Message 1', targetAudience: 'both' });
+
+      await request(app)
+        .post('/api/admin/official-notifications')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ title: 'Notif 2', content: 'Message 2', targetAudience: 'both' });
+
+      const feedRes = await request(app)
+        .get('/api/v1/adult/sext/conversations/official_notifications/messages')
+        .set('Authorization', `Bearer ${memberToken}`);
+
+      expect(feedRes.status).toBe(200);
+      expect(feedRes.body.length).toBe(2);
+      expect(feedRes.body[0].title).toBe('Notif 2');
+
+      const sendRes = await request(app)
+        .post('/api/v1/adult/sext/messages/official_notifications')
+        .set('Authorization', `Bearer ${memberToken}`)
+        .send({ content: 'Hello' });
+
+      expect(sendRes.status).toBe(400);
+      expect(sendRes.body.error).toContain('Cannot send messages to Official Notifications');
+    });
+  });
+
+  describe('13. Support Queue & Admin Reply Flow', () => {
+    it('populates admin support queue and delivers admin reply back to user', async () => {
+      // User sends first support message
+      await request(app)
+        .post(`/api/v1/adult/sext/messages/support_${memberId}`)
+        .set('Authorization', `Bearer ${memberToken}`)
+        .send({ content: 'I need help with my account' });
+
+      // Admin views support queue
+      const queueRes = await request(app)
+        .get('/api/admin/support/conversations')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(queueRes.status).toBe(200);
+      expect(queueRes.body.conversations.length).toBe(1);
+      expect(queueRes.body.conversations[0].user.displayName).toBe('Member One');
+      expect(queueRes.body.conversations[0].lastMessage.content).toBe('I need help with my account');
+
+      // Admin replies to user support conversation
+      const replyRes = await request(app)
+        .post(`/api/admin/support/conversations/support_${memberId}/messages`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ content: 'Support response: We are looking into it' });
+
+      expect(replyRes.status).toBe(201);
+
+      // User fetches messages in support conversation
+      const userMsgsRes = await request(app)
+        .get(`/api/v1/adult/sext/conversations/support_${memberId}/messages`)
+        .set('Authorization', `Bearer ${memberToken}`);
+
+      expect(userMsgsRes.status).toBe(200);
+      const contents = userMsgsRes.body.map((m: any) => m.content);
+      expect(contents).toContain('Support response: We are looking into it');
     });
   });
 

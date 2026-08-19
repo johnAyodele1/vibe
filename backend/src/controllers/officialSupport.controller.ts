@@ -479,8 +479,9 @@ export const adminReplySupportMessage = async (req: Request, res: Response) => {
     }
 
     const recipientId = conversation.participants[0];
-    const adminSenderId = (req as any).user?._id
-      ? new mongoose.Types.ObjectId((req as any).user._id)
+    const rawAdminId = (req as any).user?._id;
+    const adminSenderId = (rawAdminId && mongoose.Types.ObjectId.isValid(rawAdminId))
+      ? new mongoose.Types.ObjectId(rawAdminId)
       : new mongoose.Types.ObjectId('000000000000000000000000');
 
     const replyMsg = new AdultMessage({
