@@ -7,8 +7,10 @@ import { CamLiveChat } from './CamLiveChat';
 import { WheelPreview, type WheelItem } from './WheelEditor';
 import { toast } from 'sonner';
 import { io, Socket } from 'socket.io-client';
+import { formatAmount } from '../../lib/pricing';
 
 const CamViewerRoom = React.lazy(() => import('./CamViewerRoom'));
+const CallRoom = React.lazy(() => import('./CallRoom'));
 
 interface ProviderUser {
   _id?: string;
@@ -69,6 +71,16 @@ const LiveCams: React.FC = () => {
   const [chatOpen, setChatOpen] = useState(false);
   const [wheelOpen, setWheelOpen] = useState(false);
 
+  // 1-to-1 Call States
+  const isInitiatingRef = useRef(false);
+  const [isInitiatingCall, setIsInitiatingCall] = useState(false);
+  const [privateCallState, setPrivateCallState] = useState<'idle' | 'calling' | 'active'>('idle');
+  const [privateCallData, setPrivateCallData] = useState<any>(null);
+  const [privateCallRate, setPrivateCallRate] = useState<number>(5);
+  const [privateZegoToken, setPrivateZegoToken] = useState<string | null>(null);
+  const [privateZegoAppId, setPrivateZegoAppId] = useState<number | null>(null);
+  const [privateZegoRoomId, setPrivateZegoRoomId] = useState<string | null>(null);
+
   const openTipSheet = (prov: { userId: string; stageName: string; avatarUrl: string; isOnline: boolean }, amt?: number | null) =>
     useTipSheetStore.getState().openSheet(prov, amt);
   const socketRef = useRef<Socket | null>(null);
@@ -95,6 +107,102 @@ const LiveCams: React.FC = () => {
     setLandedIndex(null);
     setLastSpinResult(null);
   }, [activeSession]);
+
+  const handleInitiatePrivateCall = async () => {
+    if (isInitiatingRef.current || isInitiatingCall || privateCallState !== 'idle') return;
+    const targetProviderId = providerProfile?.id || (typeof activeSession?.providerId === 'object' ? activeSession.providerId._id : activeSession?.providerId);
+    if (!targetProviderId) {
+      toast.error('Provider not found');
+      return;
+    }
+
+    isInitiatingRef.current = true;
+    setIsInitiatingCall(true);
+
+    try {
+      // 1. Get or start conversation
+      const convRes = await fetch(`${API_BASE_URL}/v1/adult/sext/conversations/start`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ recipientId: targetProviderId })
+      });
+      const convData = await convRes.json();
+      if (!convData.success || !convData.conversationId) {
+        toast.error(convData.error || 'Failed to start conversation with provider');
+        setIsInitiatingCall(false);
+        return;
+      }
+
+      // 2. Initiate video call
+      const callRes = await fetch(`${API_BASE_URL}/v1/adult/sext/calls/initiate`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          conversationId: convData.conversationId,
+          type: 'video'
+        })
+      });
+      const callDataRes = await callRes.json();
+
+      if (callDataRes.callId) {
+        setPrivateCallData(callDataRes);
+        setPrivateCallRate(callDataRes.perMinuteRate || 5);
+        setPrivateCallState('calling');
+
+        // Fetch Zego/WebRTC token right away
+        const tokenRes = await fetch(`${API_BASE_URL}/v1/adult/zego/token?roomId=${callDataRes.roomId}&type=call`, {
+          headers: getHeaders()
+        });
+        const tokenData = await tokenRes.json();
+        if (tokenData.token) {
+          setPrivateZegoToken(tokenData.token);
+          setPrivateZegoAppId(tokenData.appId);
+          setPrivateZegoRoomId(callDataRes.roomId);
+        }
+      } else {
+        const errorMsg = typeof callDataRes.error === 'string' ? callDataRes.error : (callDataRes.error?.message || 'This provider is busy or unavailable. Try again later.');
+        toast.error(errorMsg);
+      }
+    } catch (err) {
+      toast.error('Failed to initiate 1-to-1 video call');
+    } finally {
+      isInitiatingRef.current = false;
+      setIsInitiatingCall(false);
+    }
+  };
+
+  const handleCancelPrivateCall = async () => {
+    if (privateCallData?.callId) {
+      try {
+        await fetch(`${API_BASE_URL}/v1/adult/sext/calls/${privateCallData.callId}/end`, {
+          method: 'PUT',
+          headers: getHeaders(),
+          body: JSON.stringify({ reason: 'cancelled_by_caller' })
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    setPrivateCallState('idle');
+    setPrivateCallData(null);
+  };
+
+  const handleEndPrivateCall = async () => {
+    if (privateCallData?.callId) {
+      try {
+        await fetch(`${API_BASE_URL}/v1/adult/sext/calls/${privateCallData.callId}/end`, {
+          method: 'PUT',
+          headers: getHeaders(),
+          body: JSON.stringify({ reason: 'hung_up' })
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    setPrivateCallState('idle');
+    setPrivateCallData(null);
+    setPrivateZegoToken(null);
+  };
 
   const fetchSessions = useCallback(async () => {
     try {
@@ -134,6 +242,28 @@ const LiveCams: React.FC = () => {
     });
 
     socketRef.current = socket;
+
+    socket.on('call:accepted', () => {
+      setPrivateCallState('active');
+    });
+
+    socket.on('call:declined', () => {
+      setPrivateCallState('idle');
+      setPrivateCallData(null);
+      toast.error('Provider declined the private call request');
+    });
+
+    socket.on('call:ended', () => {
+      setPrivateCallState('idle');
+      setPrivateCallData(null);
+      setPrivateZegoToken(null);
+    });
+
+    socket.on('call:missed', () => {
+      setPrivateCallState('idle');
+      setPrivateCallData(null);
+      toast.info('No answer from provider');
+    });
 
     socket.on('cam:session_started', (newSession: { sessionId: string; title?: string; viewerCount?: number; streamKey?: string; providerId?: string; providerName?: string; avatarUrl?: string }) => {
       // Map to shape expected in card list
@@ -422,13 +552,77 @@ const LiveCams: React.FC = () => {
                   👁️ {viewerCount} spectators
                 </span>
               </div>
-              <button
-                onClick={handleCloseWatch}
-                className="w-10 h-10 bg-black/60 hover:bg-red-600 rounded-full flex items-center justify-center font-bold text-lg border border-[var(--az-border)] transition-colors shrink-0"
-              >
-                ✕
-              </button>
+
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleInitiatePrivateCall}
+                  disabled={isInitiatingCall || privateCallState !== 'idle'}
+                  data-testid="live-cam-video-call-btn"
+                  className="px-4 py-2 bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 disabled:opacity-50 text-white font-bold text-xs uppercase tracking-wider rounded-full shadow-[0_0_15px_rgba(225,29,72,0.4)] hover:scale-105 active:scale-95 transition-all flex items-center gap-1.5"
+                  aria-label="Start 1-to-1 video call"
+                  title={`Start 1-to-1 video call (💎 ${formatAmount((providerProfile as any)?.videoCallPrice || (providerProfile as any)?.pricePerMinute || 5)}/min)`}
+                >
+                  <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                    <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/>
+                  </svg>
+                  <span>{isInitiatingCall ? 'Calling...' : `1-to-1 Call (💎 ${formatAmount((providerProfile as any)?.videoCallPrice || (providerProfile as any)?.pricePerMinute || 5)}/min)`}</span>
+                </button>
+
+                <button
+                  onClick={handleCloseWatch}
+                  className="w-10 h-10 bg-black/60 hover:bg-red-600 rounded-full flex items-center justify-center font-bold text-lg border border-[var(--az-border)] transition-colors shrink-0"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
+
+            {/* Outgoing Private Call Ringing Overlay */}
+            {privateCallState === 'calling' && (
+              <div className="absolute inset-0 bg-black/80 backdrop-blur-md z-30 flex flex-col items-center justify-center p-6 text-white text-center">
+                <div className="w-28 h-28 rounded-full border-4 border-pink-500 animate-pulse mb-4 overflow-hidden">
+                  <img
+                    src={providerProfile?.avatarUrl || activeSession?.providerId?.profilePhoto || activeSession?.avatarUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=150&auto=format&fit=crop"}
+                    alt="Provider"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <h3 className="text-2xl font-serif italic text-white mb-1">
+                  {providerProfile?.stageName || activeSession?.providerId?.username || 'Performer'}
+                </h3>
+                <p className="text-xs text-pink-400 uppercase tracking-widest font-mono animate-pulse">Requesting 1-to-1 Video Call...</p>
+                <p className="text-xs text-yellow-400 mt-2 font-mono">Rate: 💎 {formatAmount(privateCallRate)} credits / min</p>
+
+                <button
+                  onClick={handleCancelPrivateCall}
+                  className="mt-8 px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-full transition-all"
+                >
+                  Cancel Call ✕
+                </button>
+              </div>
+            )}
+
+            {/* Active Private 1-to-1 Call Overlay */}
+            {privateCallState === 'active' && privateZegoToken && privateZegoAppId && privateZegoRoomId && (
+              <div className="absolute inset-0 z-40 bg-black">
+                <React.Suspense fallback={<div className="flex items-center justify-center h-full text-pink-500">Loading call...</div>}>
+                  <CallRoom
+                    key={privateZegoRoomId}
+                    appId={privateZegoAppId}
+                    token={privateZegoToken}
+                    roomId={privateZegoRoomId}
+                    userId={user?.id || ''}
+                    userName={user?.firstName || 'User'}
+                    callType="video"
+                    onCallEnd={handleEndPrivateCall}
+                    partnerName={providerProfile?.stageName || activeSession?.providerId?.username}
+                    partnerAvatar={providerProfile?.avatarUrl || activeSession?.providerId?.profilePhoto || activeSession?.avatarUrl}
+                    providerAvatar={providerProfile?.avatarUrl || activeSession?.providerId?.profilePhoto || activeSession?.avatarUrl}
+                    providerName={providerProfile?.stageName || activeSession?.providerId?.username}
+                  />
+                </React.Suspense>
+              </div>
+            )}
 
             {/* Support Performer and direct tip quick trigger (Bottom overlay footer on the video player) */}
             <div className="absolute bottom-4 left-4 right-4 z-10 flex justify-between items-center bg-black/40 backdrop-blur-md p-4 rounded-2xl border border-white/5">

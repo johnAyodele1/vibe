@@ -8,6 +8,7 @@ import AdultConversation from '../models/AdultConversation';
 import AdultCall from '../models/AdultCall';
 import AdultGift from '../models/AdultGift';
 import CreditTransaction from '../models/CreditTransaction';
+import CamSession from '../models/CamSession';
 import Report from '../models/Report';
 import { encrypt, decrypt } from '../services/encryptionService';
 import { getClientPrice } from '../services/pricingService';
@@ -15,7 +16,7 @@ import { calculateFees, recordPlatformEarning } from '../shared/fees';
 import { getSignedUrl } from '../shared/media/cloudinaryUpload';
 import { sendPushToUser } from '../shared/push';
 import { sendNewMessageEmail } from '../shared/email/providerEmail';
-import { checkActiveCall } from '../services/sessionInvariantService';
+import { checkActiveCall, endCamSessionAtomic } from '../services/sessionInvariantService';
 
 // Backwards compatibility startConversation route
 export const startConversation = async (req: Request, res: Response) => {
@@ -2606,6 +2607,15 @@ export const acceptCall = async (req: Request, res: Response) => {
     const billResult = await billCallMinute(call._id.toString(), 1, ns);
     if (!billResult.success) {
       return res.status(402).json({ success: false, error: billResult.error || 'Insufficient credits to start call' });
+    }
+
+    // End active public cam stream if provider is currently streaming
+    const activeCamSession = await CamSession.findOne({
+      providerId: { $in: [call.callerId, call.receiverId] },
+      status: { $in: ['live', 'pending'] }
+    });
+    if (activeCamSession) {
+      await endCamSessionAtomic(activeCamSession._id, 'accepted_private_call', ns);
     }
 
     const updatedCall = await AdultCall.findOneAndUpdate(

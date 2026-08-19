@@ -864,4 +864,78 @@ describe('Single-Active-Session Invariant Integration Tests', () => {
       await verifyDatabaseInvariants();
     });
   });
+
+  describe('5. Streaming + 1-to-1 Call Acceptance Lifecycle Tests', () => {
+    it('Ringing private call preserves public livestream; Provider acceptance ends public livestream and starts private call', async () => {
+      // 1. Provider 1 starts public livestream
+      const startRes = await request(app)
+        .post('/api/adult/cams/stream/start')
+        .set('Authorization', `Bearer ${provider1Token}`)
+        .send({ title: 'Public Stream' });
+      expect(startRes.status).toBe(201);
+      const streamId = startRes.body.data.sessionId;
+
+      // Update stream status to live
+      await CamSession.findByIdAndUpdate(streamId, { status: 'live' });
+
+      // 2. Member 1 initiates 1-to-1 video call with Provider 1
+      const callInitRes = await request(app)
+        .post('/api/v1/adult/sext/calls/initiate')
+        .set('Authorization', `Bearer ${member1Token}`)
+        .send({ conversationId: conv1Id, type: 'video' });
+
+      expect(callInitRes.status).toBe(200);
+      const callId = callInitRes.body.callId;
+
+      // Verify public livestream remains LIVE while private call is RINGING
+      const streamWhileRinging = await CamSession.findById(streamId);
+      expect(streamWhileRinging?.status).toBe('live');
+
+      // 3. Provider 1 accepts the private 1-to-1 call
+      const acceptRes = await request(app)
+        .put(`/api/v1/adult/sext/calls/${callId}/accept`)
+        .set('Authorization', `Bearer ${provider1Token}`)
+        .send();
+
+      expect(acceptRes.status).toBe(200);
+
+      // 4. Verify public livestream was ENDED upon acceptance
+      const streamAfterAccept = await CamSession.findById(streamId);
+      expect(streamAfterAccept?.status).toBe('ended');
+
+      // 5. Verify private 1-to-1 call became ACTIVE
+      const activeCall = await AdultCall.findById(callId);
+      expect(activeCall?.status).toBe('active');
+
+      await verifyDatabaseInvariants();
+    });
+
+    it('Ringing private call declined or cancelled preserves public livestream', async () => {
+      // 1. Provider 1 starts public stream
+      const startRes = await request(app)
+        .post('/api/adult/cams/stream/start')
+        .set('Authorization', `Bearer ${provider1Token}`)
+        .send({ title: 'Public Stream' });
+      const streamId = startRes.body.data.sessionId;
+      await CamSession.findByIdAndUpdate(streamId, { status: 'live' });
+
+      // 2. Member 1 initiates call
+      const callInitRes = await request(app)
+        .post('/api/v1/adult/sext/calls/initiate')
+        .set('Authorization', `Bearer ${member1Token}`)
+        .send({ conversationId: conv1Id, type: 'video' });
+      const callId = callInitRes.body.callId;
+
+      // 3. Provider 1 declines call
+      const declineRes = await request(app)
+        .put(`/api/v1/adult/sext/calls/${callId}/decline`)
+        .set('Authorization', `Bearer ${provider1Token}`)
+        .send();
+      expect(declineRes.status).toBe(200);
+
+      // 4. Public livestream MUST REMAIN LIVE
+      const streamAfterDecline = await CamSession.findById(streamId);
+      expect(streamAfterDecline?.status).toBe('live');
+    });
+  });
 });

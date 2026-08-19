@@ -2658,9 +2658,12 @@ const PrivateSext: React.FC = () => {
 
       {/* FULL CALL TAKE-OVER OVERLAY */}
       {callState !== 'idle' && (
-        <div className={`fixed inset-0 bg-black z-[10000] flex flex-col text-center text-white ${
-          callState === 'active' ? 'p-0 justify-stretch items-stretch' : 'items-center justify-between p-8'
-        }`}>
+        <div
+          style={{ paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))' }}
+          className={`fixed inset-0 bg-black z-[10000] flex flex-col text-center text-white ${
+            callState === 'active' ? 'p-0 justify-stretch items-stretch' : 'items-center justify-between p-8'
+          }`}
+        >
 
           {/* Incoming Call Layout */}
           {callState === 'ringing' && (
@@ -2701,7 +2704,8 @@ const PrivateSext: React.FC = () => {
                 <Avatar src={selectedConv?.otherUser?.avatarUrl} name={selectedConv?.otherUser?.displayName} size={128} className="animate-pulse" />
               </div>
               <h2 className="text-3xl font-serif italic mb-2 truncate max-w-xs px-4 text-center" title={selectedConv?.otherUser?.displayName}>{selectedConv?.otherUser?.displayName}</h2>
-              <p className="text-xs text-gray-400 uppercase tracking-widest animate-pulse">Calling...</p>
+              <p className="text-xs text-pink-400 uppercase tracking-widest animate-pulse">Calling...</p>
+              <p className="text-xs text-yellow-400 mt-2 font-mono">Rate: 💎 {formatAmount(callRate)} credits / min</p>
 
               <button
                 onClick={handleEndCall}
@@ -2738,15 +2742,15 @@ const PrivateSext: React.FC = () => {
                 )}
               </div>
 
-              {/* Credit ticker — top-right corner, does not interfere with ZegoCloud */}
+              {/* Credit ticker — top-right corner */}
               <div
                 className="call-credit-ticker"
                 style={{
                   position: 'absolute',
-                  top: '16px',
+                  top: 'calc(12px + env(safe-area-inset-top, 0px))',
                   right: '16px',
-                  zIndex: 1001,             /* above ZegoCloud UI */
-                  pointerEvents: 'none',      /* clicks pass through to ZegoCloud */
+                  zIndex: 1001,
+                  pointerEvents: 'none',
                   background: 'rgba(10, 6, 8, 0.75)',
                   backdropFilter: 'blur(8px)',
                   border: '1px solid rgba(201, 168, 76, 0.4)',
@@ -2770,7 +2774,7 @@ const PrivateSext: React.FC = () => {
               <div
                 style={{
                   position: 'absolute',
-                  top: '16px',
+                  top: 'calc(12px + env(safe-area-inset-top, 0px))',
                   left: '16px',
                   zIndex: 1001,
                   pointerEvents: 'none',
