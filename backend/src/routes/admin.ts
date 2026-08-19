@@ -40,6 +40,15 @@ import {
   resolveError,
   clearResolvedErrors
 } from '../controllers/adminErrors.controller';
+import {
+  adminCreateNotification,
+  adminGetNotifications,
+  adminGetSupportQueue,
+  adminReplySupportMessage,
+  adminManageSupportTags,
+  updateOfficialChannelsConfig,
+  getOfficialChannelsConfig
+} from '../controllers/officialSupport.controller';
 
 const router = Router();
 
@@ -84,6 +93,15 @@ router.put('/payouts/:requestId/reject', adminRejectPayout);
 // Admin Dispute management routes
 router.get('/disputes', adminGetDisputes);
 router.put('/disputes/:reportId/resolve', resolveDispute);
+
+// Admin Official Notifications & Customer Support management
+router.post('/official-notifications', adminCreateNotification);
+router.get('/official-notifications', adminGetNotifications);
+router.get('/support/conversations', adminGetSupportQueue);
+router.post('/support/conversations/:conversationId/messages', adminReplySupportMessage);
+router.put('/support/conversations/:conversationId/tags', adminManageSupportTags);
+router.get('/official-channels/config', getOfficialChannelsConfig);
+router.put('/official-channels/config', updateOfficialChannelsConfig);
 
 // Admin Error Monitoring routes
 router.get('/errors', listErrors);

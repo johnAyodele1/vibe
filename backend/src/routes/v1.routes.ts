@@ -7,6 +7,7 @@ import { changePassword, deactivateAccount } from '../controllers/adultAuth.cont
 import { getEligiblePayout, requestPayout, getPayoutStatus, getPayoutHistory } from '../controllers/payout.controller';
 import { getWallet, getBundles, getTransactions, createPurchaseIntent, simulateWebhookSuccess, getSubscriptionPlans, directTip, getDiamondRate } from '../controllers/wallet.controller';
 import { startConversation, getConversations, getUnreadCount, getMessages as getSextMessages, sendMessage as sendSextMessage, unlockMedia, markAsRead, getConversationById, deleteConversation, muteConversation, deleteMessage as deleteSextMessage, reactMessage as reactSextMessage, requestPhoto, fulfillPhotoRequest, declinePhotoRequest, requestService, fulfillServiceTonightRequest, declineServiceTonightRequest, getGiftsCatalogue, sendGift, initiateCall, acceptCall, declineCall, endCall, getCallHistory, missedCall, sendGiftRequest, sendServiceRequest, getTonightRate, payServiceRequest, completeServiceRequest, reportServiceRequest, declineServiceRequest, dismissGiftRequest, fulfillGiftRequest } from '../controllers/adultSext.controller';
+import { getOfficialNotificationsForUser, markNotificationRead, getOrCreateSupportConversation, sendSupportMessage, getOfficialChannelsConfig } from '../controllers/officialSupport.controller';
 import { getRooms, createRoom as createAdultRoom, getRoom as getAdultRoom, joinRoom as joinAdultRoom, leaveRoom as leaveAdultRoom, getRoomMembers, getRoomLeaderboard, getThreads, createThread, getThread, reactThread, pinThread, lockThread, getMessages as getAdultRoomMessages, sendMessage as sendAdultRoomMessage, reactMessage as reactAdultRoomMessage, deleteMessage as deleteAdultRoomMessage, getReplies, postReply, reactReply, getActivePolls, createPoll, votePoll, reportRoom, muteUser, kickUser } from '../controllers/adultRooms.controller';
 import { getProviderPublicProfile, unlockProviderPhoto } from '../controllers/adultProviders.controller';
 import { savePushSubscription, removePushSubscription, getVapidPublicKey, getCurrentDevice, registerDevice, removeDevice, diagnosePush } from '../controllers/adultPush.controller';
@@ -54,6 +55,12 @@ router.post('/adult/wallet/purchase/intent', verifyAdultJWT, createPurchaseInten
 router.post('/adult/wallet/purchase/webhook', simulateWebhookSuccess);
 router.get('/adult/subscriptions/plans', getSubscriptionPlans);
 router.post('/adult/wallet/tip', verifyAdultJWT, directTip);
+router.get('/adult/official-notifications', verifyAdultJWT, getOfficialNotificationsForUser);
+router.put('/adult/official-notifications/:notificationId/read', verifyAdultJWT, markNotificationRead);
+router.get('/adult/support/conversation', verifyAdultJWT, getOrCreateSupportConversation);
+router.post('/adult/support/messages', verifyAdultJWT, sendSupportMessage);
+router.get('/adult/official-channels/config', getOfficialChannelsConfig);
+
 router.get('/adult/sext/conversations', verifyAdultJWT, getConversations);
 router.post('/adult/sext/conversations', verifyAdultJWT, startConversation);
 router.post('/adult/sext/conversations/:userId/start', verifyAdultJWT, startConversation);

@@ -9,6 +9,9 @@ import AdultCall from '../models/AdultCall';
 import AdultGift from '../models/AdultGift';
 import CreditTransaction from '../models/CreditTransaction';
 import Report from '../models/Report';
+import AppConfig from '../models/AppConfig';
+import OfficialNotification from '../models/OfficialNotification';
+import OfficialNotificationRead from '../models/OfficialNotificationRead';
 import { encrypt, decrypt } from '../services/encryptionService';
 import { getClientPrice } from '../services/pricingService';
 import { calculateFees, recordPlatformEarning } from '../shared/fees';
@@ -639,20 +642,114 @@ export const reportServiceRequest = async (req: Request, res: Response) => {
       }
     );
 
-    // Create a Report document
-    const report = await Report.create({
+    // Check if an existing open report exists for this service request
+    let report = await Report.findOne({
       reporter: user._id,
-      reported: message.senderId,
-      reason,
-      description: details,
-      type: 'service_dispute',
       serviceRequestId: message._id,
-      conversationId: message.conversationId,
-      details,
-      amountInDispute: message.serviceRequest.totalAmount,
-      providerAmountHeld: Math.floor(message.serviceRequest.totalAmount * 0.85),
-      status: 'open',
+      status: { $ne: 'resolved' },
     });
+
+    if (!report) {
+      report = await Report.create({
+        reporter: user._id,
+        reported: message.senderId,
+        reason,
+        description: details,
+        type: 'service_dispute',
+        serviceRequestId: message._id,
+        conversationId: message.conversationId,
+        details,
+        amountInDispute: message.serviceRequest.totalAmount,
+        providerAmountHeld: Math.floor(message.serviceRequest.totalAmount * 0.85),
+        status: 'open',
+      });
+    }
+
+    // Look up provider details for issue context
+    const provider = await AdultUser.findById(message.senderId);
+
+    const supportConversationId = `support_${user._id.toString()}`;
+    let supportConv = await AdultConversation.findById(supportConversationId);
+
+    const issueContext = {
+      reportId: report._id.toString(),
+      serviceRequestId: message._id.toString(),
+      userId: user._id.toString(),
+      userDisplayName: user.displayName || user.username,
+      providerId: message.senderId.toString(),
+      providerStageName: provider?.providerProfile?.stageName || provider?.displayName || 'Provider',
+      serviceName: 'Service Tonight Arrangement',
+      serviceAmount: message.serviceRequest.totalAmount,
+      currency: 'credits',
+      paymentStatus: message.serviceRequest.status,
+      createdTimestamp: message.createdAt,
+      reason,
+      userReportText: details,
+    };
+
+    if (!supportConv) {
+      supportConv = new AdultConversation({
+        _id: supportConversationId,
+        type: 'support',
+        participants: [user._id],
+        participantProfiles: [
+          {
+            userId: user._id,
+            displayName: user.displayName || user.username,
+            avatarUrl: user.profilePhoto || '/placeholder.svg',
+            accountType: user.role === 'provider' ? 'provider' : 'member',
+            isOnline: true,
+          },
+        ],
+        supportMetadata: {
+          status: 'open',
+          tags: ['Chat with Issue'],
+          reportId: report._id,
+          serviceRequestId: message._id,
+          issueContext,
+          welcomeSent: true,
+        },
+        unreadCounts: {
+          [user._id.toString()]: 0,
+        },
+      });
+      await supportConv.save();
+    } else {
+      (supportConv as any).type = 'support';
+      const currentMetadata = (supportConv as any).supportMetadata || { status: 'open', tags: [] };
+      const currentTags: string[] = currentMetadata.tags || [];
+      if (!currentTags.includes('Chat with Issue')) {
+        currentTags.push('Chat with Issue');
+      }
+      (supportConv as any).supportMetadata = {
+        ...currentMetadata,
+        status: 'open',
+        tags: currentTags,
+        reportId: report._id,
+        serviceRequestId: message._id,
+        issueContext,
+      };
+      await supportConv.save();
+    }
+
+    // Post automated issue context message in support conversation if not already posted
+    const existingIssueMsg = await AdultMessage.findOne({
+      conversationId: supportConversationId,
+      'issueContext.reportId': report._id.toString(),
+    });
+
+    if (!existingIssueMsg) {
+      const issueSummaryText = `⚠️ Service Issue Reported\nService Amount: 💎 ${message.serviceRequest.totalAmount}\nProvider: ${provider?.providerProfile?.stageName || provider?.displayName || 'Provider'}\nReason: ${reason}\nDetails: ${details || 'None provided'}`;
+      const autoIssueMsg = new AdultMessage({
+        conversationId: supportConversationId,
+        senderId: user._id,
+        content: encrypt(issueSummaryText),
+        messageType: 'system',
+        systemText: issueSummaryText,
+      });
+      (autoIssueMsg as any).issueContext = issueContext;
+      await autoIssueMsg.save();
+    }
 
     const ns = req.app.get('adultNamespace');
     if (ns) {
@@ -667,12 +764,18 @@ export const reportServiceRequest = async (req: Request, res: Response) => {
         memberId: user._id,
         amount: message.serviceRequest.totalAmount,
       });
+      ns.emit('admin:support_issue_created', {
+        supportConversationId,
+        reportId: report._id,
+        issueContext,
+      });
     }
 
     return res.json({
       success: true,
       serviceRequest: message.serviceRequest,
       reportId: report._id,
+      supportConversationId,
       amountHeld: Math.floor(message.serviceRequest.totalAmount * 0.85)
     });
   } catch (error: any) {
@@ -885,7 +988,8 @@ export const getConversations = async (req: Request, res: Response) => {
 
     const query = {
       participants: user._id,
-      deletedBy: { $ne: user._id }
+      deletedBy: { $ne: user._id },
+      type: { $ne: 'official_notification' }
     };
 
     const conversations = await AdultConversation.find(query)
@@ -895,11 +999,122 @@ export const getConversations = async (req: Request, res: Response) => {
 
     const results = [];
 
+    // Ensure Official Notifications (position 0) and Official Customer Support (position 1) are prepended
+    const officialChannelsConfigDoc = await AppConfig.findOne({ key: 'official_channels_config' });
+    const rawValue = officialChannelsConfigDoc?.value;
+    const officialConfig = (rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue))
+      ? (rawValue as any)
+      : {
+          notifications: { avatarUrl: '/icons/icon-192x192.png', badge: 'official', badgeType: 'blue', enabled: true },
+          support: { avatarUrl: '/icons/icon-192x192.png', badge: 'official', badgeType: 'blue', enabled: true }
+        };
+
+    if (page === 1) {
+      // 1. Official Notifications channel (virtual/system channel)
+      const audienceFilter = user.role === 'provider'
+        ? { targetAudience: { $in: ['providers', 'both'] } }
+        : { targetAudience: { $in: ['users', 'both'] } };
+
+      const latestNotif = await OfficialNotification.findOne(audienceFilter).sort({ createdAt: -1 });
+      const totalNotifs = await OfficialNotification.countDocuments(audienceFilter);
+      const readNotifs = await OfficialNotificationRead.countDocuments({
+        userId: user._id,
+      });
+      const unreadNotifCount = Math.max(0, totalNotifs - readNotifs);
+
+      results.push({
+        conversationId: 'official_notifications',
+        isOfficial: true,
+        type: 'official_notification',
+        position: 0,
+        officialConfig: officialConfig.notifications,
+        otherUser: {
+          id: 'official_notifications',
+          displayName: 'Official Notifications',
+          avatarUrl: officialConfig.notifications.avatarUrl,
+          isOnline: true,
+          accountType: 'official',
+          isOfficial: true,
+          officialBadge: officialConfig.notifications.badgeType
+        },
+        lastMessage: latestNotif ? {
+          content: latestNotif.title + ' — ' + latestNotif.content,
+          mediaType: 'official_notification',
+          sentAt: latestNotif.createdAt
+        } : null,
+        unreadCount: unreadNotifCount,
+        isMuted: false,
+        isBlocked: false
+      });
+
+      // 2. Official Customer Support channel
+      const supportId = `support_${user._id.toString()}`;
+      let supportConv = await AdultConversation.findById(supportId);
+      if (!supportConv) {
+        supportConv = new AdultConversation({
+          _id: supportId,
+          type: 'support',
+          participants: [user._id],
+          participantProfiles: [
+            {
+              userId: user._id,
+              displayName: user.displayName || user.username,
+              avatarUrl: user.profilePhoto || '/placeholder.svg',
+              accountType: user.role === 'provider' ? 'provider' : 'member',
+              isOnline: true
+            }
+          ],
+          supportMetadata: { status: 'open', tags: [] },
+          unreadCounts: { [user._id.toString()]: 0 }
+        });
+        await supportConv.save();
+      }
+
+      let supportPreview = 'Need help? Send us a message.';
+      if (supportConv.lastMessage?.content) {
+        try {
+          supportPreview = decrypt(supportConv.lastMessage.content);
+        } catch {
+          supportPreview = supportConv.lastMessage.content;
+        }
+      }
+
+      results.push({
+        conversationId: supportConv._id,
+        isOfficial: true,
+        type: 'support',
+        position: 1,
+        officialConfig: officialConfig.support,
+        otherUser: {
+          id: 'official_support',
+          displayName: 'Official Customer Support',
+          avatarUrl: officialConfig.support.avatarUrl,
+          isOnline: true,
+          accountType: 'official',
+          isOfficial: true,
+          officialBadge: officialConfig.support.badgeType
+        },
+        lastMessage: {
+          content: supportPreview,
+          mediaType: supportConv.lastMessage?.mediaType || 'text',
+          senderId: supportConv.lastMessage?.senderId,
+          sentAt: supportConv.lastMessage?.sentAt || supportConv.createdAt
+        },
+        unreadCount: supportConv.unreadCounts.get(user._id.toString()) || 0,
+        isMuted: false,
+        isBlocked: false,
+        supportMetadata: (supportConv as any).supportMetadata
+      });
+    }
+
     for (const conv of conversations) {
+      if (conv._id.startsWith('support_')) {
+        continue; // Handled explicitly above
+      }
+
       const otherProfile = conv.participantProfiles.find(p => p.userId?.toString() !== user._id.toString());
       const otherUser = otherProfile ? await AdultUser.findById(otherProfile.userId) : null;
 
-      // Unread count
       const unreadCount = conv.unreadCounts.get(user._id.toString()) || 0;
 
       let preview = '';
@@ -913,6 +1128,9 @@ export const getConversations = async (req: Request, res: Response) => {
 
       results.push({
         conversationId: conv._id,
+        isOfficial: false,
+        type: (conv as any).type || 'normal',
+        position: results.length,
         otherUser: otherProfile ? {
           id: otherProfile.userId,
           displayName: otherUser?.providerProfile?.stageName || otherProfile.displayName || 'User',

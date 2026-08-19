@@ -1,0 +1,536 @@
+import { Request, Response } from 'express';
+import mongoose from 'mongoose';
+import OfficialNotification from '../models/OfficialNotification';
+import OfficialNotificationRead from '../models/OfficialNotificationRead';
+import AdultUser from '../models/AdultUser';
+import AdultConversation from '../models/AdultConversation';
+import AdultMessage from '../models/AdultMessage';
+import Report from '../models/Report';
+import AppConfig from '../models/AppConfig';
+import { encrypt, decrypt } from '../services/encryptionService';
+import { sendPushToUser } from '../shared/push';
+
+const OFFICIAL_CHANNELS_KEY = 'official_channels_config';
+
+export const DEFAULT_OFFICIAL_CONFIG = {
+  notifications: {
+    avatarUrl: '/icons/icon-192x192.png',
+    badge: 'official',
+    badgeType: 'blue',
+    enabled: true,
+  },
+  support: {
+    avatarUrl: '/icons/icon-192x192.png',
+    badge: 'official',
+    badgeType: 'blue',
+    enabled: true,
+  },
+};
+
+export const getOfficialChannelsConfig = async (req: Request, res: Response) => {
+  try {
+    let configDoc = await AppConfig.findOne({ key: OFFICIAL_CHANNELS_KEY });
+    if (!configDoc) {
+      configDoc = await AppConfig.create({
+        key: OFFICIAL_CHANNELS_KEY,
+        value: DEFAULT_OFFICIAL_CONFIG,
+      });
+    }
+    return res.json({ success: true, data: configDoc.value || DEFAULT_OFFICIAL_CONFIG });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const updateOfficialChannelsConfig = async (req: Request, res: Response) => {
+  try {
+    const { notifications, support } = req.body;
+    const existingDoc = await AppConfig.findOne({ key: OFFICIAL_CHANNELS_KEY });
+    const currentConfig = (existingDoc && typeof existingDoc.value === 'object' && !Array.isArray(existingDoc.value))
+      ? (existingDoc.value as typeof DEFAULT_OFFICIAL_CONFIG)
+      : DEFAULT_OFFICIAL_CONFIG;
+
+    const newConfig = {
+      notifications: { ...currentConfig.notifications, ...(notifications || {}) },
+      support: { ...currentConfig.support, ...(support || {}) },
+    };
+
+    const updated = await AppConfig.findOneAndUpdate(
+      { key: OFFICIAL_CHANNELS_KEY },
+      { $set: { value: newConfig } },
+      { upsert: true, new: true }
+    );
+
+    return res.json({ success: true, data: updated?.value || newConfig });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const adminCreateNotification = async (req: Request, res: Response) => {
+  try {
+    const { title, content, targetAudience = 'both', mediaUrl = '' } = req.body;
+
+    if (!title || !content) {
+      return res.status(400).json({ success: false, error: 'Title and content are required' });
+    }
+
+    if (!['users', 'providers', 'both'].includes(targetAudience)) {
+      return res.status(400).json({ success: false, error: 'Invalid targetAudience' });
+    }
+
+    const notification = await OfficialNotification.create({
+      title,
+      content,
+      targetAudience,
+      mediaUrl,
+    });
+
+    const ns = req.app.get('adultNamespace');
+    if (ns) {
+      ns.emit('official:new_notification', {
+        id: notification._id,
+        title: notification.title,
+        content: notification.content,
+        targetAudience: notification.targetAudience,
+        createdAt: notification.createdAt,
+      });
+    }
+
+    // Fan-out push notifications asynchronously to eligible audience
+    (async () => {
+      try {
+        let roleQuery: any = {};
+        if (targetAudience === 'users') {
+          roleQuery = { role: { $ne: 'provider' } };
+        } else if (targetAudience === 'providers') {
+          roleQuery = { role: 'provider' };
+        }
+        const recipients = await AdultUser.find(roleQuery).select('_id');
+        for (const user of recipients) {
+          sendPushToUser(user._id, {
+            title: `📢 ${title}`,
+            body: content.slice(0, 100),
+            icon: '/icons/icon-192x192.png',
+            tag: `official_notif_${notification._id}`,
+            url: `/adult/sext?conversation=official_notifications`,
+            unreadCount: 0,
+            type: 'official_notification',
+          }).catch(() => {});
+        }
+      } catch (err) {
+        console.error('[OfficialNotification] Error broadcasting push:', err);
+      }
+    })();
+
+    return res.status(201).json({ success: true, notification });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const adminGetNotifications = async (req: Request, res: Response) => {
+  try {
+    const notifications = await OfficialNotification.find().sort({ createdAt: -1 }).limit(100);
+    return res.json({ success: true, notifications });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const getOfficialNotificationsForUser = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const audienceFilter = user.role === 'provider'
+      ? { targetAudience: { $in: ['providers', 'both'] } }
+      : { targetAudience: { $in: ['users', 'both'] } };
+
+    const notifications = await OfficialNotification.find(audienceFilter).sort({ createdAt: -1 }).limit(100);
+
+    const readDocs = await OfficialNotificationRead.find({
+      userId: user._id,
+      notificationId: { $in: notifications.map((n) => n._id) },
+    });
+
+    const readSet = new Set(readDocs.map((r) => r.notificationId.toString()));
+
+    const formatted = notifications.map((n) => ({
+      id: n._id,
+      title: n.title,
+      content: n.content,
+      targetAudience: n.targetAudience,
+      mediaUrl: n.mediaUrl || '',
+      createdAt: n.createdAt,
+      isRead: readSet.has(n._id.toString()),
+    }));
+
+    return res.json({ success: true, notifications: formatted });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const markNotificationRead = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const { notificationId } = req.params;
+    if (!notificationId) {
+      return res.status(400).json({ success: false, error: 'notificationId is required' });
+    }
+
+    await OfficialNotificationRead.updateOne(
+      { userId: user._id, notificationId },
+      { $setOnInsert: { readAt: new Date() } },
+      { upsert: true }
+    );
+
+    return res.json({ success: true, message: 'Notification marked as read' });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const getOrCreateSupportConversation = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const conversationId = `support_${user._id.toString()}`;
+    let conversation = await AdultConversation.findById(conversationId);
+
+    if (!conversation) {
+      conversation = new AdultConversation({
+        _id: conversationId,
+        type: 'support',
+        participants: [user._id],
+        participantProfiles: [
+          {
+            userId: user._id,
+            displayName: user.displayName || user.username,
+            avatarUrl: user.profilePhoto || '/placeholder.svg',
+            accountType: user.role === 'provider' ? 'provider' : 'member',
+            isOnline: true,
+          },
+        ],
+        supportMetadata: {
+          status: 'open',
+          tags: [],
+          welcomeSent: false,
+        },
+        unreadCounts: {
+          [user._id.toString()]: 0,
+        },
+      });
+      await conversation.save();
+    }
+
+    return res.json({ success: true, conversation });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const sendSupportMessage = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const { content = '', type = 'text', mediaUrl = '', mediaThumbnailUrl = '' } = req.body;
+    const conversationId = `support_${user._id.toString()}`;
+
+    let conversation = await AdultConversation.findById(conversationId);
+    if (!conversation) {
+      conversation = new AdultConversation({
+        _id: conversationId,
+        type: 'support',
+        participants: [user._id],
+        participantProfiles: [
+          {
+            userId: user._id,
+            displayName: user.displayName || user.username,
+            avatarUrl: user.profilePhoto || '/placeholder.svg',
+            accountType: user.role === 'provider' ? 'provider' : 'member',
+            isOnline: true,
+          },
+        ],
+        supportMetadata: {
+          status: 'open',
+          tags: [],
+          welcomeSent: false,
+        },
+        unreadCounts: {
+          [user._id.toString()]: 0,
+        },
+      });
+      await conversation.save();
+    }
+
+    const convAny = conversation as any;
+    if (convAny.supportMetadata?.status === 'closed') {
+      convAny.supportMetadata.status = 'open';
+    }
+
+    const userMsg = new AdultMessage({
+      conversationId,
+      senderId: user._id,
+      content: encrypt(content || `[${type}]`),
+      messageType: type,
+      mediaUrl,
+      mediaThumbnailUrl,
+    });
+    await userMsg.save();
+
+    let autoReplyPayload = null;
+
+    // Automated welcome message on first user support message
+    const updatedConv = await AdultConversation.findOneAndUpdate(
+      { _id: conversationId, 'supportMetadata.welcomeSent': { $ne: true } },
+      { $set: { 'supportMetadata.welcomeSent': true } },
+      { new: true }
+    );
+
+    if (updatedConv) {
+      const autoText = 'Thanks for contacting us. An admin will follow up with you shortly.';
+        const systemOfficialId = new mongoose.Types.ObjectId('000000000000000000000000');
+      const autoMsg = new AdultMessage({
+        conversationId,
+          senderId: systemOfficialId,
+          receiverId: user._id,
+        content: encrypt(autoText),
+        messageType: 'system',
+        systemText: autoText,
+      });
+      await autoMsg.save();
+
+      autoReplyPayload = {
+        id: autoMsg._id,
+        conversationId,
+        senderId: autoMsg.senderId,
+          receiverId: autoMsg.receiverId,
+        content: autoText,
+        mediaType: 'system',
+        systemText: autoText,
+        createdAt: autoMsg.createdAt,
+          isOfficialSystemMessage: true,
+      };
+    }
+
+    conversation.lastMessage = {
+      content: encrypt(content || `[${type}]`),
+      mediaType: type,
+      senderId: user._id,
+      sentAt: new Date(),
+    };
+    await conversation.save();
+
+    const responsePayload = {
+      id: userMsg._id,
+      conversationId,
+      senderId: user._id,
+      content,
+      mediaType: type,
+      mediaUrl,
+      mediaThumbnailUrl,
+      createdAt: userMsg.createdAt,
+    };
+
+    const ns = req.app.get('adultNamespace');
+    if (ns) {
+      ns.to(`conv:${conversationId}`).emit('sext:new_message', { message: responsePayload });
+      if (autoReplyPayload) {
+        ns.to(`conv:${conversationId}`).emit('sext:new_message', { message: autoReplyPayload });
+      }
+      ns.emit('admin:support_message', { conversationId, userId: user._id });
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: responsePayload,
+      autoReply: autoReplyPayload,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const adminGetSupportQueue = async (req: Request, res: Response) => {
+  try {
+    const { status, tag } = req.query;
+    const query: any = { type: 'support' };
+
+    if (status) {
+      query['supportMetadata.status'] = status;
+    }
+    if (tag) {
+      query['supportMetadata.tags'] = tag;
+    }
+
+    const conversations = await AdultConversation.find(query).sort({ updatedAt: -1 }).limit(100);
+
+    const formatted = [];
+    for (const conv of conversations) {
+      const convItem = conv as any;
+      const user = await AdultUser.findById(conv.participants[0]);
+      let preview = '';
+      if (conv.lastMessage?.content) {
+        try {
+          preview = decrypt(conv.lastMessage.content);
+        } catch {
+          preview = conv.lastMessage.content;
+        }
+      }
+
+      formatted.push({
+        conversationId: conv._id,
+        user: user
+          ? {
+              id: user._id,
+              username: user.username,
+              displayName: user.displayName || user.username,
+              avatarUrl: user.profilePhoto || '/placeholder.svg',
+              role: user.role,
+            }
+          : null,
+        status: convItem.supportMetadata?.status || 'open',
+        tags: convItem.supportMetadata?.tags || [],
+        issueContext: convItem.supportMetadata?.issueContext || null,
+        reportId: convItem.supportMetadata?.reportId || null,
+        serviceRequestId: convItem.supportMetadata?.serviceRequestId || null,
+        lastMessage: {
+          content: preview,
+          sentAt: conv.lastMessage?.sentAt,
+        },
+        updatedAt: conv.updatedAt,
+      });
+    }
+
+    return res.json({ success: true, conversations: formatted });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const adminReplySupportMessage = async (req: Request, res: Response) => {
+  try {
+    const { conversationId } = req.params;
+    const { content = '', type = 'text', mediaUrl = '' } = req.body;
+
+    const conversation = await AdultConversation.findById(conversationId);
+    const convAny = conversation as any;
+    if (!conversation || convAny.type !== 'support') {
+      return res.status(404).json({ success: false, error: 'Support conversation not found' });
+    }
+
+    const recipientId = conversation.participants[0];
+    const adminSenderId = (req as any).user?._id
+      ? new mongoose.Types.ObjectId((req as any).user._id)
+      : new mongoose.Types.ObjectId('000000000000000000000000');
+
+    const replyMsg = new AdultMessage({
+      conversationId,
+      senderId: adminSenderId,
+      receiverId: recipientId,
+      content: encrypt(content || `[${type}]`),
+      messageType: type,
+      mediaUrl,
+    });
+    await replyMsg.save();
+
+    conversation.lastMessage = {
+      content: encrypt(content || `[${type}]`),
+      mediaType: type,
+      senderId: replyMsg.senderId,
+      sentAt: new Date(),
+    };
+
+    const recipientStr = recipientId.toString();
+    const currentUnread = conversation.unreadCounts.get(recipientStr) || 0;
+    conversation.unreadCounts.set(recipientStr, currentUnread + 1);
+
+    await conversation.save();
+
+    const responsePayload = {
+      id: replyMsg._id,
+      conversationId,
+      senderId: replyMsg.senderId,
+      receiverId: recipientId,
+      content,
+      mediaType: type,
+      mediaUrl,
+      createdAt: replyMsg.createdAt,
+      isAdminReply: true,
+    };
+
+    const ns = req.app.get('adultNamespace');
+    if (ns) {
+      ns.to(`conv:${conversationId}`).emit('sext:new_message', { message: responsePayload });
+      ns.to(`user:${recipientStr}`).emit('sext:new_message_notification', {
+        conversationId,
+        messageId: replyMsg._id,
+        preview: content.slice(0, 50),
+      });
+    }
+
+    sendPushToUser(recipientId, {
+      title: '🎧 Official Customer Support',
+      body: content || 'New response from support',
+      icon: '/icons/icon-192x192.png',
+      tag: `conv_${conversationId}`,
+      renotify: true,
+      url: `/adult/sext?conversation=${conversationId}`,
+      unreadCount: currentUnread + 1,
+      type: 'support_reply',
+    }).catch(() => {});
+
+    return res.status(201).json({ success: true, message: responsePayload });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const adminManageSupportTags = async (req: Request, res: Response) => {
+  try {
+    const { conversationId } = req.params;
+    const { tags = [], action = 'set' } = req.body;
+
+    const conversation = await AdultConversation.findById(conversationId);
+    const convAny = conversation as any;
+    if (!conversation || convAny.type !== 'support') {
+      return res.status(404).json({ success: false, error: 'Support conversation not found' });
+    }
+
+    let updatedTags = convAny.supportMetadata?.tags || [];
+
+    if (action === 'set') {
+      updatedTags = tags;
+    } else if (action === 'add') {
+      updatedTags = Array.from(new Set([...updatedTags, ...tags]));
+    } else if (action === 'remove') {
+      updatedTags = updatedTags.filter((t: string) => !tags.includes(t));
+    }
+
+    // Preserve 'Chat with Issue' tag automatically if reportId exists
+    if (convAny.supportMetadata?.reportId && !updatedTags.includes('Chat with Issue')) {
+      updatedTags.push('Chat with Issue');
+    }
+
+    convAny.supportMetadata!.tags = updatedTags;
+    await conversation.save();
+
+    return res.json({ success: true, tags: updatedTags });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
