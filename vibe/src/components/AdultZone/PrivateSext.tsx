@@ -2167,6 +2167,14 @@ const PrivateSext: React.FC = () => {
                         isMe={isMe}
                         isFailed={m.isFailed}
                       />
+                    ) : m.mediaType === 'system' || (m as any).isOfficialSystemMessage ? (
+                      // SYSTEM / OFFICIAL ACKNOWLEDGEMENT MESSAGE
+                      <div className="w-full max-w-md my-2 p-3 bg-blue-950/30 border border-blue-500/30 rounded-xl text-center text-xs text-blue-200 shadow-lg">
+                        <div className="font-bold text-[10px] uppercase tracking-wider text-blue-400 mb-1 flex items-center justify-center gap-1">
+                          <span>🔵</span> Official System Notice
+                        </div>
+                        <p className="whitespace-pre-wrap">{m.content}</p>
+                      </div>
                     ) : (
                       // STANDARD TEXT MESSAGE
                       <div data-testid="message-bubble" className={`p-3.5 max-w-xs text-sm rounded-2xl shadow-md leading-relaxed message-bubble break-words ${isMe ? 'bg-pink-600 text-white rounded-tr-none' : 'bg-[#1b0d19] border border-pink-500/20 text-gray-200 rounded-tl-none'} ${m.isFailed ? 'msg-bubble--failed' : ''}`}>

@@ -370,8 +370,13 @@ export const setupAdultSocket = (io: Server) => {
     // Track active connection
     await addActiveConnection(userId, socket.id);
 
-    // Join personal user room
+    // Join personal user room and role-based audience room
     socket.join(`user:${userId}`);
+    if (user.role === 'provider') {
+      socket.join('role:provider');
+    } else {
+      socket.join('role:user');
+    }
 
     // Room events (for both standard rooms and naughty rooms)
     socket.on('room:join', (data: any) => {

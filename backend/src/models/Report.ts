@@ -66,5 +66,11 @@ const reportSchema = new Schema<IReport>(
   }
 );
 
+// Sparse unique index on reporter + serviceRequestId for service disputes
+reportSchema.index(
+  { reporter: 1, serviceRequestId: 1 },
+  { unique: true, sparse: true }
+);
+
 export const Report = mongoose.model<IReport>('Report', reportSchema);
 export default Report;

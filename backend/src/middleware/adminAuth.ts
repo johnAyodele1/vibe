@@ -11,10 +11,16 @@ export const authenticateAdmin = async (req: IExpressRequest, res: Response, nex
       return res.status(401).json({ success: false, message: 'Access token required' });
     }
 
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET || 'fallback_secret'
-    ) as { userId: string; isAdmin?: boolean };
+    let decoded: any;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret');
+    } catch (e) {
+      try {
+        decoded = jwt.verify(token, process.env.ADULT_JWT_SECRET || 'adult_secret');
+      } catch (err) {
+        return res.status(401).json({ success: false, message: 'Invalid or expired token' });
+      }
+    }
 
     if (!decoded.isAdmin) {
       return res.status(403).json({ success: false, message: 'Admin access required' });

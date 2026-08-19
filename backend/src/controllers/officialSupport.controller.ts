@@ -44,6 +44,9 @@ export const getOfficialChannelsConfig = async (req: Request, res: Response) => 
 
 export const updateOfficialChannelsConfig = async (req: Request, res: Response) => {
   try {
+    if (!(req as any).user?._id) {
+      return res.status(403).json({ success: false, error: 'Admin access required' });
+    }
     const { notifications, support } = req.body;
     const existingDoc = await AppConfig.findOne({ key: OFFICIAL_CHANNELS_KEY });
     const currentConfig = (existingDoc && typeof existingDoc.value === 'object' && !Array.isArray(existingDoc.value))
@@ -69,6 +72,9 @@ export const updateOfficialChannelsConfig = async (req: Request, res: Response) 
 
 export const adminCreateNotification = async (req: Request, res: Response) => {
   try {
+    if (!(req as any).user?._id) {
+      return res.status(403).json({ success: false, error: 'Admin access required' });
+    }
     const { title, content, targetAudience = 'both', mediaUrl = '' } = req.body;
 
     if (!title || !content) {
@@ -88,13 +94,21 @@ export const adminCreateNotification = async (req: Request, res: Response) => {
 
     const ns = req.app.get('adultNamespace');
     if (ns) {
-      ns.emit('official:new_notification', {
+      const payload = {
         id: notification._id,
         title: notification.title,
         content: notification.content,
         targetAudience: notification.targetAudience,
         createdAt: notification.createdAt,
-      });
+      };
+
+      if (targetAudience === 'users') {
+        ns.to('role:user').emit('official:new_notification', payload);
+      } else if (targetAudience === 'providers') {
+        ns.to('role:provider').emit('official:new_notification', payload);
+      } else {
+        ns.to('role:user').to('role:provider').emit('official:new_notification', payload);
+      }
     }
 
     // Fan-out push notifications asynchronously to eligible audience
@@ -131,11 +145,20 @@ export const adminCreateNotification = async (req: Request, res: Response) => {
 
 export const adminGetNotifications = async (req: Request, res: Response) => {
   try {
+    if (!(req as any).user?._id) {
+      return res.status(403).json({ success: false, error: 'Admin access required' });
+    }
     const notifications = await OfficialNotification.find().sort({ createdAt: -1 }).limit(100);
     return res.json({ success: true, notifications });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
   }
+};
+
+export const getNotificationAudienceQuery = (role?: string) => {
+  return role === 'provider'
+    ? { targetAudience: { $in: ['providers', 'both'] } }
+    : { targetAudience: { $in: ['users', 'both'] } };
 };
 
 export const getOfficialNotificationsForUser = async (req: Request, res: Response) => {
@@ -145,11 +168,16 @@ export const getOfficialNotificationsForUser = async (req: Request, res: Respons
       return res.status(401).json({ success: false, error: 'Auth required' });
     }
 
-    const audienceFilter = user.role === 'provider'
-      ? { targetAudience: { $in: ['providers', 'both'] } }
-      : { targetAudience: { $in: ['users', 'both'] } };
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 30));
 
-    const notifications = await OfficialNotification.find(audienceFilter).sort({ createdAt: -1 }).limit(100);
+    const audienceFilter = getNotificationAudienceQuery(user.role);
+
+    const total = await OfficialNotification.countDocuments(audienceFilter);
+    const notifications = await OfficialNotification.find(audienceFilter)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
 
     const readDocs = await OfficialNotificationRead.find({
       userId: user._id,
@@ -168,7 +196,16 @@ export const getOfficialNotificationsForUser = async (req: Request, res: Respons
       isRead: readSet.has(n._id.toString()),
     }));
 
-    return res.json({ success: true, notifications: formatted });
+    return res.json({
+      success: true,
+      notifications: formatted,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
   }
@@ -206,33 +243,35 @@ export const getOrCreateSupportConversation = async (req: Request, res: Response
     }
 
     const conversationId = `support_${user._id.toString()}`;
-    let conversation = await AdultConversation.findById(conversationId);
 
-    if (!conversation) {
-      conversation = new AdultConversation({
-        _id: conversationId,
-        type: 'support',
-        participants: [user._id],
-        participantProfiles: [
-          {
-            userId: user._id,
-            displayName: user.displayName || user.username,
-            avatarUrl: user.profilePhoto || '/placeholder.svg',
-            accountType: user.role === 'provider' ? 'provider' : 'member',
-            isOnline: true,
+    // Atomic upsert to avoid race condition on concurrent support conversation initialization
+    const conversation = await AdultConversation.findOneAndUpdate(
+      { _id: conversationId },
+      {
+        $setOnInsert: {
+          type: 'support',
+          participants: [user._id],
+          participantProfiles: [
+            {
+              userId: user._id,
+              displayName: user.displayName || user.username,
+              avatarUrl: user.profilePhoto || '/placeholder.svg',
+              accountType: user.role === 'provider' ? 'provider' : 'member',
+              isOnline: true,
+            },
+          ],
+          supportMetadata: {
+            status: 'open',
+            tags: [],
+            welcomeSent: false,
           },
-        ],
-        supportMetadata: {
-          status: 'open',
-          tags: [],
-          welcomeSent: false,
+          unreadCounts: {
+            [user._id.toString()]: 0,
+          },
         },
-        unreadCounts: {
-          [user._id.toString()]: 0,
-        },
-      });
-      await conversation.save();
-    }
+      },
+      { upsert: true, new: true }
+    );
 
     return res.json({ success: true, conversation });
   } catch (error: any) {
@@ -367,6 +406,9 @@ export const sendSupportMessage = async (req: Request, res: Response) => {
 
 export const adminGetSupportQueue = async (req: Request, res: Response) => {
   try {
+    if (!(req as any).user?._id) {
+      return res.status(403).json({ success: false, error: 'Admin access required' });
+    }
     const { status, tag } = req.query;
     const query: any = { type: 'support' };
 
@@ -424,6 +466,9 @@ export const adminGetSupportQueue = async (req: Request, res: Response) => {
 
 export const adminReplySupportMessage = async (req: Request, res: Response) => {
   try {
+    if (!(req as any).user?._id) {
+      return res.status(403).json({ success: false, error: 'Admin access required' });
+    }
     const { conversationId } = req.params;
     const { content = '', type = 'text', mediaUrl = '' } = req.body;
 
@@ -502,6 +547,9 @@ export const adminReplySupportMessage = async (req: Request, res: Response) => {
 
 export const adminManageSupportTags = async (req: Request, res: Response) => {
   try {
+    if (!(req as any).user?._id) {
+      return res.status(403).json({ success: false, error: 'Admin access required' });
+    }
     const { conversationId } = req.params;
     const { tags = [], action = 'set' } = req.body;
 

@@ -650,19 +650,33 @@ export const reportServiceRequest = async (req: Request, res: Response) => {
     });
 
     if (!report) {
-      report = await Report.create({
-        reporter: user._id,
-        reported: message.senderId,
-        reason,
-        description: details,
-        type: 'service_dispute',
-        serviceRequestId: message._id,
-        conversationId: message.conversationId,
-        details,
-        amountInDispute: message.serviceRequest.totalAmount,
-        providerAmountHeld: Math.floor(message.serviceRequest.totalAmount * 0.85),
-        status: 'open',
-      });
+      try {
+        report = await Report.create({
+          reporter: user._id,
+          reported: message.senderId,
+          reason,
+          description: details,
+          type: 'service_dispute',
+          serviceRequestId: message._id,
+          conversationId: message.conversationId,
+          details,
+          amountInDispute: message.serviceRequest.totalAmount,
+          providerAmountHeld: Math.floor(message.serviceRequest.totalAmount * 0.85),
+          status: 'open',
+        });
+      } catch (err: any) {
+        if (err.code === 11000 || err.name === 'MongoServerError' || err.message?.includes('duplicate key')) {
+          report = await Report.findOne({
+            reporter: user._id,
+            serviceRequestId: message._id,
+          });
+          if (!report) {
+            throw err;
+          }
+        } else {
+          throw err;
+        }
+      }
     }
 
     // Look up provider details for issue context
@@ -2510,9 +2524,18 @@ export const initiateCall = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'conversationId and type (video/audio) are required' });
     }
 
+    // Absolute Prohibition: Calling is disabled in official support and notification channels
+    if (conversationId === 'official_notifications' || conversationId.startsWith('support_')) {
+      return res.status(400).json({ success: false, error: 'Calling functionality is not available in official channels' });
+    }
+
     const conversation = await AdultConversation.findById(conversationId);
     if (!conversation) {
       return res.status(404).json({ success: false, error: 'Conversation not found' });
+    }
+
+    if (conversation.type === 'support' || conversation.type === 'official_notification') {
+      return res.status(400).json({ success: false, error: 'Calling functionality is not available in official channels' });
     }
 
     const otherParticipantId = conversation.participants.find(id => id.toString() !== user._id.toString());
