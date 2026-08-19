@@ -59,7 +59,7 @@ describe('AdultCallManager and AdultCallProvider Route-Independent Call Signalin
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.setItem('adultAccessToken', 'mock-token');
-    global.fetch = vi.fn();
+    vi.stubGlobal('fetch', vi.fn());
   });
 
   it('renders children and manages incoming call state independently of current route', async () => {
@@ -96,7 +96,7 @@ describe('AdultCallManager and AdultCallProvider Route-Independent Call Signalin
   it('accepts incoming call, fetches connection token with exact webrtcRoomId, and transitions to active CallRoom', async () => {
     const { io } = await import('socket.io-client');
 
-    (global.fetch as any).mockImplementation((url: string) => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
       if (url.includes('/calls/call-999/accept')) {
         return Promise.resolve({
           ok: true,
@@ -110,7 +110,7 @@ describe('AdultCallManager and AdultCallProvider Route-Independent Call Signalin
         });
       }
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-    });
+    }));
 
     render(
       <MemoryRouter>
@@ -138,11 +138,11 @@ describe('AdultCallManager and AdultCallProvider Route-Independent Call Signalin
       fireEvent.click(acceptBtn);
     });
 
-    expect(global.fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenCalledWith(
       expect.stringContaining('/calls/call-999/accept'),
       expect.any(Object)
     );
-    expect(global.fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenCalledWith(
       expect.stringContaining('/zego/token?roomId=room_999&type=call'),
       expect.any(Object)
     );
@@ -154,7 +154,7 @@ describe('AdultCallManager and AdultCallProvider Route-Independent Call Signalin
   it('cleans up call on backend if connection token fetch fails during acceptance', async () => {
     const { io } = await import('socket.io-client');
 
-    (global.fetch as any).mockImplementation((url: string) => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
       if (url.includes('/calls/call-999/accept')) {
         return Promise.resolve({
           ok: true,
@@ -168,7 +168,7 @@ describe('AdultCallManager and AdultCallProvider Route-Independent Call Signalin
         });
       }
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-    });
+    }));
 
     render(
       <MemoryRouter>
@@ -196,7 +196,7 @@ describe('AdultCallManager and AdultCallProvider Route-Independent Call Signalin
       fireEvent.click(acceptBtn);
     });
 
-    expect(global.fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenCalledWith(
       expect.stringContaining('/calls/call-999/end'),
       expect.objectContaining({
         body: JSON.stringify({ reason: 'connection_failed' }),
@@ -207,7 +207,7 @@ describe('AdultCallManager and AdultCallProvider Route-Independent Call Signalin
   });
 
   it('cancels outgoing call and notifies backend with reason cancelled_by_caller', async () => {
-    (global.fetch as any).mockImplementation((url: string) => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
       if (url.includes('/calls/initiate')) {
         return Promise.resolve({
           ok: true,
@@ -215,7 +215,7 @@ describe('AdultCallManager and AdultCallProvider Route-Independent Call Signalin
         });
       }
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-    });
+    }));
 
     render(
       <MemoryRouter>
@@ -237,7 +237,7 @@ describe('AdultCallManager and AdultCallProvider Route-Independent Call Signalin
       fireEvent.click(cancelBtn);
     });
 
-    expect(global.fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenCalledWith(
       expect.stringContaining('/calls/call-888/end'),
       expect.objectContaining({
         body: JSON.stringify({ reason: 'cancelled_by_caller' }),
