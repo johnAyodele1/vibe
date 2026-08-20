@@ -39,7 +39,18 @@ interface Dispute {
   details?: string;
   amountInDispute: number;
   providerAmountHeld: number;
+  platformFee?: number;
+  originalTxId?: string | null;
+  originalTxStatus?: string | null;
+  supportConversationId?: string;
+  customerRefund?: {
+    _id: string;
+    amount: number;
+    status: 'REFUND_PENDING' | 'REFUND_COMPLETED' | 'REFUND_FAILED';
+    reference?: string;
+  } | null;
   status: 'pending' | 'resolved' | 'dismissed' | 'open';
+  resolution?: 'upheld' | 'dismissed';
   createdAt: string;
 }
 
@@ -72,6 +83,11 @@ export const AdminPayoutsPage: React.FC = () => {
   const [disputeIdToResolve, setDisputeIdToResolve] = useState<string | null>(null);
   const [disputeResolution, setDisputeResolution] = useState<'upheld' | 'dismissed'>('upheld');
   const [disputeNotes, setDisputeNotes] = useState("");
+  const [selectedDispute, setSelectedDispute] = useState<Dispute | null>(null);
+
+  const [showMarkRefundModal, setShowMarkRefundModal] = useState(false);
+  const [refundReportId, setRefundReportId] = useState<string | null>(null);
+  const [refundRef, setRefundRef] = useState("");
 
   const fetchPayoutsAndDisputes = useCallback(async () => {
     try {
@@ -245,11 +261,45 @@ export const AdminPayoutsPage: React.FC = () => {
     }
   };
 
-  const triggerResolveDisputePrompt = (reportId: string, resolution: 'upheld' | 'dismissed') => {
-    setDisputeIdToResolve(reportId);
+  const triggerResolveDisputePrompt = (disputeItem: Dispute, resolution: 'upheld' | 'dismissed') => {
+    setSelectedDispute(disputeItem);
+    setDisputeIdToResolve(disputeItem._id);
     setDisputeResolution(resolution);
     setDisputeNotes("");
     setShowResolveDisputeModal(true);
+  };
+
+  const triggerMarkRefundPrompt = (reportId: string) => {
+    setRefundReportId(reportId);
+    setRefundRef("");
+    setShowMarkRefundModal(true);
+  };
+
+  const handleMarkRefundSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!refundReportId) return;
+
+    try {
+      const token = localStorage.getItem("adminToken");
+      const res = await fetch(`${API_BASE_URL}/admin/disputes/${refundReportId}/refund-complete`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ reference: refundRef })
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success("Customer refund marked as COMPLETED!");
+        setShowMarkRefundModal(false);
+        fetchPayoutsAndDisputes();
+      } else {
+        toast.error(data.message || "Failed to complete refund");
+      }
+    } catch {
+      toast.error("Network error occurred");
+    }
   };
 
   const handleResolveDisputeSubmit = async (e: React.FormEvent) => {
@@ -511,19 +561,23 @@ export const AdminPayoutsPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div className="grid grid-cols-3 gap-3 mb-4">
                     <div>
-                      <p className="text-[10px] uppercase tracking-wider text-zinc-500">Amount in Dispute</p>
-                      <p className="font-mono font-bold text-yellow-400 text-sm">💎 {formatAmount(dispute.amountInDispute)}</p>
+                      <p className="text-[10px] uppercase tracking-wider text-zinc-500">Disputed Amount</p>
+                      <p className="font-mono font-bold text-yellow-400 text-xs">💎 {formatAmount(dispute.amountInDispute)}</p>
                       <p className="text-[10px] text-zinc-500">₦{(dispute.amountInDispute * 100).toLocaleString('en-NG')}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] uppercase tracking-wider text-zinc-500">Provider share held</p>
-                      <p className="font-mono font-bold text-amber-500 text-sm">💎 {formatAmount(dispute.providerAmountHeld)}</p>
+                      <p className="text-[10px] uppercase tracking-wider text-zinc-500">Provider Share</p>
+                      <p className="font-mono font-bold text-amber-500 text-xs">💎 {formatAmount(dispute.providerAmountHeld)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-zinc-500">Platform Fee</p>
+                      <p className="font-mono font-bold text-rose-400 text-xs">💎 {formatAmount(dispute.platformFee || 0)}</p>
                     </div>
                   </div>
 
-                  <div className="bg-neutral-950/80 p-3 rounded-xl mb-4 text-xs leading-relaxed border border-neutral-800">
+                  <div className="bg-neutral-950/80 p-3 rounded-xl mb-3 text-xs leading-relaxed border border-neutral-800">
                     <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1 font-bold">Dispute Reason:</p>
                     <p className="text-zinc-300 font-serif italic mb-2">"{dispute.reason}"</p>
                     {dispute.details && (
@@ -533,21 +587,62 @@ export const AdminPayoutsPage: React.FC = () => {
                       </>
                     )}
                   </div>
+
+                  {/* Transaction & Support Metadata */}
+                  <div className="flex items-center justify-between text-[11px] bg-neutral-950/50 p-2.5 rounded-xl border border-neutral-800/50 mb-3">
+                    <span className="text-zinc-400 font-mono">
+                      Tx ID: {dispute.originalTxId ? String(dispute.originalTxId).slice(-8) : 'N/A'}
+                      {dispute.originalTxStatus && (
+                        <span className={`ml-2 px-1.5 py-0.5 rounded text-[9px] uppercase font-bold ${
+                          dispute.originalTxStatus === 'reverted' ? 'bg-red-950 text-red-400' : 'bg-neutral-800 text-zinc-300'
+                        }`}>
+                          {dispute.originalTxStatus}
+                        </span>
+                      )}
+                    </span>
+                    {dispute.supportConversationId && (
+                      <Link
+                        to={`/adult/sext?conversation=${dispute.supportConversationId}`}
+                        className="text-[10px] font-bold text-indigo-400 hover:text-indigo-300 underline flex items-center gap-1"
+                      >
+                        💬 Support Queue →
+                      </Link>
+                    )}
+                  </div>
+
+                  {dispute.customerRefund && (
+                    <div className="text-[11px] bg-indigo-950/30 border border-indigo-500/30 p-2.5 rounded-xl flex items-center justify-between mb-3">
+                      <div>
+                        <span className="text-indigo-300 font-bold block">Customer Refund Record:</span>
+                        <span className="font-mono text-zinc-400 text-[10px]">
+                          {dispute.customerRefund.status} · 💎 {formatAmount(dispute.customerRefund.amount)}
+                        </span>
+                      </div>
+                      {dispute.customerRefund.status === 'REFUND_PENDING' && (
+                        <button
+                          onClick={() => triggerMarkRefundPrompt(dispute._id)}
+                          className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[10px] uppercase px-2.5 py-1 rounded"
+                        >
+                          Mark Refund Sent
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {dispute.status === 'open' && (
                   <div className="flex gap-3 mt-4 border-t border-neutral-800/40 pt-4 shrink-0">
                     <button
-                      onClick={() => triggerResolveDisputePrompt(dispute._id, 'upheld')}
+                      onClick={() => triggerResolveDisputePrompt(dispute, 'upheld')}
                       className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all"
                     >
-                      ✅ Uphold (Refund)
+                      ✅ Revert to Customer
                     </button>
                     <button
-                      onClick={() => triggerResolveDisputePrompt(dispute._id, 'dismissed')}
+                      onClick={() => triggerResolveDisputePrompt(dispute, 'dismissed')}
                       className="flex-1 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-zinc-300 font-bold text-xs uppercase tracking-wider rounded-xl transition-all border border-neutral-700"
                     >
-                      ✕ Dismiss (Release)
+                      ✕ Resolve for Provider
                     </button>
                   </div>
                 )}
@@ -643,37 +738,71 @@ export const AdminPayoutsPage: React.FC = () => {
         </div>
       )}
 
-      {/* RESOLVE DISPUTE MODAL */}
-      {showResolveDisputeModal && (
+      {/* RESOLVE DISPUTE CONFIRMATION MODAL */}
+      {showResolveDisputeModal && selectedDispute && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-[15000] flex items-center justify-center p-4">
           <form
             onSubmit={handleResolveDisputeSubmit}
-            className="w-full max-w-md bg-neutral-900 border border-neutral-800 p-6 rounded-2xl shadow-2xl text-left text-white"
+            className="w-full max-w-lg bg-neutral-900 border border-neutral-800 p-6 rounded-2xl shadow-2xl text-left text-white"
           >
             <h3 className={`text-lg font-bold mb-4 font-serif ${disputeResolution === 'upheld' ? 'text-red-500' : 'text-green-500'}`}>
-              Resolve Dispute as {disputeResolution.toUpperCase()}
+              {disputeResolution === 'upheld' ? 'Confirm Reversion to Customer' : 'Confirm Resolution for Provider'}
             </h3>
+
             <div className="space-y-4">
-              <div className="bg-neutral-950 p-3.5 rounded-xl border border-neutral-800/60 mb-2">
-                <p className="text-[11px] text-zinc-400 font-bold mb-1">Impact of your resolution:</p>
-                <p className="text-xs text-zinc-300 leading-normal">
-                  {disputeResolution === 'upheld'
-                    ? 'The full service charge is refunded back to the member\'s wallet credits. The provider\'s held 85% share is forfeited and deducted.'
-                    : 'The provider\'s held 85% share is released as eligible for payout immediately. The member is not refunded.'}
-                </p>
+              {/* Detailed Financial Audit Summary Card */}
+              <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800 space-y-2 text-xs font-mono">
+                <div className="flex justify-between border-b border-neutral-800 pb-2">
+                  <span className="text-zinc-400">Customer:</span>
+                  <span className="font-bold text-white">{selectedDispute.memberName}</span>
+                </div>
+                <div className="flex justify-between border-b border-neutral-800 pb-2">
+                  <span className="text-zinc-400">Provider:</span>
+                  <span className="font-bold text-white">{selectedDispute.providerName}</span>
+                </div>
+                <div className="flex justify-between border-b border-neutral-800 pb-2">
+                  <span className="text-zinc-400">Service:</span>
+                  <span className="font-bold text-zinc-200">Service Tonight Arrangement</span>
+                </div>
+                <div className="flex justify-between border-b border-neutral-800 pb-2">
+                  <span className="text-zinc-400">Original Transaction:</span>
+                  <span className="font-bold text-yellow-400">{selectedDispute.originalTxId ? String(selectedDispute.originalTxId).slice(-8) : 'N/A'}</span>
+                </div>
+                <div className="flex justify-between border-b border-neutral-800 pb-2">
+                  <span className="text-zinc-400">Total Service Amount:</span>
+                  <span className="font-bold text-yellow-400">💎 {formatAmount(selectedDispute.amountInDispute)}</span>
+                </div>
+                {disputeResolution === 'upheld' ? (
+                  <>
+                    <div className="flex justify-between border-b border-neutral-800 pb-2 text-red-400">
+                      <span>Provider Earning Removed:</span>
+                      <span className="font-bold">- 💎 {formatAmount(selectedDispute.providerAmountHeld)}</span>
+                    </div>
+                    <div className="flex justify-between text-indigo-400 font-bold pt-1">
+                      <span>Disputed Amount Cleared:</span>
+                      <span>💎 {formatAmount(selectedDispute.amountInDispute)}</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex justify-between text-green-400 font-bold pt-1">
+                    <span>Provider Earning Released:</span>
+                    <span>💎 {formatAmount(selectedDispute.providerAmountHeld)}</span>
+                  </div>
+                )}
               </div>
 
               <div>
-                <label className="block text-xs uppercase tracking-wider text-zinc-400 font-bold mb-1.5">Admin Notes / Explanation</label>
+                <label className="block text-xs uppercase tracking-wider text-zinc-400 font-bold mb-1.5">Admin Notes / Audit Reason *</label>
                 <textarea
                   value={disputeNotes}
                   onChange={(e) => setDisputeNotes(e.target.value)}
-                  className="w-full h-24 bg-neutral-950 border border-neutral-800 rounded-lg p-2.5 text-white focus:border-red-500 focus:outline-none resize-none text-sm"
-                  placeholder="Provide notes or findings regarding your investigation"
+                  className="w-full h-20 bg-neutral-950 border border-neutral-800 rounded-lg p-2.5 text-white focus:border-red-500 focus:outline-none resize-none text-sm"
+                  placeholder="Reason for dispute resolution"
                   required
                 />
               </div>
             </div>
+
             <div className="flex justify-end gap-3 mt-6">
               <button
                 type="button"
@@ -688,7 +817,49 @@ export const AdminPayoutsPage: React.FC = () => {
                   disputeResolution === 'upheld' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'
                 }`}
               >
-                Resolve dispute
+                {disputeResolution === 'upheld' ? 'Confirm Reversion' : 'Confirm Release'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* MARK REFUND SENT MODAL */}
+      {showMarkRefundModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[15000] flex items-center justify-center p-4">
+          <form
+            onSubmit={handleMarkRefundSubmit}
+            className="w-full max-w-md bg-neutral-900 border border-neutral-800 p-6 rounded-2xl shadow-2xl text-left text-white"
+          >
+            <h3 className="text-lg font-bold mb-4 font-serif text-indigo-400">Mark Customer Refund Completed</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs uppercase tracking-wider text-zinc-400 font-bold mb-1.5">Transfer Reference / Note (Optional)</label>
+                <input
+                  type="text"
+                  value={refundRef}
+                  onChange={(e) => setRefundRef(e.target.value)}
+                  className="w-full bg-neutral-950 border border-neutral-800 rounded-lg p-2.5 text-white focus:border-indigo-500 focus:outline-none text-sm"
+                  placeholder="e.g. Wallet Credit Applied / REF-90123"
+                />
+                <p className="text-[10px] text-zinc-500 mt-1.5">
+                  Confirming will transition refund status to REFUND_COMPLETED and credit customer wallet.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => setShowMarkRefundModal(false)}
+                className="px-4 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-zinc-300 text-xs font-bold uppercase"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold uppercase"
+              >
+                Confirm Refund Completed
               </button>
             </div>
           </form>

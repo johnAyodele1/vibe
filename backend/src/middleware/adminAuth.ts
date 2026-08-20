@@ -26,7 +26,7 @@ export const authenticateAdmin = async (req: IExpressRequest, res: Response, nex
       return res.status(403).json({ success: false, message: 'Admin access required' });
     }
 
-    req.user = { _id: decoded.userId } as any;
+    req.user = { _id: decoded.userId || decoded.sub, role: 'admin', isAdmin: true } as any;
     next();
   } catch (error) {
     console.error('Admin authentication error:', error);

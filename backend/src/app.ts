@@ -74,6 +74,7 @@ app.use('/api/messages', messageRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/v1/admin', adminRoutes);
 app.use('/api/adult', adultRoutes);
 app.use('/api/v1', v1Routes);
 

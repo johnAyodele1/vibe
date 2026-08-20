@@ -33,7 +33,8 @@ import {
   adminCompletePayout,
   adminRejectPayout,
   adminGetDisputes,
-  resolveDispute
+  resolveDispute,
+  markRefundCompleted
 } from '../controllers/payout.controller';
 import {
   listErrors,
@@ -98,6 +99,7 @@ router.put('/payouts/:requestId/reject', adminRejectPayout);
 // Admin Dispute management routes
 router.get('/disputes', adminGetDisputes);
 router.put('/disputes/:reportId/resolve', resolveDispute);
+router.put('/disputes/:reportId/refund-complete', markRefundCompleted);
 
 // Admin Official Notifications & Customer Support management
 router.post('/official-notifications', adminCreateNotification);

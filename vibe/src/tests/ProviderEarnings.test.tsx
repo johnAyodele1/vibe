@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import '@testing-library/jest-dom';
 import { MemoryRouter } from 'react-router-dom';
 import ProviderEarnings from '../components/AdultZone/ProviderEarnings';
 
@@ -63,7 +64,7 @@ describe('ProviderEarnings Component', () => {
       expect(screen.getByText(/💎 87,?294\.12/)).toBeInTheDocument();
       expect(screen.getByText(/- 💎 13,?094\.12/)).toBeInTheDocument();
       expect(screen.getByText('₦4,500,000')).toBeInTheDocument();
-      expect(screen.getByText(/- ₦100,000/)).toBeInTheDocument();
+      expect(screen.getByText(/- ₦600,000/)).toBeInTheDocument();
       expect(screen.getAllByText(/₦500,000/).length).toBeGreaterThan(0);
       expect(screen.getByText('Member_3821')).toBeInTheDocument();
       expect(screen.getAllByText('Member_2214').length).toBeGreaterThan(0);

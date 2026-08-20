@@ -18,7 +18,8 @@ export interface ILoginHistory {
 export interface IAdultUser extends Document {
   email: string;
   passwordHash: string;
-  role: 'user' | 'provider';
+  role: 'user' | 'provider' | 'admin';
+  isAdmin?: boolean;
   username: string;
   displayName: string;
   ageVerified: boolean;
@@ -110,7 +111,7 @@ export interface IAdultUserModel extends Model<IAdultUser> {}
 
 export interface ICreditTransaction extends Document {
   userId: Types.ObjectId;
-  type: 'purchase' | 'spend' | 'refund' | 'tip_sent' | 'tip_received' | 'cam_tip' | 'payout' | 'bonus' | 'tip' | 'subscription' | 'reward' | 'call_charge' | 'call_earning' | 'service_payment_received' | 'service_payment_sent' | 'paid_media_unlock' | 'spin_wheel';
+  type: 'purchase' | 'spend' | 'refund' | 'tip_sent' | 'tip_received' | 'cam_tip' | 'payout' | 'bonus' | 'tip' | 'subscription' | 'reward' | 'call_charge' | 'call_earning' | 'service_payment_received' | 'service_payment_sent' | 'paid_media_unlock' | 'spin_wheel' | 'call_refund' | 'dispute_refund' | 'reversion';
   amount: number;
   usdAmount: number;
   nairaAmount?: number;
@@ -118,7 +119,7 @@ export interface ICreditTransaction extends Document {
   relatedUserId?: Types.ObjectId;
   paymentProvider?: 'stripe' | 'apple' | 'google' | 'crypto';
   paymentIntentId?: string;
-  status: 'pending' | 'completed' | 'failed' | 'refunded';
+  status: 'pending' | 'completed' | 'failed' | 'refunded' | 'reverted';
   platformFee?: number;
   eligibleForPayout?: boolean;
   paidOut?: boolean;
@@ -127,8 +128,28 @@ export interface ICreditTransaction extends Document {
   disputeReason?: string;
   disputeResolvedAt?: Date;
   disputeResolution?: 'upheld' | 'dismissed';
+  disputeResolvedBy?: Types.ObjectId;
+  originalTxId?: Types.ObjectId;
   metadata?: any;
   createdAt: Date;
+}
+
+export interface ICustomerRefund extends Document {
+  originalTxId: Types.ObjectId;
+  serviceRequestId?: Types.ObjectId;
+  disputeReportId?: Types.ObjectId;
+  customerId: Types.ObjectId;
+  providerId: Types.ObjectId;
+  amount: number;
+  providerAmountReverted: number;
+  platformFeeReverted: number;
+  status: 'REFUND_PENDING' | 'REFUND_COMPLETED' | 'REFUND_FAILED';
+  adminId?: Types.ObjectId;
+  resolvedAt?: Date;
+  completedAt?: Date;
+  reference?: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface IRoom extends Document {

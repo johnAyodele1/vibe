@@ -4,6 +4,8 @@ import AdultUser from '../models/AdultUser';
 import CreditTransaction from '../models/CreditTransaction';
 import PayoutRequest from '../models/PayoutRequest';
 import Report from '../models/Report';
+import CustomerRefund from '../models/CustomerRefund';
+import { recordPlatformEarning } from '../shared/fees';
 import { getDiamondNairaRate } from '../shared/pricing';
 import { sendPushToUser } from '../shared/push';
 import { PROVIDER_EARNING_TYPES } from '../shared/earnings';
@@ -106,20 +108,60 @@ export const getEligiblePayout = async (req: Request, res: Response) => {
 };
 
 /**
+ * Helper to verify Admin authorization on requests.
+ */
+const verifyAdminAuth = (req: Request): boolean => {
+  const adultUser = (req as any).adultUser;
+  if (adultUser && (adultUser.role === 'admin' || adultUser.isAdmin === true)) {
+    return true;
+  }
+  const user = (req as any).user;
+  if (user && (user.role === 'admin' || user.isAdmin === true)) {
+    return true;
+  }
+  const adminId = (req as any).adminId;
+  return Boolean(adminId);
+};
+
+/**
  * GET /api/v1/admin/disputes
  */
 export const adminGetDisputes = async (req: Request, res: Response) => {
   try {
+    if (!verifyAdminAuth(req)) {
+      return res.status(403).json({ success: false, error: 'Admin authorization required' });
+    }
+
     const disputes = await Report.find({ type: 'service_dispute' }).sort({ createdAt: -1 });
 
-    const disputesWithParties = await Promise.all(disputes.map(async (dispute) => {
+    const disputesWithParties = await Promise.all(disputes.map(async (dispute: any) => {
       const provider = await AdultUser.findById(dispute.reported);
       const member = await AdultUser.findById(dispute.reporter);
+
+      let originalTx = null;
+      if (dispute.originalTxId) {
+        originalTx = await CreditTransaction.findById(dispute.originalTxId);
+      }
+
+      const customerRefund = await CustomerRefund.findOne({
+        disputeReportId: dispute._id
+      });
+
+      const amountInDispute = dispute.amountInDispute || 0;
+      const providerAmountHeld = dispute.providerAmountHeld || Math.floor(amountInDispute * 0.85);
+      const platformFee = Math.max(0, amountInDispute - providerAmountHeld);
 
       return {
         ...dispute.toObject(),
         providerName: provider?.providerProfile?.stageName || provider?.displayName || 'Provider',
         memberName: member?.displayName || member?.username || 'Member',
+        amountInDispute,
+        providerAmountHeld,
+        platformFee,
+        originalTxId: originalTx?._id || null,
+        originalTxStatus: originalTx?.status || null,
+        supportConversationId: `support_${dispute.reporter.toString()}`,
+        customerRefund: customerRefund ? customerRefund.toObject() : null,
       };
     }));
 
@@ -134,66 +176,184 @@ export const adminGetDisputes = async (req: Request, res: Response) => {
  */
 export const resolveDispute = async (req: Request, res: Response) => {
   try {
+    if (!verifyAdminAuth(req)) {
+      return res.status(403).json({ success: false, error: 'Admin authorization required' });
+    }
+
     const { reportId } = req.params;
     const { resolution, adminNotes } = req.body;
-    const adminId = (req as any).adminId || (req as any).userId;
+    const adminId = (req as any).adminId || (req as any).userId || (req as any).adultUser?._id;
 
     if (!['upheld', 'dismissed'].includes(resolution)) {
       return res.status(400).json({ success: false, error: 'Invalid resolution status' });
     }
 
-    const report = await Report.findById(reportId);
-    if (!report || report.status !== 'open') {
-      return res.status(404).json({ success: false, error: 'Dispute not found or already resolved' });
+    // Atomic acquisition: transition report status from 'open' -> 'resolving' atomically
+    const report = await Report.findOneAndUpdate(
+      { _id: reportId, status: 'open' },
+      { $set: { status: 'resolving' } },
+      { new: true }
+    );
+
+    if (!report) {
+      const existingReport = await Report.findById(reportId);
+      if (!existingReport) {
+        return res.status(404).json({ success: false, error: 'Dispute report not found' });
+      }
+      if (existingReport.resolution === resolution || existingReport.status === 'resolved') {
+        return res.json({ success: true, resolution, alreadyResolved: true });
+      }
+      return res.status(409).json({ success: false, error: `Dispute already resolved as ${existingReport.resolution}` });
     }
 
-    if (resolution === 'upheld') {
-      // Refund the member
-      await AdultUser.findOneAndUpdate(
-        { _id: report.reporter },
-        { $inc: { credits: report.amountInDispute || 0 } }
-      );
-
-      // Deduct from provider
-      await AdultUser.findOneAndUpdate(
-        { _id: report.reported },
-        { $inc: { credits: -(report.providerAmountHeld || 0) } }
-      );
-
-      // Mark transaction as inDispute = false, resolution = upheld
-      await CreditTransaction.updateOne(
-        { userId: report.reported, 'metadata.serviceRequestId': report.serviceRequestId, type: 'service_payment_received' },
-        {
-          $set: {
-            eligibleForPayout: false,
-            inDispute: false,
-            disputeResolution: 'upheld',
-            disputeResolvedAt: new Date(),
-          }
-        }
-      );
-    } else {
-      // Release payment to provider: make transaction eligible for payout again
-      await CreditTransaction.updateOne(
-        { userId: report.reported, 'metadata.serviceRequestId': report.serviceRequestId, type: 'service_payment_received' },
-        {
-          $set: {
-            eligibleForPayout: true,
-            inDispute: false,
-            disputeResolution: 'dismissed',
-            disputeResolvedAt: new Date(),
-          }
-        }
-      );
+    // NEVER GUESS THE ORIGINAL TRANSACTION: originalTxId must exist canonically
+    if (!report.originalTxId) {
+      // Revert status back to open if canonical originalTxId is missing
+      await Report.updateOne({ _id: report._id }, { $set: { status: 'open' } });
+      return res.status(400).json({
+        success: false,
+        error: 'ORIGINAL_TX_MISSING',
+        message: 'Canonical originalTxId is missing from dispute report. Resolution cannot proceed without canonical transaction.'
+      });
     }
 
-    // Update report
-    report.status = 'resolved';
-    report.resolution = resolution;
-    report.adminNotes = adminNotes;
-    report.resolvedBy = adminId;
-    report.resolvedAt = new Date();
-    await report.save();
+    const originalTx = await CreditTransaction.findById(report.originalTxId);
+    if (!originalTx) {
+      await Report.updateOne({ _id: report._id }, { $set: { status: 'open' } });
+      return res.status(400).json({
+        success: false,
+        error: 'ORIGINAL_TX_NOT_FOUND',
+        message: 'Referenced original transaction was not found in database.'
+      });
+    }
+
+    const amountInDispute = report.amountInDispute || 0;
+    const providerAmountHeld = report.providerAmountHeld || Math.floor(amountInDispute * 0.85);
+    const platformFee = Math.max(0, amountInDispute - providerAmountHeld);
+
+    const runFinancialMutations = async (session?: mongoose.ClientSession) => {
+      const opts = session ? { session } : {};
+
+      const currentTxQuery = CreditTransaction.findById(report.originalTxId);
+      const currentTx = session ? await currentTxQuery.session(session) : await currentTxQuery;
+
+      if (!currentTx) {
+        throw new Error('Original transaction not found');
+      }
+
+      const reportQuery = Report.findById(report._id);
+      const currentReport = session ? await reportQuery.session(session) : await reportQuery;
+
+      if (resolution === 'upheld') {
+        if (currentTx.status === 'reverted') {
+          return { alreadyReverted: true };
+        }
+
+        currentTx.status = 'reverted';
+        currentTx.inDispute = false;
+        currentTx.disputeResolution = 'upheld';
+        currentTx.disputeResolvedAt = new Date();
+        currentTx.disputeResolvedBy = adminId;
+        currentTx.eligibleForPayout = false;
+        await currentTx.save(opts);
+
+        const providerQuery = AdultUser.findById(report.reported);
+        const provider = session ? await providerQuery.session(session) : await providerQuery;
+
+        if (provider) {
+          const recoverableAmount = Math.min(Math.max(0, provider.credits), providerAmountHeld);
+          provider.credits -= recoverableAmount;
+          if (provider.providerProfile) {
+            provider.providerProfile.totalEarnings = Math.max(
+              0,
+              (provider.providerProfile.totalEarnings || 0) - providerAmountHeld
+            );
+          }
+          await provider.save(opts);
+        }
+
+        if (platformFee > 0) {
+          await recordPlatformEarning({
+            source: 'service',
+            amount: -platformFee,
+            fromUserId: report.reporter,
+            toProviderId: report.reported,
+            referenceId: currentTx._id,
+          }, opts);
+        }
+
+        const refundQuery = CustomerRefund.findOne({ disputeReportId: report._id });
+        let customerRefund = session ? await refundQuery.session(session) : await refundQuery;
+
+        if (!customerRefund) {
+          const refundData = {
+            originalTxId: currentTx._id,
+            serviceRequestId: report.serviceRequestId,
+            disputeReportId: report._id,
+            customerId: report.reporter,
+            providerId: report.reported,
+            amount: amountInDispute,
+            providerAmountReverted: providerAmountHeld,
+            platformFeeReverted: platformFee,
+            status: 'REFUND_PENDING',
+            adminId,
+            resolvedAt: new Date(),
+          };
+          if (session) {
+            await CustomerRefund.create([refundData], { session });
+          } else {
+            await CustomerRefund.create(refundData);
+          }
+        }
+      } else {
+        currentTx.inDispute = false;
+        currentTx.eligibleForPayout = true;
+        currentTx.disputeResolution = 'dismissed';
+        currentTx.disputeResolvedAt = new Date();
+        currentTx.disputeResolvedBy = adminId;
+        await currentTx.save(opts);
+      }
+
+      if (currentReport) {
+        currentReport.status = 'resolved';
+        currentReport.resolution = resolution;
+        currentReport.adminNotes = adminNotes;
+        currentReport.resolvedBy = adminId;
+        currentReport.resolvedAt = new Date();
+        await currentReport.save(opts);
+      }
+
+      return { success: true };
+    };
+
+    let result: any;
+    let dbSession: mongoose.ClientSession | null = null;
+    try {
+      dbSession = await mongoose.startSession();
+      dbSession.startTransaction();
+      result = await runFinancialMutations(dbSession);
+      await dbSession.commitTransaction();
+    } catch (err: any) {
+      if (dbSession) {
+        await dbSession.abortTransaction().catch(() => {});
+        dbSession.endSession();
+        dbSession = null;
+      }
+      if (err.code === 20 || err.message?.includes('Transaction numbers are only allowed')) {
+        result = await runFinancialMutations();
+      } else {
+        await Report.updateOne({ _id: report._id }, { $set: { status: 'open' } });
+        throw err;
+      }
+    } finally {
+      if (dbSession) {
+        dbSession.endSession();
+      }
+    }
+
+    if (result?.alreadyReverted) {
+      return res.json({ success: true, resolution, alreadyReverted: true });
+    }
 
     // Sockets emission
     const ns = req.app.get('adultNamespace');
@@ -201,18 +361,69 @@ export const resolveDispute = async (req: Request, res: Response) => {
       ns.to(`user:${report.reporter.toString()}`).emit('dispute:resolved', {
         resolution,
         message: resolution === 'upheld'
-          ? 'Dispute resolved in your favour — refund applied'
+          ? 'Dispute resolved in your favour — refund initiated'
           : 'The dispute was reviewed and dismissed.',
       });
       ns.to(`user:${report.reported.toString()}`).emit('dispute:resolved', {
         resolution,
         message: resolution === 'upheld'
-          ? 'The dispute was upheld. The service charge was refunded to the member.'
+          ? 'The dispute was upheld. The service payment was reverted.'
           : 'The dispute was dismissed. Your earnings have been released for payout.',
       });
     }
 
     return res.json({ success: true, resolution });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/**
+ * PUT /api/v1/admin/disputes/:reportId/refund-complete
+ */
+export const markRefundCompleted = async (req: Request, res: Response) => {
+  try {
+    if (!verifyAdminAuth(req)) {
+      return res.status(403).json({ success: false, error: 'Admin authorization required' });
+    }
+
+    const { reportId } = req.params;
+    const { reference } = req.body;
+    const adminId = (req as any).adminId || (req as any).userId || (req as any).adultUser?._id;
+
+    const refund = await CustomerRefund.findOne({ disputeReportId: reportId });
+    if (!refund) {
+      return res.status(404).json({ success: false, error: 'Customer refund record not found' });
+    }
+
+    if (refund.status === 'REFUND_COMPLETED') {
+      return res.json({ success: true, refund, alreadyCompleted: true });
+    }
+
+    // Credit customer's wallet balance
+    const customer = await AdultUser.findById(refund.customerId);
+    if (customer) {
+      customer.credits += refund.amount;
+      await customer.save();
+    }
+
+    refund.status = 'REFUND_COMPLETED';
+    refund.completedAt = new Date();
+    refund.reference = reference || 'Admin processed refund';
+    refund.adminId = adminId;
+    await refund.save();
+
+    // Socket & Push
+    const ns = req.app.get('adultNamespace');
+    if (ns && customer) {
+      ns.to(`user:${customer._id.toString()}`).emit('wallet:updated', { balance: customer.credits });
+      ns.to(`user:${customer._id.toString()}`).emit('refund:completed', {
+        amount: refund.amount,
+        reference: refund.reference,
+      });
+    }
+
+    return res.json({ success: true, refund });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
   }
@@ -454,6 +665,10 @@ export const getPayoutHistory = async (req: Request, res: Response) => {
  */
 export const adminGetPayouts = async (req: Request, res: Response) => {
   try {
+    if (!verifyAdminAuth(req)) {
+      return res.status(403).json({ success: false, error: 'Admin authorization required' });
+    }
+
     const status = req.query.status as string;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
@@ -500,6 +715,10 @@ export const adminGetPayouts = async (req: Request, res: Response) => {
  */
 export const adminVerifyPayout = async (req: Request, res: Response) => {
   try {
+    if (!verifyAdminAuth(req)) {
+      return res.status(403).json({ success: false, error: 'Admin authorization required' });
+    }
+
     const { requestId } = req.params;
     const payout = await PayoutRequest.findById(requestId);
 
@@ -527,6 +746,10 @@ export const adminVerifyPayout = async (req: Request, res: Response) => {
  */
 export const adminProcessPayout = async (req: Request, res: Response) => {
   try {
+    if (!verifyAdminAuth(req)) {
+      return res.status(403).json({ success: false, error: 'Admin authorization required' });
+    }
+
     const { requestId } = req.params;
     const payout = await PayoutRequest.findById(requestId);
 
@@ -553,6 +776,10 @@ export const adminProcessPayout = async (req: Request, res: Response) => {
  */
 export const adminCompletePayout = async (req: Request, res: Response) => {
   try {
+    if (!verifyAdminAuth(req)) {
+      return res.status(403).json({ success: false, error: 'Admin authorization required' });
+    }
+
     const { requestId } = req.params;
     const { reference } = req.body;
     const payout = await PayoutRequest.findById(requestId);
@@ -565,26 +792,36 @@ export const adminCompletePayout = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Payout request must be in processing status to complete' });
     }
 
+    // Filter out any transaction that has been reverted in the meantime
+    const validTxs = await CreditTransaction.find({
+      _id: { $in: payout.eligibleTransactionIds },
+      status: { $ne: 'reverted' }
+    });
+
+    const validTxIds = validTxs.map(t => t._id);
+    const actualPayableAmount = validTxs.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
     // 1. Deduct diamonds from provider wallet balance
     const provider = await AdultUser.findById(payout.providerId);
     if (!provider) {
       return res.status(404).json({ success: false, message: 'Provider user not found' });
     }
 
-    if (provider.credits < payout.amount) {
+    const payoutDeduction = Math.min(payout.amount, actualPayableAmount);
+
+    if (provider.credits < payoutDeduction) {
       return res.status(400).json({ success: false, message: 'Provider has insufficient credits to complete this payout' });
     }
 
-    provider.credits -= payout.amount;
+    provider.credits -= payoutDeduction;
     if (provider.providerProfile) {
-      // Record in total payouts or earnings
-      (provider.providerProfile as any).totalPayouts = ((provider.providerProfile as any).totalPayouts || 0) + payout.amount;
+      (provider.providerProfile as any).totalPayouts = ((provider.providerProfile as any).totalPayouts || 0) + payoutDeduction;
     }
     await provider.save();
 
-    // 2. Mark covered transactions as paidOut: true
+    // 2. Mark valid covered transactions as paidOut: true (excluding reverted)
     await CreditTransaction.updateMany(
-      { _id: { $in: payout.eligibleTransactionIds } },
+      { _id: { $in: validTxIds } },
       { $set: { paidOut: true } }
     );
 
@@ -636,6 +873,10 @@ export const adminCompletePayout = async (req: Request, res: Response) => {
  */
 export const adminRejectPayout = async (req: Request, res: Response) => {
   try {
+    if (!verifyAdminAuth(req)) {
+      return res.status(403).json({ success: false, error: 'Admin authorization required' });
+    }
+
     const { requestId } = req.params;
     const { reason } = req.body;
 

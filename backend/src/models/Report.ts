@@ -34,6 +34,10 @@ const reportSchema = new Schema<IReport>(
       type: Schema.Types.ObjectId,
       ref: 'AdultMessage',
     },
+    originalTxId: {
+      type: Schema.Types.ObjectId,
+      ref: 'CreditTransaction',
+    },
     conversationId: {
       type: String,
     },
