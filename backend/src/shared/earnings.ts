@@ -205,7 +205,7 @@ export const calculateProviderBalanceBreakdown = async (
                   { $ne: ['$inDispute', true] },
                   {
                     $or: [
-                      { $eq: ['$eligibleForPayout', false] },
+                      { $ne: ['$eligibleForPayout', true] },
                       {
                         $and: [
                           { $ne: ['$inPayoutRequest', null] },
@@ -230,7 +230,7 @@ export const calculateProviderBalanceBreakdown = async (
                   { $in: ['$type', PROVIDER_EARNING_TYPES] },
                   { $ne: ['$paidOut', true] },
                   { $ne: ['$inDispute', true] },
-                  { $ne: ['$eligibleForPayout', false] },
+                  { $eq: ['$eligibleForPayout', true] },
                   {
                     $or: [
                       { $eq: ['$inPayoutRequest', null] },
