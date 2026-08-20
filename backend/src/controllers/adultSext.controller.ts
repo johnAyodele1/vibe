@@ -1201,7 +1201,8 @@ export const getConversationById = async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: 'Auth required' });
     }
 
-    const { conversationId } = req.params;
+    const conversationIdRaw = req.params.conversationId;
+    const conversationId = Array.isArray(conversationIdRaw) ? conversationIdRaw[0] : conversationIdRaw;
 
     const officialChannelsConfigDoc = await AppConfig.findOne({ key: 'official_channels_config' });
     const rawValue = officialChannelsConfigDoc?.value;
@@ -1231,7 +1232,7 @@ export const getConversationById = async (req: Request, res: Response) => {
       });
     }
 
-    if (conversationId.startsWith('support_')) {
+    if (conversationId && conversationId.startsWith('support_')) {
       return res.json({
         conversationId,
         isOfficial: true,
