@@ -81,6 +81,18 @@ describe('Admin Endpoints', () => {
     });
   });
 
+  describe('GET /api/admin/analytics/providers/top', () => {
+    it('should return top providers', async () => {
+      const res = await request(app)
+        .get('/api/admin/analytics/providers/top')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(Array.isArray(res.body.data)).toBe(true);
+    });
+  });
+
   describe('POST /api/analytics/visit', () => {
     it('should increment visit counter', async () => {
       const firstRes = await request(app).post('/api/analytics/visit');

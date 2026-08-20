@@ -259,9 +259,22 @@ export const getTopProviders = async (req: Request, res: Response) => {
       { $limit: limit }
     ]);
 
+    // ⚡ OPTIMIZATION: Eliminate N+1 database queries by batching provider profile lookups.
+    // Instead of executing `AdultUser.findById` sequentially inside a loop (N queries),
+    // extract all provider IDs and query them in a single batch using `.lean()` for faster read performance.
+    const providerIds = topEarnings.map(item => item._id).filter(Boolean);
+    const providersList = providerIds.length > 0
+      ? await AdultUser.find({ _id: { $in: providerIds } })
+          .select('displayName providerProfile profilePhoto')
+          .lean()
+      : [];
+
+    const providerMap = new Map(providersList.map(p => [p._id.toString(), p]));
+
     const results = [];
     for (const item of topEarnings) {
-      const provider = await AdultUser.findById(item._id).select('displayName providerProfile profilePhoto');
+      if (!item._id) continue;
+      const provider = providerMap.get(item._id.toString());
       if (provider) {
         results.push({
           id: provider._id,
