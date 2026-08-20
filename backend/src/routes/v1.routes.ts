@@ -6,7 +6,7 @@ import { getPresignedUrl, handleMockUpload, uploadMedia, getMyProfile, updatePro
 import { changePassword, deactivateAccount } from '../controllers/adultAuth.controller';
 import { getEligiblePayout, requestPayout, getPayoutStatus, getPayoutHistory } from '../controllers/payout.controller';
 import { getWallet, getBundles, getTransactions, createPurchaseIntent, simulateWebhookSuccess, getSubscriptionPlans, directTip, getDiamondRate } from '../controllers/wallet.controller';
-import { startConversation, getConversations, getUnreadCount, getMessages as getSextMessages, sendMessage as sendSextMessage, unlockMedia, markAsRead, getConversationById, deleteConversation, muteConversation, deleteMessage as deleteSextMessage, reactMessage as reactSextMessage, requestPhoto, fulfillPhotoRequest, declinePhotoRequest, requestService, fulfillServiceTonightRequest, declineServiceTonightRequest, getGiftsCatalogue, sendGift, initiateCall, acceptCall, declineCall, endCall, getCallHistory, missedCall, sendGiftRequest, sendServiceRequest, getTonightRate, payServiceRequest, completeServiceRequest, reportServiceRequest, declineServiceRequest, dismissGiftRequest, fulfillGiftRequest } from '../controllers/adultSext.controller';
+import { startConversation, getConversations, getUnreadCount, getMessages as getSextMessages, sendMessage as sendSextMessage, unlockMedia, markAsRead, getConversationById, deleteConversation, muteConversation, deleteMessage as deleteSextMessage, reactMessage as reactSextMessage, requestPhoto, fulfillPhotoRequest, declinePhotoRequest, requestService, fulfillServiceTonightRequest, declineServiceTonightRequest, getGiftsCatalogue, sendGift, initiateCall, acceptCall, declineCall, endCall, getCallHistory, missedCall, sendGiftRequest, sendServiceRequest, getTonightRate, payServiceRequest, completeServiceRequest, reportServiceRequest, declineServiceRequest, dismissGiftRequest, fulfillGiftRequest, getCallStatus } from '../controllers/adultSext.controller';
 import { getOfficialNotificationsForUser, markNotificationRead, getOrCreateSupportConversation, sendSupportMessage, getOfficialChannelsConfig } from '../controllers/officialSupport.controller';
 import { getRooms, createRoom as createAdultRoom, getRoom as getAdultRoom, joinRoom as joinAdultRoom, leaveRoom as leaveAdultRoom, getRoomMembers, getRoomLeaderboard, getThreads, createThread, getThread, reactThread, pinThread, lockThread, getMessages as getAdultRoomMessages, sendMessage as sendAdultRoomMessage, reactMessage as reactAdultRoomMessage, deleteMessage as deleteAdultRoomMessage, getReplies, postReply, reactReply, getActivePolls, createPoll, votePoll, reportRoom, muteUser, kickUser } from '../controllers/adultRooms.controller';
 import { getProviderPublicProfile, unlockProviderPhoto } from '../controllers/adultProviders.controller';
@@ -92,11 +92,12 @@ router.post('/adult/sext/service-requests/:messageId/complete', verifyAdultJWT, 
 router.post('/adult/sext/service-requests/:messageId/report', verifyAdultJWT, reportServiceRequest);
 router.post('/adult/sext/service-requests/:messageId/decline', verifyAdultJWT, declineServiceRequest);
 router.post('/adult/sext/calls/initiate', verifyAdultJWT, initiateCall);
+router.get('/adult/sext/calls/history', verifyAdultJWT, getCallHistory);
+router.get('/adult/sext/calls/:callId', verifyAdultJWT, getCallStatus);
 router.put('/adult/sext/calls/:callId/accept', verifyAdultJWT, acceptCall);
 router.put('/adult/sext/calls/:callId/decline', verifyAdultJWT, declineCall);
 router.put('/adult/sext/calls/:callId/missed', verifyAdultJWT, missedCall);
 router.put('/adult/sext/calls/:callId/end', verifyAdultJWT, endCall);
-router.get('/adult/sext/calls/history', verifyAdultJWT, getCallHistory);
 router.get('/adult/hookup/nearby', optionalAdultJWT, getHookupNearbyProviders);
 router.get('/adult/profiles/me', verifyAdultJWT, getAdultMemberProfile);
 router.put('/adult/profiles/me', verifyAdultJWT, updateAdultMemberProfile);

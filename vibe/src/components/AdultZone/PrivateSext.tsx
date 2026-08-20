@@ -1373,7 +1373,16 @@ const PrivateSext: React.FC = () => {
   // Audio / Video call trigger via global AdultCallContext
   const handleStartCall = async (type: 'video' | 'audio') => {
     if (!selectedConv || !selectedConv.otherUser) return;
-    await initiateCall(selectedConv.otherUser.id, type, undefined, selectedConv.conversationId);
+    await initiateCall(
+      selectedConv.otherUser.id,
+      type,
+      undefined,
+      selectedConv.conversationId,
+      {
+        displayName: selectedConv.otherUser.displayName,
+        avatarUrl: selectedConv.otherUser.avatarUrl,
+      }
+    );
   };
 
   const filteredConversations = conversations.filter(c => {

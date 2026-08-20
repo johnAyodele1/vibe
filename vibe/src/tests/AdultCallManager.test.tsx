@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, act, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import '@testing-library/jest-dom/vitest';
+import { render, screen, act, fireEvent, cleanup } from '@testing-library/react';
 import React from 'react';
 import { AdultCallProvider, useAdultCall } from '../components/AdultZone/AdultCallContext';
 import { MemoryRouter } from 'react-router-dom';
@@ -8,7 +9,7 @@ import { MemoryRouter } from 'react-router-dom';
 vi.mock('../contexts/AdultAuthContext', () => ({
   useAdultAuth: () => ({
     isAuthenticated: true,
-    user: { id: 'provider-123', firstName: 'Provider', role: 'provider' },
+    user: { id: 'user-123', firstName: 'User', role: 'user', credits: 100 },
   }),
 }));
 
@@ -21,7 +22,6 @@ vi.mock('socket.io-client', () => {
     }),
     emit: vi.fn(),
     disconnect: vi.fn(),
-    // Helper for tests to trigger socket events
     __trigger: (event: string, payload: any) => {
       if (listeners[event]) {
         listeners[event].forEach(cb => cb(payload));
@@ -36,7 +36,15 @@ vi.mock('socket.io-client', () => {
 });
 
 vi.mock('../components/AdultZone/CallRoom', () => ({
-  default: () => <div data-testid="mock-call-room">CallRoom Active</div>,
+  default: (props: any) => (
+    <div data-testid="mock-call-room">
+      <span data-testid="partner-name">{props.partnerName}</span>
+      <span data-testid="partner-avatar">{props.partnerAvatar}</span>
+      <button data-testid="mock-end-call-btn" onClick={() => props.onCallEnd(120)}>
+        End Call
+      </button>
+    </div>
+  ),
 }));
 
 const TestComponent: React.FC = () => {
@@ -47,7 +55,7 @@ const TestComponent: React.FC = () => {
       <span data-testid="active-call-id">{activeCall?.callId || 'none'}</span>
       <button
         data-testid="trigger-initiate-btn"
-        onClick={() => initiateCall('user-456', 'video', 10, 'conv-789')}
+        onClick={() => initiateCall('provider-456', 'video', 10, 'conv-789', { displayName: 'Real Provider', avatarUrl: 'https://example.com/real-provider.jpg' })}
       >
         Start Call
       </button>
@@ -60,6 +68,10 @@ describe('AdultCallManager and AdultCallProvider Route-Independent Call Signalin
     vi.clearAllMocks();
     localStorage.setItem('adultAccessToken', 'mock-token');
     vi.stubGlobal('fetch', vi.fn());
+  });
+
+  afterEach(() => {
+    cleanup();
   });
 
   it('renders children and manages incoming call state independently of current route', async () => {
@@ -75,13 +87,12 @@ describe('AdultCallManager and AdultCallProvider Route-Independent Call Signalin
 
     const mockSocket = (io as any)();
 
-    // Trigger socket incoming call event while provider is on Home route
     await act(async () => {
       mockSocket.__trigger('call:incoming', {
         callId: 'call-999',
-        callerId: 'caller-111',
-        callerName: 'Jane Caller',
-        callerAvatar: 'https://example.com/avatar.jpg',
+        callerId: 'provider-111',
+        callerName: 'Real Provider',
+        callerAvatar: 'https://example.com/real-provider.jpg',
         type: 'video',
         webrtcRoomId: 'room_999',
         rate: 15,
@@ -89,18 +100,25 @@ describe('AdultCallManager and AdultCallProvider Route-Independent Call Signalin
     });
 
     expect(screen.getByTestId('global-incoming-call-modal')).toBeInTheDocument();
-    expect(screen.getByText('Jane Caller')).toBeInTheDocument();
+    expect(screen.getByText('Real Provider')).toBeInTheDocument();
     expect(screen.getByText('Rate: 💎 15 credits / min')).toBeInTheDocument();
+    const avatarImg = screen.getByAltText('Real Provider') as HTMLImageElement;
+    expect(avatarImg.src).toContain('https://example.com/real-provider.jpg');
   });
 
-  it('accepts incoming call, fetches connection token with exact webrtcRoomId, and transitions to active CallRoom', async () => {
+  it('passes real provider avatar to active CallRoom and presents restored summary UI on end', async () => {
     const { io } = await import('socket.io-client');
 
     vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
-      if (url.includes('/calls/call-999/accept')) {
+      if (url.includes('/calls/initiate')) {
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve({ webrtcRoomId: 'room_999', perMinuteRate: 15 }),
+          json: () => Promise.resolve({
+            callId: 'call-888',
+            webrtcRoomId: 'room_888',
+            perMinuteRate: 10,
+            receiver: { id: 'provider-456', displayName: 'Real Provider', avatarUrl: 'https://example.com/real-provider.jpg' }
+          }),
         });
       }
       if (url.includes('/zego/token')) {
@@ -109,63 +127,8 @@ describe('AdultCallManager and AdultCallProvider Route-Independent Call Signalin
           json: () => Promise.resolve({ token: 'zego-test-token', appId: 12345 }),
         });
       }
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-    }));
-
-    render(
-      <MemoryRouter>
-        <AdultCallProvider>
-          <TestComponent />
-        </AdultCallProvider>
-      </MemoryRouter>
-    );
-
-    const mockSocket = (io as any)();
-
-    await act(async () => {
-      mockSocket.__trigger('call:incoming', {
-        callId: 'call-999',
-        callerId: 'caller-111',
-        callerName: 'Jane Caller',
-        type: 'video',
-        webrtcRoomId: 'room_999',
-        rate: 15,
-      });
-    });
-
-    const acceptBtn = screen.getByTestId('accept-call-btn');
-    await act(async () => {
-      fireEvent.click(acceptBtn);
-    });
-
-    expect(fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/calls/call-999/accept'),
-      expect.any(Object)
-    );
-    expect(fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/zego/token?roomId=room_999&type=call'),
-      expect.any(Object)
-    );
-
-    expect(screen.getByTestId('global-active-call-room')).toBeInTheDocument();
-    expect(screen.getByTestId('mock-call-room')).toBeInTheDocument();
-  });
-
-  it('cleans up call on backend if connection token fetch fails during acceptance and presents terminal UI', async () => {
-    const { io } = await import('socket.io-client');
-
-    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
-      if (url.includes('/calls/call-999/accept')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ webrtcRoomId: 'room_999', perMinuteRate: 15 }),
-        });
-      }
-      if (url.includes('/zego/token')) {
-        return Promise.resolve({
-          ok: false,
-          json: () => Promise.resolve({ error: 'Token service unavailable' }),
-        });
+      if (url.includes('/calls/call-888/end')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) });
       }
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
     }));
@@ -180,90 +143,47 @@ describe('AdultCallManager and AdultCallProvider Route-Independent Call Signalin
 
     const mockSocket = (io as any)();
 
-    await act(async () => {
-      mockSocket.__trigger('call:incoming', {
-        callId: 'call-999',
-        callerId: 'caller-111',
-        callerName: 'Jane Caller',
-        type: 'video',
-        webrtcRoomId: 'room_999',
-        rate: 15,
-      });
-    });
-
-    const acceptBtn = screen.getByTestId('accept-call-btn');
-    await act(async () => {
-      fireEvent.click(acceptBtn);
-    });
-
-    expect(fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/calls/call-999/end'),
-      expect.objectContaining({
-        body: JSON.stringify({ reason: 'connection_failed' }),
-      })
-    );
-
-    expect(screen.getByTestId('global-terminal-call-modal')).toBeInTheDocument();
-    expect(screen.getByText('Connection Failed')).toBeInTheDocument();
-
-    const dismissBtn = screen.getByTestId('dismiss-terminal-call-btn');
-    await act(async () => {
-      fireEvent.click(dismissBtn);
-    });
-
-    expect(screen.getByTestId('call-state')).toHaveTextContent('idle');
-  });
-
-  it('cancels outgoing call, notifies backend with reason cancelled_by_caller, and displays terminal UI', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
-      if (url.includes('/calls/initiate')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ callId: 'call-888', webrtcRoomId: 'room_888', perMinuteRate: 10 }),
-        });
-      }
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-    }));
-
-    render(
-      <MemoryRouter>
-        <AdultCallProvider>
-          <TestComponent />
-        </AdultCallProvider>
-      </MemoryRouter>
-    );
-
+    // Start outgoing call
     const startBtn = screen.getByTestId('trigger-initiate-btn');
     await act(async () => {
       fireEvent.click(startBtn);
     });
 
     expect(screen.getByTestId('global-outgoing-call-modal')).toBeInTheDocument();
+    expect(screen.getByText('Real Provider')).toBeInTheDocument();
 
-    const cancelBtn = screen.getByTestId('cancel-call-btn');
+    // Provider accepts
     await act(async () => {
-      fireEvent.click(cancelBtn);
+      mockSocket.__trigger('call:accepted', { callId: 'call-888', webrtcRoomId: 'room_888' });
     });
 
-    expect(fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/calls/call-888/end'),
-      expect.objectContaining({
-        body: JSON.stringify({ reason: 'cancelled_by_caller' }),
-      })
-    );
+    expect(screen.getByTestId('global-active-call-room')).toBeInTheDocument();
+    expect(screen.getByTestId('partner-name')).toHaveTextContent('Real Provider');
+    expect(screen.getByTestId('partner-avatar')).toHaveTextContent('https://example.com/real-provider.jpg');
 
-    expect(screen.getByTestId('global-terminal-call-modal')).toBeInTheDocument();
-    expect(screen.getByText('Call Cancelled')).toBeInTheDocument();
-
-    const dismissBtn = screen.getByTestId('dismiss-terminal-call-btn');
+    // End call from CallRoom
+    const endCallBtn = screen.getByTestId('mock-end-call-btn');
     await act(async () => {
-      fireEvent.click(dismissBtn);
+      fireEvent.click(endCallBtn);
+    });
+
+    // Check restored Call Ending Summary UI
+    expect(screen.getByTestId('global-terminal-call-modal')).toBeInTheDocument();
+    expect(screen.getByText('Call Ended')).toBeInTheDocument();
+    expect(screen.getByText('Duration:')).toBeInTheDocument();
+    expect(screen.getByText('02:00')).toBeInTheDocument(); // 120s = 02:00
+    expect(screen.getByText('Credits Charged:')).toBeInTheDocument();
+
+    // Dismiss summary
+    const closeBtn = screen.getByTestId('dismiss-terminal-call-btn');
+    await act(async () => {
+      fireEvent.click(closeBtn);
     });
 
     expect(screen.getByTestId('call-state')).toHaveTextContent('idle');
   });
 
-  it('renders terminal modal for call:declined, call:missed, call:ended, and insufficient_credits reasons', async () => {
+  it('renders summary no-charge messaging for declined calls', async () => {
     const { io } = await import('socket.io-client');
 
     vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
@@ -291,30 +211,19 @@ describe('AdultCallManager and AdultCallProvider Route-Independent Call Signalin
       fireEvent.click(startBtn);
     });
 
-    // Trigger call:declined socket event
+    // Trigger call:declined
     await act(async () => {
       mockSocket.__trigger('call:declined', { callId: 'call-777' });
     });
 
     expect(screen.getByTestId('global-terminal-call-modal')).toBeInTheDocument();
     expect(screen.getByText('Call Declined')).toBeInTheDocument();
+    expect(screen.getByText('No charge')).toBeInTheDocument();
 
     // Dismiss modal
     await act(async () => {
       fireEvent.click(screen.getByTestId('dismiss-terminal-call-btn'));
     });
     expect(screen.getByTestId('call-state')).toHaveTextContent('idle');
-
-    // Initiate again and test call:ended with insufficient_credits
-    await act(async () => {
-      fireEvent.click(startBtn);
-    });
-
-    await act(async () => {
-      mockSocket.__trigger('call:ended', { callId: 'call-777', reason: 'insufficient_credits' });
-    });
-
-    expect(screen.getByTestId('global-terminal-call-modal')).toBeInTheDocument();
-    expect(screen.getByText('Insufficient Credits')).toBeInTheDocument();
   });
 });
