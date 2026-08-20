@@ -4,7 +4,6 @@ import { toast } from 'sonner';
 import Lottie from 'lottie-react';
 import { API_BASE_URL } from '../../config';
 import { formatAmount } from '../../lib/pricing';
-import { useOnboardingStore } from './useOnboardingStore';
 
 // Minimal valid Lottie JSON objects defined directly to avoid JSON resolve issues in Vite/TS
 const minimalLottie = {

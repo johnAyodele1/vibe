@@ -97,11 +97,12 @@ describe('ProviderProfile Component Payment Tab', () => {
       const matchingCall = calls.find((callArgs: any[]) => {
         const arg = callArgs[0];
         const url = typeof arg === 'string' ? arg : arg?.url;
-        return url && url.includes('/v1/adult/providers/me/onboarding/step/6');
+        return Boolean(url && url.includes('/v1/adult/providers/me/onboarding/step/6'));
       });
       expect(matchingCall).toBeDefined();
+      if (!matchingCall) return;
       const reqOrOptions = matchingCall[1] || matchingCall[0];
-      const method = reqOrOptions.method || 'PUT';
+      const method = reqOrOptions?.method || 'PUT';
       expect(method).toBe('PUT');
     });
   });
