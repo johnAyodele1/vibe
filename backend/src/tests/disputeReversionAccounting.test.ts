@@ -212,6 +212,10 @@ describe('Dispute Reversion & Accounting Invariants Test Suite', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ resolution: 'upheld', adminNotes: 'Customer provided evidence provider was absent' });
 
+    if (resolveRes.status !== 200) {
+      console.log('[DEBUG] resolveRes status:', resolveRes.status, 'body:', resolveRes.body);
+    }
+
     expect(resolveRes.status).toBe(200);
     expect(resolveRes.body.success).toBe(true);
 
@@ -514,5 +518,168 @@ describe('Dispute Reversion & Accounting Invariants Test Suite', () => {
       .set('Authorization', `Bearer ${memberToken}`)
       .send({ reference: 'TEST' });
     expect(refundCompleteRes.status).toBe(403);
+  });
+
+  it('SCENARIO 7: Provider Insufficient Wallet Balance (credits < providerAmountHeld)', async () => {
+    // Provider has only 100 credits in wallet, but earned a 425 share
+    await AdultUser.updateOne({ _id: providerId }, { $set: { credits: 100, 'providerProfile.totalEarnings': 425 } });
+
+    const serviceMsg = await AdultMessage.create({
+      conversationId: `${memberId}_${providerId}`,
+      senderId: providerId,
+      receiverId: memberId,
+      content: 'Service request',
+      messageType: 'service_request',
+      serviceRequest: { baseRate: 500, extras: [], totalAmount: 500, status: 'paid', eligibleForPayout: false },
+    });
+
+    const tx = await CreditTransaction.create({
+      userId: providerId,
+      type: 'service_payment_received',
+      amount: 425,
+      platformFee: 75,
+      usdAmount: 0,
+      description: 'Service payment received',
+      relatedUserId: memberId,
+      status: 'completed',
+      eligibleForPayout: false,
+      metadata: { serviceRequestId: serviceMsg._id },
+    });
+
+    const reportRes = await request(app)
+      .post(`/api/v1/adult/sext/service-requests/${serviceMsg._id}/report`)
+      .set('Authorization', `Bearer ${memberToken}`)
+      .send({ reason: 'Dispute' });
+
+    const reportId = reportRes.body.reportId;
+
+    // Admin resolves dispute in customer favor
+    const resolveRes = await request(app)
+      .put(`/api/v1/admin/disputes/${reportId}/resolve`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ resolution: 'upheld', adminNotes: 'Customer wins' });
+
+    expect(resolveRes.status).toBe(200);
+
+    // Provider wallet balance caps at 0 (never negative)
+    const providerUser = await AdultUser.findById(providerId);
+    expect(providerUser?.credits).toBe(0);
+
+    // Calculate provider balance breakdown - must be 0 across all buckets with no error or mismatch
+    const breakdown = await calculateProviderBalanceBreakdown(providerId);
+    expect(breakdown.totalAccumulatedCredits).toBe(0);
+    expect(breakdown.withdrawableCredits).toBe(0);
+    expect(breakdown.unsettledCredits).toBe(0);
+    expect(breakdown.disputedCredits).toBe(0);
+    expect(breakdown.displayedUnsettledCredits).toBe(0);
+    expect(breakdown.earningsToBeClaimedCredits).toBe(0);
+  });
+
+  it('SCENARIO 8: Single Original Earning Reverted Results in All Active Balances = 0', async () => {
+    // Single original transaction = +425
+    const serviceMsg = await AdultMessage.create({
+      conversationId: `${memberId}_${providerId}`,
+      senderId: providerId,
+      receiverId: memberId,
+      content: 'Service request',
+      messageType: 'service_request',
+      serviceRequest: { baseRate: 500, extras: [], totalAmount: 500, status: 'paid', eligibleForPayout: false },
+    });
+
+    const tx = await CreditTransaction.create({
+      userId: providerId,
+      type: 'service_payment_received',
+      amount: 425,
+      platformFee: 75,
+      usdAmount: 0,
+      description: 'Service payment received',
+      relatedUserId: memberId,
+      status: 'completed',
+      eligibleForPayout: false,
+      metadata: { serviceRequestId: serviceMsg._id },
+    });
+
+    const reportRes = await request(app)
+      .post(`/api/v1/adult/sext/service-requests/${serviceMsg._id}/report`)
+      .set('Authorization', `Bearer ${memberToken}`)
+      .send({ reason: 'Reversion test' });
+
+    const reportId = reportRes.body.reportId;
+
+    await request(app)
+      .put(`/api/v1/admin/disputes/${reportId}/resolve`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ resolution: 'upheld', adminNotes: 'Reverted' });
+
+    const breakdown = await calculateProviderBalanceBreakdown(providerId);
+    expect(breakdown.totalAccumulatedCredits).toBe(0);
+    expect(breakdown.earningsToBeClaimedCredits).toBe(0);
+    expect(breakdown.withdrawableCredits).toBe(0);
+    expect(breakdown.unsettledCredits).toBe(0);
+    expect(breakdown.disputedCredits).toBe(0);
+    expect(breakdown.displayedUnsettledCredits).toBe(0);
+  });
+
+  it('SCENARIO 9: Idempotency of Internal Customer Wallet Refund Completion', async () => {
+    const serviceMsg = await AdultMessage.create({
+      conversationId: `${memberId}_${providerId}`,
+      senderId: providerId,
+      receiverId: memberId,
+      content: 'Service request',
+      messageType: 'service_request',
+      serviceRequest: { baseRate: 500, extras: [], totalAmount: 500, status: 'paid', eligibleForPayout: false },
+    });
+
+    const tx = await CreditTransaction.create({
+      userId: providerId,
+      type: 'service_payment_received',
+      amount: 425,
+      platformFee: 75,
+      usdAmount: 0,
+      description: 'Service payment received',
+      relatedUserId: memberId,
+      status: 'completed',
+      eligibleForPayout: false,
+      metadata: { serviceRequestId: serviceMsg._id },
+    });
+
+    const reportRes = await request(app)
+      .post(`/api/v1/adult/sext/service-requests/${serviceMsg._id}/report`)
+      .set('Authorization', `Bearer ${memberToken}`)
+      .send({ reason: 'Refund test' });
+
+    const reportId = reportRes.body.reportId;
+
+    await request(app)
+      .put(`/api/v1/admin/disputes/${reportId}/resolve`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ resolution: 'upheld', adminNotes: 'Reverted' });
+
+    const initialCustomer = await AdultUser.findById(memberId);
+    const initialBalance = initialCustomer?.credits || 0;
+
+    // Complete refund 1st time
+    const res1 = await request(app)
+      .put(`/api/v1/admin/disputes/${reportId}/refund-complete`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reference: 'REF-IDEMPOTENT-1' });
+
+    expect(res1.status).toBe(200);
+    expect(res1.body.success).toBe(true);
+
+    const customerAfterFirst = await AdultUser.findById(memberId);
+    expect(customerAfterFirst?.credits).toBe(initialBalance + 500);
+
+    // Complete refund 2nd time
+    const res2 = await request(app)
+      .put(`/api/v1/admin/disputes/${reportId}/refund-complete`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reference: 'REF-IDEMPOTENT-2' });
+
+    expect(res2.status).toBe(200);
+    expect(res2.body.alreadyCompleted).toBe(true);
+
+    const customerAfterSecond = await AdultUser.findById(memberId);
+    expect(customerAfterSecond?.credits).toBe(initialBalance + 500); // NO double crediting!
   });
 });

@@ -142,13 +142,6 @@ export const adminGetDisputes = async (req: Request, res: Response) => {
       if (dispute.originalTxId) {
         originalTx = await CreditTransaction.findById(dispute.originalTxId);
       }
-      if (!originalTx && dispute.serviceRequestId) {
-        originalTx = await CreditTransaction.findOne({
-          userId: dispute.reported,
-          'metadata.serviceRequestId': dispute.serviceRequestId,
-          type: 'service_payment_received'
-        });
-      }
 
       const customerRefund = await CustomerRefund.findOne({
         disputeReportId: dispute._id
@@ -213,16 +206,24 @@ export const resolveDispute = async (req: Request, res: Response) => {
       return res.status(409).json({ success: false, error: `Dispute already resolved as ${existingReport.resolution}` });
     }
 
-    // Lookup original transaction canonically by originalTxId first, then serviceRequestId
-    let originalTx = null;
-    if ((report as any).originalTxId) {
-      originalTx = await CreditTransaction.findById((report as any).originalTxId);
+    // NEVER GUESS THE ORIGINAL TRANSACTION: originalTxId must exist canonically
+    if (!report.originalTxId) {
+      // Revert status back to open if canonical originalTxId is missing
+      await Report.updateOne({ _id: report._id }, { $set: { status: 'open' } });
+      return res.status(400).json({
+        success: false,
+        error: 'ORIGINAL_TX_MISSING',
+        message: 'Canonical originalTxId is missing from dispute report. Resolution cannot proceed without canonical transaction.'
+      });
     }
-    if (!originalTx && report.serviceRequestId) {
-      originalTx = await CreditTransaction.findOne({
-        userId: report.reported,
-        'metadata.serviceRequestId': report.serviceRequestId,
-        type: 'service_payment_received'
+
+    const originalTx = await CreditTransaction.findById(report.originalTxId);
+    if (!originalTx) {
+      await Report.updateOne({ _id: report._id }, { $set: { status: 'open' } });
+      return res.status(400).json({
+        success: false,
+        error: 'ORIGINAL_TX_NOT_FOUND',
+        message: 'Referenced original transaction was not found in database.'
       });
     }
 
@@ -230,84 +231,129 @@ export const resolveDispute = async (req: Request, res: Response) => {
     const providerAmountHeld = report.providerAmountHeld || Math.floor(amountInDispute * 0.85);
     const platformFee = Math.max(0, amountInDispute - providerAmountHeld);
 
-    if (resolution === 'upheld') {
-      // Customer wins (Revert transaction)
-      if (originalTx) {
-        if (originalTx.status === 'reverted') {
-          return res.json({ success: true, resolution, alreadyReverted: true });
+    const runFinancialMutations = async (session?: mongoose.ClientSession) => {
+      const opts = session ? { session } : {};
+
+      const currentTxQuery = CreditTransaction.findById(report.originalTxId);
+      const currentTx = session ? await currentTxQuery.session(session) : await currentTxQuery;
+
+      if (!currentTx) {
+        throw new Error('Original transaction not found');
+      }
+
+      const reportQuery = Report.findById(report._id);
+      const currentReport = session ? await reportQuery.session(session) : await reportQuery;
+
+      if (resolution === 'upheld') {
+        if (currentTx.status === 'reverted') {
+          return { alreadyReverted: true };
         }
 
-        originalTx.status = 'reverted';
-        originalTx.inDispute = false;
-        originalTx.disputeResolution = 'upheld';
-        originalTx.disputeResolvedAt = new Date();
-        originalTx.disputeResolvedBy = adminId;
-        originalTx.eligibleForPayout = false;
-        await originalTx.save();
-      }
+        currentTx.status = 'reverted';
+        currentTx.inDispute = false;
+        currentTx.disputeResolution = 'upheld';
+        currentTx.disputeResolvedAt = new Date();
+        currentTx.disputeResolvedBy = adminId;
+        currentTx.eligibleForPayout = false;
+        await currentTx.save(opts);
 
-      // Deduct provider share from provider wallet (and providerProfile totalEarnings if set)
-      const provider = await AdultUser.findById(report.reported);
-      if (provider) {
-        const recoverableAmount = Math.min(Math.max(0, provider.credits), providerAmountHeld);
-        provider.credits -= recoverableAmount;
-        if (provider.providerProfile) {
-          provider.providerProfile.totalEarnings = Math.max(
-            0,
-            (provider.providerProfile.totalEarnings || 0) - providerAmountHeld
-          );
+        const providerQuery = AdultUser.findById(report.reported);
+        const provider = session ? await providerQuery.session(session) : await providerQuery;
+
+        if (provider) {
+          const recoverableAmount = Math.min(Math.max(0, provider.credits), providerAmountHeld);
+          provider.credits -= recoverableAmount;
+          if (provider.providerProfile) {
+            provider.providerProfile.totalEarnings = Math.max(
+              0,
+              (provider.providerProfile.totalEarnings || 0) - providerAmountHeld
+            );
+          }
+          await provider.save(opts);
         }
-        await provider.save();
+
+        if (platformFee > 0) {
+          await recordPlatformEarning({
+            source: 'service',
+            amount: -platformFee,
+            fromUserId: report.reporter,
+            toProviderId: report.reported,
+            referenceId: currentTx._id,
+          }, opts);
+        }
+
+        const refundQuery = CustomerRefund.findOne({ disputeReportId: report._id });
+        let customerRefund = session ? await refundQuery.session(session) : await refundQuery;
+
+        if (!customerRefund) {
+          const refundData = {
+            originalTxId: currentTx._id,
+            serviceRequestId: report.serviceRequestId,
+            disputeReportId: report._id,
+            customerId: report.reporter,
+            providerId: report.reported,
+            amount: amountInDispute,
+            providerAmountReverted: providerAmountHeld,
+            platformFeeReverted: platformFee,
+            status: 'REFUND_PENDING',
+            adminId,
+            resolvedAt: new Date(),
+          };
+          if (session) {
+            await CustomerRefund.create([refundData], { session });
+          } else {
+            await CustomerRefund.create(refundData);
+          }
+        }
+      } else {
+        currentTx.inDispute = false;
+        currentTx.eligibleForPayout = true;
+        currentTx.disputeResolution = 'dismissed';
+        currentTx.disputeResolvedAt = new Date();
+        currentTx.disputeResolvedBy = adminId;
+        await currentTx.save(opts);
       }
 
-      // Reverse platform fee
-      if (platformFee > 0 && originalTx) {
-        await recordPlatformEarning({
-          source: 'service',
-          amount: -platformFee,
-          fromUserId: report.reporter,
-          toProviderId: report.reported,
-          referenceId: originalTx._id,
-        });
+      if (currentReport) {
+        currentReport.status = 'resolved';
+        currentReport.resolution = resolution;
+        currentReport.adminNotes = adminNotes;
+        currentReport.resolvedBy = adminId;
+        currentReport.resolvedAt = new Date();
+        await currentReport.save(opts);
       }
 
-      // Create CustomerRefund record (REFUND_PENDING)
-      let customerRefund = await CustomerRefund.findOne({ disputeReportId: report._id });
-      if (!customerRefund) {
-        customerRefund = await CustomerRefund.create({
-          originalTxId: originalTx?._id || report._id,
-          serviceRequestId: report.serviceRequestId,
-          disputeReportId: report._id,
-          customerId: report.reporter,
-          providerId: report.reported,
-          amount: amountInDispute,
-          providerAmountReverted: providerAmountHeld,
-          platformFeeReverted: platformFee,
-          status: 'REFUND_PENDING',
-          adminId,
-          resolvedAt: new Date(),
-        });
-      }
+      return { success: true };
+    };
 
-    } else {
-      // Provider wins (Dismiss dispute)
-      if (originalTx) {
-        originalTx.inDispute = false;
-        originalTx.eligibleForPayout = true;
-        originalTx.disputeResolution = 'dismissed';
-        originalTx.disputeResolvedAt = new Date();
-        originalTx.disputeResolvedBy = adminId;
-        await originalTx.save();
+    let result: any;
+    let dbSession: mongoose.ClientSession | null = null;
+    try {
+      dbSession = await mongoose.startSession();
+      dbSession.startTransaction();
+      result = await runFinancialMutations(dbSession);
+      await dbSession.commitTransaction();
+    } catch (err: any) {
+      if (dbSession) {
+        await dbSession.abortTransaction().catch(() => {});
+        dbSession.endSession();
+        dbSession = null;
+      }
+      if (err.code === 20 || err.message?.includes('Transaction numbers are only allowed')) {
+        result = await runFinancialMutations();
+      } else {
+        await Report.updateOne({ _id: report._id }, { $set: { status: 'open' } });
+        throw err;
+      }
+    } finally {
+      if (dbSession) {
+        dbSession.endSession();
       }
     }
 
-    // Update Report
-    report.status = 'resolved';
-    report.resolution = resolution;
-    report.adminNotes = adminNotes;
-    report.resolvedBy = adminId;
-    report.resolvedAt = new Date();
-    await report.save();
+    if (result?.alreadyReverted) {
+      return res.json({ success: true, resolution, alreadyReverted: true });
+    }
 
     // Sockets emission
     const ns = req.app.get('adultNamespace');

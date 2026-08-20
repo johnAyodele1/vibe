@@ -1,12 +1,17 @@
 const mongoose = require('mongoose');
 
 async function migrateDisputedTransactions() {
-  const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/vibe';
-  console.log(`[Migration] Connecting to MongoDB: ${mongoUri}`);
+  const mongoUri = process.env.MONGODB_URI;
+  if (!mongoUri) {
+    console.error('[Migration] CRITICAL ERROR: MONGODB_URI environment variable is required.');
+    process.exit(1);
+  }
 
-  await mongoose.connect(mongoUri);
+  console.log(`[Migration] Connecting to MongoDB: ${mongoUri.replace(/:([^@]+)@/, ':***@')}`);
 
   try {
+    await mongoose.connect(mongoUri);
+
     const Report = mongoose.model('Report', new mongoose.Schema({}, { strict: false }));
     const CreditTransaction = mongoose.model('CreditTransaction', new mongoose.Schema({}, { strict: false }));
     const CustomerRefund = mongoose.model('CustomerRefund', new mongoose.Schema({}, { strict: false }));
@@ -24,26 +29,20 @@ async function migrateDisputedTransactions() {
 
     for (const report of upheldReports) {
       if (!report.reported) {
-        console.warn(`[Migration] Skipping report ${report._id}: missing reported provider ID.`);
-        continue;
+        console.error(`[Migration] ERROR: Report ${report._id} is missing reported provider ID.`);
+        process.exit(1);
       }
 
-      // Canonical lookup: try originalTxId first, then serviceRequestId
-      let tx = null;
-      if (report.originalTxId) {
-        tx = await CreditTransaction.findById(report.originalTxId);
-      }
-      if (!tx && report.serviceRequestId) {
-        tx = await CreditTransaction.findOne({
-          userId: report.reported,
-          'metadata.serviceRequestId': report.serviceRequestId,
-          type: 'service_payment_received'
-        });
+      // Strict canonical lookup using report.originalTxId
+      if (!report.originalTxId) {
+        console.error(`[Migration] ERROR: Report ${report._id} is missing canonical originalTxId.`);
+        process.exit(1);
       }
 
+      const tx = await CreditTransaction.findById(report.originalTxId);
       if (!tx) {
-        console.warn(`[Migration] Warning: Original transaction not found for report ${report._id}.`);
-        continue;
+        console.error(`[Migration] ERROR: Referenced original transaction ${report.originalTxId} for report ${report._id} not found in database.`);
+        process.exit(1);
       }
 
       // Update original transaction state if not already reverted
@@ -86,8 +85,11 @@ async function migrateDisputedTransactions() {
     console.log(`[Migration] Audit completed. Updated ${updatedCount} transactions, created ${refundsCreated} missing refund records.`);
   } catch (err) {
     console.error('[Migration] Error during migration:', err);
+    process.exit(1);
   } finally {
-    await mongoose.disconnect();
+    if (mongoose.connection.readyState !== 0) {
+      await mongoose.disconnect();
+    }
   }
 }
 

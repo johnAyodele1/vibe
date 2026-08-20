@@ -627,21 +627,23 @@ export const reportServiceRequest = async (req: Request, res: Response) => {
     message.serviceRequest.reportedAt = new Date().toISOString();
     await message.save();
 
+    // Find provider's original earning transaction canonically
+    const originalTx = await CreditTransaction.findOne({
+      userId: message.senderId,
+      type: 'service_payment_received',
+      $or: [
+        { 'metadata.serviceRequestId': message._id },
+        { 'metadata.serviceRequestId': message._id.toString() },
+      ]
+    });
+
     // Mark provider's transaction as inDispute
-    await CreditTransaction.updateOne(
-      {
-        userId: message.senderId,
-        type: 'service_payment_received',
-        'metadata.serviceRequestId': message._id
-      },
-      {
-        $set: {
-          eligibleForPayout: false,
-          inDispute: true,
-          disputeReason: reason,
-        }
-      }
-    );
+    if (originalTx) {
+      originalTx.eligibleForPayout = false;
+      originalTx.inDispute = true;
+      originalTx.disputeReason = reason;
+      await originalTx.save();
+    }
 
     // Check if an existing open report exists for this service request
     let report = await Report.findOne({
@@ -659,6 +661,7 @@ export const reportServiceRequest = async (req: Request, res: Response) => {
           description: details,
           type: 'service_dispute',
           serviceRequestId: message._id,
+          originalTxId: originalTx?._id,
           conversationId: message.conversationId,
           details,
           amountInDispute: message.serviceRequest.totalAmount,
