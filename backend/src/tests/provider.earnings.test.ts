@@ -542,5 +542,35 @@ describe('Provider Earnings & Payout API', () => {
       const b = await calculateProviderBalanceBreakdown(matrixProviderId);
       expect(b.totalAccumulatedCredits).toBe(1000); // spend does not count as a provider earning reversion
     });
+
+    it('20. Unsettled earnings remain intact and positive when provider has prior completed payouts', async () => {
+      // Prior payout of 15000 diamonds
+      await CreditTransaction.create({
+        userId: matrixProviderId,
+        type: 'payout',
+        amount: -15000,
+        usdAmount: -112.5,
+        description: 'Prior payout',
+        status: 'completed'
+      });
+
+      // New pending/unsettled service payment of 1500 diamonds
+      await CreditTransaction.create({
+        userId: matrixProviderId,
+        type: 'service_payment_received',
+        amount: 1500,
+        platformFee: 225,
+        usdAmount: 11.25,
+        description: 'Service tonight payment',
+        status: 'completed',
+        eligibleForPayout: false // Unsettled
+      });
+
+      const b = await calculateProviderBalanceBreakdown(matrixProviderId);
+      expect(b.unsettledCredits).toBe(1500);
+      expect(b.unsettledNaira).toBe(1500 * b.rate);
+      expect(b.withdrawableCredits).toBe(0);
+      expect(b.earningsToBeClaimedCredits).toBe(1500);
+    });
   });
 });

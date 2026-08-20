@@ -299,24 +299,26 @@ export const calculateProviderBalanceBreakdown = async (
   const paidOutCredits = Math.max(payoutTxCredits, paidOutFromFlag);
   const unflaggedPaidOut = Math.max(0, paidOutCredits - paidOutFromFlag);
 
-  // Total deductions from claimable balance = unflagged payouts + reversions
-  let remainingDeduction = unflaggedPaidOut + totalReversionCredits;
-  let withdrawableCredits = 0;
+  // 1. Unflagged payouts reduce raw withdrawable earnings only (payouts cannot draw from unsettled or disputed funds)
+  let withdrawableCredits = Math.max(0, rawWithdrawableCredits - unflaggedPaidOut);
 
-  if (rawWithdrawableCredits >= remainingDeduction) {
-    withdrawableCredits = rawWithdrawableCredits - remainingDeduction;
-    remainingDeduction = 0;
+  // 2. Reversions (refunds/chargebacks) reduce withdrawable earnings first, then unsettled, then disputed
+  let remainingReversion = totalReversionCredits;
+
+  if (withdrawableCredits >= remainingReversion) {
+    withdrawableCredits -= remainingReversion;
+    remainingReversion = 0;
   } else {
+    remainingReversion -= withdrawableCredits;
     withdrawableCredits = 0;
-    remainingDeduction -= rawWithdrawableCredits;
 
-    if (unsettledCredits >= remainingDeduction) {
-      unsettledCredits -= remainingDeduction;
-      remainingDeduction = 0;
+    if (unsettledCredits >= remainingReversion) {
+      unsettledCredits -= remainingReversion;
+      remainingReversion = 0;
     } else {
-      remainingDeduction -= unsettledCredits;
+      remainingReversion -= unsettledCredits;
       unsettledCredits = 0;
-      disputedCredits = Math.max(0, disputedCredits - remainingDeduction);
+      disputedCredits = Math.max(0, disputedCredits - remainingReversion);
     }
   }
 
