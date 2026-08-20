@@ -62,6 +62,8 @@ export interface ProviderBalanceBreakdown {
   unsettledNaira: number;
   disputedCredits: number;
   disputedNaira: number;
+  displayedUnsettledCredits: number;
+  displayedUnsettledNaira: number;
   withdrawableCredits: number;
   withdrawableNaira: number;
   earningsToBeClaimedCredits: number;
@@ -325,6 +327,9 @@ export const calculateProviderBalanceBreakdown = async (
   const earningsToBeClaimedCredits = withdrawableCredits + unsettledCredits + disputedCredits;
   const totalAccumulatedCredits = lifetimeProviderEarnings;
 
+  // Requirement #1: displayedUnsettledPayment = normalUnsettledCredits + disputedCredits
+  const displayedUnsettledCredits = unsettledCredits + disputedCredits;
+
   return {
     totalAccumulatedCredits,
     totalAccumulatedNaira: totalAccumulatedCredits * rate,
@@ -338,6 +343,8 @@ export const calculateProviderBalanceBreakdown = async (
     unsettledNaira: unsettledCredits * rate,
     disputedCredits,
     disputedNaira: disputedCredits * rate,
+    displayedUnsettledCredits,
+    displayedUnsettledNaira: displayedUnsettledCredits * rate,
     withdrawableCredits,
     withdrawableNaira: withdrawableCredits * rate,
     earningsToBeClaimedCredits,

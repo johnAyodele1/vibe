@@ -767,7 +767,7 @@ export const getProviderEarnings = async (req: Request, res: Response) => {
       let typeLabel = tx.type.charAt(0).toUpperCase() + tx.type.slice(1);
       if (tx.type === 'tip') typeLabel = 'Tip';
       else if (tx.type === 'payout') typeLabel = 'Payout';
-      else if (REVERT_TYPES.includes(tx.type) || ((tx.type as string) === 'call_refund' && tx.amount < 0)) typeLabel = 'Revert';
+      else if (tx.status === 'reverted' || REVERT_TYPES.includes(tx.type) || ((tx.type as string) === 'call_refund' && tx.amount < 0)) typeLabel = 'Revert';
 
       // Determine From/Method label
       let fromLabel = 'Anonymous';
@@ -783,7 +783,9 @@ export const getProviderEarnings = async (req: Request, res: Response) => {
 
       // Determine display status
       let displayStatus = tx.status === 'completed' ? 'Completed' : tx.status.charAt(0).toUpperCase() + tx.status.slice(1);
-      if (tx.type === 'service_payment_received' && tx.eligibleForPayout === false && !tx.inDispute && tx.status === 'completed') {
+      if (tx.status === 'reverted') {
+        displayStatus = 'Reverted';
+      } else if (tx.type === 'service_payment_received' && tx.eligibleForPayout === false && !tx.inDispute && tx.status === 'completed') {
         displayStatus = 'Pending';
       } else if (tx.inDispute) {
         displayStatus = 'Disputed';
@@ -810,10 +812,16 @@ export const getProviderEarnings = async (req: Request, res: Response) => {
         grossEarned,
         platformFee,
         paidOut: breakdown.paidOutNaira,
-        pending: breakdown.unsettledNaira,
+        pending: breakdown.displayedUnsettledNaira,
         withdrawable: breakdown.withdrawableNaira,
-        unsettled: breakdown.unsettledNaira,
-        unsettledCredits: breakdown.unsettledCredits,
+        unsettled: breakdown.displayedUnsettledNaira,
+        unsettledCredits: breakdown.displayedUnsettledCredits,
+        normalUnsettledCredits: breakdown.unsettledCredits,
+        normalUnsettledNaira: breakdown.unsettledNaira,
+        disputedCredits: breakdown.disputedCredits,
+        disputedNaira: breakdown.disputedNaira,
+        displayedUnsettledCredits: breakdown.displayedUnsettledCredits,
+        displayedUnsettledNaira: breakdown.displayedUnsettledNaira,
         withdrawableCredits: breakdown.withdrawableCredits,
         earningsToBeClaimedCredits: breakdown.earningsToBeClaimedCredits,
         earningsToBeClaimedNaira: breakdown.earningsToBeClaimedNaira,

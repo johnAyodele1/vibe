@@ -4,6 +4,8 @@ import AdultUser from '../models/AdultUser';
 import CreditTransaction from '../models/CreditTransaction';
 import PayoutRequest from '../models/PayoutRequest';
 import Report from '../models/Report';
+import CustomerRefund from '../models/CustomerRefund';
+import { recordPlatformEarning } from '../shared/fees';
 import { getDiamondNairaRate } from '../shared/pricing';
 import { sendPushToUser } from '../shared/push';
 import { PROVIDER_EARNING_TYPES } from '../shared/earnings';
@@ -116,10 +118,31 @@ export const adminGetDisputes = async (req: Request, res: Response) => {
       const provider = await AdultUser.findById(dispute.reported);
       const member = await AdultUser.findById(dispute.reporter);
 
+      const originalTx = await CreditTransaction.findOne({
+        userId: dispute.reported,
+        'metadata.serviceRequestId': dispute.serviceRequestId,
+        type: 'service_payment_received'
+      });
+
+      const customerRefund = await CustomerRefund.findOne({
+        disputeReportId: dispute._id
+      });
+
+      const amountInDispute = dispute.amountInDispute || 0;
+      const providerAmountHeld = dispute.providerAmountHeld || Math.floor(amountInDispute * 0.85);
+      const platformFee = Math.max(0, amountInDispute - providerAmountHeld);
+
       return {
         ...dispute.toObject(),
         providerName: provider?.providerProfile?.stageName || provider?.displayName || 'Provider',
         memberName: member?.displayName || member?.username || 'Member',
+        amountInDispute,
+        providerAmountHeld,
+        platformFee,
+        originalTxId: originalTx?._id || null,
+        originalTxStatus: originalTx?.status || null,
+        supportConversationId: `support_${dispute.reporter.toString()}`,
+        customerRefund: customerRefund ? customerRefund.toObject() : null,
       };
     }));
 
@@ -143,51 +166,99 @@ export const resolveDispute = async (req: Request, res: Response) => {
     }
 
     const report = await Report.findById(reportId);
-    if (!report || report.status !== 'open') {
-      return res.status(404).json({ success: false, error: 'Dispute not found or already resolved' });
+    if (!report) {
+      return res.status(404).json({ success: false, error: 'Dispute report not found' });
     }
+
+    if (report.status !== 'open') {
+      if (report.resolution === resolution) {
+        return res.json({ success: true, resolution, alreadyResolved: true });
+      }
+      return res.status(409).json({ success: false, error: `Dispute already resolved as ${report.resolution}` });
+    }
+
+    const originalTx = await CreditTransaction.findOne({
+      userId: report.reported,
+      'metadata.serviceRequestId': report.serviceRequestId,
+      type: 'service_payment_received'
+    });
+
+    const amountInDispute = report.amountInDispute || 0;
+    const providerAmountHeld = report.providerAmountHeld || Math.floor(amountInDispute * 0.85);
+    const platformFee = Math.max(0, amountInDispute - providerAmountHeld);
 
     if (resolution === 'upheld') {
-      // Refund the member
-      await AdultUser.findOneAndUpdate(
-        { _id: report.reporter },
-        { $inc: { credits: report.amountInDispute || 0 } }
-      );
-
-      // Deduct from provider
-      await AdultUser.findOneAndUpdate(
-        { _id: report.reported },
-        { $inc: { credits: -(report.providerAmountHeld || 0) } }
-      );
-
-      // Mark transaction as inDispute = false, resolution = upheld
-      await CreditTransaction.updateOne(
-        { userId: report.reported, 'metadata.serviceRequestId': report.serviceRequestId, type: 'service_payment_received' },
-        {
-          $set: {
-            eligibleForPayout: false,
-            inDispute: false,
-            disputeResolution: 'upheld',
-            disputeResolvedAt: new Date(),
-          }
+      // Customer wins (Revert transaction)
+      if (originalTx) {
+        if (originalTx.status === 'reverted') {
+          return res.json({ success: true, resolution, alreadyReverted: true });
         }
-      );
+
+        originalTx.status = 'reverted';
+        originalTx.inDispute = false;
+        originalTx.disputeResolution = 'upheld';
+        originalTx.disputeResolvedAt = new Date();
+        originalTx.disputeResolvedBy = adminId;
+        originalTx.eligibleForPayout = false;
+        await originalTx.save();
+      }
+
+      // Deduct provider share from provider wallet (and providerProfile totalEarnings if set)
+      const provider = await AdultUser.findById(report.reported);
+      if (provider) {
+        const recoverableAmount = Math.min(Math.max(0, provider.credits), providerAmountHeld);
+        provider.credits -= recoverableAmount;
+        if (provider.providerProfile) {
+          provider.providerProfile.totalEarnings = Math.max(
+            0,
+            (provider.providerProfile.totalEarnings || 0) - providerAmountHeld
+          );
+        }
+        await provider.save();
+      }
+
+      // Reverse platform fee
+      if (platformFee > 0 && originalTx) {
+        await recordPlatformEarning({
+          source: 'service',
+          amount: -platformFee,
+          fromUserId: report.reporter,
+          toProviderId: report.reported,
+          referenceId: originalTx._id,
+        });
+      }
+
+      // Create CustomerRefund record (REFUND_PENDING)
+      let customerRefund = await CustomerRefund.findOne({ disputeReportId: report._id });
+      if (!customerRefund) {
+        customerRefund = await CustomerRefund.create({
+          originalTxId: originalTx?._id || report._id,
+          serviceRequestId: report.serviceRequestId,
+          disputeReportId: report._id,
+          customerId: report.reporter,
+          providerId: report.reported,
+          amount: amountInDispute,
+          providerAmountReverted: providerAmountHeld,
+          platformFeeReverted: platformFee,
+          status: 'REFUND_PENDING',
+          adminId,
+          resolvedAt: new Date(),
+        });
+      }
+
     } else {
-      // Release payment to provider: make transaction eligible for payout again
-      await CreditTransaction.updateOne(
-        { userId: report.reported, 'metadata.serviceRequestId': report.serviceRequestId, type: 'service_payment_received' },
-        {
-          $set: {
-            eligibleForPayout: true,
-            inDispute: false,
-            disputeResolution: 'dismissed',
-            disputeResolvedAt: new Date(),
-          }
-        }
-      );
+      // Provider wins (Dismiss dispute)
+      if (originalTx) {
+        originalTx.inDispute = false;
+        originalTx.eligibleForPayout = true;
+        originalTx.disputeResolution = 'dismissed';
+        originalTx.disputeResolvedAt = new Date();
+        originalTx.disputeResolvedBy = adminId;
+        await originalTx.save();
+      }
     }
 
-    // Update report
+    // Update Report
     report.status = 'resolved';
     report.resolution = resolution;
     report.adminNotes = adminNotes;
@@ -201,18 +272,65 @@ export const resolveDispute = async (req: Request, res: Response) => {
       ns.to(`user:${report.reporter.toString()}`).emit('dispute:resolved', {
         resolution,
         message: resolution === 'upheld'
-          ? 'Dispute resolved in your favour — refund applied'
+          ? 'Dispute resolved in your favour — refund initiated'
           : 'The dispute was reviewed and dismissed.',
       });
       ns.to(`user:${report.reported.toString()}`).emit('dispute:resolved', {
         resolution,
         message: resolution === 'upheld'
-          ? 'The dispute was upheld. The service charge was refunded to the member.'
+          ? 'The dispute was upheld. The service payment was reverted.'
           : 'The dispute was dismissed. Your earnings have been released for payout.',
       });
     }
 
     return res.json({ success: true, resolution });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/**
+ * PUT /api/v1/admin/disputes/:reportId/refund-complete
+ */
+export const markRefundCompleted = async (req: Request, res: Response) => {
+  try {
+    const { reportId } = req.params;
+    const { reference } = req.body;
+    const adminId = (req as any).adminId || (req as any).userId;
+
+    const refund = await CustomerRefund.findOne({ disputeReportId: reportId });
+    if (!refund) {
+      return res.status(404).json({ success: false, error: 'Customer refund record not found' });
+    }
+
+    if (refund.status === 'REFUND_COMPLETED') {
+      return res.json({ success: true, refund, alreadyCompleted: true });
+    }
+
+    // Credit customer's wallet balance
+    const customer = await AdultUser.findById(refund.customerId);
+    if (customer) {
+      customer.credits += refund.amount;
+      await customer.save();
+    }
+
+    refund.status = 'REFUND_COMPLETED';
+    refund.completedAt = new Date();
+    refund.reference = reference || 'Admin processed refund';
+    refund.adminId = adminId;
+    await refund.save();
+
+    // Socket & Push
+    const ns = req.app.get('adultNamespace');
+    if (ns && customer) {
+      ns.to(`user:${customer._id.toString()}`).emit('wallet:updated', { balance: customer.credits });
+      ns.to(`user:${customer._id.toString()}`).emit('refund:completed', {
+        amount: refund.amount,
+        reference: refund.reference,
+      });
+    }
+
+    return res.json({ success: true, refund });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
   }

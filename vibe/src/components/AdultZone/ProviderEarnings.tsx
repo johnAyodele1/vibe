@@ -254,8 +254,10 @@ const ProviderEarnings: React.FC = () => {
                             <span className={`px-2.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest ${
                               tx.status === 'Completed' || tx.status === 'Paid'
                                 ? 'bg-green-950/40 text-green-400 border border-green-500/30'
-                                : tx.status === 'Failed'
+                                : tx.status === 'Reverted' || tx.status === 'Failed'
                                 ? 'bg-red-950/40 text-red-400 border border-red-500/30'
+                                : tx.status === 'Disputed'
+                                ? 'bg-pink-950/40 text-pink-400 border border-pink-500/30'
                                 : 'bg-yellow-950/40 text-yellow-400 border border-yellow-500/30'
                             }`}>
                               {tx.status}

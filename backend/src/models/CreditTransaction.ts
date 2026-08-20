@@ -64,7 +64,7 @@ const creditTransactionSchema = new Schema<ICreditTransaction>(
     status: {
       type: String,
       required: true,
-      enum: ['pending', 'completed', 'failed', 'refunded'],
+      enum: ['pending', 'completed', 'failed', 'refunded', 'reverted'],
       default: 'pending',
     },
     platformFee: {
@@ -96,6 +96,14 @@ const creditTransactionSchema = new Schema<ICreditTransaction>(
     disputeResolution: {
       type: String,
       enum: ['upheld', 'dismissed'],
+    },
+    disputeResolvedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'AdultUser',
+    },
+    originalTxId: {
+      type: Schema.Types.ObjectId,
+      ref: 'CreditTransaction',
     },
     metadata: Schema.Types.Mixed,
   },
