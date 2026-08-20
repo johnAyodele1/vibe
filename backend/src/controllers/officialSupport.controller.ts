@@ -149,7 +149,7 @@ export const adminGetNotifications = async (req: Request, res: Response) => {
     if (!(req as any).user?._id) {
       return res.status(403).json({ success: false, error: 'Admin access required' });
     }
-    const notifications = await OfficialNotification.find().sort({ createdAt: -1 }).limit(100);
+    const notifications = await OfficialNotification.find().sort({ createdAt: -1 }).limit(100).lean();
     return res.json({ success: true, notifications });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
@@ -178,12 +178,13 @@ export const getOfficialNotificationsForUser = async (req: Request, res: Respons
     const notifications = await OfficialNotification.find(audienceFilter)
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
-      .limit(limit);
+      .limit(limit)
+      .lean();
 
     const readDocs = await OfficialNotificationRead.find({
       userId: user._id,
       notificationId: { $in: notifications.map((n) => n._id) },
-    });
+    }).lean();
 
     const readSet = new Set(readDocs.map((r) => r.notificationId.toString()));
 
@@ -437,7 +438,7 @@ export const adminGetSupportMessages = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: 'Support conversation not found' });
     }
 
-    const messages = await AdultMessage.find({ conversationId }).sort({ createdAt: 1 });
+    const messages = await AdultMessage.find({ conversationId }).sort({ createdAt: 1 }).lean();
 
     const formatted = messages.map((m) => {
       let content = '';
@@ -481,12 +482,23 @@ export const adminGetSupportQueue = async (req: Request, res: Response) => {
       query['supportMetadata.tags'] = tag;
     }
 
-    const conversations = await AdultConversation.find(query).sort({ updatedAt: -1 }).limit(100);
+    // Performance optimization: use .lean() and batch user lookup to eliminate N+1 database queries
+    const conversations = await AdultConversation.find(query).sort({ updatedAt: -1 }).limit(100).lean();
 
-    const formatted = [];
-    for (const conv of conversations) {
+    const userIds = conversations
+      .map((conv) => conv.participants?.[0])
+      .filter((id): id is mongoose.Types.ObjectId => Boolean(id));
+
+    const users = userIds.length > 0
+      ? await AdultUser.find({ _id: { $in: userIds } }).select('_id username displayName profilePhoto role').lean()
+      : [];
+
+    const userMap = new Map(users.map((u) => [u._id.toString(), u]));
+
+    const formatted = conversations.map((conv) => {
       const convItem = conv as any;
-      const user = await AdultUser.findById(conv.participants[0]);
+      const participantId = conv.participants?.[0]?.toString();
+      const user = participantId ? userMap.get(participantId) : null;
       let preview = '';
       if (conv.lastMessage?.content) {
         try {
@@ -496,7 +508,7 @@ export const adminGetSupportQueue = async (req: Request, res: Response) => {
         }
       }
 
-      formatted.push({
+      return {
         conversationId: conv._id,
         user: user
           ? {
@@ -517,8 +529,8 @@ export const adminGetSupportQueue = async (req: Request, res: Response) => {
           sentAt: conv.lastMessage?.sentAt,
         },
         updatedAt: conv.updatedAt,
-      });
-    }
+      };
+    });
 
     return res.json({ success: true, conversations: formatted });
   } catch (error: any) {
