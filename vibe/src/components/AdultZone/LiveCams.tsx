@@ -107,7 +107,9 @@ const LiveCams: React.FC = () => {
       return;
     }
     const rate = providerProfile?.videoCallPrice || providerProfile?.pricePerMinute || 5;
-    await initiateCall(targetProviderId, 'video', rate);
+    const displayName = providerProfile?.stageName || (typeof activeSession?.providerId === 'object' ? activeSession.providerId?.username : undefined) || 'Provider';
+    const avatarUrl = providerProfile?.avatarUrl || (typeof activeSession?.providerId === 'object' ? activeSession.providerId?.profilePhoto : activeSession?.avatarUrl) || '/placeholder.svg';
+    await initiateCall(targetProviderId, 'video', rate, undefined, { displayName, avatarUrl });
   };
 
   const fetchSessions = useCallback(async () => {

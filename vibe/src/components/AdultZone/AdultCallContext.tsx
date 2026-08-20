@@ -3,12 +3,18 @@ import { io, Socket } from 'socket.io-client';
 import { toast } from 'sonner';
 import { API_BASE_URL, SOCKET_URL } from '../../config';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
-import { formatAmount } from '../../lib/pricing';
-import { AdultCallContext, CallState, ActiveCallInfo } from './AdultCallContextDefinition';
+import { usePricingStore, formatNaira, formatAmount } from '../../lib/pricing';
+import { AdultCallContext, CallState, ActiveCallInfo, CallSummaryInfo } from './AdultCallContextDefinition';
 
 const CallRoom = React.lazy(() => import('./CallRoom'));
 
 export { useAdultCall } from './useAdultCall';
+
+const formatDuration = (secs: number) => {
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+};
 
 export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, user } = useAdultAuth();
@@ -16,6 +22,7 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const [callState, setCallState] = useState<CallState>('idle');
   const [activeCall, setActiveCall] = useState<ActiveCallInfo | null>(null);
+  const [callSummary, setCallSummary] = useState<CallSummaryInfo | null>(null);
   const [isInitiating, setIsInitiating] = useState(false);
 
   const [zegoToken, setZegoToken] = useState<string | null>(null);
@@ -43,6 +50,7 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const resetCallState = useCallback(() => {
     activeCallRef.current = null;
     setActiveCall(null);
+    setCallSummary(null);
     setCallState('idle');
     setZegoToken(null);
     setZegoAppId(null);
@@ -79,12 +87,56 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [getHeaders]);
 
+  const transitionToTerminalCall = useCallback((reason: string, durationSeconds = 0) => {
+    const currentCall = activeCallRef.current;
+    if (!currentCall) {
+      resetCallState();
+      return;
+    }
+
+    let status: 'ended' | 'declined' | 'missed' | 'failed' | 'cancelled' = 'ended';
+    if (reason === 'declined') status = 'declined';
+    else if (reason === 'missed' || reason === 'no_answer') status = 'missed';
+    else if (reason === 'cancelled_by_caller') status = 'cancelled';
+    else if (reason === 'connection_failed') status = 'failed';
+
+    let cost = 0;
+    if (status === 'ended' && durationSeconds >= 10) {
+      const billedMinutes = Math.floor(durationSeconds / 60) + 1;
+      cost = currentCall.rate * billedMinutes;
+    }
+
+    const summary: CallSummaryInfo = {
+      status,
+      duration: formatDuration(durationSeconds),
+      durationSeconds,
+      cost,
+      endReason: reason,
+    };
+
+    const updatedCall: ActiveCallInfo = {
+      ...currentCall,
+      endReason: reason,
+    };
+
+    activeCallRef.current = updatedCall;
+    setActiveCall(updatedCall);
+    setCallSummary(summary);
+    setCallState('summary');
+    setZegoToken(null);
+    setZegoAppId(null);
+    setZegoRoomId(null);
+    setIsInitiating(false);
+    isInitiatingRef.current = false;
+  }, [resetCallState]);
+
   // Initiate a call
   const initiateCall = useCallback(async (
     recipientId: string,
     type: 'video' | 'audio' = 'video',
     overrideRate?: number,
-    existingConvId?: string
+    existingConvId?: string,
+    partnerInfo?: { displayName?: string; avatarUrl?: string }
   ): Promise<boolean> => {
     if (isInitiatingRef.current || isInitiating || callStateRef.current !== 'idle') {
       return false;
@@ -119,6 +171,9 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       if (callData.callId) {
         const rate = overrideRate || callData.perMinuteRate || 5;
+        const receiverName = partnerInfo?.displayName || callData.receiver?.displayName || 'Provider';
+        const receiverAvatar = partnerInfo?.avatarUrl || callData.receiver?.avatarUrl || '/placeholder.svg';
+
         const callInfo: ActiveCallInfo = {
           callId: callData.callId,
           conversationId,
@@ -126,6 +181,8 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           callerName: user?.firstName || (user as any)?.displayName || 'User',
           callerAvatar: user?.profilePhoto || '/placeholder.svg',
           receiverId: recipientId,
+          receiverName,
+          receiverAvatar,
           type,
           webrtcRoomId: callData.webrtcRoomId || callData.roomId,
           rate,
@@ -163,27 +220,6 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setIsInitiating(false);
     }
   }, [isInitiating, getHeaders, user, fetchConnectionToken, resetCallState]);
-
-  const transitionToTerminalCall = useCallback((reason: string) => {
-    const currentCall = activeCallRef.current;
-    if (!currentCall) {
-      resetCallState();
-      return;
-    }
-    const updatedCall: ActiveCallInfo = {
-      ...currentCall,
-      endReason: reason,
-    };
-    activeCallRef.current = updatedCall;
-    setActiveCall(updatedCall);
-    const nextState: CallState = reason === 'connection_failed' ? 'failed' : 'ending';
-    setCallState(nextState);
-    setZegoToken(null);
-    setZegoAppId(null);
-    setZegoRoomId(null);
-    setIsInitiating(false);
-    isInitiatingRef.current = false;
-  }, [resetCallState]);
 
   // Accept incoming call
   const acceptCall = useCallback(async () => {
@@ -263,17 +299,17 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [endCallOnBackend, transitionToTerminalCall, resetCallState]);
 
   // End active call
-  const endCall = useCallback(async (reason = 'hung_up') => {
+  const endCall = useCallback(async (reason = 'hung_up', durationSeconds = 0) => {
     const currentCall = activeCallRef.current;
     if (currentCall) {
       await endCallOnBackend(currentCall.callId, reason);
-      transitionToTerminalCall(reason);
+      transitionToTerminalCall(reason, durationSeconds);
     } else {
       resetCallState();
     }
   }, [endCallOnBackend, transitionToTerminalCall, resetCallState]);
 
-  // Socket event listener setup
+  // Socket event listener setup (Stable socket connection)
   useEffect(() => {
     if (!isAuthenticated || !token || !user?.id) return;
 
@@ -285,7 +321,7 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     socketRef.current = socket;
 
-    socket.on('call:incoming', (payload: { callId: string; callerId: string; callerName: string; callerAvatar?: string; type?: 'video' | 'audio'; webrtcRoomId: string; rate: number }) => {
+    socket.on('call:incoming', (payload: { callId: string; callerId: string; callerName: string; callerAvatar?: string; receiverId?: string; receiverName?: string; receiverAvatar?: string; type?: 'video' | 'audio'; webrtcRoomId: string; rate: number }) => {
       if (callStateRef.current !== 'idle') {
         return;
       }
@@ -295,6 +331,9 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         callerId: payload.callerId,
         callerName: payload.callerName,
         callerAvatar: payload.callerAvatar || '/placeholder.svg',
+        receiverId: payload.receiverId || user?.id,
+        receiverName: payload.receiverName || user?.firstName || (user as any)?.displayName || 'User',
+        receiverAvatar: payload.receiverAvatar || user?.profilePhoto || '/placeholder.svg',
         type: payload.type || 'video',
         webrtcRoomId: payload.webrtcRoomId,
         rate: payload.rate,
@@ -312,21 +351,17 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       const targetRoomId = payload.webrtcRoomId || currentCall.webrtcRoomId;
 
-      if (!zegoToken || zegoRoomId !== targetRoomId) {
-        const conn = await fetchConnectionToken(targetRoomId);
-        if (conn) {
-          setZegoToken(conn.token);
-          setZegoAppId(conn.appId);
-          setZegoRoomId(targetRoomId);
-        } else {
-          toast.error('Failed to connect to call');
-          await endCallOnBackend(currentCall.callId, 'connection_failed');
-          transitionToTerminalCall('connection_failed');
-          return;
-        }
+      const conn = await fetchConnectionToken(targetRoomId);
+      if (conn) {
+        setZegoToken(conn.token);
+        setZegoAppId(conn.appId);
+        setZegoRoomId(targetRoomId);
+        setCallState('active');
+      } else {
+        toast.error('Failed to connect to call');
+        await endCallOnBackend(currentCall.callId, 'connection_failed');
+        transitionToTerminalCall('connection_failed');
       }
-
-      setCallState('active');
     });
 
     socket.on('call:declined', (payload: { callId: string }) => {
@@ -345,41 +380,63 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
     });
 
-    socket.on('call:ended', (payload: { callId: string; reason?: string }) => {
+    socket.on('call:ended', (payload: { callId: string; reason?: string; durationSeconds?: number }) => {
       const currentCall = activeCallRef.current;
       if (currentCall && currentCall.callId === payload.callId) {
-        transitionToTerminalCall(payload.reason || 'hung_up');
+        transitionToTerminalCall(payload.reason || 'hung_up', payload.durationSeconds || 0);
       }
     });
 
     return () => {
       socket.disconnect();
     };
-  }, [isAuthenticated, token, user?.id, fetchConnectionToken, endCallOnBackend, resetCallState, transitionToTerminalCall, zegoToken, zegoRoomId]);
+  }, [isAuthenticated, token, user?.id, fetchConnectionToken, endCallOnBackend, transitionToTerminalCall]);
 
-  const getReasonDetails = (reason?: string) => {
-    switch (reason) {
-      case 'declined':
-        return { title: 'Call Declined', subtitle: 'The recipient declined the call.' };
-      case 'missed':
-        return { title: 'No Answer', subtitle: 'The recipient did not answer the call.' };
-      case 'cancelled_by_caller':
-        return { title: 'Call Cancelled', subtitle: 'You cancelled the call.' };
-      case 'connection_failed':
-        return { title: 'Connection Failed', subtitle: 'Could not establish media connection.' };
-      case 'insufficient_credits':
-        return { title: 'Insufficient Credits', subtitle: 'Call ended because credits ran out.' };
-      case 'hung_up':
-      case 'remote_ended':
-      default:
-        return { title: 'Call Ended', subtitle: 'The call has ended.' };
-    }
-  };
+  // Status Reconciliation Polling while in 'calling' or 'incoming'
+  useEffect(() => {
+    if (callState !== 'calling' && callState !== 'incoming') return;
+    const currentCall = activeCallRef.current;
+    if (!currentCall?.callId) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/v1/adult/sext/calls/${currentCall.callId}`, {
+          headers: getHeaders(),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.success) return;
+
+        if (data.status === 'active' && callStateRef.current !== 'active') {
+          const conn = await fetchConnectionToken(data.webrtcRoomId);
+          if (conn) {
+            setZegoToken(conn.token);
+            setZegoAppId(conn.appId);
+            setZegoRoomId(data.webrtcRoomId);
+            setCallState('active');
+          }
+        } else if (data.status === 'declined' || data.status === 'missed' || data.status === 'ended' || data.status === 'failed') {
+          transitionToTerminalCall(data.endReason || data.status, data.durationSeconds || 0);
+        }
+      } catch {
+        // Ignore polling error
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [callState, getHeaders, fetchConnectionToken, transitionToTerminalCall]);
+
+  const activeCallPartner = activeCall ? {
+    id: activeCall.isCaller ? activeCall.receiverId : activeCall.callerId,
+    displayName: (activeCall.isCaller ? activeCall.receiverName : activeCall.callerName) || 'Partner',
+    avatarUrl: (activeCall.isCaller ? activeCall.receiverAvatar : activeCall.callerAvatar) || '/placeholder.svg',
+  } : null;
 
   return (
     <AdultCallContext.Provider value={{
       callState,
       activeCall,
+      callSummary,
       zegoToken,
       zegoAppId,
       zegoRoomId,
@@ -389,13 +446,14 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       declineCall,
       cancelCall,
       endCall,
+      resetCallState,
     }}>
       {children}
 
       {/* Global Call Overlays (Rendered at Root Layout Level) */}
 
       {/* 1. Incoming Call Alert Modal */}
-      {callState === 'incoming' && activeCall && (
+      {callState === 'incoming' && activeCall && activeCallPartner && (
         <div
           style={{ paddingTop: 'calc(24px + env(safe-area-inset-top, 0px))' }}
           className="fixed inset-0 bg-black/90 backdrop-blur-md z-[11000] flex flex-col items-center justify-center p-6 text-white text-center"
@@ -403,13 +461,13 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         >
           <div className="w-28 h-28 rounded-full border-4 border-pink-500 animate-pulse mb-4 overflow-hidden shadow-lg">
             <img
-              src={activeCall.callerAvatar}
-              alt={activeCall.callerName}
+              src={activeCallPartner.avatarUrl}
+              alt={activeCallPartner.displayName}
               className="w-full h-full object-cover"
             />
           </div>
-          <h3 className="text-2xl font-serif italic text-white mb-1 truncate max-w-xs px-4" title={activeCall.callerName}>
-            {activeCall.callerName}
+          <h3 className="text-2xl font-serif italic text-white mb-1 truncate max-w-xs px-4" title={activeCallPartner.displayName}>
+            {activeCallPartner.displayName}
           </h3>
           <p className="text-xs text-pink-400 uppercase tracking-widest font-mono animate-pulse">
             Incoming {activeCall.type} call...
@@ -442,21 +500,21 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       )}
 
       {/* 2. Outgoing Ringing Overlay */}
-      {callState === 'calling' && activeCall && (
+      {callState === 'calling' && activeCall && activeCallPartner && (
         <div
           style={{ paddingTop: 'calc(24px + env(safe-area-inset-top, 0px))' }}
           className="fixed inset-0 bg-black/90 backdrop-blur-md z-[11000] flex flex-col items-center justify-center p-6 text-white text-center"
           data-testid="global-outgoing-call-modal"
         >
-          <div className="w-28 h-28 rounded-full border-4 border-pink-500 animate-pulse mb-4 overflow-hidden">
+          <div className="w-28 h-28 rounded-full border-4 border-pink-500 animate-pulse mb-4 overflow-hidden shadow-lg">
             <img
-              src={activeCall.receiverAvatar || activeCall.callerAvatar}
-              alt="Recipient"
+              src={activeCallPartner.avatarUrl}
+              alt={activeCallPartner.displayName}
               className="w-full h-full object-cover"
             />
           </div>
-          <h3 className="text-2xl font-serif italic text-white mb-1">
-            {activeCall.receiverName || 'Provider'}
+          <h3 className="text-2xl font-serif italic text-white mb-1 truncate max-w-xs px-4" title={activeCallPartner.displayName}>
+            {activeCallPartner.displayName}
           </h3>
           <p className="text-xs text-pink-400 uppercase tracking-widest font-mono animate-pulse">
             Requesting 1-to-1 {activeCall.type} call...
@@ -487,10 +545,9 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       )}
 
       {/* 4. Active Call Room Overlay */}
-      {callState === 'active' && activeCall && zegoToken && zegoAppId && zegoRoomId && (
+      {callState === 'active' && activeCall && zegoToken && zegoAppId && zegoRoomId && activeCallPartner && (
         <div
-          style={{ paddingTop: 'calc(24px + env(safe-area-inset-top, 0px))' }}
-          className="fixed inset-0 z-[12000] bg-black"
+          className="fixed inset-0 z-[12000] bg-black w-full h-full"
           data-testid="global-active-call-room"
         >
           <React.Suspense fallback={<div className="flex items-center justify-center h-full text-pink-500">Loading call...</div>}>
@@ -500,54 +557,81 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               token={zegoToken}
               roomId={zegoRoomId}
               userId={user?.id || ''}
-              userName={user?.firstName || 'User'}
+              userName={user?.firstName || (user as any)?.displayName || 'User'}
               callType={activeCall.type}
-              onCallEnd={() => endCall('hung_up')}
-              partnerName={activeCall.isCaller ? activeCall.receiverName : activeCall.callerName}
-              partnerAvatar={activeCall.isCaller ? activeCall.receiverAvatar : activeCall.callerAvatar}
-              providerAvatar={activeCall.isCaller ? activeCall.receiverAvatar : activeCall.callerAvatar}
-              providerName={activeCall.isCaller ? activeCall.receiverName : activeCall.callerName}
+              onCallEnd={(durationSeconds) => endCall('hung_up', durationSeconds)}
+              partnerName={activeCallPartner.displayName}
+              partnerAvatar={activeCallPartner.avatarUrl}
+              providerAvatar={activeCallPartner.avatarUrl}
+              providerName={activeCallPartner.displayName}
             />
           </React.Suspense>
         </div>
       )}
 
-      {/* 5. Terminal Call Screen Overlay (Call Ended / Declined / Missed / Failed) */}
-      {(callState === 'ending' || callState === 'failed') && activeCall && (
+      {/* 5. Restored Previous Call Ending Summary Modal */}
+      {callState === 'summary' && callSummary && (
         <div
           style={{ paddingTop: 'calc(24px + env(safe-area-inset-top, 0px))' }}
           className="fixed inset-0 bg-black/95 backdrop-blur-lg z-[13000] flex flex-col items-center justify-center p-6 text-white text-center"
           data-testid="global-terminal-call-modal"
         >
-          <div className="w-28 h-28 rounded-full border-4 border-zinc-700 mb-4 overflow-hidden shadow-2xl relative">
-            <img
-              src={(activeCall.isCaller ? activeCall.receiverAvatar : activeCall.callerAvatar) || '/placeholder.svg'}
-              alt={activeCall.isCaller ? activeCall.receiverName || 'Partner' : activeCall.callerName}
-              className="w-full h-full object-cover grayscale opacity-80"
-            />
-          </div>
-
-          <h3 className="text-2xl font-serif italic text-white mb-1 truncate max-w-xs px-4">
-            {activeCall.isCaller ? activeCall.receiverName || 'Provider' : activeCall.callerName}
-          </h3>
-
-          <div className="my-2">
-            <span className={`text-xs font-mono font-bold uppercase tracking-widest px-3 py-1 rounded-full ${callState === 'failed' ? 'bg-red-950/80 text-red-400 border border-red-500/30' : 'bg-zinc-800 text-zinc-300 border border-zinc-700'}`}>
-              {getReasonDetails(activeCall.endReason).title}
+          <div className="w-full max-w-sm flex flex-col items-center justify-center">
+            <span className="text-5xl mb-4">
+              {callSummary.status === 'declined' || callSummary.status === 'missed' ? '📵' : activeCall?.type === 'video' ? '📹' : '📞'}
             </span>
+            <h2 className="text-2xl font-serif italic text-pink-300 mb-2">
+              {callSummary.status === 'declined'
+                ? 'Call Declined'
+                : callSummary.status === 'missed'
+                ? 'No Answer'
+                : 'Call Ended'}
+            </h2>
+
+            <div className="w-full bg-[#160b13] border border-pink-500/20 rounded-xl p-6 space-y-4 mb-8 text-left">
+              {callSummary.status === 'declined' || callSummary.status === 'missed' ? (
+                <div className="text-center space-y-1">
+                  <p className="text-sm font-bold text-red-400">
+                    {callSummary.status === 'declined' ? 'Call was declined' : 'No answer from provider'}
+                  </p>
+                  <p className="text-xs text-gray-400">No charge</p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-400">Duration:</span>
+                    <span className="font-bold">{callSummary.duration}</span>
+                  </div>
+                  <div className="flex justify-between text-xs border-t border-pink-500/10 pt-3">
+                    {user?.role === 'provider' ? (
+                      <>
+                        <span className="text-gray-400">Credits Earned:</span>
+                        <span className="font-bold text-yellow-400">💎 {callSummary.cost}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-gray-400">Credits Charged:</span>
+                        <span className="font-bold text-yellow-400">💎 {callSummary.cost}  ≈  {formatNaira(callSummary.cost * usePricingStore.getState().diamondNairaRate)}</span>
+                      </>
+                    )}
+                  </div>
+                  {callSummary.cost === 0 && (
+                    <p className="text-[10px] text-gray-400 text-center mt-2 font-mono uppercase tracking-wider">
+                      No charge — calls under 10 seconds are free
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+
+            <button
+              onClick={resetCallState}
+              data-testid="dismiss-terminal-call-btn"
+              className="w-full py-3 bg-pink-600 hover:bg-pink-700 text-white font-bold text-xs uppercase tracking-widest rounded-full transition-all shadow-lg shadow-pink-500/20 active:scale-95"
+            >
+              Close
+            </button>
           </div>
-
-          <p className="text-xs text-zinc-400 font-sans mt-1 max-w-xs">
-            {getReasonDetails(activeCall.endReason).subtitle}
-          </p>
-
-          <button
-            onClick={resetCallState}
-            data-testid="dismiss-terminal-call-btn"
-            className="mt-8 px-8 py-3 bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs uppercase tracking-widest rounded-full transition-all border border-zinc-700 active:scale-95"
-          >
-            Dismiss ✕
-          </button>
         </div>
       )}
     </AdultCallContext.Provider>

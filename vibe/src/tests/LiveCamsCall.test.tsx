@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, act, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import '@testing-library/jest-dom/vitest';
+import { render, screen, act, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import LiveCams from '../components/AdultZone/LiveCams';
 import { AdultCallProvider } from '../components/AdultZone/AdultCallContext';
 import { MemoryRouter } from 'react-router-dom';
@@ -41,6 +42,10 @@ describe('LiveCams 1-to-1 Video Call Flow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.setItem('adultAccessToken', 'test-token');
+  });
+
+  afterEach(() => {
+    cleanup();
   });
 
   it('renders live session cards and fetches sessions on load', async () => {

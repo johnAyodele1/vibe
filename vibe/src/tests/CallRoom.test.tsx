@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, act, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import '@testing-library/jest-dom/vitest';
+import { render, screen, act, fireEvent, cleanup } from '@testing-library/react';
 import CallRoom from '../components/AdultZone/CallRoom';
 import AgoraRTC from 'agora-rtc-sdk-ng';
 
@@ -52,6 +53,10 @@ vi.mock('agora-rtc-sdk-ng', () => {
 describe('CallRoom component stability and settings with Agora SDK', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    cleanup();
   });
 
   it('renders container element and initialises Agora client exactly once', async () => {

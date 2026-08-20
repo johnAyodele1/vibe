@@ -85,6 +85,53 @@ export const startConversation = async (req: Request, res: Response) => {
   }
 };
 
+export const getCallStatus = async (req: Request, res: Response) => {
+  try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Auth required' });
+    }
+
+    const { callId } = req.params;
+    const call = await AdultCall.findById(callId);
+    if (!call) {
+      return res.status(404).json({ success: false, error: 'Call session not found' });
+    }
+
+    if (call.callerId.toString() !== user._id.toString() && call.receiverId.toString() !== user._id.toString()) {
+      return res.status(403).json({ success: false, error: 'Unauthorized' });
+    }
+
+    const [caller, receiver] = await Promise.all([
+      AdultUser.findById(call.callerId),
+      AdultUser.findById(call.receiverId)
+    ]);
+
+    return res.json({
+      success: true,
+      callId: call._id,
+      status: call.status,
+      webrtcRoomId: call.webrtcRoomId,
+      perMinuteRate: call.perMinuteRate,
+      endReason: call.endReason,
+      durationSeconds: call.durationSeconds,
+      creditsDeducted: call.creditsDeducted,
+      caller: caller ? {
+        id: caller._id,
+        displayName: caller.displayName || caller.username,
+        avatarUrl: caller.profilePhoto || '/placeholder.svg'
+      } : null,
+      receiver: receiver ? {
+        id: receiver._id,
+        displayName: receiver.providerProfile?.stageName || receiver.displayName || receiver.username,
+        avatarUrl: receiver.profilePhoto || '/placeholder.svg'
+      } : null
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 // POST /api/v1/adult/sext/conversations/:conversationId/gift-request
 export const sendGiftRequest = async (req: Request, res: Response) => {
   try {
@@ -2820,6 +2867,9 @@ export const initiateCall = async (req: Request, res: Response) => {
         callerId: user._id,
         callerName: user.displayName || user.username,
         callerAvatar: user.profilePhoto || '/placeholder.svg',
+        receiverId: receiver._id,
+        receiverName: receiver.providerProfile?.stageName || receiver.displayName || receiver.username,
+        receiverAvatar: receiver.profilePhoto || '/placeholder.svg',
         type,
         webrtcRoomId,
         rate: userPrice
@@ -2892,6 +2942,16 @@ export const initiateCall = async (req: Request, res: Response) => {
       webrtcRoomId,
       perMinuteRate: rate,
       status: call.status,
+      receiver: {
+        id: receiver._id,
+        displayName: receiver.providerProfile?.stageName || receiver.displayName || receiver.username,
+        avatarUrl: receiver.profilePhoto || '/placeholder.svg'
+      },
+      caller: {
+        id: user._id,
+        displayName: user.displayName || user.username,
+        avatarUrl: user.profilePhoto || '/placeholder.svg'
+      },
       iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
     });
   } catch (error: any) {
