@@ -164,6 +164,27 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [isInitiating, getHeaders, user, fetchConnectionToken, resetCallState]);
 
+  const transitionToTerminalCall = useCallback((reason: string) => {
+    const currentCall = activeCallRef.current;
+    if (!currentCall) {
+      resetCallState();
+      return;
+    }
+    const updatedCall: ActiveCallInfo = {
+      ...currentCall,
+      endReason: reason,
+    };
+    activeCallRef.current = updatedCall;
+    setActiveCall(updatedCall);
+    const nextState: CallState = reason === 'connection_failed' ? 'failed' : 'ending';
+    setCallState(nextState);
+    setZegoToken(null);
+    setZegoAppId(null);
+    setZegoRoomId(null);
+    setIsInitiating(false);
+    isInitiatingRef.current = false;
+  }, [resetCallState]);
+
   // Accept incoming call
   const acceptCall = useCallback(async () => {
     const currentCall = activeCallRef.current;
@@ -197,20 +218,20 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         } else {
           toast.error('Failed to establish call media connection');
           await endCallOnBackend(currentCall.callId, 'connection_failed');
-          resetCallState();
+          transitionToTerminalCall('connection_failed');
         }
       } else {
         toast.error(data.error || 'Call is no longer available');
-        resetCallState();
+        transitionToTerminalCall('declined');
       }
     } catch {
       toast.error('Failed to accept call');
       if (currentCall) {
         await endCallOnBackend(currentCall.callId, 'connection_failed');
       }
-      resetCallState();
+      transitionToTerminalCall('connection_failed');
     }
-  }, [getHeaders, fetchConnectionToken, endCallOnBackend, resetCallState]);
+  }, [getHeaders, fetchConnectionToken, endCallOnBackend, transitionToTerminalCall]);
 
   // Decline incoming call
   const declineCall = useCallback(async () => {
@@ -224,27 +245,33 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       } catch (err) {
         console.error('[AdultCall] Decline error:', err);
       }
+      transitionToTerminalCall('declined');
+    } else {
+      resetCallState();
     }
-    resetCallState();
-  }, [getHeaders, resetCallState]);
+  }, [getHeaders, transitionToTerminalCall, resetCallState]);
 
   // Cancel outgoing call
   const cancelCall = useCallback(async () => {
     const currentCall = activeCallRef.current;
     if (currentCall) {
       await endCallOnBackend(currentCall.callId, 'cancelled_by_caller');
+      transitionToTerminalCall('cancelled_by_caller');
+    } else {
+      resetCallState();
     }
-    resetCallState();
-  }, [endCallOnBackend, resetCallState]);
+  }, [endCallOnBackend, transitionToTerminalCall, resetCallState]);
 
   // End active call
   const endCall = useCallback(async (reason = 'hung_up') => {
     const currentCall = activeCallRef.current;
     if (currentCall) {
       await endCallOnBackend(currentCall.callId, reason);
+      transitionToTerminalCall(reason);
+    } else {
+      resetCallState();
     }
-    resetCallState();
-  }, [endCallOnBackend, resetCallState]);
+  }, [endCallOnBackend, transitionToTerminalCall, resetCallState]);
 
   // Socket event listener setup
   useEffect(() => {
@@ -294,7 +321,7 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         } else {
           toast.error('Failed to connect to call');
           await endCallOnBackend(currentCall.callId, 'connection_failed');
-          resetCallState();
+          transitionToTerminalCall('connection_failed');
           return;
         }
       }
@@ -306,7 +333,7 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const currentCall = activeCallRef.current;
       if (currentCall && currentCall.callId === payload.callId) {
         toast.error('Provider declined the call');
-        resetCallState();
+        transitionToTerminalCall('declined');
       }
     });
 
@@ -314,21 +341,40 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const currentCall = activeCallRef.current;
       if (currentCall && currentCall.callId === payload.callId) {
         toast.info('No answer');
-        resetCallState();
+        transitionToTerminalCall('missed');
       }
     });
 
-    socket.on('call:ended', (payload: { callId: string }) => {
+    socket.on('call:ended', (payload: { callId: string; reason?: string }) => {
       const currentCall = activeCallRef.current;
       if (currentCall && currentCall.callId === payload.callId) {
-        resetCallState();
+        transitionToTerminalCall(payload.reason || 'hung_up');
       }
     });
 
     return () => {
       socket.disconnect();
     };
-  }, [isAuthenticated, token, user?.id, fetchConnectionToken, endCallOnBackend, resetCallState, zegoToken, zegoRoomId]);
+  }, [isAuthenticated, token, user?.id, fetchConnectionToken, endCallOnBackend, resetCallState, transitionToTerminalCall, zegoToken, zegoRoomId]);
+
+  const getReasonDetails = (reason?: string) => {
+    switch (reason) {
+      case 'declined':
+        return { title: 'Call Declined', subtitle: 'The recipient declined the call.' };
+      case 'missed':
+        return { title: 'No Answer', subtitle: 'The recipient did not answer the call.' };
+      case 'cancelled_by_caller':
+        return { title: 'Call Cancelled', subtitle: 'You cancelled the call.' };
+      case 'connection_failed':
+        return { title: 'Connection Failed', subtitle: 'Could not establish media connection.' };
+      case 'insufficient_credits':
+        return { title: 'Insufficient Credits', subtitle: 'Call ended because credits ran out.' };
+      case 'hung_up':
+      case 'remote_ended':
+      default:
+        return { title: 'Call Ended', subtitle: 'The call has ended.' };
+    }
+  };
 
   return (
     <AdultCallContext.Provider value={{
@@ -463,6 +509,45 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               providerName={activeCall.isCaller ? activeCall.receiverName : activeCall.callerName}
             />
           </React.Suspense>
+        </div>
+      )}
+
+      {/* 5. Terminal Call Screen Overlay (Call Ended / Declined / Missed / Failed) */}
+      {(callState === 'ending' || callState === 'failed') && activeCall && (
+        <div
+          style={{ paddingTop: 'calc(24px + env(safe-area-inset-top, 0px))' }}
+          className="fixed inset-0 bg-black/95 backdrop-blur-lg z-[13000] flex flex-col items-center justify-center p-6 text-white text-center"
+          data-testid="global-terminal-call-modal"
+        >
+          <div className="w-28 h-28 rounded-full border-4 border-zinc-700 mb-4 overflow-hidden shadow-2xl relative">
+            <img
+              src={(activeCall.isCaller ? activeCall.receiverAvatar : activeCall.callerAvatar) || '/placeholder.svg'}
+              alt={activeCall.isCaller ? activeCall.receiverName || 'Partner' : activeCall.callerName}
+              className="w-full h-full object-cover grayscale opacity-80"
+            />
+          </div>
+
+          <h3 className="text-2xl font-serif italic text-white mb-1 truncate max-w-xs px-4">
+            {activeCall.isCaller ? activeCall.receiverName || 'Provider' : activeCall.callerName}
+          </h3>
+
+          <div className="my-2">
+            <span className={`text-xs font-mono font-bold uppercase tracking-widest px-3 py-1 rounded-full ${callState === 'failed' ? 'bg-red-950/80 text-red-400 border border-red-500/30' : 'bg-zinc-800 text-zinc-300 border border-zinc-700'}`}>
+              {getReasonDetails(activeCall.endReason).title}
+            </span>
+          </div>
+
+          <p className="text-xs text-zinc-400 font-sans mt-1 max-w-xs">
+            {getReasonDetails(activeCall.endReason).subtitle}
+          </p>
+
+          <button
+            onClick={resetCallState}
+            data-testid="dismiss-terminal-call-btn"
+            className="mt-8 px-8 py-3 bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs uppercase tracking-widest rounded-full transition-all border border-zinc-700 active:scale-95"
+          >
+            Dismiss ✕
+          </button>
         </div>
       )}
     </AdultCallContext.Provider>

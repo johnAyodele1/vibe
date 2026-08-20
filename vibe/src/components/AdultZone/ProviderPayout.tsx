@@ -311,8 +311,7 @@ const ProviderPayout: React.FC = () => {
                 <div className="space-y-3">
                   <button
                     onClick={() => {
-                      useOnboardingStore.getState().setCurrentStep(6);
-                      navigate('/adult/provider/onboarding');
+                      navigate('/adult/provider/profile?tab=payment');
                     }}
                     className="block w-full py-3 bg-[#1b0a14] hover:bg-[#2b1020] border border-gray-800 text-amber-500 font-semibold rounded-xl text-sm transition-all"
                   >
@@ -426,8 +425,7 @@ const ProviderPayout: React.FC = () => {
               </p>
               <button
                 onClick={() => {
-                  useOnboardingStore.getState().setCurrentStep(6);
-                  navigate('/adult/provider/onboarding');
+                  navigate('/adult/provider/profile?tab=payment');
                 }}
                 className="w-full py-3 bg-[#1b0a14] hover:bg-[#2b1020] border border-gray-800 text-amber-500 font-semibold rounded-xl text-xs transition-all"
               >

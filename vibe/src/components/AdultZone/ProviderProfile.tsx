@@ -1,19 +1,35 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { API_BASE_URL } from '../../config';
 import LocationSelect from './LocationSelect';
 import { toast } from 'sonner';
 
 const ProviderProfile: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const token = localStorage.getItem('adultAccessToken');
 
-  const [activeTab, setActiveTab] = useState('basic');
+  const initialTab = searchParams.get('tab') === 'payment' ? 'payment' : 'basic';
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [isLoading, setIsLoading] = useState(true);
   const [savingBasic, setSavingBasic] = useState(false);
   const [savingServices, setSavingServices] = useState(false);
   const [savingLocation, setSavingLocation] = useState(false);
   const [savingSchedule, setSavingSchedule] = useState(false);
+  const [savingPayment, setSavingPayment] = useState(false);
+
+  const [payoutMethod, setPayoutMethod] = useState('bank');
+  const [payoutDetails, setPayoutDetails] = useState({
+    bankName: '',
+    accountHolderName: '',
+    accountNumber: '',
+    routingCode: '',
+    accountType: 'Checking',
+    paypalEmail: '',
+    cryptoCurrency: 'USDT',
+    cryptoAddress: '',
+  });
+
   const [profileData, setProfileData] = useState({
     bio: '',
     gender: 'female',
@@ -31,6 +47,7 @@ const ProviderProfile: React.FC = () => {
       // noop
     }
   }, [photos, videoPreview]);
+
   const [services, setServices] = useState<string[]>(['live_cam', 'private_call']);
   const [pricing, setPricing] = useState({
     pricePerMinute: 3.99,
@@ -95,6 +112,27 @@ const ProviderProfile: React.FC = () => {
           if (profile.schedule && profile.schedule.length > 0) {
             setSchedule(profile.schedule);
           }
+        }
+
+        // Fetch payout onboarding step data for payment configuration prefill
+        const payoutRes = await fetch(`${API_BASE_URL}/v1/adult/providers/me/onboarding`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const payoutData = await payoutRes.json();
+        if (payoutRes.ok && payoutData.success && payoutData.stepData && payoutData.stepData[6]) {
+          const step6 = payoutData.stepData[6];
+          setPayoutMethod(step6.payoutMethod || 'bank');
+          const details = step6.payoutDetails || {};
+          setPayoutDetails({
+            bankName: details.bankName || '',
+            accountHolderName: details.accountHolder || details.accountHolderName || '',
+            accountNumber: details.accountNumber || '',
+            routingCode: details.routingNumber || details.routingCode || '',
+            accountType: details.accountType ? (details.accountType.charAt(0).toUpperCase() + details.accountType.slice(1)) : 'Checking',
+            paypalEmail: details.paypalEmail || '',
+            cryptoCurrency: details.currency || 'USDT',
+            cryptoAddress: details.address || '',
+          });
         }
       } catch (err) {
         console.error('Failed to pre-populate profile editor:', err);
@@ -263,12 +301,13 @@ const ProviderProfile: React.FC = () => {
         </div>
 
         {/* Tab Selection */}
-        <div className="flex border-b border-[var(--az-border)]/30 gap-6">
-          {['basic', 'services', 'location', 'schedule'].map(tab => (
+        <div className="flex border-b border-[var(--az-border)]/30 gap-6 overflow-x-auto">
+          {['basic', 'services', 'location', 'schedule', 'payment'].map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`pb-4 text-xs font-bold uppercase tracking-widest transition-all ${activeTab === tab ? 'text-[var(--az-accent-rose)] border-b-2 border-[var(--az-accent-rose)]' : 'text-[var(--az-text-secondary)] hover:text-white'}`}
+              data-testid={`tab-${tab}`}
+              className={`pb-4 text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap ${activeTab === tab ? 'text-[var(--az-accent-rose)] border-b-2 border-[var(--az-accent-rose)]' : 'text-[var(--az-text-secondary)] hover:text-white'}`}
             >
               {tab}
             </button>
@@ -448,6 +487,161 @@ const ProviderProfile: React.FC = () => {
                 className="px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 disabled:opacity-50 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-md"
               >
                 {savingSchedule ? 'Processing...' : 'Save Schedule'}
+              </button>
+            </div>
+          )}
+
+          {activeTab === 'payment' && (
+            <div className="space-y-6" data-testid="payment-tab-content">
+              <h3 className="text-lg font-serif italic text-white mb-4">Payout Method & Details</h3>
+
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: 'bank', name: 'Bank Transfer' },
+                  { id: 'paypal', name: 'PayPal' },
+                  { id: 'crypto', name: 'Crypto' }
+                ].map(opt => (
+                  <button
+                    key={opt.id}
+                    onClick={() => setPayoutMethod(opt.id)}
+                    className={`py-3 px-2 rounded-xl text-xs font-bold uppercase tracking-wider border transition-all cursor-pointer ${payoutMethod === opt.id ? 'bg-[var(--az-accent-primary)] text-white border-transparent' : 'bg-[var(--az-bg-tertiary)] text-[var(--az-text-secondary)] border-[var(--az-border)]'}`}
+                  >
+                    {opt.name}
+                  </button>
+                ))}
+              </div>
+
+              {payoutMethod === 'bank' && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">Bank Name</label>
+                    <input
+                      type="text"
+                      className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white outline-none focus:border-[var(--az-accent-rose)] transition-colors"
+                      value={payoutDetails.bankName}
+                      onChange={e => setPayoutDetails({ ...payoutDetails, bankName: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">Account Holder Name</label>
+                    <input
+                      type="text"
+                      className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white outline-none focus:border-[var(--az-accent-rose)] transition-colors"
+                      value={payoutDetails.accountHolderName}
+                      onChange={e => setPayoutDetails({ ...payoutDetails, accountHolderName: e.target.value })}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">Account Number</label>
+                      <input
+                        type="text"
+                        className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white outline-none focus:border-[var(--az-accent-rose)] transition-colors"
+                        value={payoutDetails.accountNumber}
+                        onChange={e => setPayoutDetails({ ...payoutDetails, accountNumber: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">Routing/Sort Code</label>
+                      <input
+                        type="text"
+                        className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white outline-none focus:border-[var(--az-accent-rose)] transition-colors"
+                        value={payoutDetails.routingCode}
+                        onChange={e => setPayoutDetails({ ...payoutDetails, routingCode: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {payoutMethod === 'paypal' && (
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">PayPal Registered Email</label>
+                  <input
+                    type="email"
+                    className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white outline-none focus:border-[var(--az-accent-rose)] transition-colors"
+                    value={payoutDetails.paypalEmail}
+                    onChange={e => setPayoutDetails({ ...payoutDetails, paypalEmail: e.target.value })}
+                  />
+                </div>
+              )}
+
+              {payoutMethod === 'crypto' && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">Currency Network</label>
+                    <select
+                      className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white outline-none focus:border-[var(--az-accent-rose)] transition-colors"
+                      value={payoutDetails.cryptoCurrency}
+                      onChange={e => setPayoutDetails({ ...payoutDetails, cryptoCurrency: e.target.value })}
+                    >
+                      <option value="BTC">Bitcoin (BTC)</option>
+                      <option value="USDT">Tether (USDT - TRC20)</option>
+                      <option value="ETH">Ethereum (ETH)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">Wallet Address</label>
+                    <input
+                      type="text"
+                      className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white outline-none focus:border-[var(--az-accent-rose)] transition-colors"
+                      value={payoutDetails.cryptoAddress}
+                      onChange={e => setPayoutDetails({ ...payoutDetails, cryptoAddress: e.target.value })}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={async () => {
+                  setSavingPayment(true);
+                  try {
+                    let pDetails: Record<string, unknown> = {};
+                    if (payoutMethod === 'bank') {
+                      pDetails = {
+                        bankName: payoutDetails.bankName,
+                        accountHolder: payoutDetails.accountHolderName,
+                        accountNumber: payoutDetails.accountNumber,
+                        routingNumber: payoutDetails.routingCode,
+                        accountType: payoutDetails.accountType.toLowerCase(),
+                      };
+                    } else if (payoutMethod === 'paypal') {
+                      pDetails = { paypalEmail: payoutDetails.paypalEmail };
+                    } else if (payoutMethod === 'crypto') {
+                      pDetails = { currency: payoutDetails.cryptoCurrency, address: payoutDetails.cryptoAddress };
+                    }
+
+                    const stepPayload = {
+                      payoutMethod,
+                      bankDetails: payoutMethod === 'bank' ? pDetails : undefined,
+                      paypalEmail: payoutMethod === 'paypal' ? payoutDetails.paypalEmail : undefined,
+                      crypto: payoutMethod === 'crypto' ? pDetails : undefined
+                    };
+
+                    const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/onboarding/step/6`, {
+                      method: 'PUT',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                      },
+                      body: JSON.stringify(stepPayload)
+                    });
+                    const data = await res.json();
+                    if (!res.ok || !data.success) {
+                      throw new Error(data.message || data.error || 'Failed to save payout settings');
+                    }
+                    toast.success('Payout settings updated successfully!');
+                  } catch (err: any) {
+                    toast.error(err.message || 'Failed to update payout settings');
+                  } finally {
+                    setSavingPayment(false);
+                  }
+                }}
+                disabled={savingPayment}
+                data-testid="save-payment-btn"
+                className="px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 disabled:opacity-50 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-md"
+              >
+                {savingPayment ? 'Processing...' : 'Save Payment Settings'}
               </button>
             </div>
           )}

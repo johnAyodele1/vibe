@@ -15,6 +15,7 @@ export interface ActiveCallInfo {
   webrtcRoomId: string;
   rate: number;
   isCaller: boolean;
+  endReason?: string;
 }
 
 export interface AdultCallContextType {
