@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { API_BASE_URL } from '../../config';
+import { io } from 'socket.io-client';
+import { API_BASE_URL, SOCKET_URL } from '../../config';
 import { usePricingStore, formatNaira, formatAmount } from '../../lib/pricing';
+import { useAdultAuth } from '../../contexts/AdultAuthContext';
 
 const ProviderEarnings: React.FC = () => {
   const navigate = useNavigate();
   const token = localStorage.getItem('adultAccessToken');
+  const { user } = useAdultAuth();
 
   const [dateRange, setDateRange] = useState('This Month');
   const [totalEarned, setTotalEarned] = useState(0);
@@ -66,7 +69,22 @@ const ProviderEarnings: React.FC = () => {
       return;
     }
     fetchEarnings();
-  }, [token, navigate, dateRange]);
+  }, [token, navigate, dateRange, user?.credits]);
+
+  useEffect(() => {
+    if (!token) return;
+    const socketUrl = SOCKET_URL || window.location.origin;
+    const s = io(`${socketUrl}/adult`, {
+      auth: { token },
+      transports: ['websocket', 'polling']
+    });
+    s.on('wallet:updated', () => {
+      fetchEarnings();
+    });
+    return () => {
+      s.disconnect();
+    };
+  }, [token]);
 
   if (isLoading && transactions.length === 0) {
     return (

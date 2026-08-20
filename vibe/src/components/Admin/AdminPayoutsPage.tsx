@@ -602,7 +602,7 @@ export const AdminPayoutsPage: React.FC = () => {
                     </span>
                     {dispute.supportConversationId && (
                       <Link
-                        to={`/adult/sext?conversation=${dispute.supportConversationId}`}
+                        to={`/admin/official-channels?conversation=${dispute.supportConversationId}`}
                         className="text-[10px] font-bold text-indigo-400 hover:text-indigo-300 underline flex items-center gap-1"
                       >
                         💬 Support Queue →

@@ -57,7 +57,7 @@ const AdultZoneLayoutInner: React.FC = () => {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login');
   const [authModalRole, setAuthModalRole] = useState<'user' | 'provider'>('user');
-  const { isAuthenticated, logout, user, loading } = useAdultAuth();
+  const { isAuthenticated, logout, user, loading, updateCredits } = useAdultAuth();
   const setUnread = useUnreadStore(s => s.setUnread);
   const increment = useUnreadStore(s => s.increment);
   const location = useLocation();
@@ -114,6 +114,12 @@ const AdultZoneLayoutInner: React.FC = () => {
 
     s.on('connect', () => {
       console.log('Global Adult Zone socket connected:', s.id);
+    });
+
+    s.on('wallet:updated', (payload: { balance: number }) => {
+      if (typeof payload?.balance === 'number') {
+        updateCredits(payload.balance);
+      }
     });
 
     s.on('sext:new_message_notification', (payload: SocketMessagePayload) => {

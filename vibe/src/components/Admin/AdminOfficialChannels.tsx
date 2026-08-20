@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { API_BASE_URL } from '../../config';
 import { toast } from 'sonner';
 
@@ -31,6 +32,8 @@ interface SupportConversation {
 
 export const AdminOfficialChannels: React.FC = () => {
   const token = localStorage.getItem('adminToken') || '';
+  const [searchParams] = useSearchParams();
+  const conversationParam = searchParams.get('conversation');
   const [activeTab, setActiveTab] = useState<'notifications' | 'support' | 'settings'>('support');
 
   // Notifications state
@@ -119,6 +122,20 @@ export const AdminOfficialChannels: React.FC = () => {
     fetchSupportQueue();
     fetchConfig();
   }, []);
+
+  useEffect(() => {
+    if (conversationParam) {
+      setActiveTab('support');
+      if (supportQueue.length > 0) {
+        const matchingConv = supportQueue.find(
+          c => c.conversationId === conversationParam || c.conversationId === `support_${conversationParam}`
+        );
+        if (matchingConv) {
+          setSelectedQueueConv(matchingConv);
+        }
+      }
+    }
+  }, [conversationParam, supportQueue]);
 
   useEffect(() => {
     if (selectedQueueConv?.conversationId) {
