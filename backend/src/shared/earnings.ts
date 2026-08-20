@@ -71,35 +71,39 @@ export interface ProviderBalanceBreakdown {
 
 /**
  * Aggregates earnings for a provider from completed CreditTransactions matching PROVIDER_EARNING_TYPES.
+ * Performance: Aggregated on the MongoDB engine via $match and $group ($O(1)$ memory transfer).
  */
 export const calculateProviderEarnings = async (
   userId: Types.ObjectId | string,
   startDate?: Date | null,
   endDate?: Date | null
 ): Promise<ProviderEarningsSummary> => {
-  const query: any = {
-    userId,
+  const matchQuery: any = {
+    userId: typeof userId === 'string' ? new Types.ObjectId(userId) : userId,
     type: { $in: PROVIDER_EARNING_TYPES },
     status: 'completed',
   };
 
   if (startDate) {
-    query.createdAt = { $gte: startDate };
+    matchQuery.createdAt = { $gte: startDate };
     if (endDate) {
-      query.createdAt.$lte = endDate;
+      matchQuery.createdAt.$lte = endDate;
     }
   }
 
-  const transactions = await CreditTransaction.find(query);
+  const aggregateResult = await CreditTransaction.aggregate([
+    { $match: matchQuery },
+    {
+      $group: {
+        _id: null,
+        totalEarned: { $sum: '$amount' },
+        platformFee: { $sum: { $ifNull: ['$platformFee', 0] } },
+      },
+    },
+  ]);
 
-  let totalEarned = 0;
-  let platformFee = 0;
-
-  for (const tx of transactions) {
-    totalEarned += tx.amount;
-    platformFee += tx.platformFee || 0;
-  }
-
+  const totalEarned = aggregateResult[0]?.totalEarned || 0;
+  const platformFee = aggregateResult[0]?.platformFee || 0;
   const grossEarned = totalEarned + platformFee;
 
   return {
@@ -112,6 +116,8 @@ export const calculateProviderEarnings = async (
 /**
  * Calculates a unified, reconciled provider balance breakdown across all transaction states.
  * Single source of truth for Pending Clearance, Total Accumulated Balance, and Payout Eligibility.
+ * Performance: Uses MongoDB Aggregation Pipeline ($match & $group with $cond) to perform sum calculations
+ * directly on the database engine, avoiding O(N) document memory instantiations in Node.js.
  *
  * Accounting Invariants:
  * 1. Total Accumulated Balance (lifetimeProviderEarnings) = grossEarned - platformFee (Payouts do NOT deduct from this).
@@ -122,55 +128,175 @@ export const calculateProviderBalanceBreakdown = async (
   userId: Types.ObjectId | string
 ): Promise<ProviderBalanceBreakdown> => {
   const rate = await getDiamondNairaRate();
+  const userObjectId = typeof userId === 'string' ? new Types.ObjectId(userId) : userId;
 
-  // Fetch all transactions for the provider
-  const transactions = await CreditTransaction.find({ userId });
+  // Aggregate financial metrics directly on database engine in O(1) response size
+  const aggregateResult = await CreditTransaction.aggregate([
+    { $match: { userId: userObjectId } },
+    {
+      $group: {
+        _id: null,
+        grossEarnedCredits: {
+          $sum: {
+            $cond: [
+              { $and: [{ $eq: ['$status', 'completed'] }, { $in: ['$type', PROVIDER_EARNING_TYPES] }] },
+              { $add: ['$amount', { $ifNull: ['$platformFee', 0] }] },
+              0,
+            ],
+          },
+        },
+        platformFeeCredits: {
+          $sum: {
+            $cond: [
+              { $and: [{ $eq: ['$status', 'completed'] }, { $in: ['$type', PROVIDER_EARNING_TYPES] }] },
+              { $ifNull: ['$platformFee', 0] },
+              0,
+            ],
+          },
+        },
+        lifetimeProviderEarnings: {
+          $sum: {
+            $cond: [
+              { $and: [{ $eq: ['$status', 'completed'] }, { $in: ['$type', PROVIDER_EARNING_TYPES] }] },
+              '$amount',
+              0,
+            ],
+          },
+        },
+        paidOutFromFlag: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $eq: ['$status', 'completed'] },
+                  { $in: ['$type', PROVIDER_EARNING_TYPES] },
+                  { $eq: ['$paidOut', true] },
+                ],
+              },
+              '$amount',
+              0,
+            ],
+          },
+        },
+        disputedCredits: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $eq: ['$status', 'completed'] },
+                  { $in: ['$type', PROVIDER_EARNING_TYPES] },
+                  { $ne: ['$paidOut', true] },
+                  { $eq: ['$inDispute', true] },
+                ],
+              },
+              '$amount',
+              0,
+            ],
+          },
+        },
+        unsettledCredits: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $eq: ['$status', 'completed'] },
+                  { $in: ['$type', PROVIDER_EARNING_TYPES] },
+                  { $ne: ['$paidOut', true] },
+                  { $ne: ['$inDispute', true] },
+                  {
+                    $or: [
+                      { $eq: ['$eligibleForPayout', false] },
+                      {
+                        $and: [
+                          { $ne: ['$inPayoutRequest', null] },
+                          { $ne: [{ $type: '$inPayoutRequest' }, 'missing'] },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+              '$amount',
+              0,
+            ],
+          },
+        },
+        rawWithdrawableCredits: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $eq: ['$status', 'completed'] },
+                  { $in: ['$type', PROVIDER_EARNING_TYPES] },
+                  { $ne: ['$paidOut', true] },
+                  { $ne: ['$inDispute', true] },
+                  { $ne: ['$eligibleForPayout', false] },
+                  {
+                    $or: [
+                      { $eq: ['$inPayoutRequest', null] },
+                      { $eq: [{ $type: '$inPayoutRequest' }, 'missing'] },
+                    ],
+                  },
+                ],
+              },
+              '$amount',
+              0,
+            ],
+          },
+        },
+        payoutTxCredits: {
+          $sum: {
+            $cond: [
+              { $and: [{ $eq: ['$type', 'payout'] }, { $eq: ['$status', 'completed'] }] },
+              { $abs: '$amount' },
+              0,
+            ],
+          },
+        },
+        totalReversionCredits: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $eq: ['$status', 'completed'] },
+                  { $in: ['$type', REVERT_TYPES] },
+                  { $ne: ['$type', 'payout'] },
+                ],
+              },
+              { $abs: '$amount' },
+              0,
+            ],
+          },
+        },
+      },
+    },
+  ]);
 
-  let grossEarnedCredits = 0;
-  let platformFeeCredits = 0;
-  let lifetimeProviderEarnings = 0;
-  let paidOutCredits = 0;
-  let unsettledCredits = 0;
-  let disputedCredits = 0;
-  let rawWithdrawableCredits = 0;
-  let totalReversionCredits = 0;
+  const stats = aggregateResult[0] || {
+    grossEarnedCredits: 0,
+    platformFeeCredits: 0,
+    lifetimeProviderEarnings: 0,
+    paidOutFromFlag: 0,
+    disputedCredits: 0,
+    unsettledCredits: 0,
+    rawWithdrawableCredits: 0,
+    payoutTxCredits: 0,
+    totalReversionCredits: 0,
+  };
 
-  for (const tx of transactions) {
-    const isEarningType = PROVIDER_EARNING_TYPES.includes(tx.type);
-    const isRevertType = REVERT_TYPES.includes(tx.type);
+  let {
+    grossEarnedCredits,
+    platformFeeCredits,
+    lifetimeProviderEarnings,
+    paidOutFromFlag,
+    disputedCredits,
+    unsettledCredits,
+    rawWithdrawableCredits,
+    payoutTxCredits,
+    totalReversionCredits,
+  } = stats;
 
-    if (tx.status === 'completed' && isEarningType) {
-      const netAmount = tx.amount;
-      const fee = tx.platformFee || 0;
-
-      grossEarnedCredits += netAmount + fee;
-      platformFeeCredits += fee;
-      lifetimeProviderEarnings += netAmount;
-
-      if (tx.paidOut === true) {
-        // Handled via paidOut flag on earning transactions
-      } else if (tx.inDispute === true) {
-        disputedCredits += netAmount;
-      } else if (tx.eligibleForPayout === false || !!tx.inPayoutRequest) {
-        unsettledCredits += netAmount;
-      } else {
-        rawWithdrawableCredits += netAmount;
-      }
-    } else if (tx.type === 'payout' && tx.status === 'completed') {
-      paidOutCredits += Math.abs(tx.amount);
-    } else if (tx.status === 'completed' && isRevertType && tx.type !== 'payout') {
-      totalReversionCredits += Math.abs(tx.amount);
-    }
-  }
-
-  // Calculate paid out amounts
-  const paidOutFromFlag = transactions
-    .filter(tx => tx.status === 'completed' && PROVIDER_EARNING_TYPES.includes(tx.type) && tx.paidOut === true)
-    .reduce((sum, tx) => sum + tx.amount, 0);
-
-  paidOutCredits = Math.max(paidOutCredits, paidOutFromFlag);
-
-  // Unflagged paidOut is any payout amount not already reflected by paidOut: true flags on individual earning txs
+  const paidOutCredits = Math.max(payoutTxCredits, paidOutFromFlag);
   const unflaggedPaidOut = Math.max(0, paidOutCredits - paidOutFromFlag);
 
   // Total deductions from claimable balance = unflagged payouts + reversions
