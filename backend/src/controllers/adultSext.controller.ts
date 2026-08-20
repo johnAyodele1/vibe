@@ -1009,7 +1009,8 @@ export const getConversations = async (req: Request, res: Response) => {
     const conversations = await AdultConversation.find(query)
       .sort({ updatedAt: -1 })
       .skip((page - 1) * limit)
-      .limit(limit);
+      .limit(limit)
+      .lean();
 
     const results = [];
 
@@ -1121,15 +1122,36 @@ export const getConversations = async (req: Request, res: Response) => {
       });
     }
 
+    // Performance Optimization: Batch fetch all other participant AdultUsers in a single query (O(1) database roundtrip)
+    // instead of firing sequential await queries in a loop (O(N) N+1 query pattern).
+    const otherUserIds = conversations
+      .filter(conv => !conv._id.startsWith('support_'))
+      .map(conv => conv.participantProfiles?.find((p: any) => p.userId?.toString() !== user._id.toString())?.userId)
+      .filter(Boolean);
+
+    const otherUsersList = otherUserIds.length > 0
+      ? await AdultUser.find({ _id: { $in: otherUserIds } }).lean()
+      : [];
+
+    const otherUsersMap = new Map<string, any>();
+    for (const u of otherUsersList) {
+      otherUsersMap.set(u._id.toString(), u);
+    }
+
     for (const conv of conversations) {
       if (conv._id.startsWith('support_')) {
         continue; // Handled explicitly above
       }
 
-      const otherProfile = conv.participantProfiles.find(p => p.userId?.toString() !== user._id.toString());
-      const otherUser = otherProfile ? await AdultUser.findById(otherProfile.userId) : null;
+      const otherProfile = conv.participantProfiles?.find((p: any) => p.userId?.toString() !== user._id.toString());
+      const otherUser = otherProfile?.userId ? otherUsersMap.get(otherProfile.userId.toString()) : null;
 
-      const unreadCount = conv.unreadCounts.get(user._id.toString()) || 0;
+      // Handle unreadCount whether unreadCounts is a Mongoose Map or plain JS Object (via .lean())
+      const unreadCount = conv.unreadCounts
+        ? (typeof (conv.unreadCounts as any).get === 'function'
+            ? (conv.unreadCounts as any).get(user._id.toString())
+            : (conv.unreadCounts as any)[user._id.toString()]) || 0
+        : 0;
 
       let preview = '';
       if (conv.lastMessage?.content) {
@@ -1161,8 +1183,8 @@ export const getConversations = async (req: Request, res: Response) => {
           sentAt: conv.lastMessage.sentAt
         } : null,
         unreadCount,
-        isMuted: conv.mutedBy.some(id => id.toString() === user._id.toString()),
-        isBlocked: conv.blockedBy.length > 0
+        isMuted: (conv.mutedBy || []).some((id: any) => id.toString() === user._id.toString()),
+        isBlocked: (conv.blockedBy || []).length > 0
       });
     }
 
