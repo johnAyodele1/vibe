@@ -109,11 +109,12 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
           setSelfTesting(false);
           setTestStatus('idle');
 
-          // During the cooldown, verification_required means the device is still
-          // registered and healthy; it only means its last real push is older than
-          // the normal health-check window. Keep the requested UI flow: show the
-          // checking UI, then immediately show enabled without sending a push test.
-          if (cooldownActive && currentHealth.status === 'verification_required') {
+          // While the three-hour cooldown is active, a valid registered device is
+          // treated as enabled for entry UX. The health check may say
+          // verification_required because its last real push is older than the
+          // normal 30-minute verification window; it can also still be healthy if
+          // the user returned shortly after leaving. Neither case sends a push.
+          if (cooldownActive && (currentHealth.status === 'verification_required' || currentHealth.status === 'healthy')) {
             setHealth(prev => prev ? { ...prev, status: 'healthy', pushHealthStatus: 'healthy' } : prev);
             setShowHealthy(true);
             window.setTimeout(() => setShowHealthy(false), 4000);
