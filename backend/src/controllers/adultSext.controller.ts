@@ -680,7 +680,6 @@ export const reportServiceRequest = async (req: Request, res: Response) => {
     const provider = await AdultUser.findById(message.senderId);
 
     const supportConversationId = `support_${user._id.toString()}`;
-    let supportConv = await AdultConversation.findById(supportConversationId);
 
     const issueContext = {
       reportId: report._id.toString(),
@@ -698,34 +697,38 @@ export const reportServiceRequest = async (req: Request, res: Response) => {
       userReportText: details,
     };
 
-    if (!supportConv) {
-      supportConv = new AdultConversation({
-        _id: supportConversationId,
-        type: 'support',
-        participants: [user._id],
-        participantProfiles: [
-          {
-            userId: user._id,
-            displayName: user.displayName || user.username,
-            avatarUrl: user.profilePhoto || '/placeholder.svg',
-            accountType: user.role === 'provider' ? 'provider' : 'member',
-            isOnline: true,
+    let supportConv = await AdultConversation.findOneAndUpdate(
+      { _id: supportConversationId },
+      {
+        $setOnInsert: {
+          type: 'support',
+          participants: [user._id],
+          participantProfiles: [
+            {
+              userId: user._id,
+              displayName: user.displayName || user.username,
+              avatarUrl: user.profilePhoto || '/placeholder.svg',
+              accountType: user.role === 'provider' ? 'provider' : 'member',
+              isOnline: true,
+            },
+          ],
+          supportMetadata: {
+            status: 'open',
+            tags: ['Chat with Issue'],
+            reportId: report._id,
+            serviceRequestId: message._id,
+            issueContext,
+            welcomeSent: true,
           },
-        ],
-        supportMetadata: {
-          status: 'open',
-          tags: ['Chat with Issue'],
-          reportId: report._id,
-          serviceRequestId: message._id,
-          issueContext,
-          welcomeSent: true,
+          unreadCounts: {
+            [user._id.toString()]: 0,
+          },
         },
-        unreadCounts: {
-          [user._id.toString()]: 0,
-        },
-      });
-      await supportConv.save();
-    } else {
+      },
+      { upsert: true, new: true }
+    );
+
+    if (supportConv) {
       (supportConv as any).type = 'support';
       const currentMetadata = (supportConv as any).supportMetadata || { status: 'open', tags: [] };
       const currentTags: string[] = currentMetadata.tags || [];
