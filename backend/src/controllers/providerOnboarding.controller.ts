@@ -988,15 +988,17 @@ export const getProviderDashboard = async (req: Request, res: Response) => {
       isRead: false
     });
 
-    // 3. Fetch real recent sessions from CamSession
+    // 3. Fetch real recent sessions from CamSession using .lean()
     const recentSessions = await CamSession.find({ providerId: user._id })
       .sort({ startedAt: -1 })
-      .limit(5);
+      .limit(5)
+      .lean();
 
-    const formattedSessions = recentSessions.map(session => {
+    const formattedSessions = recentSessions.map((session: any) => {
       let dateLabel = 'Recent Show';
       if (session.startedAt) {
-        const diffMs = now.getTime() - session.startedAt.getTime();
+        const startedAtDate = new Date(session.startedAt);
+        const diffMs = now.getTime() - startedAtDate.getTime();
         const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
         if (diffDays === 0) {
           dateLabel = 'Today';
@@ -1006,16 +1008,17 @@ export const getProviderDashboard = async (req: Request, res: Response) => {
           dateLabel = `${diffDays} days ago`;
         }
 
-        const startHours = session.startedAt.getHours();
-        const startMinutes = session.startedAt.getMinutes();
+        const startHours = startedAtDate.getHours();
+        const startMinutes = startedAtDate.getMinutes();
         const startAmpm = startHours >= 12 ? 'PM' : 'AM';
         const startDisplayHours = startHours % 12 === 0 ? 12 : startHours % 12;
         const startDisplayMinutes = startMinutes > 0 ? `:${startMinutes}` : '';
         dateLabel += ` ${startDisplayHours}${startDisplayMinutes}${startAmpm}`;
 
         if (session.endedAt) {
-          const endHours = session.endedAt.getHours();
-          const endMinutes = session.endedAt.getMinutes();
+          const endedAtDate = new Date(session.endedAt);
+          const endHours = endedAtDate.getHours();
+          const endMinutes = endedAtDate.getMinutes();
           const endAmpm = endHours >= 12 ? 'PM' : 'AM';
           const endDisplayHours = endHours % 12 === 0 ? 12 : endHours % 12;
           const endDisplayMinutes = endMinutes > 0 ? `:${endMinutes}` : '';
@@ -1030,17 +1033,35 @@ export const getProviderDashboard = async (req: Request, res: Response) => {
     });
 
     // 4. Fetch real recent messages
+    // ⚡ OPTIMIZATION: Eliminate N+1 database queries by batching user profile lookups
+    // and using .lean() for unhydrated read queries.
     const recentDbMessages = await AdultMessage.find({
       $or: [{ senderId: user._id }, { receiverId: user._id }]
     })
     .sort({ createdAt: -1 })
-    .limit(5);
+    .limit(5)
+    .lean();
+
+    const otherUserIds = [...new Set(
+      recentDbMessages
+        .map(msg => msg.senderId.toString() === user._id.toString() ? msg.receiverId : msg.senderId)
+        .filter(Boolean)
+        .map(id => id!.toString())
+    )];
+
+    const otherUsers = otherUserIds.length > 0
+      ? await AdultUser.find({ _id: { $in: otherUserIds } })
+          .select('displayName providerProfile')
+          .lean()
+      : [];
+
+    const userMap = new Map(otherUsers.map((u: any) => [u._id.toString(), u]));
 
     const formattedMessages = [];
     for (const msg of recentDbMessages) {
       const otherUserId = msg.senderId.toString() === user._id.toString() ? msg.receiverId : msg.senderId;
       if (!otherUserId) continue;
-      const otherUser = await AdultUser.findById(otherUserId).select('displayName providerProfile');
+      const otherUser: any = userMap.get(otherUserId.toString());
 
       let text = '';
       try {
