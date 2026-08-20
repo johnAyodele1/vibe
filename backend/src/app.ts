@@ -29,7 +29,29 @@ app.use(express.urlencoded({ extended: true }));
 app.use(session({ secret: process.env.SESSION_SECRET || 'vibe_session_secret', resave: false, saveUninitialized: false, cookie: { secure: process.env.NODE_ENV === 'production', maxAge: 24 * 60 * 60 * 1000 } }));
 app.use(passport.initialize());
 app.use(passport.session());
-app.use(cors({ origin: true, credentials: true }));
+
+// Secure CORS configuration: Restrict allowed origins to process.env.ALLOWED_ORIGINS / FRONTEND_URL or default local URLs
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+  : [
+      process.env.FRONTEND_URL || 'https://zippo-r8hk.onrender.com',
+      process.env.FRONTEND_DATING_URL || 'http://localhost:3000',
+      process.env.FRONTEND_ADULT_URL || 'http://localhost:3001',
+      'http://localhost:5173',
+    ];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (e.g. mobile apps, curl, server-to-server) or during tests
+      if (!origin || process.env.NODE_ENV === 'test' || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error('CORS policy violation: Access denied for origin ' + origin));
+    },
+    credentials: true,
+  })
+);
 
 if (process.env.NODE_ENV !== 'test') {
   const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/vibe';
