@@ -43,6 +43,8 @@ export const AdminOfficialChannels: React.FC = () => {
   // Support inbox state
   const [supportQueue, setSupportQueue] = useState<SupportConversation[]>([]);
   const [selectedQueueConv, setSelectedQueueConv] = useState<SupportConversation | null>(null);
+  const [supportMessages, setSupportMessages] = useState<any[]>([]);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [replyText, setReplyText] = useState('');
   const [tagInput, setTagInput] = useState('');
   const [isReplying, setIsSendingReply] = useState(false);
@@ -52,6 +54,9 @@ export const AdminOfficialChannels: React.FC = () => {
     notifications: { avatarUrl: '/icons/icon-192x192.png', badge: 'official', badgeType: 'blue', enabled: true },
     support: { avatarUrl: '/icons/icon-192x192.png', badge: 'official', badgeType: 'blue', enabled: true },
   });
+  const [isUploadingNotifAvatar, setIsUploadingNotifAvatar] = useState(false);
+  const [isUploadingSupportAvatar, setIsUploadingSupportAvatar] = useState(false);
+  const [isSavingConfig, setIsSavingConfig] = useState(false);
 
   const getHeaders = () => ({
     'Content-Type': 'application/json',
@@ -94,11 +99,34 @@ export const AdminOfficialChannels: React.FC = () => {
     }
   };
 
+  const fetchSupportMessages = async (convId: string) => {
+    setIsLoadingMessages(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/support/conversations/${convId}/messages`, { headers: getHeaders() });
+      const data = await res.json();
+      if (data.success) {
+        setSupportMessages(data.messages);
+      }
+    } catch (err) {
+      console.error('Error fetching support messages:', err);
+    } finally {
+      setIsLoadingMessages(false);
+    }
+  };
+
   useEffect(() => {
     fetchNotifications();
     fetchSupportQueue();
     fetchConfig();
   }, []);
+
+  useEffect(() => {
+    if (selectedQueueConv?.conversationId) {
+      fetchSupportMessages(selectedQueueConv.conversationId);
+    } else {
+      setSupportMessages([]);
+    }
+  }, [selectedQueueConv?.conversationId]);
 
   const handleCreateNotification = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -144,6 +172,7 @@ export const AdminOfficialChannels: React.FC = () => {
       if (data.success) {
         toast.success('Support response sent');
         setReplyText('');
+        fetchSupportMessages(selectedQueueConv.conversationId);
         fetchSupportQueue();
       } else {
         toast.error(data.error || 'Failed to send reply');
@@ -175,7 +204,44 @@ export const AdminOfficialChannels: React.FC = () => {
     }
   };
 
+  const handleUploadAvatar = async (e: React.ChangeEvent<HTMLInputElement>, channel: 'notifications' | 'support') => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const setUploading = channel === 'notifications' ? setIsUploadingNotifAvatar : setIsUploadingSupportAvatar;
+    setUploading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch(`${API_BASE_URL}/admin/official-channels/upload-avatar`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (data.success && data.url) {
+        setConfig((prev: any) => ({
+          ...prev,
+          [channel]: { ...prev[channel], avatarUrl: data.url }
+        }));
+        toast.success(`${channel === 'notifications' ? 'Notifications' : 'Support'} avatar uploaded successfully!`);
+      } else {
+        toast.error(data.error || 'Failed to upload image');
+      }
+    } catch (err) {
+      toast.error('Avatar upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleSaveConfig = async () => {
+    setIsSavingConfig(true);
     try {
       const res = await fetch(`${API_BASE_URL}/admin/official-channels/config`, {
         method: 'PUT',
@@ -184,10 +250,15 @@ export const AdminOfficialChannels: React.FC = () => {
       });
       const data = await res.json();
       if (data.success) {
-        toast.success('Official Channel configurations saved!');
+        setConfig(data.data || config);
+        toast.success('Official Channel identities saved successfully!');
+      } else {
+        toast.error(data.error || 'Failed to save config');
       }
     } catch (err) {
       toast.error('Failed to update config');
+    } finally {
+      setIsSavingConfig(false);
     }
   };
 
@@ -406,7 +477,62 @@ export const AdminOfficialChannels: React.FC = () => {
                   )}
 
                   <div className="p-4 bg-[#180d16] rounded-lg border border-pink-500/10 flex-grow overflow-y-auto space-y-3">
-                    <p className="text-xs text-gray-400 italic">Chatting with Official Customer Support...</p>
+                    {isLoadingMessages ? (
+                      <p className="text-xs text-gray-400 italic text-center py-4">Loading conversation history...</p>
+                    ) : supportMessages.length === 0 ? (
+                      <p className="text-xs text-gray-400 italic text-center py-4">No messages in this support conversation yet.</p>
+                    ) : (
+                      supportMessages.map((msg) => {
+                        const isUserSender = msg.senderId === selectedQueueConv.user?.id;
+                        const isSystem = msg.mediaType === 'system';
+                        return (
+                          <div
+                            key={msg.id}
+                            className={`flex flex-col ${
+                              isSystem ? 'items-center my-2' : isUserSender ? 'items-start' : 'items-end'
+                            }`}
+                          >
+                            {isSystem ? (
+                              <div className="px-3 py-1.5 bg-blue-950/40 border border-blue-500/30 rounded-lg text-center text-xs text-blue-300 max-w-md">
+                                <span className="font-bold text-[10px] uppercase text-blue-400 block mb-0.5">Official System Notice</span>
+                                <p className="whitespace-pre-wrap">{msg.content}</p>
+                              </div>
+                            ) : (
+                              <div className="max-w-[80%]">
+                                <div className="text-[10px] text-gray-400 mb-1 flex items-center gap-1 font-semibold">
+                                  <span>{isUserSender ? (selectedQueueConv.user?.displayName || 'User') : '🎧 Official Support'}</span>
+                                  <span className="text-[9px] text-gray-500 font-mono">
+                                    {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                </div>
+                                <div
+                                  className={`p-3 rounded-xl text-xs leading-relaxed break-words ${
+                                    isUserSender
+                                      ? 'bg-[#1e0e1b] border border-pink-500/20 text-gray-200 rounded-tl-none'
+                                      : 'bg-blue-600 text-white rounded-tr-none'
+                                  }`}
+                                >
+                                  {msg.content}
+                                  {msg.mediaUrl && (
+                                    <div className="mt-2">
+                                      {msg.mediaType === 'image' ? (
+                                        <img src={msg.mediaUrl} alt="attachment" className="max-h-48 rounded object-cover" />
+                                      ) : msg.mediaType === 'video' ? (
+                                        <video src={msg.mediaUrl} controls className="max-h-48 rounded object-cover" />
+                                      ) : (
+                                        <a href={msg.mediaUrl} target="_blank" rel="noreferrer" className="underline text-blue-200">
+                                          View Attachment
+                                        </a>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
                 </div>
 
@@ -442,21 +568,46 @@ export const AdminOfficialChannels: React.FC = () => {
           <h2 className="text-lg font-bold text-pink-400">Official Channel Identity Settings</h2>
 
           <div className="space-y-4">
+            {/* Official Notifications Channel */}
             <div className="p-4 bg-[#1a0e18] border border-pink-500/10 rounded-lg flex flex-col gap-3">
               <h3 className="font-bold text-sm text-blue-400">Official Notifications Channel</h3>
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div>
-                  <label className="text-gray-400 block mb-1">Avatar Image URL</label>
-                  <input
-                    type="text"
-                    value={config.notifications?.avatarUrl || ''}
-                    onChange={(e) => setConfig((prev: any) => ({
-                      ...prev,
-                      notifications: { ...prev.notifications, avatarUrl: e.target.value }
-                    }))}
-                    className="w-full bg-[#1b0d19] border border-pink-500/30 rounded p-2 text-xs"
+              <div className="flex items-center gap-4 mb-2">
+                <div className="w-14 h-14 rounded-full overflow-hidden border-2 border-blue-500/40 shrink-0 bg-[#0f0810] flex items-center justify-center">
+                  <img
+                    src={config.notifications?.avatarUrl || '/icons/icon-192x192.png'}
+                    alt="Notifications Avatar"
+                    className="w-full h-full object-cover"
+                    onError={(e) => { (e.target as HTMLElement).setAttribute('src', '/icons/icon-192x192.png'); }}
                   />
                 </div>
+                <div className="flex flex-col gap-1 flex-grow text-xs">
+                  <span className="font-semibold text-gray-300">Avatar Image</span>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Paste image URL..."
+                      value={config.notifications?.avatarUrl || ''}
+                      onChange={(e) => setConfig((prev: any) => ({
+                        ...prev,
+                        notifications: { ...prev.notifications, avatarUrl: e.target.value }
+                      }))}
+                      className="flex-grow bg-[#1b0d19] border border-pink-500/30 rounded p-2 text-xs text-gray-200 outline-none"
+                    />
+                    <label className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold cursor-pointer transition-all shrink-0 flex items-center justify-center">
+                      {isUploadingNotifAvatar ? 'Uploading...' : '📁 Upload'}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => handleUploadAvatar(e, 'notifications')}
+                        disabled={isUploadingNotifAvatar}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-xs">
                 <div>
                   <label className="text-gray-400 block mb-1">Badge Type</label>
                   <select
@@ -465,30 +616,55 @@ export const AdminOfficialChannels: React.FC = () => {
                       ...prev,
                       notifications: { ...prev.notifications, badgeType: e.target.value }
                     }))}
-                    className="w-full bg-[#1b0d19] border border-pink-500/30 rounded p-2 text-xs"
+                    className="w-full bg-[#1b0d19] border border-pink-500/30 rounded p-2 text-xs text-gray-100 outline-none"
                   >
-                    <option value="blue">Blue Official Check</option>
-                    <option value="gold">Gold Official Badge</option>
+                    <option value="blue">🔵 Blue Official Check</option>
+                    <option value="gold">🟡 Gold Official Badge</option>
                   </select>
                 </div>
               </div>
             </div>
 
+            {/* Official Customer Support Channel */}
             <div className="p-4 bg-[#1a0e18] border border-pink-500/10 rounded-lg flex flex-col gap-3">
               <h3 className="font-bold text-sm text-blue-400">Official Customer Support Channel</h3>
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div>
-                  <label className="text-gray-400 block mb-1">Avatar Image URL</label>
-                  <input
-                    type="text"
-                    value={config.support?.avatarUrl || ''}
-                    onChange={(e) => setConfig((prev: any) => ({
-                      ...prev,
-                      support: { ...prev.support, avatarUrl: e.target.value }
-                    }))}
-                    className="w-full bg-[#1b0d19] border border-pink-500/30 rounded p-2 text-xs"
+              <div className="flex items-center gap-4 mb-2">
+                <div className="w-14 h-14 rounded-full overflow-hidden border-2 border-blue-500/40 shrink-0 bg-[#0f0810] flex items-center justify-center">
+                  <img
+                    src={config.support?.avatarUrl || '/icons/icon-192x192.png'}
+                    alt="Support Avatar"
+                    className="w-full h-full object-cover"
+                    onError={(e) => { (e.target as HTMLElement).setAttribute('src', '/icons/icon-192x192.png'); }}
                   />
                 </div>
+                <div className="flex flex-col gap-1 flex-grow text-xs">
+                  <span className="font-semibold text-gray-300">Avatar Image</span>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Paste image URL..."
+                      value={config.support?.avatarUrl || ''}
+                      onChange={(e) => setConfig((prev: any) => ({
+                        ...prev,
+                        support: { ...prev.support, avatarUrl: e.target.value }
+                      }))}
+                      className="flex-grow bg-[#1b0d19] border border-pink-500/30 rounded p-2 text-xs text-gray-200 outline-none"
+                    />
+                    <label className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold cursor-pointer transition-all shrink-0 flex items-center justify-center">
+                      {isUploadingSupportAvatar ? 'Uploading...' : '📁 Upload'}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => handleUploadAvatar(e, 'support')}
+                        disabled={isUploadingSupportAvatar}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-xs">
                 <div>
                   <label className="text-gray-400 block mb-1">Badge Type</label>
                   <select
@@ -497,10 +673,10 @@ export const AdminOfficialChannels: React.FC = () => {
                       ...prev,
                       support: { ...prev.support, badgeType: e.target.value }
                     }))}
-                    className="w-full bg-[#1b0d19] border border-pink-500/30 rounded p-2 text-xs"
+                    className="w-full bg-[#1b0d19] border border-pink-500/30 rounded p-2 text-xs text-gray-100 outline-none"
                   >
-                    <option value="blue">Blue Official Check</option>
-                    <option value="gold">Gold Official Badge</option>
+                    <option value="blue">🔵 Blue Official Check</option>
+                    <option value="gold">🟡 Gold Official Badge</option>
                   </select>
                 </div>
               </div>
@@ -509,9 +685,17 @@ export const AdminOfficialChannels: React.FC = () => {
 
           <button
             onClick={handleSaveConfig}
-            className="py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg"
+            disabled={isSavingConfig}
+            className="py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs rounded-lg transition-all flex items-center justify-center gap-2"
           >
-            Save Channel Identities
+            {isSavingConfig ? (
+              <>
+                <span className="animate-spin">⏳</span>
+                <span>Saving Channel Identities...</span>
+              </>
+            ) : (
+              'Save Channel Identities'
+            )}
           </button>
         </div>
       )}

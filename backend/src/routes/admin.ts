@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { authenticateAdmin } from '../middleware/adminAuth';
 import {
   adminLogin,
@@ -44,11 +45,15 @@ import {
   adminCreateNotification,
   adminGetNotifications,
   adminGetSupportQueue,
+  adminGetSupportMessages,
   adminReplySupportMessage,
   adminManageSupportTags,
   updateOfficialChannelsConfig,
-  getOfficialChannelsConfig
+  getOfficialChannelsConfig,
+  adminUploadChannelAvatar
 } from '../controllers/officialSupport.controller';
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 const router = Router();
 
@@ -98,10 +103,12 @@ router.put('/disputes/:reportId/resolve', resolveDispute);
 router.post('/official-notifications', adminCreateNotification);
 router.get('/official-notifications', adminGetNotifications);
 router.get('/support/conversations', adminGetSupportQueue);
+router.get('/support/conversations/:conversationId/messages', adminGetSupportMessages);
 router.post('/support/conversations/:conversationId/messages', adminReplySupportMessage);
 router.put('/support/conversations/:conversationId/tags', adminManageSupportTags);
 router.get('/official-channels/config', getOfficialChannelsConfig);
 router.put('/official-channels/config', updateOfficialChannelsConfig);
+router.post('/official-channels/upload-avatar', upload.single('file'), adminUploadChannelAvatar);
 
 // Admin Error Monitoring routes
 router.get('/errors', listErrors);
