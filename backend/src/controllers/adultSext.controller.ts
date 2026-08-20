@@ -1202,6 +1202,54 @@ export const getConversationById = async (req: Request, res: Response) => {
     }
 
     const { conversationId } = req.params;
+
+    const officialChannelsConfigDoc = await AppConfig.findOne({ key: 'official_channels_config' });
+    const rawValue = officialChannelsConfigDoc?.value;
+    const officialConfig = (rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue))
+      ? (rawValue as any)
+      : {
+          notifications: { avatarUrl: '/icons/icon-192x192.png', badge: 'official', badgeType: 'blue', enabled: true },
+          support: { avatarUrl: '/icons/icon-192x192.png', badge: 'official', badgeType: 'blue', enabled: true }
+        };
+
+    if (conversationId === 'official_notifications') {
+      return res.json({
+        conversationId: 'official_notifications',
+        isOfficial: true,
+        type: 'official_notification',
+        officialConfig: officialConfig.notifications,
+        unreadCount: 0,
+        otherUser: {
+          id: 'official_notifications',
+          displayName: 'Official Notifications',
+          avatarUrl: officialConfig.notifications.avatarUrl || '/icons/icon-192x192.png',
+          isOnline: true,
+          accountType: 'official',
+          isOfficial: true,
+          officialBadge: officialConfig.notifications.badgeType || 'blue'
+        }
+      });
+    }
+
+    if (conversationId.startsWith('support_')) {
+      return res.json({
+        conversationId,
+        isOfficial: true,
+        type: 'support',
+        officialConfig: officialConfig.support,
+        unreadCount: 0,
+        otherUser: {
+          id: 'official_support',
+          displayName: 'Official Customer Support',
+          avatarUrl: officialConfig.support.avatarUrl || '/icons/icon-192x192.png',
+          isOnline: true,
+          accountType: 'official',
+          isOfficial: true,
+          officialBadge: officialConfig.support.badgeType || 'blue'
+        }
+      });
+    }
+
     const conversation = await AdultConversation.findById(conversationId);
 
     if (!conversation) {

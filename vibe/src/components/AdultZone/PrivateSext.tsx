@@ -19,17 +19,51 @@ import { useAdultCall } from './AdultCallContext';
 // Default avatars/placeholders
 const FALLBACK_AVATAR = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=150&auto=format&fit=crop";
 
+export const OfficialBadge: React.FC<{ badgeType?: 'blue' | 'gold' | string; className?: string }> = ({
+  badgeType = 'blue',
+  className = 'w-4 h-4 inline-block shrink-0 ml-1',
+}) => {
+  const isGold = badgeType === 'gold';
+  const titleText = isGold ? 'Official Gold Channel' : 'Official Blue Channel';
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-label={titleText}
+    >
+      <title>{titleText}</title>
+      <path
+        className={isGold ? 'text-amber-400' : 'text-blue-500'}
+        d="M12 2l2.4 1.8 3-.2 1.2 2.8 2.8 1.2-.2 3L23 13l-1.8 2.4.2 3-2.8 1.2-1.2 2.8-3-.2L12 24l-2.4-1.8-3 .2-1.2-2.8-2.8-1.2.2-3L1 11l1.8-2.4-.2-3 2.8-1.2 1.2-2.8 3 .2L12 2z"
+      />
+      <path
+        fill="#ffffff"
+        d="M10 15.5l-3.5-3.5 1.4-1.4 2.1 2.1 5.6-5.6 1.4 1.4z"
+      />
+    </svg>
+  );
+};
+
 interface Conversation {
   conversationId: string;
   type?: string;
   isOfficial?: boolean;
   position?: number;
+  officialConfig?: {
+    avatarUrl: string;
+    badge: string;
+    badgeType: 'blue' | 'gold' | string;
+    enabled: boolean;
+  };
   otherUser: {
     id: string;
     displayName: string;
     avatarUrl: string;
     isOnline: boolean;
     accountType: string;
+    isOfficial?: boolean;
+    officialBadge?: 'blue' | 'gold' | string;
     bio?: string;
     country?: string;
   } | null;
@@ -1406,6 +1440,8 @@ const PrivateSext: React.FC = () => {
               const other = c.otherUser;
               if (!other) return null;
               const isSelected = selectedConv?.conversationId === c.conversationId;
+              const isOfficialChannel = c.isOfficial || other.isOfficial || c.type === 'official_notification' || c.type === 'support' || c.conversationId === 'official_notifications' || c.conversationId.startsWith('support_');
+              const badgeType = other.officialBadge || c.officialConfig?.badgeType || 'blue';
 
               return (
                 <div
@@ -1427,7 +1463,10 @@ const PrivateSext: React.FC = () => {
 
                   <div className="flex-grow min-w-0">
                     <div className="flex justify-between items-center mb-1 gap-2 min-w-0">
-                      <h4 className="font-bold text-sm truncate flex-1 min-w-0">{other.displayName}</h4>
+                      <div className="flex items-center gap-1 min-w-0 flex-1">
+                        <h4 className="font-bold text-sm truncate">{other.displayName}</h4>
+                        {isOfficialChannel && <OfficialBadge badgeType={badgeType} />}
+                      </div>
                       {c.lastMessage && (
                         <span className="text-[10px] text-gray-400 flex-shrink-0">
                           {new Date(c.lastMessage.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -1456,61 +1495,71 @@ const PrivateSext: React.FC = () => {
         {selectedConv ? (
           <>
             {/* HEADER */}
-            <div data-testid="conversation-header" className="conversation-header p-4 bg-[#140b13] border-b border-[var(--az-border)] flex items-center justify-between flex-shrink-0">
-              <div className="flex items-center gap-3 min-w-0">
-                <button
-                  onClick={() => setMobileView('list')}
-                  className="md:hidden text-lg text-pink-400 p-1 conversation-header__back"
-                >
-                  ←
-                </button>
-                <div className="relative flex-shrink-0">
-                  <Avatar
-                    src={selectedConv.otherUser?.avatarUrl}
-                    name={selectedConv.otherUser?.displayName}
-                    size={36}
-                    className="border border-pink-500/50 conversation-header__avatar"
-                  />
-                  {selectedConv.otherUser?.isOnline && (
-                    <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full border border-[#140b13]" />
-                  )}
-                </div>
-                <div className="conversation-header__info min-w-0">
-                  <h3 className="font-bold text-sm conversation-header__name truncate">{selectedConv.otherUser?.displayName}</h3>
-                  <span className={`text-[9px] uppercase tracking-widest font-bold conversation-header__status ${
-                    selectedConv.otherUser?.isOnline ? '' : 'conversation-header__status--offline'
-                  }`}>
-                    {selectedConv.otherUser?.isOnline ? 'Online Now' : 'Offline'}
-                  </span>
-                </div>
-              </div>
+            {(() => {
+              const isSelectedOfficial = selectedConv.isOfficial || selectedConv.otherUser?.isOfficial || selectedConv.type === 'official_notification' || selectedConv.type === 'support' || selectedConv.conversationId === 'official_notifications' || selectedConv.conversationId.startsWith('support_');
+              const selectedBadgeType = selectedConv.otherUser?.officialBadge || selectedConv.officialConfig?.badgeType || 'blue';
 
-              <div className="flex items-center gap-2 conversation-header__actions flex-shrink-0">
-                {selectedConv.conversationId !== 'official_notifications' && selectedConv.type !== 'official_notification' && (
-                  <>
+              return (
+                <div data-testid="conversation-header" className="conversation-header p-4 bg-[#140b13] border-b border-[var(--az-border)] flex items-center justify-between flex-shrink-0">
+                  <div className="flex items-center gap-3 min-w-0">
                     <button
-                      onClick={() => handleStartCall('audio')}
-                      disabled={isInitiating}
-                      className="text-lg hover:scale-110 transition-transform p-1.5 conversation-header__action-btn disabled:opacity-50"
-                      title="Audio Call"
+                      onClick={() => setMobileView('list')}
+                      className="md:hidden text-lg text-pink-400 p-1 conversation-header__back"
                     >
-                      📞
+                      ←
                     </button>
-                    <button
-                      onClick={() => handleStartCall('video')}
-                      disabled={isInitiating}
-                      className="text-lg hover:scale-110 transition-transform p-1.5 conversation-header__action-btn disabled:opacity-50"
-                      title="Video Call"
-                    >
-                      📹
-                    </button>
-                  </>
-                )}
-                <span className="text-yellow-400 font-bold text-xs flex items-center gap-1 conversation-header__credits">
-                  💎 {formatAmount(creditsRemaining)}
-                </span>
-              </div>
-            </div>
+                    <div className="relative flex-shrink-0">
+                      <Avatar
+                        src={selectedConv.otherUser?.avatarUrl}
+                        name={selectedConv.otherUser?.displayName}
+                        size={36}
+                        className="border border-pink-500/50 conversation-header__avatar"
+                      />
+                      {selectedConv.otherUser?.isOnline && (
+                        <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full border border-[#140b13]" />
+                      )}
+                    </div>
+                    <div className="conversation-header__info min-w-0">
+                      <div className="flex items-center gap-1 min-w-0">
+                        <h3 className="font-bold text-sm conversation-header__name truncate">{selectedConv.otherUser?.displayName}</h3>
+                        {isSelectedOfficial && <OfficialBadge badgeType={selectedBadgeType} />}
+                      </div>
+                      <span className={`text-[9px] uppercase tracking-widest font-bold conversation-header__status ${
+                        selectedConv.otherUser?.isOnline ? '' : 'conversation-header__status--offline'
+                      }`}>
+                        {selectedConv.otherUser?.isOnline ? 'Online Now' : 'Offline'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 conversation-header__actions flex-shrink-0">
+                    {selectedConv.conversationId !== 'official_notifications' && selectedConv.type !== 'official_notification' && (
+                      <>
+                        <button
+                          onClick={() => handleStartCall('audio')}
+                          disabled={isInitiating}
+                          className="text-lg hover:scale-110 transition-transform p-1.5 conversation-header__action-btn disabled:opacity-50"
+                          title="Audio Call"
+                        >
+                          📞
+                        </button>
+                        <button
+                          onClick={() => handleStartCall('video')}
+                          disabled={isInitiating}
+                          className="text-lg hover:scale-110 transition-transform p-1.5 conversation-header__action-btn disabled:opacity-50"
+                          title="Video Call"
+                        >
+                          📹
+                        </button>
+                      </>
+                    )}
+                    <span className="text-yellow-400 font-bold text-xs flex items-center gap-1 conversation-header__credits">
+                      💎 {formatAmount(creditsRemaining)}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* MESSAGES SCROLL area */}
             <div ref={feedRef} onScroll={handleScroll} data-testid="message-feed" className="flex-grow overflow-y-auto p-6 space-y-6 flex flex-col no-scrollbar message-feed message-feed-container">

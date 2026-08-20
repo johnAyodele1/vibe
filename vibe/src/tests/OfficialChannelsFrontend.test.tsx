@@ -201,4 +201,64 @@ describe('Official Channels UI Verification', () => {
     expect(screen.queryByTestId('chat-text-input')).not.toBeInTheDocument();
     expect(screen.queryByText('🎁 Send Gift')).not.toBeInTheDocument();
   });
+
+  it('renders official channel badge with correct blue or gold style based on officialBadge setting', async () => {
+    const mockConversations = [
+      {
+        conversationId: 'official_notifications',
+        isOfficial: true,
+        type: 'official_notification',
+        position: 0,
+        otherUser: {
+          id: 'official_notifications',
+          displayName: 'Official Notifications',
+          avatarUrl: '/icons/icon-192x192.png',
+          isOnline: true,
+          accountType: 'official',
+          isOfficial: true,
+          officialBadge: 'gold',
+        },
+        lastMessage: { content: 'Gold Badge Announcement', mediaType: 'official_notification', sentAt: new Date().toISOString() },
+        unreadCount: 0,
+        isMuted: false,
+        isBlocked: false,
+      },
+    ];
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation((url: RequestInfo | URL) => {
+      const urlStr = url.toString();
+      if (urlStr.includes('/v1/adult/auth/me') || urlStr.includes('/auth/me')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            success: true,
+            user: { _id: 'user1', username: 'testuser', displayName: 'Test User', role: 'member', credits: 500, isAgeVerified: true }
+          }),
+        } as Response);
+      }
+      if (urlStr.includes('/v1/adult/sext/conversations')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => mockConversations,
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ success: true }),
+      } as Response);
+    });
+
+    render(
+      <BrowserRouter>
+        <AdultAuthProvider>
+          <AdultCallProvider>
+            <PrivateSext />
+          </AdultCallProvider>
+        </AdultAuthProvider>
+      </BrowserRouter>
+    );
+
+    const badgeSvg = await screen.findByTitle('Official Gold Channel');
+    expect(badgeSvg).toBeInTheDocument();
+  });
 });

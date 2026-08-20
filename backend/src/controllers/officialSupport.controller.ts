@@ -9,6 +9,7 @@ import Report from '../models/Report';
 import AppConfig from '../models/AppConfig';
 import { encrypt, decrypt } from '../services/encryptionService';
 import { sendPushToUser } from '../shared/push';
+import { uploadToCloudinary, FOLDERS } from '../shared/media/cloudinaryUpload';
 
 const OFFICIAL_CHANNELS_KEY = 'official_channels_config';
 
@@ -399,6 +400,67 @@ export const sendSupportMessage = async (req: Request, res: Response) => {
       message: responsePayload,
       autoReply: autoReplyPayload,
     });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const adminUploadChannelAvatar = async (req: Request, res: Response) => {
+  try {
+    if (!(req as any).user?._id) {
+      return res.status(403).json({ success: false, error: 'Admin access required' });
+    }
+    const file = req.file;
+    if (!file) {
+      return res.status(400).json({ success: false, error: 'No file uploaded' });
+    }
+
+    const result = await uploadToCloudinary(file.buffer, {
+      folder: FOLDERS.profilePhoto,
+      resourceType: 'image',
+    });
+
+    return res.json({ success: true, url: result.url });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const adminGetSupportMessages = async (req: Request, res: Response) => {
+  try {
+    if (!(req as any).user?._id) {
+      return res.status(403).json({ success: false, error: 'Admin access required' });
+    }
+    const { conversationId } = req.params;
+    const conversation = await AdultConversation.findById(conversationId);
+    if (!conversation || (conversation as any).type !== 'support') {
+      return res.status(404).json({ success: false, error: 'Support conversation not found' });
+    }
+
+    const messages = await AdultMessage.find({ conversationId }).sort({ createdAt: 1 });
+
+    const formatted = messages.map((m) => {
+      let content = '';
+      try {
+        content = decrypt(m.content);
+      } catch {
+        content = m.content;
+      }
+
+      return {
+        id: m._id,
+        conversationId: m.conversationId,
+        senderId: m.senderId,
+        receiverId: m.receiverId,
+        content,
+        mediaType: m.messageType,
+        mediaUrl: m.mediaUrl || '',
+        systemText: m.systemText || '',
+        createdAt: m.createdAt,
+      };
+    });
+
+    return res.json({ success: true, messages: formatted });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
   }
