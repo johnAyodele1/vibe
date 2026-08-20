@@ -16,6 +16,11 @@ const Wallet: React.FC = () => {
   const [purchaseLoading, setPurchaseLoading] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
+  const [page, setPage] = useState(1);
+  const [limit] = useState(10);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalTx, setTotalTx] = useState(0);
+
   const token = localStorage.getItem('adultAccessToken');
 
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
@@ -54,14 +59,25 @@ const Wallet: React.FC = () => {
     }
   };
 
-  const fetchTransactions = async () => {
+  const fetchTransactions = async (pageNumber = 1) => {
     if (!token) return;
+    setLoadingTx(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/v1/adult/wallet/transactions`, { headers: { 'Authorization': `Bearer ${token}` } });
+      const res = await fetch(`${API_BASE_URL}/v1/adult/wallet/transactions?page=${pageNumber}&limit=${limit}`, { headers: { 'Authorization': `Bearer ${token}` } });
       const data = await res.json();
-      if (data && Array.isArray(data.transactions)) setTransactions(data.transactions);
-      else if (Array.isArray(data)) setTransactions(data);
-      else setTransactions([]);
+      if (data && Array.isArray(data.transactions)) {
+        setTransactions(data.transactions);
+        setTotalPages(data.totalPages || 1);
+        setTotalTx(data.total || data.transactions.length);
+      } else if (Array.isArray(data)) {
+        setTransactions(data);
+        setTotalPages(1);
+        setTotalTx(data.length);
+      } else {
+        setTransactions([]);
+        setTotalPages(1);
+        setTotalTx(0);
+      }
     } catch (err) {
       console.error('Failed to fetch transactions:', err);
       setTransactions([]);
@@ -77,8 +93,13 @@ const Wallet: React.FC = () => {
     }
     fetchWallet();
     fetchBundles();
-    fetchTransactions();
   }, [token, user?.role, navigate]);
+
+  useEffect(() => {
+    if (user && user.role !== 'provider') {
+      fetchTransactions(page);
+    }
+  }, [token, page, user?.role]);
 
   const handlePurchase = async (bundleId: string) => {
     if (!token) {
@@ -124,11 +145,14 @@ const Wallet: React.FC = () => {
         </div>
       )}
 
-      <div className="bg-[var(--az-bg-secondary)] rounded-3xl border border-[var(--az-border)] p-10 mb-12 text-center relative overflow-hidden">
+      <div className="bg-[var(--az-bg-secondary)] rounded-3xl border border-[var(--az-border)] p-6 sm:p-10 mb-12 text-center relative overflow-hidden">
         <div className="absolute top-[-20%] right-[-10%] w-64 h-64 bg-[var(--az-accent-gold)] rounded-full blur-[100px] opacity-10" />
         <h1 className="text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--az-text-muted)] mb-4">Current Balance</h1>
-        <div className="flex items-center justify-center gap-3 text-6xl font-mono text-[var(--az-accent-gold)] font-bold mb-2"><span>💎</span><span>{loadingWallet ? '...' : formatAmount(wallet?.creditBalance ?? user?.credits)}</span></div>
-        <p className="text-sm text-[var(--az-text-secondary)] font-serif italic">{loadingWallet ? 'Loading wallet...' : `Credits available for tipping & private shows (~${formatNaira(((wallet?.creditBalance ?? user?.credits) ?? 0) * usePricingStore.getState().diamondNairaRate)})`}</p>
+        <div className="flex items-center justify-center gap-2 sm:gap-3 text-3xl sm:text-5xl md:text-6xl font-mono text-[var(--az-accent-gold)] font-bold mb-2 flex-wrap max-w-full px-2 overflow-hidden break-all">
+          <span className="shrink-0">💎</span>
+          <span className="max-w-full">{loadingWallet ? '...' : formatAmount(wallet?.creditBalance ?? user?.credits)}</span>
+        </div>
+        <p className="text-xs sm:text-sm text-[var(--az-text-secondary)] font-serif italic">{loadingWallet ? 'Loading wallet...' : `Credits available for tipping & private shows (~${formatNaira(((wallet?.creditBalance ?? user?.credits) ?? 0) * usePricingStore.getState().diamondNairaRate)})`}</p>
       </div>
 
       <div className="mb-12 rounded-3xl border border-[var(--az-border)] bg-[var(--az-bg-secondary)] p-6 sm:p-8">
@@ -164,7 +188,14 @@ const Wallet: React.FC = () => {
       )}
 
       <div className="space-y-6">
-        <h3 className="text-xl font-serif italic text-[var(--az-text-primary)]">Transaction History</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-xl font-serif italic text-[var(--az-text-primary)]">Transaction History</h3>
+          {totalTx > 0 && (
+            <span className="text-xs text-[var(--az-text-muted)] font-mono">
+              Total {totalTx} transactions
+            </span>
+          )}
+        </div>
         {loadingTx ? (
           <div className="bg-[var(--az-bg-secondary)] rounded-2xl p-6 border border-[var(--az-border)] animate-pulse space-y-4">{[1, 2, 3].map(i => <div key={i} className="h-8 bg-[var(--az-bg-tertiary)] rounded" />)}</div>
         ) : (
@@ -172,10 +203,36 @@ const Wallet: React.FC = () => {
             {!Array.isArray(transactions) || transactions.length === 0 ? (
               <div className="p-8 text-center text-sm text-[var(--az-text-secondary)] font-serif italic">No transactions yet. Purchases and tips will appear here.</div>
             ) : (
-              transactions.map(tx => {
-                const isPositive = tx.type === 'purchase' || tx.type === 'deposit';
-                return <div key={tx._id} className="p-4 border-b border-[var(--az-border)]/50 flex items-center justify-between last:border-0 hover:bg-[var(--az-bg-tertiary)]/30 transition-colors"><div><h4 className="text-xs font-bold text-[var(--az-text-primary)] capitalize">{tx.type}</h4><p className="text-[10px] text-[var(--az-text-muted)]">{new Date(tx.createdAt).toLocaleDateString()}</p></div><div className="text-right flex flex-col items-end"><p className={`text-xs font-mono font-bold ${isPositive ? 'text-green-400' : 'text-[var(--az-accent-rose)]'}`}>{isPositive ? '+' : '-'}{formatAmount(tx.amount)} 💎</p><p className="text-[10px] text-[var(--az-text-muted)] font-mono">≈ {formatNaira(Math.abs(tx.amount) * usePricingStore.getState().diamondNairaRate)}</p><p className="text-[8px] uppercase tracking-tighter text-[var(--az-text-muted)] font-bold">{tx.status}</p></div></div>;
-              })
+              <>
+                {transactions.map(tx => {
+                  const isPositive = tx.type === 'purchase' || tx.type === 'deposit';
+                  return <div key={tx._id} className="p-4 border-b border-[var(--az-border)]/50 flex items-center justify-between last:border-0 hover:bg-[var(--az-bg-tertiary)]/30 transition-colors"><div><h4 className="text-xs font-bold text-[var(--az-text-primary)] capitalize">{tx.type}</h4><p className="text-[10px] text-[var(--az-text-muted)]">{new Date(tx.createdAt).toLocaleDateString()}</p></div><div className="text-right flex flex-col items-end"><p className={`text-xs font-mono font-bold ${isPositive ? 'text-green-400' : 'text-[var(--az-accent-rose)]'}`}>{isPositive ? '+' : '-'}{formatAmount(tx.amount)} 💎</p><p className="text-[10px] text-[var(--az-text-muted)] font-mono">≈ {formatNaira(Math.abs(tx.amount) * usePricingStore.getState().diamondNairaRate)}</p><p className="text-[8px] uppercase tracking-tighter text-[var(--az-text-muted)] font-bold">{tx.status}</p></div></div>;
+                })}
+
+                {totalPages > 1 && (
+                  <div className="p-4 border-t border-[var(--az-border)] flex items-center justify-between bg-[var(--az-bg-tertiary)]/20" data-testid="wallet-pagination-controls">
+                    <button
+                      onClick={() => setPage(p => Math.max(1, p - 1))}
+                      disabled={page <= 1}
+                      data-testid="prev-page-btn"
+                      className="px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider bg-[var(--az-bg-tertiary)] hover:bg-[var(--az-bg-primary)] border border-[var(--az-border)] text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                    >
+                      ← Previous
+                    </button>
+                    <span className="text-xs text-[var(--az-text-secondary)] font-mono font-medium" data-testid="page-indicator">
+                      Page {page} of {totalPages}
+                    </span>
+                    <button
+                      onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                      disabled={page >= totalPages}
+                      data-testid="next-page-btn"
+                      className="px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider bg-[var(--az-bg-tertiary)] hover:bg-[var(--az-bg-primary)] border border-[var(--az-border)] text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                    >
+                      Next →
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}

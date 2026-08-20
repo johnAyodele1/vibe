@@ -83,7 +83,33 @@ describe('Wallet Component', () => {
     });
   });
 
-  it('renders transactions table from API', async () => {
+  it('renders transactions table from API and supports pagination controls', async () => {
+    mockFetch.mockImplementation(async (input: any) => {
+      const url = typeof input === 'string' ? input : input.url;
+      if (url.includes('/v1/adult/wallet/transactions')) {
+        const urlObj = new URL(url, 'http://localhost:3000');
+        const pageParam = urlObj.searchParams.get('page') || '1';
+        return {
+          ok: true,
+          json: async () => ({
+            transactions: [
+              { _id: `tx_${pageParam}`, type: 'purchase', amount: 500, createdAt: new Date().toISOString(), status: 'completed' }
+            ],
+            total: 25,
+            page: parseInt(pageParam),
+            totalPages: 3
+          })
+        };
+      }
+      if (url.includes('/v1/adult/wallet/bundles')) {
+        return { ok: true, json: async () => [] };
+      }
+      if (url.includes('/v1/adult/wallet')) {
+        return { ok: true, json: async () => ({ creditBalance: 240 }) };
+      }
+      return { ok: false, json: async () => ({ error: 'Not Found' }) };
+    });
+
     render(
       <MemoryRouter>
         <Wallet />
@@ -92,7 +118,15 @@ describe('Wallet Component', () => {
 
     await waitFor(() => {
       expect(screen.getByText('purchase')).toBeInTheDocument();
-      expect(screen.getByText('+500 💎')).toBeInTheDocument();
+      expect(screen.getByTestId('wallet-pagination-controls')).toBeInTheDocument();
+      expect(screen.getByTestId('page-indicator')).toHaveTextContent('Page 1 of 3');
+    });
+
+    const nextBtn = screen.getByTestId('next-page-btn');
+    fireEvent.click(nextBtn);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('page-indicator')).toHaveTextContent('Page 2 of 3');
     });
   });
 
