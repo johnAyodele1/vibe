@@ -18,7 +18,8 @@ export interface ILoginHistory {
 export interface IAdultUser extends Document {
   email: string;
   passwordHash: string;
-  role: 'user' | 'provider';
+  role: 'user' | 'provider' | 'admin';
+  isAdmin?: boolean;
   username: string;
   displayName: string;
   ageVerified: boolean;

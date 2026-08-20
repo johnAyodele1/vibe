@@ -108,21 +108,47 @@ export const getEligiblePayout = async (req: Request, res: Response) => {
 };
 
 /**
+ * Helper to verify Admin authorization on requests.
+ */
+const verifyAdminAuth = (req: Request): boolean => {
+  const adultUser = (req as any).adultUser;
+  if (adultUser && (adultUser.role === 'admin' || adultUser.isAdmin === true)) {
+    return true;
+  }
+  const user = (req as any).user;
+  if (user && (user.role === 'admin' || user.isAdmin === true)) {
+    return true;
+  }
+  const adminId = (req as any).adminId;
+  return Boolean(adminId);
+};
+
+/**
  * GET /api/v1/admin/disputes
  */
 export const adminGetDisputes = async (req: Request, res: Response) => {
   try {
+    if (!verifyAdminAuth(req)) {
+      return res.status(403).json({ success: false, error: 'Admin authorization required' });
+    }
+
     const disputes = await Report.find({ type: 'service_dispute' }).sort({ createdAt: -1 });
 
-    const disputesWithParties = await Promise.all(disputes.map(async (dispute) => {
+    const disputesWithParties = await Promise.all(disputes.map(async (dispute: any) => {
       const provider = await AdultUser.findById(dispute.reported);
       const member = await AdultUser.findById(dispute.reporter);
 
-      const originalTx = await CreditTransaction.findOne({
-        userId: dispute.reported,
-        'metadata.serviceRequestId': dispute.serviceRequestId,
-        type: 'service_payment_received'
-      });
+      let originalTx = null;
+      if (dispute.originalTxId) {
+        originalTx = await CreditTransaction.findById(dispute.originalTxId);
+      }
+      if (!originalTx && dispute.serviceRequestId) {
+        originalTx = await CreditTransaction.findOne({
+          userId: dispute.reported,
+          'metadata.serviceRequestId': dispute.serviceRequestId,
+          type: 'service_payment_received'
+        });
+      }
 
       const customerRefund = await CustomerRefund.findOne({
         disputeReportId: dispute._id
@@ -157,31 +183,48 @@ export const adminGetDisputes = async (req: Request, res: Response) => {
  */
 export const resolveDispute = async (req: Request, res: Response) => {
   try {
+    if (!verifyAdminAuth(req)) {
+      return res.status(403).json({ success: false, error: 'Admin authorization required' });
+    }
+
     const { reportId } = req.params;
     const { resolution, adminNotes } = req.body;
-    const adminId = (req as any).adminId || (req as any).userId;
+    const adminId = (req as any).adminId || (req as any).userId || (req as any).adultUser?._id;
 
     if (!['upheld', 'dismissed'].includes(resolution)) {
       return res.status(400).json({ success: false, error: 'Invalid resolution status' });
     }
 
-    const report = await Report.findById(reportId);
-    if (!report) {
-      return res.status(404).json({ success: false, error: 'Dispute report not found' });
-    }
+    // Atomic acquisition: transition report status from 'open' -> 'resolving' atomically
+    const report = await Report.findOneAndUpdate(
+      { _id: reportId, status: 'open' },
+      { $set: { status: 'resolving' } },
+      { new: true }
+    );
 
-    if (report.status !== 'open') {
-      if (report.resolution === resolution) {
+    if (!report) {
+      const existingReport = await Report.findById(reportId);
+      if (!existingReport) {
+        return res.status(404).json({ success: false, error: 'Dispute report not found' });
+      }
+      if (existingReport.resolution === resolution || existingReport.status === 'resolved') {
         return res.json({ success: true, resolution, alreadyResolved: true });
       }
-      return res.status(409).json({ success: false, error: `Dispute already resolved as ${report.resolution}` });
+      return res.status(409).json({ success: false, error: `Dispute already resolved as ${existingReport.resolution}` });
     }
 
-    const originalTx = await CreditTransaction.findOne({
-      userId: report.reported,
-      'metadata.serviceRequestId': report.serviceRequestId,
-      type: 'service_payment_received'
-    });
+    // Lookup original transaction canonically by originalTxId first, then serviceRequestId
+    let originalTx = null;
+    if ((report as any).originalTxId) {
+      originalTx = await CreditTransaction.findById((report as any).originalTxId);
+    }
+    if (!originalTx && report.serviceRequestId) {
+      originalTx = await CreditTransaction.findOne({
+        userId: report.reported,
+        'metadata.serviceRequestId': report.serviceRequestId,
+        type: 'service_payment_received'
+      });
+    }
 
     const amountInDispute = report.amountInDispute || 0;
     const providerAmountHeld = report.providerAmountHeld || Math.floor(amountInDispute * 0.85);
@@ -294,9 +337,13 @@ export const resolveDispute = async (req: Request, res: Response) => {
  */
 export const markRefundCompleted = async (req: Request, res: Response) => {
   try {
+    if (!verifyAdminAuth(req)) {
+      return res.status(403).json({ success: false, error: 'Admin authorization required' });
+    }
+
     const { reportId } = req.params;
     const { reference } = req.body;
-    const adminId = (req as any).adminId || (req as any).userId;
+    const adminId = (req as any).adminId || (req as any).userId || (req as any).adultUser?._id;
 
     const refund = await CustomerRefund.findOne({ disputeReportId: reportId });
     if (!refund) {
@@ -572,6 +619,10 @@ export const getPayoutHistory = async (req: Request, res: Response) => {
  */
 export const adminGetPayouts = async (req: Request, res: Response) => {
   try {
+    if (!verifyAdminAuth(req)) {
+      return res.status(403).json({ success: false, error: 'Admin authorization required' });
+    }
+
     const status = req.query.status as string;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
@@ -618,6 +669,10 @@ export const adminGetPayouts = async (req: Request, res: Response) => {
  */
 export const adminVerifyPayout = async (req: Request, res: Response) => {
   try {
+    if (!verifyAdminAuth(req)) {
+      return res.status(403).json({ success: false, error: 'Admin authorization required' });
+    }
+
     const { requestId } = req.params;
     const payout = await PayoutRequest.findById(requestId);
 
@@ -645,6 +700,10 @@ export const adminVerifyPayout = async (req: Request, res: Response) => {
  */
 export const adminProcessPayout = async (req: Request, res: Response) => {
   try {
+    if (!verifyAdminAuth(req)) {
+      return res.status(403).json({ success: false, error: 'Admin authorization required' });
+    }
+
     const { requestId } = req.params;
     const payout = await PayoutRequest.findById(requestId);
 
@@ -671,6 +730,10 @@ export const adminProcessPayout = async (req: Request, res: Response) => {
  */
 export const adminCompletePayout = async (req: Request, res: Response) => {
   try {
+    if (!verifyAdminAuth(req)) {
+      return res.status(403).json({ success: false, error: 'Admin authorization required' });
+    }
+
     const { requestId } = req.params;
     const { reference } = req.body;
     const payout = await PayoutRequest.findById(requestId);
@@ -683,26 +746,36 @@ export const adminCompletePayout = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Payout request must be in processing status to complete' });
     }
 
+    // Filter out any transaction that has been reverted in the meantime
+    const validTxs = await CreditTransaction.find({
+      _id: { $in: payout.eligibleTransactionIds },
+      status: { $ne: 'reverted' }
+    });
+
+    const validTxIds = validTxs.map(t => t._id);
+    const actualPayableAmount = validTxs.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
     // 1. Deduct diamonds from provider wallet balance
     const provider = await AdultUser.findById(payout.providerId);
     if (!provider) {
       return res.status(404).json({ success: false, message: 'Provider user not found' });
     }
 
-    if (provider.credits < payout.amount) {
+    const payoutDeduction = Math.min(payout.amount, actualPayableAmount);
+
+    if (provider.credits < payoutDeduction) {
       return res.status(400).json({ success: false, message: 'Provider has insufficient credits to complete this payout' });
     }
 
-    provider.credits -= payout.amount;
+    provider.credits -= payoutDeduction;
     if (provider.providerProfile) {
-      // Record in total payouts or earnings
-      (provider.providerProfile as any).totalPayouts = ((provider.providerProfile as any).totalPayouts || 0) + payout.amount;
+      (provider.providerProfile as any).totalPayouts = ((provider.providerProfile as any).totalPayouts || 0) + payoutDeduction;
     }
     await provider.save();
 
-    // 2. Mark covered transactions as paidOut: true
+    // 2. Mark valid covered transactions as paidOut: true (excluding reverted)
     await CreditTransaction.updateMany(
-      { _id: { $in: payout.eligibleTransactionIds } },
+      { _id: { $in: validTxIds } },
       { $set: { paidOut: true } }
     );
 
@@ -754,6 +827,10 @@ export const adminCompletePayout = async (req: Request, res: Response) => {
  */
 export const adminRejectPayout = async (req: Request, res: Response) => {
   try {
+    if (!verifyAdminAuth(req)) {
+      return res.status(403).json({ success: false, error: 'Admin authorization required' });
+    }
+
     const { requestId } = req.params;
     const { reason } = req.body;
 

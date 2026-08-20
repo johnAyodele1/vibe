@@ -19,8 +19,12 @@ const adultUserSchema = new Schema<IAdultUser, IAdultUserModel>(
     role: {
       type: String,
       required: true,
-      enum: ['user', 'provider'],
+      enum: ['user', 'provider', 'admin'],
       default: 'user',
+    },
+    isAdmin: {
+      type: Boolean,
+      default: false,
     },
     username: {
       type: String,

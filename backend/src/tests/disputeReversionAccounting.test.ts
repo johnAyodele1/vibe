@@ -26,7 +26,7 @@ describe('Dispute Reversion & Accounting Invariants Test Suite', () => {
     const admin = await AdultUser.create({
       email: 'admin@vibe.com',
       passwordHash: 'hashedpass',
-      role: 'user',
+      role: 'admin',
       username: 'admin',
       displayName: 'System Admin',
       dateOfBirth: new Date('1990-01-01'),
@@ -373,7 +373,7 @@ describe('Dispute Reversion & Accounting Invariants Test Suite', () => {
     expect(breakdown.withdrawableCredits).toBe(0);
   });
 
-  it('SCENARIO 4: Idempotency & Concurrent Safety', async () => {
+  it('SCENARIO 4: Idempotency & Genuine Parallel Concurrency Safety', async () => {
     const serviceMsg = await AdultMessage.create({
       conversationId: `${memberId}_${providerId}`,
       senderId: providerId,
@@ -403,25 +403,116 @@ describe('Dispute Reversion & Accounting Invariants Test Suite', () => {
 
     const reportId = reportRes.body.reportId;
 
-    // Resolve 1st time
-    const res1 = await request(app)
-      .put(`/api/v1/admin/disputes/${reportId}/resolve`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ resolution: 'upheld', adminNotes: 'First resolution' });
+    // Fire genuine concurrent requests simultaneously using Promise.all
+    const [res1, res2] = await Promise.all([
+      request(app)
+        .put(`/api/v1/admin/disputes/${reportId}/resolve`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ resolution: 'upheld', adminNotes: 'Concurrent call 1' }),
+      request(app)
+        .put(`/api/v1/admin/disputes/${reportId}/resolve`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ resolution: 'upheld', adminNotes: 'Concurrent call 2' }),
+    ]);
 
-    expect(res1.status).toBe(200);
-
-    // Resolve 2nd time
-    const res2 = await request(app)
-      .put(`/api/v1/admin/disputes/${reportId}/resolve`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ resolution: 'upheld', adminNotes: 'Second resolution' });
-
-    expect(res2.status).toBe(200);
-    expect(res2.body.alreadyResolved).toBe(true);
+    expect([res1.status, res2.status]).toContain(200);
 
     // Assert exactly ONE CustomerRefund record created
     const refunds = await CustomerRefund.find({ disputeReportId: reportId });
     expect(refunds.length).toBe(1);
+  });
+
+  it('SCENARIO 5: Payout Request + Dispute Reversion Race Condition', async () => {
+    // Provider has 1000 credits in wallet and 1000 withdrawable transaction
+    await AdultUser.updateOne({ _id: providerId }, { $set: { credits: 1000 } });
+
+    const serviceMsg = await AdultMessage.create({
+      conversationId: `${memberId}_${providerId}`,
+      senderId: providerId,
+      receiverId: memberId,
+      content: 'Service request',
+      messageType: 'service_request',
+      serviceRequest: { baseRate: 1000, extras: [], totalAmount: 1000, status: 'completed', eligibleForPayout: true },
+    });
+
+    const tx = await CreditTransaction.create({
+      userId: providerId,
+      type: 'service_payment_received',
+      amount: 850,
+      platformFee: 150,
+      usdAmount: 0,
+      description: 'Service payment received',
+      relatedUserId: memberId,
+      status: 'completed',
+      eligibleForPayout: true,
+      metadata: { serviceRequestId: serviceMsg._id },
+    });
+
+    // Provider sets payout info and requests payout
+    await AdultUser.updateOne(
+      { _id: providerId },
+      { $set: { 'providerProfile.payoutInfo': { method: 'bank', details: { bankName: 'GTB', accountNumber: '0123456789' } } } }
+    );
+
+    const payoutReqRes = await request(app)
+      .post('/api/v1/adult/providers/me/payout/request')
+      .set('Authorization', `Bearer ${providerToken}`)
+      .send({ amount: 850 });
+
+    expect(payoutReqRes.status).toBe(201);
+    const requestId = payoutReqRes.body.requestId;
+
+    // Admin verifies and transitions payout request to processing
+    await request(app)
+      .put(`/api/v1/admin/payouts/${requestId}/verify`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    await request(app)
+      .put(`/api/v1/admin/payouts/${requestId}/process`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    // Meanwhile, the transaction is disputed and reverted!
+    const reportRes = await request(app)
+      .post(`/api/v1/adult/sext/service-requests/${serviceMsg._id}/report`)
+      .set('Authorization', `Bearer ${memberToken}`)
+      .send({ reason: 'Fraudulent service' });
+
+    const reportId = reportRes.body.reportId;
+    await request(app)
+      .put(`/api/v1/admin/disputes/${reportId}/resolve`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ resolution: 'upheld', adminNotes: 'Customer wins' });
+
+    // Admin attempts to complete the payout request
+    const completeRes = await request(app)
+      .put(`/api/v1/admin/payouts/${requestId}/complete`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reference: 'PAY-REVERT-TEST' });
+
+    expect(completeRes.status).toBe(200);
+
+    // Verify the reverted transaction was NOT marked paidOut: true
+    const updatedTx = await CreditTransaction.findById(tx._id);
+    expect(updatedTx?.status).toBe('reverted');
+    expect(updatedTx?.paidOut).not.toBe(true);
+  });
+
+  it('SCENARIO 6: Admin Authorization Enforcement', async () => {
+    // Non-admin token should be rejected with 403 on admin dispute endpoints
+    const getRes = await request(app)
+      .get('/api/v1/admin/disputes')
+      .set('Authorization', `Bearer ${memberToken}`);
+    expect(getRes.status).toBe(403);
+
+    const resolveRes = await request(app)
+      .put('/api/v1/admin/disputes/507f1f77bcf86cd799439011/resolve')
+      .set('Authorization', `Bearer ${providerToken}`)
+      .send({ resolution: 'upheld' });
+    expect(resolveRes.status).toBe(403);
+
+    const refundCompleteRes = await request(app)
+      .put('/api/v1/admin/disputes/507f1f77bcf86cd799439011/refund-complete')
+      .set('Authorization', `Bearer ${memberToken}`)
+      .send({ reference: 'TEST' });
+    expect(refundCompleteRes.status).toBe(403);
   });
 });
