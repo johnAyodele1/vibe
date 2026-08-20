@@ -132,27 +132,63 @@ export const adminGetDisputes = async (req: Request, res: Response) => {
       return res.status(403).json({ success: false, error: 'Admin authorization required' });
     }
 
-    const disputes = await Report.find({ type: 'service_dispute' }).sort({ createdAt: -1 });
+    // Optimization: Use .lean() for read-only query
+    const disputes = await Report.find({ type: 'service_dispute' }).sort({ createdAt: -1 }).lean();
 
-    const disputesWithParties = await Promise.all(disputes.map(async (dispute: any) => {
-      const provider = await AdultUser.findById(dispute.reported);
-      const member = await AdultUser.findById(dispute.reporter);
+    if (!disputes.length) {
+      return res.json({ success: true, disputes: [] });
+    }
 
-      let originalTx = null;
-      if (dispute.originalTxId) {
-        originalTx = await CreditTransaction.findById(dispute.originalTxId);
+    // Extract unique IDs to batch fetch dependencies and avoid N+1 queries
+    const userIds = new Set<string>();
+    const originalTxIds: string[] = [];
+    const disputeReportIds: string[] = [];
+
+    for (const dispute of disputes as any[]) {
+      if (dispute.reported) userIds.add(dispute.reported.toString());
+      if (dispute.reporter) userIds.add(dispute.reporter.toString());
+      if (dispute.originalTxId) originalTxIds.push(dispute.originalTxId.toString());
+      if (dispute._id) disputeReportIds.push(dispute._id.toString());
+    }
+
+    // Perform batched queries in parallel with .lean()
+    const [users, originalTxs, customerRefunds] = await Promise.all([
+      AdultUser.find({ _id: { $in: Array.from(userIds) } }).select('_id displayName username providerProfile').lean(),
+      originalTxIds.length > 0 ? CreditTransaction.find({ _id: { $in: originalTxIds } }).select('_id status').lean() : [],
+      disputeReportIds.length > 0 ? CustomerRefund.find({ disputeReportId: { $in: disputeReportIds } }).lean() : [],
+    ]);
+
+    // Build O(1) lookup maps
+    const userMap = new Map<string, any>();
+    for (const u of users) {
+      userMap.set(u._id.toString(), u);
+    }
+
+    const txMap = new Map<string, any>();
+    for (const tx of originalTxs) {
+      txMap.set(tx._id.toString(), tx);
+    }
+
+    const refundMap = new Map<string, any>();
+    for (const ref of customerRefunds) {
+      if (ref.disputeReportId) {
+        refundMap.set(ref.disputeReportId.toString(), ref);
       }
+    }
 
-      const customerRefund = await CustomerRefund.findOne({
-        disputeReportId: dispute._id
-      });
+    // Map dispute details synchronously without database calls inside the loop
+    const disputesWithParties = (disputes as any[]).map((dispute: any) => {
+      const provider = dispute.reported ? userMap.get(dispute.reported.toString()) : null;
+      const member = dispute.reporter ? userMap.get(dispute.reporter.toString()) : null;
+      const originalTx = dispute.originalTxId ? txMap.get(dispute.originalTxId.toString()) : null;
+      const customerRefund = dispute._id ? refundMap.get(dispute._id.toString()) : null;
 
       const amountInDispute = dispute.amountInDispute || 0;
       const providerAmountHeld = dispute.providerAmountHeld || Math.floor(amountInDispute * 0.85);
       const platformFee = Math.max(0, amountInDispute - providerAmountHeld);
 
       return {
-        ...dispute.toObject(),
+        ...dispute,
         providerName: provider?.providerProfile?.stageName || provider?.displayName || 'Provider',
         memberName: member?.displayName || member?.username || 'Member',
         amountInDispute,
@@ -160,10 +196,10 @@ export const adminGetDisputes = async (req: Request, res: Response) => {
         platformFee,
         originalTxId: originalTx?._id || null,
         originalTxStatus: originalTx?.status || null,
-        supportConversationId: `support_${dispute.reporter.toString()}`,
-        customerRefund: customerRefund ? customerRefund.toObject() : null,
+        supportConversationId: `support_${dispute.reporter ? dispute.reporter.toString() : ''}`,
+        customerRefund: customerRefund || null,
       };
-    }));
+    });
 
     return res.json({ success: true, disputes: disputesWithParties });
   } catch (error: any) {
