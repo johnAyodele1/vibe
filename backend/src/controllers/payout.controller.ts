@@ -282,6 +282,32 @@ export const resolveDispute = async (req: Request, res: Response) => {
           }, opts);
         }
 
+        // Automatically credit member's wallet balance on dispute uphold
+        const customerQuery = AdultUser.findById(report.reporter);
+        const customer = session ? await customerQuery.session(session) : await customerQuery;
+        if (customer) {
+          customer.credits += amountInDispute;
+          await customer.save(opts);
+        }
+
+        // Create refund transaction record for customer wallet history
+        const refundTxData = {
+          userId: report.reporter,
+          type: 'refund',
+          amount: amountInDispute,
+          usdAmount: amountInDispute * 0.0075,
+          description: 'Dispute refund: Service payment returned',
+          status: 'completed',
+          relatedUserId: report.reported,
+          metadata: { disputeReportId: report._id, originalTxId: currentTx._id },
+        };
+
+        if (session) {
+          await CreditTransaction.create([refundTxData], { session });
+        } else {
+          await CreditTransaction.create(refundTxData);
+        }
+
         const refundQuery = CustomerRefund.findOne({ disputeReportId: report._id });
         let customerRefund = session ? await refundQuery.session(session) : await refundQuery;
 
@@ -295,15 +321,22 @@ export const resolveDispute = async (req: Request, res: Response) => {
             amount: amountInDispute,
             providerAmountReverted: providerAmountHeld,
             platformFeeReverted: platformFee,
-            status: 'REFUND_PENDING',
+            status: 'REFUND_COMPLETED',
+            reference: 'Automatic dispute refund',
             adminId,
             resolvedAt: new Date(),
+            completedAt: new Date(),
           };
           if (session) {
             await CustomerRefund.create([refundData], { session });
           } else {
             await CustomerRefund.create(refundData);
           }
+        } else {
+          customerRefund.status = 'REFUND_COMPLETED';
+          customerRefund.completedAt = new Date();
+          customerRefund.reference = 'Automatic dispute refund';
+          await customerRefund.save(opts);
         }
       } else {
         currentTx.inDispute = false;
@@ -358,10 +391,21 @@ export const resolveDispute = async (req: Request, res: Response) => {
     // Sockets emission
     const ns = req.app.get('adultNamespace');
     if (ns) {
+      if (resolution === 'upheld') {
+        const customer = await AdultUser.findById(report.reporter);
+        if (customer) {
+          ns.to(`user:${report.reporter.toString()}`).emit('wallet:updated', { balance: customer.credits });
+          ns.to(`user:${report.reporter.toString()}`).emit('refund:completed', {
+            amount: amountInDispute,
+            reference: 'Automatic dispute refund',
+          });
+        }
+      }
+
       ns.to(`user:${report.reporter.toString()}`).emit('dispute:resolved', {
         resolution,
         message: resolution === 'upheld'
-          ? 'Dispute resolved in your favour — refund initiated'
+          ? 'Dispute resolved in your favour — refund automatically added to your wallet'
           : 'The dispute was reviewed and dismissed.',
       });
       ns.to(`user:${report.reported.toString()}`).emit('dispute:resolved', {

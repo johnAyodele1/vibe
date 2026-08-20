@@ -215,6 +215,12 @@ const PrivateSext: React.FC = () => {
   // Credits remaining
   const [creditsRemaining, setCreditsRemaining] = useState<number>(user?.credits || 0);
 
+  useEffect(() => {
+    if (typeof user?.credits === 'number') {
+      setCreditsRemaining(user.credits);
+    }
+  }, [user?.credits]);
+
   // Shake / error visual feedbacks
   const [insufficientCreditsMsgId, setInsufficientCreditsMsgId] = useState<string | null>(null);
   const [shakeGiftButton, setShakeGiftButton] = useState(false);
@@ -1303,6 +1309,8 @@ const PrivateSext: React.FC = () => {
   };
 
   const handleReportServiceRequest = async (msgId: string) => {
+    if (processingIds[msgId]) return;
+    setProcessingIds(prev => ({ ...prev, [msgId]: true }));
     try {
       const res = await fetch(`${API_BASE_URL}/v1/adult/sext/service-requests/${msgId}/report`, {
         method: 'POST',
@@ -1315,6 +1323,8 @@ const PrivateSext: React.FC = () => {
       }
     } catch (err) {
       toast.error('Failed to report issue');
+    } finally {
+      setProcessingIds(prev => ({ ...prev, [msgId]: false }));
     }
   };
 
@@ -1752,9 +1762,10 @@ const PrivateSext: React.FC = () => {
                               </button>
                               <button
                                 onClick={() => handleReportServiceRequest(m.id)}
-                                className="w-full py-1 bg-transparent border border-red-500/30 text-red-400 hover:bg-red-950/20 rounded-xl text-[10px] font-bold uppercase"
+                                disabled={processingIds[m.id]}
+                                className="w-full py-1 bg-transparent border border-red-500/30 text-red-400 hover:bg-red-950/20 rounded-xl text-[10px] font-bold uppercase disabled:opacity-50"
                               >
-                                Report an Issue
+                                {processingIds[m.id] ? 'Reporting...' : 'Report an Issue'}
                               </button>
                             </div>
                           ) : m.serviceRequest?.status === 'completed' || m.serviceRequest?.status === 'auto_completed' ? (

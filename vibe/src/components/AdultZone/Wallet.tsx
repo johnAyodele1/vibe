@@ -6,7 +6,7 @@ import { usePricingStore, formatNaira, formatAmount } from '../../lib/pricing';
 
 const Wallet: React.FC = () => {
   const navigate = useNavigate();
-  const { user } = useAdultAuth();
+  const { user, refetchUser, updateCredits } = useAdultAuth();
   const [wallet, setWallet] = useState<any>(null);
   const [bundles, setBundles] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
@@ -29,6 +29,9 @@ const Wallet: React.FC = () => {
       const res = await fetch(`${API_BASE_URL}/v1/adult/wallet`, { headers: { 'Authorization': `Bearer ${token}` } });
       const data = await res.json();
       setWallet(data);
+      if (data && typeof data.creditBalance === 'number' && updateCredits) {
+        updateCredits(data.creditBalance);
+      }
     } catch (err) {
       console.error('Failed to fetch wallet:', err);
     } finally {
@@ -100,6 +103,7 @@ const Wallet: React.FC = () => {
       const webhookData = await webhookRes.json();
       if (webhookRes.ok && webhookData.success) {
         showToast('Successfully purchased credits!', 'success');
+        if (refetchUser) await refetchUser();
         fetchWallet();
         fetchTransactions();
       } else {
@@ -123,8 +127,8 @@ const Wallet: React.FC = () => {
       <div className="bg-[var(--az-bg-secondary)] rounded-3xl border border-[var(--az-border)] p-10 mb-12 text-center relative overflow-hidden">
         <div className="absolute top-[-20%] right-[-10%] w-64 h-64 bg-[var(--az-accent-gold)] rounded-full blur-[100px] opacity-10" />
         <h1 className="text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--az-text-muted)] mb-4">Current Balance</h1>
-        <div className="flex items-center justify-center gap-3 text-6xl font-mono text-[var(--az-accent-gold)] font-bold mb-2"><span>💎</span><span>{loadingWallet ? '...' : formatAmount(wallet?.creditBalance)}</span></div>
-        <p className="text-sm text-[var(--az-text-secondary)] font-serif italic">{loadingWallet ? 'Loading wallet...' : `Credits available for tipping & private shows (~${formatNaira((wallet?.creditBalance ?? 0) * usePricingStore.getState().diamondNairaRate)})`}</p>
+        <div className="flex items-center justify-center gap-3 text-6xl font-mono text-[var(--az-accent-gold)] font-bold mb-2"><span>💎</span><span>{loadingWallet ? '...' : formatAmount(wallet?.creditBalance ?? user?.credits)}</span></div>
+        <p className="text-sm text-[var(--az-text-secondary)] font-serif italic">{loadingWallet ? 'Loading wallet...' : `Credits available for tipping & private shows (~${formatNaira(((wallet?.creditBalance ?? user?.credits) ?? 0) * usePricingStore.getState().diamondNairaRate)})`}</p>
       </div>
 
       <div className="mb-12 rounded-3xl border border-[var(--az-border)] bg-[var(--az-bg-secondary)] p-6 sm:p-8">

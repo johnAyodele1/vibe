@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import Lottie from 'lottie-react';
 import { API_BASE_URL } from '../../config';
 import { formatAmount } from '../../lib/pricing';
+import { useOnboardingStore } from './useOnboardingStore';
 
 // Minimal valid Lottie JSON objects defined directly to avoid JSON resolve issues in Vite/TS
 const minimalLottie = {
@@ -309,7 +310,10 @@ const ProviderPayout: React.FC = () => {
                 <p className="text-sm text-gray-300 mb-6">{activeRequest.rejectedReason || 'No reason provided.'}</p>
                 <div className="space-y-3">
                   <button
-                    onClick={() => navigate('/settings?tab=payout')}
+                    onClick={() => {
+                      useOnboardingStore.getState().setCurrentStep(6);
+                      navigate('/adult/provider/onboarding');
+                    }}
                     className="block w-full py-3 bg-[#1b0a14] hover:bg-[#2b1020] border border-gray-800 text-amber-500 font-semibold rounded-xl text-sm transition-all"
                   >
                     Update Payout Settings →
@@ -421,7 +425,10 @@ const ProviderPayout: React.FC = () => {
                 Your payments will be sent to the payout coordinates configured during onboarding or settings.
               </p>
               <button
-                onClick={() => navigate('/settings?tab=payout')}
+                onClick={() => {
+                  useOnboardingStore.getState().setCurrentStep(6);
+                  navigate('/adult/provider/onboarding');
+                }}
                 className="w-full py-3 bg-[#1b0a14] hover:bg-[#2b1020] border border-gray-800 text-amber-500 font-semibold rounded-xl text-xs transition-all"
               >
                 Manage Payout Settings →

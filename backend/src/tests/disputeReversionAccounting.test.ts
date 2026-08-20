@@ -233,24 +233,26 @@ describe('Dispute Reversion & Accounting Invariants Test Suite', () => {
     expect(breakdown.displayedUnsettledCredits).toBe(0);
     expect(breakdown.withdrawableCredits).toBe(4500);
 
-    // Assert CustomerRefund pending record
+    // Assert CustomerRefund completed record and member wallet balance automatically credited
     const refundRecord = await CustomerRefund.findOne({ disputeReportId: reportId });
     expect(refundRecord).toBeDefined();
-    expect(refundRecord?.status).toBe('REFUND_PENDING');
+    expect(refundRecord?.status).toBe('REFUND_COMPLETED');
     expect(refundRecord?.amount).toBe(500);
 
-    // STEP 4: Admin records that refund was sent / completed
+    const refundedMember = await AdultUser.findById(memberId);
+    expect(refundedMember?.credits).toBe(1500); // 1000 initial + 500 auto-refund!
+
+    // STEP 4: Admin calls refund-complete endpoint (idempotent check)
     const refundCompleteRes = await request(app)
       .put(`/api/v1/admin/disputes/${reportId}/refund-complete`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ reference: 'REF-889922' });
 
     expect(refundCompleteRes.status).toBe(200);
-    expect(refundCompleteRes.body.success).toBe(true);
+    expect(refundCompleteRes.body.alreadyCompleted).toBe(true);
 
     const completedRefund = await CustomerRefund.findOne({ disputeReportId: reportId });
     expect(completedRefund?.status).toBe('REFUND_COMPLETED');
-    expect(completedRefund?.reference).toBe('REF-889922');
 
     // Assert original transaction STILL exists in DB as REVERTED
     const originalTxAgain = await CreditTransaction.findById(tx._id);
@@ -656,19 +658,20 @@ describe('Dispute Reversion & Accounting Invariants Test Suite', () => {
       .send({ resolution: 'upheld', adminNotes: 'Reverted' });
 
     const initialCustomer = await AdultUser.findById(memberId);
-    const initialBalance = initialCustomer?.credits || 0;
+    // Auto-refund happened in resolveDispute: 1000 + 500 = 1500
+    expect(initialCustomer?.credits).toBe(1500);
 
-    // Complete refund 1st time
+    // Calling mark refund complete when already completed in resolveDispute is idempotent
     const res1 = await request(app)
       .put(`/api/v1/admin/disputes/${reportId}/refund-complete`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ reference: 'REF-IDEMPOTENT-1' });
 
     expect(res1.status).toBe(200);
-    expect(res1.body.success).toBe(true);
+    expect(res1.body.alreadyCompleted).toBe(true);
 
     const customerAfterFirst = await AdultUser.findById(memberId);
-    expect(customerAfterFirst?.credits).toBe(initialBalance + 500);
+    expect(customerAfterFirst?.credits).toBe(1500);
 
     // Complete refund 2nd time
     const res2 = await request(app)
@@ -680,6 +683,6 @@ describe('Dispute Reversion & Accounting Invariants Test Suite', () => {
     expect(res2.body.alreadyCompleted).toBe(true);
 
     const customerAfterSecond = await AdultUser.findById(memberId);
-    expect(customerAfterSecond?.credits).toBe(initialBalance + 500); // NO double crediting!
+    expect(customerAfterSecond?.credits).toBe(1500); // NO double crediting!
   });
 });
