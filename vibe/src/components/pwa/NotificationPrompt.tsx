@@ -7,8 +7,28 @@ import { toast } from 'sonner';
 
 const ACTIONABLE_STATUSES = new Set(['permission_required', 'missing_subscription', 'backend_missing', 'unhealthy', 'permission_denied', 'service_worker_unavailable', 'error']);
 const CHECKING_MIN_VISIBLE_MS = 1000;
+const PUSH_REVERIFICATION_COOLDOWN_MS = 3 * 60 * 60 * 1000;
+const PUSH_REVERIFICATION_EXIT_KEY_PREFIX = 'zippo_push_last_site_exit:';
 
 type InstallContext = ReturnType<typeof getInstallContext>;
+
+const getSiteExitKey = (userId: string) => `${PUSH_REVERIFICATION_EXIT_KEY_PREFIX}${userId}`;
+
+const getLastSiteExitAt = (userId: string): number | null => {
+  const value = localStorage.getItem(getSiteExitKey(userId));
+  if (!value) return null;
+  const timestamp = Number(value);
+  return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : null;
+};
+
+const isWithinSiteExitCooldown = (userId: string): boolean => {
+  const lastSiteExitAt = getLastSiteExitAt(userId);
+  return lastSiteExitAt !== null && Date.now() - lastSiteExitAt < PUSH_REVERIFICATION_COOLDOWN_MS;
+};
+
+const recordSiteExit = (userId: string) => {
+  localStorage.setItem(getSiteExitKey(userId), String(Date.now()));
+};
 
 const CheckingNotifications = ({ waiting = false }: { waiting?: boolean }) => (
   <div className="notif-prompt" data-testid="notification-prompt" role="status" aria-live="polite">
@@ -80,10 +100,28 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
           return;
         }
 
-        const shouldTest = forceDeviceTest || currentHealth.status === 'verification_required';
+        // Settings' explicit device test and a fresh authenticated session always
+        // bypass the three-hour pause. The normal entry verification does not.
+        const cooldownActive = !isSettingsTest && isWithinSiteExitCooldown(userId);
+        const shouldTest = isSettingsTest || forceDeviceTest || (!cooldownActive && currentHealth.status === 'verification_required');
+
         if (!shouldTest) {
           setSelfTesting(false);
           setTestStatus('idle');
+
+          // During the cooldown, verification_required means the device is still
+          // registered and healthy; it only means its last real push is older than
+          // the normal health-check window. Keep the requested UI flow: show the
+          // checking UI, then immediately show enabled without sending a push test.
+          if (cooldownActive && currentHealth.status === 'verification_required') {
+            setHealth(prev => prev ? { ...prev, status: 'healthy', pushHealthStatus: 'healthy' } : prev);
+            setShowHealthy(true);
+            window.setTimeout(() => setShowHealthy(false), 4000);
+            setShowNotifPrompt(false);
+            setVisible(false);
+            return;
+          }
+
           const show = isSettingsTest && currentHealth.status === 'healthy';
           setShowNotifPrompt(show);
           setVisible(show);
@@ -128,11 +166,20 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
 
     const isNewAuthenticatedUser = entryTestUserRef.current !== userId;
     void runVerification(isNewAuthenticatedUser);
+
     const handleVisibilityChange = () => { if (document.visibilityState === 'visible') void runVerification(false); };
     const handlePageShow = () => void runVerification(false);
+    const handlePageHide = () => recordSiteExit(userId);
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('pageshow', handlePageShow);
-    return () => { cancelled = true; document.removeEventListener('visibilitychange', handleVisibilityChange); window.removeEventListener('pageshow', handlePageShow); };
+    window.addEventListener('pagehide', handlePageHide);
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pageshow', handlePageShow);
+      window.removeEventListener('pagehide', handlePageHide);
+    };
   }, [ctx, userId, isSettingsTest, setShowNotifPrompt]);
 
   const handleEnable = async () => {
@@ -227,7 +274,7 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
   if (showHealthy && health?.status === 'healthy' && !isSettingsTest) return (
     <div className="notif-prompt" data-testid="notification-prompt" role="status" aria-live="polite">
       <div className="notif-prompt__icon" aria-hidden="true">🔔</div>
-      <div className="notif-prompt__text"><strong>Notifications are working</strong><p>Push notifications are connected and working on this device.</p></div>
+      <div className="notif-prompt__text"><strong>Notifications enabled on this device</strong><p>Push notifications are connected on this device.</p></div>
     </div>
   );
 
