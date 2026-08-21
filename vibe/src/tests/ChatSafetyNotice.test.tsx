@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
-import React from 'react';
 import ChatSafetyNotice, { getSafetyNoticeStorageKey } from '../components/AdultZone/ChatSafetyNotice';
 
 const MEMBER_WARNING = "Beware of scams. Never send money directly to a provider. Always use the service on this site.";
