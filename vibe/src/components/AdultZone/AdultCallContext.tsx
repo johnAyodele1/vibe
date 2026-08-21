@@ -101,7 +101,7 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     else if (reason === 'connection_failed') status = 'failed';
 
     let cost = 0;
-    if (status === 'ended' && durationSeconds >= 10) {
+    if (status === 'ended') {
       const billedMinutes = Math.floor(durationSeconds / 60) + 1;
       cost = currentCall.rate * billedMinutes;
     }
@@ -615,11 +615,6 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                       </>
                     )}
                   </div>
-                  {callSummary.cost === 0 && (
-                    <p className="text-[10px] text-gray-400 text-center mt-2 font-mono uppercase tracking-wider">
-                      No charge — calls under 10 seconds are free
-                    </p>
-                  )}
                 </>
               )}
             </div>
