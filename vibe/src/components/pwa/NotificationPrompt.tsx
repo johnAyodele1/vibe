@@ -100,8 +100,10 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
           return;
         }
 
-        // Settings' explicit device test and a fresh authenticated session always
-        // bypass the three-hour pause. The normal entry verification does not.
+        // An explicit Settings test always runs. The automatic fresh-session
+        // bypass is retained only for an installed PWA; normal browser tabs
+        // must always honor the three-hour site-exit cooldown, even after the
+        // page/component is recreated by Chrome.
         const cooldownActive = !isSettingsTest && isWithinSiteExitCooldown(userId);
         const shouldTest = isSettingsTest || forceDeviceTest || (!cooldownActive && currentHealth.status === 'verification_required');
 
@@ -165,8 +167,13 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
       }
     };
 
+    // Only an installed PWA retains the old fresh-authenticated-session bypass.
+    // A normal Chrome tab is a browser-page lifecycle, not a new authenticated
+    // session, so a remount must still respect the persisted site-exit cooldown.
+    const isInstalledPWA = ctx.isStandalone;
     const isNewAuthenticatedUser = entryTestUserRef.current !== userId;
-    void runVerification(isNewAuthenticatedUser);
+    const forceDeviceTest = isInstalledPWA && isNewAuthenticatedUser;
+    void runVerification(forceDeviceTest);
 
     const handleVisibilityChange = () => { if (document.visibilityState === 'visible') void runVerification(false); };
     const handlePageShow = () => void runVerification(false);
@@ -179,6 +186,7 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
       cancelled = true;
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('pageshow', handlePageShow);
+      window.removeEventListener('pagehide', handlePageShow);
       window.removeEventListener('pagehide', handlePageHide);
     };
   }, [ctx, userId, isSettingsTest, setShowNotifPrompt]);
