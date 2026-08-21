@@ -308,11 +308,13 @@ export const getRecentTransactions = async (req: Request, res: Response) => {
   try {
     const limit = parseInt(req.query.limit as string) || 20;
 
+    // Optimization (⚡ Bolt): Use .lean() on read-only recent transaction query to avoid Mongoose document & population hydration overhead.
     const txs = await CreditTransaction.find()
       .populate('userId', 'username displayName')
       .populate('relatedUserId', 'username displayName')
       .sort({ createdAt: -1 })
-      .limit(limit);
+      .limit(limit)
+      .lean();
 
     const formatted = txs.map(tx => {
       let fromName = 'Member';
