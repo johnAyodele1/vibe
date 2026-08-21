@@ -11,6 +11,14 @@ interface OfficialNotification {
   createdAt: string;
 }
 
+interface IssueContext {
+  serviceAmount?: number;
+  providerStageName?: string;
+  reason?: string;
+  userReportText?: string;
+  reportId?: string;
+}
+
 interface SupportConversation {
   conversationId: string;
   user: {
@@ -22,12 +30,33 @@ interface SupportConversation {
   } | null;
   status: 'open' | 'closed' | 'resolved';
   tags: string[];
-  issueContext?: any;
+  issueContext?: IssueContext | null;
   lastMessage?: {
     content: string;
     sentAt: string;
   };
   updatedAt: string;
+}
+
+interface SupportMessage {
+  id: string;
+  senderId: string;
+  content: string;
+  mediaType?: string;
+  mediaUrl?: string;
+  createdAt: string;
+}
+
+interface ChannelIdentityConfig {
+  avatarUrl: string;
+  badge: string;
+  badgeType: 'blue' | 'gold' | string;
+  enabled: boolean;
+}
+
+interface OfficialChannelsConfig {
+  notifications: ChannelIdentityConfig;
+  support: ChannelIdentityConfig;
 }
 
 export const AdminOfficialChannels: React.FC = () => {
@@ -46,14 +75,14 @@ export const AdminOfficialChannels: React.FC = () => {
   // Support inbox state
   const [supportQueue, setSupportQueue] = useState<SupportConversation[]>([]);
   const [selectedQueueConv, setSelectedQueueConv] = useState<SupportConversation | null>(null);
-  const [supportMessages, setSupportMessages] = useState<any[]>([]);
+  const [supportMessages, setSupportMessages] = useState<SupportMessage[]>([]);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [replyText, setReplyText] = useState('');
   const [tagInput, setTagInput] = useState('');
   const [isReplying, setIsSendingReply] = useState(false);
 
   // Config state
-  const [config, setConfig] = useState<any>({
+  const [config, setConfig] = useState<OfficialChannelsConfig>({
     notifications: { avatarUrl: '/icons/icon-192x192.png', badge: 'official', badgeType: 'blue', enabled: true },
     support: { avatarUrl: '/icons/icon-192x192.png', badge: 'official', badgeType: 'blue', enabled: true },
   });
@@ -242,7 +271,7 @@ export const AdminOfficialChannels: React.FC = () => {
 
       const data = await res.json();
       if (data.success && data.url) {
-        setConfig((prev: any) => ({
+        setConfig((prev) => ({
           ...prev,
           [channel]: { ...prev[channel], avatarUrl: data.url }
         }));
@@ -604,7 +633,7 @@ export const AdminOfficialChannels: React.FC = () => {
                       type="text"
                       placeholder="Paste image URL..."
                       value={config.notifications?.avatarUrl || ''}
-                      onChange={(e) => setConfig((prev: any) => ({
+                      onChange={(e) => setConfig((prev) => ({
                         ...prev,
                         notifications: { ...prev.notifications, avatarUrl: e.target.value }
                       }))}
@@ -629,7 +658,7 @@ export const AdminOfficialChannels: React.FC = () => {
                   <label className="text-gray-400 block mb-1">Badge Type</label>
                   <select
                     value={config.notifications?.badgeType || 'blue'}
-                    onChange={(e) => setConfig((prev: any) => ({
+                    onChange={(e) => setConfig((prev) => ({
                       ...prev,
                       notifications: { ...prev.notifications, badgeType: e.target.value }
                     }))}
@@ -661,7 +690,7 @@ export const AdminOfficialChannels: React.FC = () => {
                       type="text"
                       placeholder="Paste image URL..."
                       value={config.support?.avatarUrl || ''}
-                      onChange={(e) => setConfig((prev: any) => ({
+                      onChange={(e) => setConfig((prev) => ({
                         ...prev,
                         support: { ...prev.support, avatarUrl: e.target.value }
                       }))}
@@ -686,7 +715,7 @@ export const AdminOfficialChannels: React.FC = () => {
                   <label className="text-gray-400 block mb-1">Badge Type</label>
                   <select
                     value={config.support?.badgeType || 'blue'}
-                    onChange={(e) => setConfig((prev: any) => ({
+                    onChange={(e) => setConfig((prev) => ({
                       ...prev,
                       support: { ...prev.support, badgeType: e.target.value }
                     }))}
