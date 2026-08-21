@@ -75,9 +75,15 @@ export const requireAdultAge = (req: Request, res: Response, next: NextFunction)
   next();
 };
 
-export const requireAdultRole = (role: 'user' | 'provider') => {
+export const requireAdultRole = (role: 'user' | 'provider' | 'admin') => {
   return (req: Request, res: Response, next: NextFunction) => {
-    if (req.adultUser?.role !== role) {
+    const userRole = req.adultUser?.role;
+    const isAdmin = req.adultUser?.isAdmin;
+    if (role === 'admin') {
+      if (userRole !== 'admin' && !isAdmin) {
+        return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin access required' } });
+      }
+    } else if (userRole !== role && !isAdmin) {
       return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Insufficient role' } });
     }
     next();

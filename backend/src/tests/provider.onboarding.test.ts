@@ -9,6 +9,7 @@ describe('Provider Onboarding & Profile API', () => {
   let mongoServer: MongoMemoryServer;
   let providerToken: string;
   let memberToken: string;
+  let adminToken: string;
   let providerId: string;
 
   beforeAll(async () => {
@@ -44,6 +45,21 @@ describe('Provider Onboarding & Profile API', () => {
     await member.save();
 
     memberToken = jwt.sign({ sub: member._id.toString() }, process.env.ADULT_JWT_SECRET || 'adult_secret');
+
+    // Create an admin user
+    const admin = new AdultUser({
+      email: 'admin@onboard.com',
+      passwordHash: 'password123',
+      username: 'onboardadmin',
+      displayName: 'System Admin',
+      dateOfBirth: new Date('1990-01-01'),
+      role: 'admin',
+      isAdmin: true,
+      country: 'Nigeria',
+    });
+    await admin.save();
+
+    adminToken = jwt.sign({ sub: admin._id.toString() }, process.env.ADULT_JWT_SECRET || 'adult_secret');
   });
 
   afterAll(async () => {
@@ -208,5 +224,32 @@ describe('Provider Onboarding & Profile API', () => {
 
     expect(res.body.success).toBe(false);
     expect(res.body.error.message).toContain('Invalid start time format for Monday');
+  });
+
+  it('PATCH /api/adult/providers/:id/status rejects non-admin attempts with 403', async () => {
+    await request(app)
+      .patch(`/api/adult/providers/${providerId}/status`)
+      .set('Authorization', `Bearer ${memberToken}`)
+      .send({ status: 'approved' })
+      .expect(403);
+
+    await request(app)
+      .patch(`/api/adult/providers/${providerId}/status`)
+      .set('Authorization', `Bearer ${providerToken}`)
+      .send({ status: 'approved' })
+      .expect(403);
+  });
+
+  it('PATCH /api/adult/providers/:id/status allows admin to update status', async () => {
+    const res = await request(app)
+      .patch(`/api/adult/providers/${providerId}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'approved' })
+      .expect(200);
+
+    expect(res.body.success).toBe(true);
+
+    const updatedProvider = await AdultUser.findById(providerId);
+    expect(updatedProvider?.providerProfile?.verificationStatus).toBe('approved');
   });
 });

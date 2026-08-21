@@ -39,7 +39,7 @@ router.get('/auth/me', verifyAdultJWT, authController.getMe);
 router.get('/providers', providerController.getProviders);
 router.post('/providers/apply', verifyAdultJWT, validateRequest(applyAsProviderSchema), providerController.applyAsProvider);
 router.patch('/providers/profile', verifyAdultJWT, validateRequest(updateProviderProfileSchema), providerController.updateProviderProfile);
-router.patch('/providers/:id/status', verifyAdultJWT, validateRequest(updateProviderStatusSchema), providerController.updateProviderStatus); // Admin check should be added
+router.patch('/providers/:id/status', verifyAdultJWT, requireAdultRole('admin'), validateRequest(updateProviderStatusSchema), providerController.updateProviderStatus);
 
 // Credits
 router.get('/credits/balance', verifyAdultJWT, creditsController.getBalance);

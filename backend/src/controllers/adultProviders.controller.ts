@@ -230,6 +230,12 @@ export const applyAsProvider = async (req: Request, res: Response) => {
 };
 
 export const updateProviderStatus = async (req: Request, res: Response) => {
+    // Security check: Only admins can update provider verification status
+    const user = req.adultUser;
+    if (!user || (user.role !== 'admin' && !user.isAdmin)) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin access required' } });
+    }
+
     const { id } = req.params;
     const { status } = req.body; // 'approved' | 'rejected'
 
