@@ -40,11 +40,19 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
       'http://localhost:5173',
     ];
 
+const allowedPreviewOrigin =
+  /^https:\/\/deploy-preview-\d+--petheven\.netlify\.app$/;
+
 app.use(
   cors({
     origin: (origin, callback) => {
       // Allow requests with no origin (e.g. mobile apps, curl, server-to-server) or during tests
-      if (!origin || process.env.NODE_ENV === 'test' || allowedOrigins.includes(origin)) {
+      if (
+        !origin ||
+        process.env.NODE_ENV === 'test' ||
+        allowedOrigins.includes(origin) ||
+        allowedPreviewOrigin.test(origin)
+      ) {
         return callback(null, true);
       }
       return callback(new Error('CORS policy violation: Access denied for origin ' + origin));
