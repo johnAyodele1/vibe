@@ -8,9 +8,9 @@ export interface IRateHistory {
 
 export interface IAppConfig extends Document {
   key: string;
-  value: number;
-  label: string;
-  description: string;
+  value: any;
+  label?: string;
+  description?: string;
   updatedBy?: mongoose.Types.ObjectId | string;
   history?: IRateHistory[];
   createdAt: Date;
@@ -18,15 +18,15 @@ export interface IAppConfig extends Document {
 }
 
 const rateHistorySchema = new Schema<IRateHistory>({
-  value: { type: Number, required: true },
+  value: { type: Schema.Types.Mixed, required: true },
   changedBy: { type: Schema.Types.Mixed, required: true },
   changedAt: { type: Date, default: Date.now }
 }, { _id: false });
 
 const appConfigSchema = new Schema<IAppConfig>({
   key: { type: String, required: true, unique: true },
-  value: { type: Number, required: true },
-  label: { type: String, required: true },
+  value: { type: Schema.Types.Mixed, required: true },
+  label: { type: String },
   description: { type: String },
   updatedBy: { type: Schema.Types.Mixed },
   history: [rateHistorySchema]

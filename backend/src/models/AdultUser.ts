@@ -1,6 +1,7 @@
 import mongoose, { Schema } from 'mongoose';
 import bcrypt from 'bcryptjs';
 import { IAdultUser, IAdultUserModel } from '../types/adultModels';
+import { validateNoEmojiOrAvatar, USERNAME_EMOJI_ERROR, STAGE_NAME_EMOJI_ERROR } from '../utils/nameValidation';
 
 const adultUserSchema = new Schema<IAdultUser, IAdultUserModel>(
   {
@@ -32,6 +33,10 @@ const adultUserSchema = new Schema<IAdultUser, IAdultUserModel>(
       unique: true,
       trim: true,
       index: true,
+      validate: {
+        validator: validateNoEmojiOrAvatar,
+        message: USERNAME_EMOJI_ERROR,
+      },
     },
     displayName: {
       type: String,
@@ -134,7 +139,13 @@ const adultUserSchema = new Schema<IAdultUser, IAdultUserModel>(
       },
     ],
     providerProfile: {
-      stageName: String,
+      stageName: {
+        type: String,
+        validate: {
+          validator: (val: string) => !val || validateNoEmojiOrAvatar(val),
+          message: STAGE_NAME_EMOJI_ERROR,
+        },
+      },
       gender: String,
       categories: [String],
       isLive: { type: Boolean, default: false },

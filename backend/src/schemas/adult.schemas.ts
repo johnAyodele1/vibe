@@ -1,10 +1,11 @@
 import { z } from 'zod';
+import { validateNoEmojiOrAvatar, USERNAME_EMOJI_ERROR, STAGE_NAME_EMOJI_ERROR } from '../utils/nameValidation';
 
 export const registerSchema = z.object({
   body: z.object({
     email: z.string().email(),
     password: z.string().min(6),
-    username: z.string().min(3),
+    username: z.string().min(3).refine(validateNoEmojiOrAvatar, { message: USERNAME_EMOJI_ERROR }),
     displayName: z.string().min(1),
     dateOfBirth: z.string().refine((dob) => {
       const birth = new Date(dob);
@@ -36,7 +37,7 @@ export const verifyEmailQuerySchema = z.object({
 
 export const applyAsProviderSchema = z.object({
   body: z.object({
-    stageName: z.string().min(2),
+    stageName: z.string().min(2).refine(validateNoEmojiOrAvatar, { message: STAGE_NAME_EMOJI_ERROR }),
     idVerificationDocUrl: z.string().url().optional(),
     categories: z.array(z.string()).min(1),
     contentTags: z.array(z.string()),
@@ -47,7 +48,7 @@ export const applyAsProviderSchema = z.object({
 
 export const updateProviderProfileSchema = z.object({
   body: z.object({
-    stageName: z.string().min(2).optional(),
+    stageName: z.string().min(2).refine(validateNoEmojiOrAvatar, { message: STAGE_NAME_EMOJI_ERROR }).optional(),
     bio: z.string().max(500).optional(),
     country: z.string().optional(),
     profilePhoto: z.string().url().optional(),
