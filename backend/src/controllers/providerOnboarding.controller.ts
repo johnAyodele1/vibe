@@ -289,13 +289,19 @@ export const updateAdultMemberProfile = async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
     }
 
-    const { displayName, bio, location } = req.body;
+    const { displayName, bio, location, username } = req.body;
 
-    if (displayName) user.displayName = displayName;
-    if (bio !== undefined) user.bio = bio;
-    if (location) {
-      user.location = location;
+    if (username !== undefined && username !== user.username) {
+      const existing = await AdultUser.findOne({ username, _id: { $ne: user._id } });
+      if (existing) {
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Username already in use' } });
+      }
+      user.username = username;
     }
+
+    if (displayName !== undefined) user.displayName = displayName;
+    if (bio !== undefined) user.bio = bio;
+    if (location !== undefined) user.location = location;
 
     await user.save();
 
@@ -312,6 +318,11 @@ export const updateAdultMemberProfile = async (req: Request, res: Response) => {
       }
     });
   } catch (error: any) {
+    if (error.name === 'ValidationError' && error.errors) {
+      const firstErrKey = Object.keys(error.errors)[0];
+      const msg = error.errors[firstErrKey]?.message || error.message;
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: msg } });
+    }
     return res.status(500).json({ success: false, error: error.message });
   }
 };
@@ -1226,6 +1237,11 @@ export const updateProfile = async (req: Request, res: Response) => {
 
     return res.json({ success: true, message: 'Profile updated successfully', data: { user } });
   } catch (error: any) {
+    if (error.name === 'ValidationError' && error.errors) {
+      const firstErrKey = Object.keys(error.errors)[0];
+      const msg = error.errors[firstErrKey]?.message || error.message;
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: msg } });
+    }
     return res.status(500).json({ success: false, error: error.message });
   }
 };

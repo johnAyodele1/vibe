@@ -29,12 +29,19 @@ export const startConversation = async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: 'Auth required' });
     }
 
-    const recipientId = req.params.userId || req.body.recipientId;
-    if (!recipientId) {
+    const rawParamUserId = req.params.userId;
+    const recipientId = (rawParamUserId && rawParamUserId !== 'start') ? rawParamUserId : req.body.recipientId;
+    if (!recipientId || recipientId === 'start') {
       return res.status(400).json({ success: false, error: 'Recipient userId/recipientId is required' });
     }
 
-    const recipient = await AdultUser.findById(recipientId);
+    let recipient = null;
+    try {
+      recipient = await AdultUser.findById(recipientId);
+    } catch {
+      return res.status(404).json({ success: false, error: 'Recipient not found' });
+    }
+
     if (!recipient) {
       return res.status(404).json({ success: false, error: 'Recipient not found' });
     }

@@ -161,28 +161,28 @@ const ProviderProfile: React.FC = () => {
   const handleSaveBasic = async () => {
     setSavingBasic(true);
     try {
-      try {
-        const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/profile`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            bio: profileData.bio,
-            gender: profileData.gender,
-            stageName: profileData.stageName
-          })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed to update profile');
-      } catch (xhrErr) {
-        console.warn('Profile basic fallback active:', xhrErr);
-        localStorage.setItem('provider_profile_details', JSON.stringify(profileData));
+      const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          bio: profileData.bio,
+          gender: profileData.gender,
+          stageName: profileData.stageName
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        const errMsg = typeof data.error === 'string'
+          ? data.error
+          : data.error?.message || data.message || 'Failed to update profile';
+        throw new Error(errMsg);
       }
       toast.success('Basic profile details updated successfully!');
     } catch (err: any) {
-      toast.error(err.message);
+      toast.error(err.message || 'Failed to update profile');
     } finally {
       setSavingBasic(false);
     }

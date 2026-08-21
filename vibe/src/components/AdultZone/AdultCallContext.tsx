@@ -16,6 +16,53 @@ const formatDuration = (secs: number) => {
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 };
 
+export const normalizeCallError = (errorData: any): string => {
+  if (!errorData) return 'Failed to initiate call.';
+  let rawMsg = '';
+  if (typeof errorData === 'string') {
+    rawMsg = errorData;
+  } else if (typeof errorData === 'object') {
+    rawMsg = errorData.message || errorData.error?.message || errorData.error || errorData.msg || '';
+    if (typeof rawMsg !== 'string') rawMsg = '';
+  }
+
+  const lower = rawMsg.toLowerCase();
+
+  // Block internal Zod/schema/validation/Mongoose errors
+  if (
+    lower.includes('does not match the expected pattern') ||
+    lower.includes('validation failed') ||
+    lower.includes('casterror') ||
+    lower.includes('cast to objectid') ||
+    lower.includes('zoderror')
+  ) {
+    return 'Failed to initiate call.';
+  }
+
+  // Business error mappings
+  if (lower.includes('insufficient credits') || lower.includes('insufficient balance')) {
+    return 'Insufficient credits to start call. Please top up your wallet.';
+  }
+  if (lower.includes('busy') || lower.includes('provider is busy')) {
+    return 'This provider is busy. Try again later.';
+  }
+  if (lower.includes('already on a call') || lower.includes('another device')) {
+    return 'You are already on a call on another device.';
+  }
+  if (lower.includes('token') || lower.includes('connection token')) {
+    return 'Failed to obtain call connection token';
+  }
+  if (lower.includes('recipient not found') || lower.includes('provider not found')) {
+    return 'Provider not found';
+  }
+
+  if (rawMsg.trim().length > 0) {
+    return rawMsg;
+  }
+
+  return 'Failed to initiate call.';
+};
+
 export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, user } = useAdultAuth();
   const token = localStorage.getItem('adultAccessToken') || '';
@@ -148,14 +195,15 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     try {
       let conversationId = existingConvId;
       if (!conversationId) {
-        const convRes = await fetch(`${API_BASE_URL}/v1/adult/sext/conversations/start`, {
+        const convRes = await fetch(`${API_BASE_URL}/v1/adult/sext/conversations`, {
           method: 'POST',
           headers: getHeaders(),
           body: JSON.stringify({ recipientId })
         });
         const convData = await convRes.json();
         if (!convData.success || !convData.conversationId) {
-          toast.error(convData.error || 'Failed to start conversation');
+          const errMsg = normalizeCallError(convData);
+          toast.error(errMsg);
           resetCallState();
           return false;
         }
@@ -208,15 +256,13 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
         return true;
       } else {
-        const msg = typeof callData.error === 'string'
-          ? callData.error
-          : callData.error?.message || callData.message || 'Failed to initiate call';
+        const msg = normalizeCallError(callData);
         toast.error(msg);
         resetCallState();
         return false;
       }
     } catch (err: any) {
-      const msg = err?.message || 'Failed to initiate call';
+      const msg = normalizeCallError(err);
       toast.error(msg);
       resetCallState();
       return false;
