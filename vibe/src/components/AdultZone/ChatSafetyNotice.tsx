@@ -76,11 +76,11 @@ export const ChatSafetyNotice: React.FC<ChatSafetyNoticeProps> = ({ userId, conv
   return (
     <div
       data-testid="chat-safety-notice"
-      className="chat-safety-notice bg-[#150a12] border-b border-pink-500/20 px-4 py-2.5 flex items-center justify-between gap-3 text-xs text-[var(--az-text-secondary,#d1c4cd)] leading-tight shadow-inner flex-shrink-0"
+      className="chat-safety-notice bg-[#150a12] border-b border-pink-500/20 px-4 py-2.5 flex items-start justify-between gap-3 text-xs text-[var(--az-text-secondary,#d1c4cd)] leading-normal shadow-inner flex-shrink-0"
     >
-      <div className="flex items-center gap-2 min-w-0">
-        <span className="text-pink-400 font-bold flex-shrink-0 text-sm">🛡️</span>
-        <span className="truncate sm:whitespace-normal font-sans font-medium text-[11px] sm:text-xs">
+      <div className="flex items-start gap-2 min-w-0 flex-1">
+        <span className="text-pink-400 font-bold flex-shrink-0 text-sm leading-none mt-0.5">🛡️</span>
+        <span className="whitespace-normal break-words font-sans font-medium text-[11px] sm:text-xs leading-snug">
           {messageText}
         </span>
       </div>
@@ -88,7 +88,7 @@ export const ChatSafetyNotice: React.FC<ChatSafetyNoticeProps> = ({ userId, conv
         type="button"
         onClick={dismiss}
         data-testid="dismiss-safety-notice-btn"
-        className="chat-safety-notice__close text-gray-400 hover:text-white text-base leading-none p-1 rounded-full hover:bg-white/10 transition-colors flex-shrink-0"
+        className="chat-safety-notice__close text-gray-400 hover:text-white text-base leading-none p-1 rounded-full hover:bg-white/10 transition-colors flex-shrink-0 mt-0.5"
         aria-label="Dismiss safety notice"
         title="Dismiss safety notice"
       >

@@ -12,6 +12,7 @@ const UserSettings: React.FC = () => {
   const { logout } = useAdultAuth();
   const token = localStorage.getItem('adultAccessToken');
 
+  const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [bio, setBio] = useState('');
   const [location, setLocation] = useState<any>({});
@@ -40,6 +41,7 @@ const UserSettings: React.FC = () => {
       });
       const data = await res.json();
       if (data.success) {
+        setUsername(data.data.username || '');
         setDisplayName(data.data.displayName || '');
         setBio(data.data.bio || '');
         setLocation(data.data.location || {});
@@ -69,13 +71,20 @@ const UserSettings: React.FC = () => {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ displayName, bio, location }),
+        body: JSON.stringify({ username, displayName, bio, location }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
         toast.success('Profile updated successfully');
+        if (data.data) {
+          if (data.data.username) setUsername(data.data.username);
+          if (data.data.displayName) setDisplayName(data.data.displayName);
+        }
       } else {
-        toast.error(data.message || 'Failed to update profile');
+        const errMsg = typeof data.error === 'string'
+          ? data.error
+          : data.error?.message || data.message || 'Failed to update profile';
+        toast.error(errMsg);
       }
     } catch {
       toast.error('Network error updating profile');
@@ -172,6 +181,18 @@ const UserSettings: React.FC = () => {
           <h3 className="settings-section__title">Personal Profile</h3>
           <p className="settings-section__desc">Manage how you appear to others in the Adult Zone.</p>
           <form onSubmit={handleSaveProfile} className="space-y-4">
+            <div className="settings-field">
+              <label className="settings-label">Username</label>
+              <input
+                type="text"
+                value={username}
+                onChange={e => setUsername(e.target.value)}
+                className="settings-input"
+                placeholder="Enter username"
+                required
+              />
+            </div>
+
             <div className="settings-field">
               <label className="settings-label">Display Name</label>
               <input
