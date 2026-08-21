@@ -100,8 +100,10 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
           return;
         }
 
-        // Settings' explicit device test and a fresh authenticated session always
-        // bypass the three-hour pause. The normal entry verification does not.
+        // An explicit Settings test always runs. The automatic fresh-session
+        // bypass is retained only for an installed PWA; normal browser tabs
+        // must always honor the three-hour site-exit cooldown, even after the
+        // page/component is recreated by Chrome.
         const cooldownActive = !isSettingsTest && isWithinSiteExitCooldown(userId);
         const shouldTest = isSettingsTest || forceDeviceTest || (!cooldownActive && currentHealth.status === 'verification_required');
 
@@ -109,11 +111,6 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
           setSelfTesting(false);
           setTestStatus('idle');
 
-          // While the three-hour cooldown is active, a valid registered device is
-          // treated as enabled for entry UX. The health check may say
-          // verification_required because its last real push is older than the
-          // normal 30-minute verification window; it can also still be healthy if
-          // the user returned shortly after leaving. Neither case sends a push.
           if (cooldownActive && (currentHealth.status === 'verification_required' || currentHealth.status === 'healthy')) {
             setHealth(prev => prev ? { ...prev, status: 'healthy', pushHealthStatus: 'healthy' } : prev);
             setShowHealthy(true);
@@ -165,8 +162,13 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
       }
     };
 
+    // Only an installed PWA retains the fresh-authenticated-session bypass.
+    // A normal Chrome tab is a browser-page lifecycle, not a new authenticated
+    // session, so a remount must still respect the persisted site-exit cooldown.
+    const isInstalledPWA = ctx.isStandalone;
     const isNewAuthenticatedUser = entryTestUserRef.current !== userId;
-    void runVerification(isNewAuthenticatedUser);
+    const forceDeviceTest = isInstalledPWA && isNewAuthenticatedUser;
+    void runVerification(forceDeviceTest);
 
     const handleVisibilityChange = () => { if (document.visibilityState === 'visible') void runVerification(false); };
     const handlePageShow = () => void runVerification(false);
@@ -256,16 +258,9 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
     setShowNotifPrompt(false); setVisible(false);
   };
 
-  // Never hide the health UI while the install context is being detected.
-  // This is important on iOS Home Screen launches, where the first render can
-  // happen before display-mode/standalone detection has settled.
   if (!ctx) return <CheckingNotifications />;
-
-  // A normal iOS Safari tab gets the install guidance, never the push health UI.
   if (ctx.isIOS && !ctx.isStandalone) return <AddToHomeScreenHint onDismiss={handleDismiss} />;
 
-  // Do not gate the UI on parsed iOS version. The actual health check performs
-  // feature detection; a major-version-only parser cannot reliably represent 16.4.
   const needsPermission = health?.status === 'permission_required';
   const needsRepair = health?.status === 'unhealthy' || health?.status === 'missing_subscription' || health?.status === 'backend_missing' || health?.status === 'verification_required' || health?.status === 'error' || health?.status === 'permission_denied' || health?.status === 'service_worker_unavailable';
   const testBusy = testStatus === 'sending' || testStatus === 'waiting';

@@ -60,6 +60,7 @@ describe('NotificationPrompt three-hour re-verification cooldown', () => {
     vi.clearAllMocks();
     localStorage.clear();
     sessionStorage.clear();
+    mockCtx.isStandalone = false;
     (window as any).Notification = { permission: 'granted' };
 
     (checkPushHealth as any).mockResolvedValue({
@@ -81,17 +82,18 @@ describe('NotificationPrompt three-hour re-verification cooldown', () => {
     });
   });
 
-  it('runs the real device test on entry, then skips it after leaving and returning within three hours', async () => {
-    render(<NotificationPrompt userId="user-123" />);
+  it('honors the cooldown after a Chrome page is destroyed and recreated', async () => {
+    const firstRender = render(<NotificationPrompt userId="user-123" />);
 
     await waitForCheckingCycle();
     expect(sendPushTest).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       window.dispatchEvent(new Event('pagehide'));
-      window.dispatchEvent(new Event('pageshow'));
     });
+    firstRender.unmount();
 
+    render(<NotificationPrompt userId="user-123" />);
     await waitForCheckingCycle();
 
     expect(sendPushTest).toHaveBeenCalledTimes(1);
@@ -108,5 +110,15 @@ describe('NotificationPrompt three-hour re-verification cooldown', () => {
     expect(screen.getByText('Test push notifications')).toBeInTheDocument();
 
     window.location.hash = '';
+  });
+
+  it('preserves the fresh-session bypass for an installed PWA', async () => {
+    mockCtx.isStandalone = true;
+    localStorage.setItem('zippo_push_last_site_exit:user-123', String(Date.now()));
+
+    render(<NotificationPrompt userId="user-123" />);
+    await waitForCheckingCycle();
+
+    expect(sendPushTest).toHaveBeenCalledTimes(1);
   });
 });
