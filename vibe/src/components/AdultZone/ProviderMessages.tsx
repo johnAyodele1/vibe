@@ -14,6 +14,7 @@ import { uploadMedia } from '../../lib/media/uploadMedia';
 import { compressToWebP } from '../../lib/media/compressImage';
 import { VoiceNotePlayer } from './VoiceNotePlayer';
 import { OfficialBadge } from './PrivateSext';
+import { ChatSafetyNotice } from './ChatSafetyNotice';
 
 const FALLBACK_AVATAR = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=150&auto=format&fit=crop";
 
@@ -1440,6 +1441,13 @@ const ProviderMessages: React.FC = () => {
                 </div>
               );
             })()}
+
+            {/* Safety Notice Banner below header */}
+            <ChatSafetyNotice
+              userId={user?.id || (user as any)?._id}
+              conversationId={selectedConv.conversationId}
+              role="provider"
+            />
 
             {/* MESSAGES SCROLL area */}
             <div ref={feedRef} onScroll={handleScroll} data-testid="message-feed" className="flex-grow overflow-y-auto p-6 space-y-6 flex flex-col no-scrollbar message-feed message-feed-container">

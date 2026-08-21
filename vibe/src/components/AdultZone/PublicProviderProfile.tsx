@@ -24,47 +24,6 @@ export const PublicProviderProfile: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [isStartingConversation, setIsStartingConversation] = useState(false);
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
-  const [unlockedIndexes, setUnlockedIndexes] = useState<Set<number>>(new Set());
-  const [unlocking, setUnlocking] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (provider?.unlockedPhotoIndexes) {
-      setUnlockedIndexes(new Set(provider.unlockedPhotoIndexes));
-    }
-  }, [provider]);
-
-  const handleUnlock = async (photoIndex: number) => {
-    setUnlocking(photoIndex);
-    try {
-      const token = localStorage.getItem('adultAccessToken');
-      const res = await fetch(`${API_BASE_URL}/v1/adult/providers/${providerId}/photos/${photoIndex}/unlock`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setUnlockedIndexes(prev => {
-          const next = new Set(prev);
-          next.add(photoIndex);
-          return next;
-        });
-        toast.success('💎 Photo unlocked!');
-      } else {
-        if (res.status === 402 || data.error?.code === 'INSUFFICIENT_FUNDS') {
-          toast.error('Not enough credits. Top up your wallet.');
-        } else {
-          toast.error(data.error?.message || 'Could not unlock photo');
-        }
-      }
-    } catch (err) {
-      toast.error('Could not unlock photo');
-    } finally {
-      setUnlocking(null);
-    }
-  };
 
   // Automatically trigger the authentication modal if user is unauthenticated
   useEffect(() => {
@@ -223,7 +182,6 @@ export const PublicProviderProfile: React.FC = () => {
   }
 
   const activePhoto = provider.photos?.[activePhotoIndex] || { url: provider.avatarUrl, isExplicit: false };
-  const isHeroPhotoLocked = activePhotoIndex > 0 && !unlockedIndexes.has(activePhotoIndex);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 pb-32 md:pb-16 text-[var(--az-text-primary)]">
@@ -245,26 +203,8 @@ export const PublicProviderProfile: React.FC = () => {
             <img
               src={activePhoto.url}
               alt={provider.stageName}
-              className={`w-full h-full object-cover transition-all duration-300 ${
-                isHeroPhotoLocked ? 'blur-2xl scale-110' : ''
-              }`}
+              className="w-full h-full object-cover transition-all duration-300"
             />
-            {isHeroPhotoLocked && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0a0608]/50 z-10 text-center p-6 photo-lock-overlay">
-                <span className="text-3xl mb-2 photo-lock-icon">🔒</span>
-                <button
-                  className="photo-unlock-btn"
-                  onClick={() => handleUnlock(activePhotoIndex)}
-                  disabled={unlocking === activePhotoIndex}
-                >
-                  {unlocking === activePhotoIndex ? (
-                    <span className="animate-spin rounded-full h-4 w-4 border-t-2 border-white inline-block"></span>
-                  ) : (
-                    '💎 1 to unlock'
-                  )}
-                </button>
-              </div>
-            )}
 
             {/* Gradient Overlay */}
             <div className="absolute inset-0 bg-gradient-to-t from-[#0a0608]/90 via-transparent to-transparent pointer-events-none" />
@@ -282,7 +222,6 @@ export const PublicProviderProfile: React.FC = () => {
           {provider.photos?.length > 1 && (
             <div className="provider-profile__photo-strip mt-3 overflow-x-auto pb-2 no-scrollbar">
               {provider.photos.map((photo: any, i: number) => {
-                const isThumbLocked = i > 0 && !unlockedIndexes.has(i);
                 return (
                   <button
                     key={i}
@@ -292,11 +231,8 @@ export const PublicProviderProfile: React.FC = () => {
                     <img
                       src={photo.url}
                       alt=""
-                      className={`w-full h-full object-cover ${isThumbLocked ? 'blur-md scale-105' : ''}`}
+                      className="w-full h-full object-cover"
                     />
-                    {isThumbLocked && (
-                      <div className="photo-strip__lock">🔒</div>
-                    )}
                   </button>
                 );
               })}
