@@ -20,10 +20,12 @@ export const getBalance = async (req: Request, res: Response) => {
 
 export const getHistory = async (req: Request, res: Response) => {
   const { page = 1, limit = 20 } = req.query;
+  // Optimization (⚡ Bolt): Use .lean() on read-only transaction history query to avoid Mongoose document hydration overhead.
   const history = await CreditTransaction.find({ userId: req.adultUser?._id })
     .sort({ createdAt: -1 })
     .limit(Number(limit))
-    .skip((Number(page) - 1) * Number(limit));
+    .skip((Number(page) - 1) * Number(limit))
+    .lean();
 
   res.json({ success: true, data: { history } });
 };
