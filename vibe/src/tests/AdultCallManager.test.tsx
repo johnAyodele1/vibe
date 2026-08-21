@@ -226,4 +226,58 @@ describe('AdultCallManager and AdultCallProvider Route-Independent Call Signalin
     });
     expect(screen.getByTestId('call-state')).toHaveTextContent('idle');
   });
+
+  it('calculates first-minute charge for ended calls under 10 seconds and omits free text', async () => {
+    const { io } = await import('socket.io-client');
+
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
+      if (url.includes('/calls/initiate')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ callId: 'call-666', webrtcRoomId: 'room_666', perMinuteRate: 10 }),
+        });
+      }
+      if (url.includes('/zego/token')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ token: 'zego-test-token', appId: 12345 }),
+        });
+      }
+      if (url.includes('/calls/call-666/end')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    }));
+
+    render(
+      <MemoryRouter>
+        <AdultCallProvider>
+          <TestComponent />
+        </AdultCallProvider>
+      </MemoryRouter>
+    );
+
+    const mockSocket = (io as any)();
+
+    const startBtn = screen.getByTestId('trigger-initiate-btn');
+    await act(async () => {
+      fireEvent.click(startBtn);
+    });
+
+    await act(async () => {
+      mockSocket.__trigger('call:accepted', { callId: 'call-666', webrtcRoomId: 'room_666' });
+    });
+
+    // Call ends with 5 seconds duration
+    await act(async () => {
+      mockSocket.__trigger('call:ended', { callId: 'call-666', reason: 'hung_up', durationSeconds: 5 });
+    });
+
+    expect(screen.getByTestId('global-terminal-call-modal')).toBeInTheDocument();
+    expect(screen.getByText('Call Ended')).toBeInTheDocument();
+    expect(screen.getByText('00:05')).toBeInTheDocument();
+    expect(screen.getByText('Credits Charged:')).toBeInTheDocument();
+    expect(screen.getByText(/💎 10/)).toBeInTheDocument(); // 1 minute @ rate 10 = 10
+    expect(screen.queryByText(/No charge — calls under 10 seconds are free/i)).not.toBeInTheDocument();
+  });
 });
