@@ -14,6 +14,7 @@ import { IExpressRequest } from '../types/express';
 export const getConversations = async (req: IExpressRequest, res: Response): Promise<Response> => {
   try {
     if (!req.user) return res.status(401).json({ success: false, message: 'Not authenticated' });
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document instantiation and model hydration overhead.
     const conversations = await Conversation.find({
       participants: req.user._id,
       isActive: true,
@@ -23,7 +24,8 @@ export const getConversations = async (req: IExpressRequest, res: Response): Pro
         populate: { path: 'sender', select: 'firstName lastName' },
       })
       .populate('participantInfo.user', 'firstName lastName photos isOnline lastActive')
-      .sort({ lastMessageAt: -1 });
+      .sort({ lastMessageAt: -1 })
+      .lean();
 
     return res.json({ success: true, data: { conversations } });
   } catch (error) {
@@ -78,6 +80,7 @@ export const getMessages = async (req: IExpressRequest, res: Response): Promise<
     const { page = 1, limit = 50 } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
 
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document instantiation and model hydration overhead.
     const messages = await Message.find({
       conversation: req.params.conversationId,
       isDeleted: false,
@@ -85,7 +88,8 @@ export const getMessages = async (req: IExpressRequest, res: Response): Promise<
       .populate('sender', 'firstName lastName photos')
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(Number(limit));
+      .limit(Number(limit))
+      .lean();
 
     // Mark messages as read
     await Message.updateMany(

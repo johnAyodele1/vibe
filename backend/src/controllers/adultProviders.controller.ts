@@ -30,10 +30,11 @@ export const getProviderPublicProfile = async (req: Request, res: Response) => {
       });
     }
 
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document instantiation and model hydration overhead.
     const provider = await AdultUser.findOne({
       _id: providerId,
       role: 'provider'
-    });
+    }).lean();
 
     if (!provider) {
       return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Provider not found' } });

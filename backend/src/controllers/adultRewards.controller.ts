@@ -41,7 +41,8 @@ export const getUserTasks = async (req: Request, res: Response) => {
       });
     }
 
-    const tasks = await RewardTask.find({ isActive: true }).sort({ sortOrder: 1 });
+    // Optimization (⚡ Bolt): Use .lean() on read-only queries to eliminate Mongoose document hydration overhead.
+    const tasks = await RewardTask.find({ isActive: true }).sort({ sortOrder: 1 }).lean();
     const todayMidnight = getTodayMidnight();
     const tomorrowMidnight = getTomorrowMidnight();
 
@@ -49,7 +50,7 @@ export const getUserTasks = async (req: Request, res: Response) => {
     const completionsToday = await UserTask.find({
       userId: user._id,
       completedAt: { $gte: todayMidnight }
-    });
+    }).lean();
 
     const completionMap = new Set(completionsToday.map(c => c.taskId.toString()));
 
@@ -233,7 +234,8 @@ export const dailyCheckin = async (req: Request, res: Response) => {
 // @access  Private/Admin
 export const adminGetTasks = async (req: Request, res: Response) => {
   try {
-    const tasks = await RewardTask.find().sort({ sortOrder: 1 });
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document hydration overhead.
+    const tasks = await RewardTask.find().sort({ sortOrder: 1 }).lean();
     return res.json({ success: true, data: tasks });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });

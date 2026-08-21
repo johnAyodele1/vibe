@@ -8,7 +8,8 @@ import { IUser } from '../types/models';
 export const getProfile = async (req: IExpressRequest, res: Response): Promise<Response> => {
   try {
     if (!req.user) return res.status(401).json({ success: false, message: 'Not authenticated' });
-    const user = await User.findById(req.user._id).select('-password');
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document hydration overhead.
+    const user = await User.findById(req.user._id).select('-password').lean();
     return res.json({ success: true, data: { user } });
   } catch (error) {
     console.error('Get profile error:', error);
@@ -20,7 +21,8 @@ export const getUserById = async (req: IExpressRequest, res: Response): Promise<
   try {
     const id = req.params.id as string;
     if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ success: false, message: 'Invalid user ID' });
-    const user = await User.findById(id).select('firstName lastName age photos bio location interests isVerified lastActive isOnline');
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document hydration overhead.
+    const user = await User.findById(id).select('firstName lastName age photos bio location interests isVerified lastActive isOnline').lean();
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
     return res.json({ success: true, data: { user } });
   } catch (error) {
@@ -107,7 +109,8 @@ export const discover = async (req: IExpressRequest, res: Response): Promise<Res
     const skip = (Number(page) - 1) * Number(limit);
     const currentUser = await User.findById(req.user._id) as IUser | null;
     if (!currentUser) return res.status(404).json({ success: false, message: 'User not found' });
-    const usersWhoBlockedMe = await User.find({ blockedUsers: req.user._id as Types.ObjectId }).select('_id');
+    // Optimization (⚡ Bolt): Use .lean() on read-only queries to eliminate Mongoose document hydration overhead.
+    const usersWhoBlockedMe = await User.find({ blockedUsers: req.user._id as Types.ObjectId }).select('_id').lean();
     const blockedMeIds = usersWhoBlockedMe.map(u => u._id);
     const query: Record<string, unknown> = {
       isBlocked: { $ne: true },
@@ -121,7 +124,7 @@ export const discover = async (req: IExpressRequest, res: Response): Promise<Res
     if (currentUser.location.coordinates[0] !== 0) {
       query.location = { $near: { $geometry: { type: 'Point', coordinates: currentUser.location.coordinates }, $maxDistance: currentUser.preferences.maxDistance * 1000 } };
     }
-    const users = await User.find(query).select('firstName lastName age photos bio location interests').skip(skip).limit(Number(limit)).sort({ lastActive: -1 });
+    const users = await User.find(query).select('firstName lastName age photos bio location interests').skip(skip).limit(Number(limit)).sort({ lastActive: -1 }).lean();
     if (users.length > 0) {
       const userIds = users.map(user => user._id as Types.ObjectId);
       await User.updateMany({ _id: { $in: userIds } }, { $inc: { views: 1 } });

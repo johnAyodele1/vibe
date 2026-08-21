@@ -284,10 +284,11 @@ export const superLike = async (req: Request, res: Response): Promise<Response> 
 export const getFavourites = async (req: Request, res: Response): Promise<Response> => {
   try {
     if (!req.user) return res.status(401).json({ success: false, message: 'Not authenticated' });
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document hydration overhead.
     const user = await User.findById(req.user._id).populate({
       path: 'favouritedUsers',
       select: 'firstName lastName age photos bio location interests lastActive isOnline blockedUsers isBlocked',
-    }) as IUser | null;
+    }).lean() as IUser | null;
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
     // Filter out users who are blocked, or who have blocked the current user

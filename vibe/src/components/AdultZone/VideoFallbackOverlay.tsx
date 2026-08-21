@@ -7,7 +7,8 @@ interface VideoFallbackOverlayProps {
   className?: string;
 }
 
-export const VideoFallbackOverlay: React.FC<VideoFallbackOverlayProps> = ({
+// Optimization (⚡ Bolt): Wrap VideoFallbackOverlay in React.memo to prevent unnecessary DOM diffing during stream state updates.
+export const VideoFallbackOverlay: React.FC<VideoFallbackOverlayProps> = React.memo(({
   avatarUrl,
   displayName,
   statusText = 'Connecting video...',
@@ -60,6 +61,6 @@ export const VideoFallbackOverlay: React.FC<VideoFallbackOverlayProps> = ({
       </div>
     </div>
   );
-};
+});
 
 export default VideoFallbackOverlay;

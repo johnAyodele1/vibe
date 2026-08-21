@@ -25,7 +25,8 @@ const getInitials = (name: string): string => {
   return '?';
 };
 
-export const Avatar: React.FC<AvatarProps> = ({ src, name, size = 40, className }) => {
+// Optimization (⚡ Bolt): Wrap Avatar component in React.memo to prevent unnecessary re-renders in member lists, cards, and chat interfaces.
+export const Avatar: React.FC<AvatarProps> = React.memo(({ src, name, size = 40, className }) => {
   const [imgError, setImgError] = useState(false);
   const initials = getInitials(name || '');
 
@@ -66,6 +67,6 @@ export const Avatar: React.FC<AvatarProps> = ({ src, name, size = 40, className 
       </span>
     </div>
   );
-};
+});
 
 export default Avatar;
