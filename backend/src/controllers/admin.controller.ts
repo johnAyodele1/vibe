@@ -159,7 +159,8 @@ export const getDailyUsers = async (req: Request, res: Response) => {
       if (to) query.date.$lte = String(to);
     }
 
-    const stats = await DailyStat.find(query).sort({ date: 1 });
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document hydration overhead.
+    const stats = await DailyStat.find(query).sort({ date: 1 }).lean();
 
     const formatted = stats.map(s => ({
       date: s.date,
@@ -185,7 +186,8 @@ export const getDailyEarnings = async (req: Request, res: Response) => {
       if (to) query.date.$lte = String(to);
     }
 
-    const stats = await DailyStat.find(query).sort({ date: 1 });
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document hydration overhead.
+    const stats = await DailyStat.find(query).sort({ date: 1 }).lean();
 
     const formatted = stats.map(s => {
       const fees = s.platformEarnings || 0;
@@ -437,12 +439,14 @@ export const getViolations = async (req: Request, res: Response): Promise<Respon
     const limitNum = parseInt(limit as string, 10);
     const skipNum = (pageNum - 1) * limitNum;
 
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document hydration overhead.
     const violations = await ContentViolation.find(query)
       .select('+messageContent')
       .populate('userId', 'displayName username email role')
       .sort({ createdAt: -1 })
       .skip(skipNum)
-      .limit(limitNum);
+      .limit(limitNum)
+      .lean();
 
     const total = await ContentViolation.countDocuments(query);
 
@@ -537,10 +541,12 @@ export const getAnalytics = async (req: IExpressRequest, res: Response): Promise
 // @access  Private/Admin
 export const getAllReports = async (req: IExpressRequest, res: Response): Promise<Response> => {
   try {
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document hydration overhead.
     const reports = await Report.find()
       .populate('reporter', 'firstName lastName email')
       .populate('reported', 'firstName lastName email isBlocked')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
 
     return res.json({ success: true, data: { reports } });
   } catch (error) {
@@ -553,9 +559,11 @@ export const getAllReports = async (req: IExpressRequest, res: Response): Promis
 // @access  Private/Admin
 export const getAllUsers = async (req: IExpressRequest, res: Response): Promise<Response> => {
   try {
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document hydration overhead.
     const users = await User.find()
       .select('firstName lastName email isBlocked createdAt lastActive')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
 
     return res.json({ success: true, data: { users } });
   } catch (error) {

@@ -17,3 +17,7 @@
 ## 2026-08-20 - Batching Message Participants and using .lean() in Provider Dashboard
 **Learning:** In `getProviderDashboard`, sequentially calling `await AdultUser.findById` inside a `for` loop over recent messages created an $N+1$ database query bottleneck ($N+1$ roundtrips), while fetching `CamSession` and `AdultMessage` without `.lean()` instantiated heavy Mongoose documents unnecessarily for read-only formatting.
 **Action:** Extract distinct participant IDs, batch query via `AdultUser.find({ _id: { $in: ids } }).select('displayName providerProfile').lean()`, index into a `Map` for $O(1)$ lookups, and append `.lean()` to read-only queries.
+
+## 2026-08-21 - Systemic .lean() for Read Queries & React.memo for High-Frequency Components
+**Learning:** Unhydrated read queries (`.lean()`) reduce CPU overhead and response serialization time by bypassing Mongoose document instance hydration across backend JSON API routes. On the frontend, un-memoized child components rendered inside chat message lists (like `MessageTick`, `Avatar`, `VideoFallbackOverlay`, and `VoiceNotePlayer`) re-render unnecessarily whenever parent feed state updates.
+**Action:** Always append `.lean()` to read-only Mongoose queries where document instance methods (`.save()`, `.populate()`) are not required. Wrap high-frequency list child UI components in `React.memo` to skip DOM diffing during parent state updates.

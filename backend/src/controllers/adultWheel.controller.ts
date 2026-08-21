@@ -19,7 +19,8 @@ export const pickWheelItem = (items: any[]) => {
 export const getProviderWheel = async (req: Request, res: Response) => {
   try {
     const { providerId } = req.params;
-    const wheel = await SpinWheel.findOne({ providerId });
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document hydration overhead.
+    const wheel = await SpinWheel.findOne({ providerId }).lean();
     if (!wheel) {
       return res.status(404).json({ success: false, error: 'Wheel config not found' });
     }
@@ -295,9 +296,11 @@ export const getProviderWheelStats = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: 'No wheel configured' });
     }
 
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document hydration overhead.
     const recentSpins = await SpinResult.find({ providerId: provider._id })
       .sort({ createdAt: -1 })
-      .limit(10);
+      .limit(10)
+      .lean();
 
     // Aggregate breakdown by item
     const breakdown = await SpinResult.aggregate([

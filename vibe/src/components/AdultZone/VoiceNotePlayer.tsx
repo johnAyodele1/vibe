@@ -14,7 +14,10 @@ const formatTime = (seconds: number): string => {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 };
 
-export const VoiceNotePlayer: React.FC<VoiceNotePlayerProps> = ({
+const WAVEFORM_INDICES = Array.from({ length: 15 }, (_, i) => i);
+
+// Optimization (⚡ Bolt): Wrap VoiceNotePlayer in React.memo and use static waveform indices array to optimize audio component re-renders in chat message lists.
+export const VoiceNotePlayer: React.FC<VoiceNotePlayerProps> = React.memo(({
   mediaUrl,
   mediaDurationSeconds = 0,
   isMe = false,
@@ -132,7 +135,7 @@ export const VoiceNotePlayer: React.FC<VoiceNotePlayerProps> = ({
         onClick={handleSeek}
         title="Seek audio"
       >
-        {Array.from({ length: waveformBars }).map((_, idx) => {
+        {WAVEFORM_INDICES.map((idx) => {
           const barFraction = idx / waveformBars;
           const isFilled = barFraction <= progressFraction;
           const heightPercent = Math.max(20, ((idx * 7) % 80) + 20);
@@ -160,4 +163,4 @@ export const VoiceNotePlayer: React.FC<VoiceNotePlayerProps> = ({
       </span>
     </div>
   );
-};
+});

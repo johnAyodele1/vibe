@@ -121,7 +121,8 @@ export const adminCreateNotification = async (req: Request, res: Response) => {
         } else if (targetAudience === 'providers') {
           roleQuery = { role: 'provider' };
         }
-        const recipients = await AdultUser.find(roleQuery).select('_id');
+        // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document hydration overhead.
+        const recipients = await AdultUser.find(roleQuery).select('_id').lean();
         for (const user of recipients) {
           sendPushToUser(user._id, {
             title: `📢 ${title}`,
