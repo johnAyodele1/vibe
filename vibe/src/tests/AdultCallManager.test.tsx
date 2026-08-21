@@ -193,6 +193,12 @@ describe('AdultCallManager and AdultCallProvider Route-Independent Call Signalin
           json: () => Promise.resolve({ callId: 'call-777', webrtcRoomId: 'room_777', perMinuteRate: 10 }),
         });
       }
+      if (url.includes('/zego/token')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ token: 'zego-test-token', appId: 12345 }),
+        });
+      }
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
     }));
 
@@ -224,6 +230,170 @@ describe('AdultCallManager and AdultCallProvider Route-Independent Call Signalin
     await act(async () => {
       fireEvent.click(screen.getByTestId('dismiss-terminal-call-btn'));
     });
+    expect(screen.getByTestId('call-state')).toHaveTextContent('idle');
+  });
+
+  it('surfaces backend error message when user has insufficient balance', async () => {
+    const { toast } = await import('sonner');
+    const toastSpy = vi.spyOn(toast, 'error');
+
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
+      if (url.includes('/calls/initiate')) {
+        return Promise.resolve({
+          ok: false,
+          status: 402,
+          json: () => Promise.resolve({ success: false, error: 'Insufficient credits to start call' }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, conversationId: 'conv-789' }) });
+    }));
+
+    render(
+      <MemoryRouter>
+        <AdultCallProvider>
+          <TestComponent />
+        </AdultCallProvider>
+      </MemoryRouter>
+    );
+
+    const startBtn = screen.getByTestId('trigger-initiate-btn');
+    await act(async () => {
+      fireEvent.click(startBtn);
+    });
+
+    expect(toastSpy).toHaveBeenCalledWith('Insufficient credits to start call');
+    expect(screen.getByTestId('call-state')).toHaveTextContent('idle');
+  });
+
+  it('surfaces backend error message when provider is busy', async () => {
+    const { toast } = await import('sonner');
+    const toastSpy = vi.spyOn(toast, 'error');
+
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
+      if (url.includes('/calls/initiate')) {
+        return Promise.resolve({
+          ok: false,
+          status: 409,
+          json: () => Promise.resolve({ success: false, error: 'This provider is busy. Try again later.' }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, conversationId: 'conv-789' }) });
+    }));
+
+    render(
+      <MemoryRouter>
+        <AdultCallProvider>
+          <TestComponent />
+        </AdultCallProvider>
+      </MemoryRouter>
+    );
+
+    const startBtn = screen.getByTestId('trigger-initiate-btn');
+    await act(async () => {
+      fireEvent.click(startBtn);
+    });
+
+    expect(toastSpy).toHaveBeenCalledWith('This provider is busy. Try again later.');
+    expect(screen.getByTestId('call-state')).toHaveTextContent('idle');
+  });
+
+  it('surfaces backend error message when caller is already active on another device', async () => {
+    const { toast } = await import('sonner');
+    const toastSpy = vi.spyOn(toast, 'error');
+
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
+      if (url.includes('/calls/initiate')) {
+        return Promise.resolve({
+          ok: false,
+          status: 409,
+          json: () => Promise.resolve({ success: false, error: 'You are already on a call on another device.' }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, conversationId: 'conv-789' }) });
+    }));
+
+    render(
+      <MemoryRouter>
+        <AdultCallProvider>
+          <TestComponent />
+        </AdultCallProvider>
+      </MemoryRouter>
+    );
+
+    const startBtn = screen.getByTestId('trigger-initiate-btn');
+    await act(async () => {
+      fireEvent.click(startBtn);
+    });
+
+    expect(toastSpy).toHaveBeenCalledWith('You are already on a call on another device.');
+    expect(screen.getByTestId('call-state')).toHaveTextContent('idle');
+  });
+
+  it('surfaces token acquisition error when zego token fetch returns no token', async () => {
+    const { toast } = await import('sonner');
+    const toastSpy = vi.spyOn(toast, 'error');
+
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
+      if (url.includes('/calls/initiate')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ callId: 'call-555', webrtcRoomId: 'room_555', perMinuteRate: 10 }),
+        });
+      }
+      if (url.includes('/zego/token')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ error: 'Token generation failed' }),
+        });
+      }
+      if (url.includes('/calls/call-555/end')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, conversationId: 'conv-789' }) });
+    }));
+
+    render(
+      <MemoryRouter>
+        <AdultCallProvider>
+          <TestComponent />
+        </AdultCallProvider>
+      </MemoryRouter>
+    );
+
+    const startBtn = screen.getByTestId('trigger-initiate-btn');
+    await act(async () => {
+      fireEvent.click(startBtn);
+    });
+
+    expect(toastSpy).toHaveBeenCalledWith('Failed to obtain call connection token');
+    expect(screen.getByTestId('call-state')).toHaveTextContent('idle');
+  });
+
+  it('surfaces generic error message on unexpected network failure', async () => {
+    const { toast } = await import('sonner');
+    const toastSpy = vi.spyOn(toast, 'error');
+
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
+      if (url.includes('/calls/initiate')) {
+        return Promise.reject(new Error('Network offline'));
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, conversationId: 'conv-789' }) });
+    }));
+
+    render(
+      <MemoryRouter>
+        <AdultCallProvider>
+          <TestComponent />
+        </AdultCallProvider>
+      </MemoryRouter>
+    );
+
+    const startBtn = screen.getByTestId('trigger-initiate-btn');
+    await act(async () => {
+      fireEvent.click(startBtn);
+    });
+
+    expect(toastSpy).toHaveBeenCalledWith('Network offline');
     expect(screen.getByTestId('call-state')).toHaveTextContent('idle');
   });
 

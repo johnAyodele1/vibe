@@ -193,26 +193,31 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setActiveCall(callInfo);
         setCallState('calling');
 
-        // Pre-fetch token in background
-        fetchConnectionToken(callInfo.webrtcRoomId).then((conn) => {
-          if (conn) {
-            setZegoToken(conn.token);
-            setZegoAppId(conn.appId);
-            setZegoRoomId(callInfo.webrtcRoomId);
-          }
-        });
+        // Pre-fetch token in background and report failure if unable to acquire media token
+        const conn = await fetchConnectionToken(callInfo.webrtcRoomId);
+        if (conn) {
+          setZegoToken(conn.token);
+          setZegoAppId(conn.appId);
+          setZegoRoomId(callInfo.webrtcRoomId);
+        } else {
+          toast.error('Failed to obtain call connection token');
+          await endCallOnBackend(callData.callId, 'connection_failed');
+          resetCallState();
+          return false;
+        }
 
         return true;
       } else {
         const msg = typeof callData.error === 'string'
           ? callData.error
-          : callData.error?.message || 'Provider is busy or unavailable.';
+          : callData.error?.message || callData.message || 'Failed to initiate call';
         toast.error(msg);
         resetCallState();
         return false;
       }
-    } catch {
-      toast.error('Failed to initiate call');
+    } catch (err: any) {
+      const msg = err?.message || 'Failed to initiate call';
+      toast.error(msg);
       resetCallState();
       return false;
     } finally {
