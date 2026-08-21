@@ -8,6 +8,7 @@ export const getCams = async (req: Request, res: Response) => {
   const { page = 1, limit = 20, status } = req.query;
   const query: any = { status: status ? status : { $in: ['live', 'pending'] } };
 
+  // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document instantiation and model hydration overhead.
   const sessions = await CamSession.find(query)
     .populate({
       path: 'providerId',
@@ -17,7 +18,8 @@ export const getCams = async (req: Request, res: Response) => {
         isVerified: true
       },
       select: 'providerProfile username profilePhoto'
-    });
+    })
+    .lean();
 
   const filtered = sessions.filter(s => s.providerId !== null);
   const total = filtered.length;
