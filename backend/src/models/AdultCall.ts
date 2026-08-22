@@ -17,6 +17,7 @@ const adultCallSchema = new Schema(
     endedBy: { type: Schema.Types.ObjectId, ref: 'AdultUser', default: null },
     endReason: { type: String, default: '' },
     webrtcRoomId: { type: String, required: true },
+    camSessionId: { type: Schema.Types.ObjectId, ref: 'CamSession', default: null },
     isActiveSession: { type: Boolean, default: true },
     activeParticipants: [{ type: Schema.Types.ObjectId, ref: 'AdultUser' }],
   },

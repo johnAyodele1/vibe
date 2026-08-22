@@ -92,6 +92,206 @@ describe('LiveCams 1-to-1 Video Call Flow & Error Handling Regression Tests', ()
     });
   });
 
+  describe('Provider Dynamic Rate Determination Tests', () => {
+    const ratesToTest = [10, 25, 100];
+
+    ratesToTest.forEach((rate) => {
+      it(`respects provider configured rate = ${rate} diamonds`, async () => {
+        vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
+          if (url.includes('/adult/cams?status=live')) {
+            return Promise.resolve({
+              json: () => Promise.resolve({
+                success: true,
+                data: {
+                  sessions: [
+                    {
+                      _id: 'session-1',
+                      title: 'Hot Stream',
+                      totalViewerCount: 15,
+                      providerId: {
+                        _id: 'provider-101',
+                        username: 'StarPerformer',
+                        profilePhoto: 'https://example.com/photo.jpg',
+                      },
+                    },
+                  ],
+                },
+              }),
+            });
+          }
+          if (url.includes('/adult/cams/session-1/token')) {
+            return Promise.resolve({
+              json: () => Promise.resolve({
+                token: 'viewer-agora-token',
+                appId: 12345,
+                roomId: 'cam_provider-101_123',
+              }),
+            });
+          }
+          if (url.includes('/v1/adult/providers/provider-101')) {
+            return Promise.resolve({
+              json: () => Promise.resolve({
+                success: true,
+                data: {
+                  id: 'provider-101',
+                  stageName: 'StarPerformer',
+                  avatarUrl: 'https://example.com/photo.jpg',
+                  videoCallPrice: rate,
+                },
+              }),
+            });
+          }
+          if (url.includes('/wheel')) {
+            return Promise.resolve({
+              json: () => Promise.resolve({ success: true, data: { isActive: false, items: [] } }),
+            });
+          }
+          if (url.includes('/v1/adult/sext/conversations')) {
+            return Promise.resolve({
+              json: () => Promise.resolve({ success: true, conversationId: 'conv_123' }),
+            });
+          }
+          if (url.includes('/v1/adult/sext/calls/initiate')) {
+            return Promise.resolve({
+              json: () => Promise.resolve({
+                callId: 'call-xyz',
+                webrtcRoomId: 'room-xyz',
+                perMinuteRate: rate,
+              }),
+            });
+          }
+          if (url.includes('/v1/adult/zego/token')) {
+            return Promise.resolve({
+              json: () => Promise.resolve({ token: 'zego-call-token', appId: 12345 }),
+            });
+          }
+          return Promise.reject(new Error('Unknown url ' + url));
+        }));
+
+        await act(async () => {
+          render(
+            <MemoryRouter>
+              <AdultCallProvider>
+                <LiveCams />
+              </AdultCallProvider>
+            </MemoryRouter>
+          );
+        });
+
+        await act(async () => {
+          fireEvent.click(screen.getByText('Watch Now'));
+        });
+
+        const callBtn = screen.getByTestId('live-cam-video-call-btn');
+        await act(async () => {
+          fireEvent.click(callBtn);
+        });
+
+        await waitFor(() => {
+          expect(screen.getByTestId('global-outgoing-call-modal')).toBeInTheDocument();
+          expect(screen.getByText(`Rate: 💎 ${rate} credits / min`)).toBeInTheDocument();
+        });
+      });
+    });
+
+    it('regression: does not default to hardcoded 5 when provider rate is 0 or explicit', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/adult/cams?status=live')) {
+          return Promise.resolve({
+            json: () => Promise.resolve({
+              success: true,
+              data: {
+                sessions: [
+                  {
+                    _id: 'session-1',
+                    title: 'Hot Stream',
+                    totalViewerCount: 15,
+                    providerId: {
+                      _id: 'provider-101',
+                      username: 'StarPerformer',
+                      profilePhoto: 'https://example.com/photo.jpg',
+                    },
+                  },
+                ],
+              },
+            }),
+          });
+        }
+        if (url.includes('/adult/cams/session-1/token')) {
+          return Promise.resolve({
+            json: () => Promise.resolve({
+              token: 'viewer-agora-token',
+              appId: 12345,
+              roomId: 'cam_provider-101_123',
+            }),
+          });
+        }
+        if (url.includes('/v1/adult/providers/provider-101')) {
+          return Promise.resolve({
+            json: () => Promise.resolve({
+              success: true,
+              data: {
+                id: 'provider-101',
+                stageName: 'StarPerformer',
+                avatarUrl: 'https://example.com/photo.jpg',
+                videoCallPrice: 42,
+              },
+            }),
+          });
+        }
+        if (url.includes('/wheel')) {
+          return Promise.resolve({
+            json: () => Promise.resolve({ success: true, data: { isActive: false, items: [] } }),
+          });
+        }
+        if (url.includes('/v1/adult/sext/conversations')) {
+          return Promise.resolve({
+            json: () => Promise.resolve({ success: true, conversationId: 'conv_123' }),
+          });
+        }
+        if (url.includes('/v1/adult/sext/calls/initiate')) {
+          return Promise.resolve({
+            json: () => Promise.resolve({
+              callId: 'call-42',
+              webrtcRoomId: 'room-42',
+              perMinuteRate: 42,
+            }),
+          });
+        }
+        if (url.includes('/v1/adult/zego/token')) {
+          return Promise.resolve({
+            json: () => Promise.resolve({ token: 'zego-token', appId: 12345 }),
+          });
+        }
+        return Promise.reject(new Error('Unknown url ' + url));
+      }));
+
+      await act(async () => {
+        render(
+          <MemoryRouter>
+            <AdultCallProvider>
+              <LiveCams />
+            </AdultCallProvider>
+          </MemoryRouter>
+        );
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByText('Watch Now'));
+      });
+
+      const callBtn = screen.getByTestId('live-cam-video-call-btn');
+      await act(async () => {
+        fireEvent.click(callBtn);
+      });
+
+      await waitFor(() => {
+        expect(screen.queryByText('Rate: 💎 5 credits / min')).not.toBeInTheDocument();
+        expect(screen.getByText('Rate: 💎 42 credits / min')).toBeInTheDocument();
+      });
+    });
+  });
+
   describe('Live Cams Call Initiation UI & Toast Tests', () => {
     it('displays clear insufficient balance toast when credits are depleted', async () => {
       vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {

@@ -937,5 +937,81 @@ describe('Single-Active-Session Invariant Integration Tests', () => {
       const streamAfterDecline = await CamSession.findById(streamId);
       expect(streamAfterDecline?.status).toBe('live');
     });
+
+    it('Stream teardown precision: 1-to-1 call end terminates Provider A live stream, leaves Caller B live stream & Provider A scheduled stream untouched', async () => {
+      // 1. Setup Provider A with a live CamSession and a scheduled CamSession
+      const providerALiveStream = await CamSession.create({
+        providerId: provider1Id,
+        title: 'Provider A Live Stream',
+        streamKey: `key_pa_live_${Date.now()}`,
+        streamPlaybackUrl: 'https://example.com/pa_live.m3u8',
+        status: 'live',
+        startedAt: new Date(),
+      });
+
+      const providerAScheduledStream = await CamSession.create({
+        providerId: provider1Id,
+        title: 'Provider A Scheduled Stream',
+        streamKey: `key_pa_sched_${Date.now()}`,
+        streamPlaybackUrl: 'https://example.com/pa_sched.m3u8',
+        status: 'scheduled',
+      });
+
+      // 2. Setup Member 1 (who is ALSO a provider) with an unrelated live CamSession
+      await AdultUser.findByIdAndUpdate(member1Id, {
+        $set: { role: 'provider', 'providerProfile.isLive': true }
+      });
+      const callerBLiveStream = await CamSession.create({
+        providerId: member1Id,
+        title: 'Caller B Unrelated Live Stream',
+        streamKey: `key_cb_live_${Date.now()}`,
+        streamPlaybackUrl: 'https://example.com/cb_live.m3u8',
+        status: 'live',
+        startedAt: new Date(),
+      });
+
+      // 3. Initiate and accept 1-to-1 video call between Member 1 and Provider A
+      const callInitRes = await request(app)
+        .post('/api/v1/adult/sext/calls/initiate')
+        .set('Authorization', `Bearer ${member1Token}`)
+        .send({ conversationId: conv1Id, type: 'video', camSessionId: providerALiveStream._id.toString() });
+      const callId = callInitRes.body.callId;
+
+      const acceptRes = await request(app)
+        .put(`/api/v1/adult/sext/calls/${callId}/accept`)
+        .set('Authorization', `Bearer ${provider1Token}`);
+      expect(acceptRes.status).toBe(200);
+
+      // Provider A's live stream should be ended upon acceptance
+      const streamAfterAccept = await CamSession.findById(providerALiveStream._id);
+      expect(streamAfterAccept?.status).toBe('ended');
+
+      // 4. End the 1-to-1 call
+      const endRes = await request(app)
+        .put(`/api/v1/adult/sext/calls/${callId}/end`)
+        .set('Authorization', `Bearer ${member1Token}`)
+        .send({ reason: 'hung_up' });
+      expect(endRes.status).toBe(200);
+
+      // 5. Verify precise teardown invariants:
+      // a) Provider A's live stream remains ended
+      const pALiveEnded = await CamSession.findById(providerALiveStream._id);
+      expect(pALiveEnded?.status).toBe('ended');
+
+      // b) Caller B's unrelated live stream MUST REMAIN LIVE
+      const callerBLiveFresh = await CamSession.findById(callerBLiveStream._id);
+      expect(callerBLiveFresh?.status).toBe('live');
+
+      // c) Provider A's scheduled stream MUST REMAIN SCHEDULED
+      const pAScheduledFresh = await CamSession.findById(providerAScheduledStream._id);
+      expect(pAScheduledFresh?.status).toBe('scheduled');
+
+      // d) Calling endCall again is safe and idempotent
+      const secondEndRes = await request(app)
+        .put(`/api/v1/adult/sext/calls/${callId}/end`)
+        .set('Authorization', `Bearer ${provider1Token}`)
+        .send({ reason: 'hung_up' });
+      expect(secondEndRes.status).toBe(200);
+    });
   });
 });

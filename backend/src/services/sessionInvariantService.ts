@@ -63,6 +63,45 @@ export const endCamSessionAtomic = async (
 };
 
 /**
+ * Specifically targets and atomically ends the CamSession associated with a 1-to-1 call.
+ * Reuses call.camSessionId if set, or falls back to finding active live/pending sessions belonging solely
+ * to the call's receiver (provider). Excludes callerId's sessions and excludes scheduled sessions.
+ * Idempotent and safe to execute multiple times.
+ */
+export const endCamSessionForCall = async (
+  call: any,
+  reason: string = 'call_ended',
+  ns?: any
+) => {
+  if (mongoose.connection.readyState !== 1 || !call) return;
+
+  // Stream teardown applies only if the call was accepted/active
+  // (Ringing calls that are declined or cancelled before acceptance preserve the provider's public live stream)
+  const wasCallAcceptedOrActive = !!(call.startedAt || call.status === 'active' || reason === 'accepted_private_call');
+  if (!wasCallAcceptedOrActive) {
+    return;
+  }
+
+  // 1. If call explicitly recorded a camSessionId, target that session directly
+  if (call.camSessionId) {
+    await endCamSessionAtomic(call.camSessionId, reason, ns);
+    return;
+  }
+
+  // 2. Fallback: Find live/pending CamSession belonging exclusively to the receiver (provider)
+  // Excludes callerId's sessions and excludes 'scheduled' sessions.
+  if (call.receiverId) {
+    const activeSession = await CamSession.findOne({
+      providerId: call.receiverId,
+      status: { $in: ['live', 'pending'] },
+    });
+    if (activeSession) {
+      await endCamSessionAtomic(activeSession._id, reason, ns);
+    }
+  }
+};
+
+/**
  * Explicit state transition to expire a stale ringing call (>60s without acceptance).
  */
 export const expireStaleRingingCall = async (call: any) => {

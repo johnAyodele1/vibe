@@ -106,10 +106,10 @@ const LiveCams: React.FC = () => {
       toast.error('Provider not found');
       return;
     }
-    const rate = providerProfile?.videoCallPrice || providerProfile?.pricePerMinute || 5;
+    const rate = providerProfile?.videoCallPrice ?? providerProfile?.pricePerMinute ?? 0;
     const displayName = providerProfile?.stageName || (typeof activeSession?.providerId === 'object' ? activeSession.providerId?.username : undefined) || 'Provider';
     const avatarUrl = providerProfile?.avatarUrl || (typeof activeSession?.providerId === 'object' ? activeSession.providerId?.profilePhoto : activeSession?.avatarUrl) || '/placeholder.svg';
-    await initiateCall(targetProviderId, 'video', rate, undefined, { displayName, avatarUrl });
+    await initiateCall(targetProviderId, 'video', rate, undefined, { displayName, avatarUrl }, activeSession?._id);
   };
 
   const fetchSessions = useCallback(async () => {
