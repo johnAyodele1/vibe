@@ -97,6 +97,10 @@ export const login = async (req: Request, res: Response) => {
 
   if (!isMatch) {
     user.loginHistory.push(loginAttempt);
+    // Optimization (⚡ Bolt): Cap login history array size to max 20 entries to prevent unbounded document growth.
+    if (user.loginHistory.length > 20) {
+      user.loginHistory = user.loginHistory.slice(-20);
+    }
     await user.save();
     return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Invalid credentials' } });
   }
@@ -108,6 +112,10 @@ export const login = async (req: Request, res: Response) => {
   }
 
   user.loginHistory.push(loginAttempt);
+  // Optimization (⚡ Bolt): Cap login history array size to max 20 entries to prevent unbounded document growth.
+  if (user.loginHistory.length > 20) {
+    user.loginHistory = user.loginHistory.slice(-20);
+  }
   await user.save();
 
   const { accessToken, refreshToken } = generateTokens(user._id.toString());

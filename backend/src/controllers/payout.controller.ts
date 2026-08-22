@@ -714,10 +714,12 @@ export const getPayoutHistory = async (req: Request, res: Response) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
 
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document hydration overhead.
     const history = await PayoutRequest.find({ providerId: user._id })
       .sort({ requestedAt: -1 })
       .skip((page - 1) * limit)
-      .limit(limit);
+      .limit(limit)
+      .lean();
 
     const total = await PayoutRequest.countDocuments({ providerId: user._id });
 

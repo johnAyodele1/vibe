@@ -66,7 +66,8 @@ export const listErrors = async (req: Request, res: Response) => {
 // GET /admin/errors/:errorId
 export const getError = async (req: Request, res: Response) => {
   try {
-    const err = await AppError.findOne({ errorId: req.params.errorId }).select('+stack');
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document hydration overhead.
+    const err = await AppError.findOne({ errorId: req.params.errorId }).select('+stack').lean();
     if (!err) return res.status(404).json({ success: false, error: 'Not found' });
     return res.json({ success: true, errorRecord: err, data: err });
   } catch (error: any) {

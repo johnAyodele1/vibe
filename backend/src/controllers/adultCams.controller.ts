@@ -50,9 +50,9 @@ export const getCams = async (req: Request, res: Response) => {
         currentViewerCount = 0;
       }
     }
-    const sessionObj = session.toObject ? session.toObject() : { ...session };
+    // Optimization (⚡ Bolt): session is already an un-hydrated plain object from .lean().
     return {
-      ...sessionObj,
+      ...session,
       totalViewerCount: currentViewerCount,
       peakViewerCount: session.peakViewerCount || 0
     };

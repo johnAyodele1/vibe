@@ -94,7 +94,8 @@ export const updateProfile = async (req: IExpressRequest, res: Response): Promis
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
     allowedFields.forEach(field => { if (body[field] !== undefined) (user as any)[field] = body[field]; });
     await user.save();
-    const updatedUser = await User.findById(req.user._id).select('-password');
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document hydration overhead.
+    const updatedUser = await User.findById(req.user._id).select('-password').lean();
     return res.json({ success: true, message: 'Profile updated successfully', data: { user: updatedUser } });
   } catch (error) {
     console.error('Update profile error:', error);
@@ -107,7 +108,8 @@ export const discover = async (req: IExpressRequest, res: Response): Promise<Res
     if (!req.user) return res.status(401).json({ success: false, message: 'Not authenticated' });
     const { page = 1, limit = 20 } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
-    const currentUser = await User.findById(req.user._id) as IUser | null;
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document hydration overhead.
+    const currentUser = await User.findById(req.user._id).lean() as IUser | null;
     if (!currentUser) return res.status(404).json({ success: false, message: 'User not found' });
     // Optimization (⚡ Bolt): Use .lean() on read-only queries to eliminate Mongoose document hydration overhead.
     const usersWhoBlockedMe = await User.find({ blockedUsers: req.user._id as Types.ObjectId }).select('_id').lean();
