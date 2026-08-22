@@ -12,7 +12,6 @@ import { usePricingStore, formatAmount } from '../../lib/pricing';
 import { InstallPrompt } from '../pwa/InstallPrompt/InstallPrompt';
 import { updateBadgeCount } from '../../lib/push/pushSubscription';
 import { useUnreadStore } from '../../store/unreadStore';
-import NotificationPrompt from '../pwa/NotificationPrompt';
 import { getInstallContext } from '../../lib/pwa/context';
 import { usePWAPromptStore } from '../../store/pwaPromptStore';
 import { NotifSettingsDialog } from '../pwa/NotifSettingsDialog';
@@ -356,8 +355,6 @@ const AdultZoneLayoutInner: React.FC = () => {
       <TipSheet />
 
       <InstallPrompt />
-
-      {user?.id && <NotificationPrompt userId={user.id} />}
 
       {user?.id && <NotifSettingsDialog userId={user.id} />}
 
