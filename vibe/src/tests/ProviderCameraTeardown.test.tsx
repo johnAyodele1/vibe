@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import '@testing-library/jest-dom/vitest';
-import React from 'react';
 import { render, screen, act, cleanup } from '@testing-library/react';
 import ProviderStreamRoom from '../components/AdultZone/ProviderStreamRoom';
 import ProviderLive from '../components/AdultZone/ProviderLive';
