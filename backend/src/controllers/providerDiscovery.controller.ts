@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import AdultMessage from '../models/AdultMessage';
 import AdultUser from '../models/AdultUser';
+import { getProviderPublicProfile } from './adultProviders.controller';
 
 const CONVERSATIONAL_MESSAGE_TYPES = [
   'text',
@@ -149,6 +150,25 @@ const responseMetricStages = [
   },
 ];
 
+const getRecentResponseMetrics = async (providerId: string) => {
+  if (!mongoose.Types.ObjectId.isValid(providerId)) return null;
+
+  const [result] = await AdultUser.aggregate([
+    { $match: { _id: new mongoose.Types.ObjectId(providerId), role: 'provider' } },
+    ...responseMetricStages,
+    {
+      $project: {
+        _id: 0,
+        recentResponseCount: 1,
+        recentAverageResponseMinutes: 1,
+        effectiveResponseMinutes: 1,
+      },
+    },
+  ]);
+
+  return result || null;
+};
+
 const buildBaseProviderFilter = (req: Request, hookupOnly = false) => {
   const { category, isLive, country, state, city, isOnline } = req.query;
 
@@ -159,10 +179,7 @@ const buildBaseProviderFilter = (req: Request, hookupOnly = false) => {
     isVerified: true,
   };
 
-  if (hookupOnly) {
-    filter['providerProfile.servicesOffered'] = 'hookup';
-  }
-
+  if (hookupOnly) filter['providerProfile.servicesOffered'] = 'hookup';
   if (category) filter['providerProfile.categories'] = category;
   if (isLive === 'true') filter['providerProfile.isLive'] = true;
   if (isOnline === 'true') filter['providerProfile.isOnline'] = true;
@@ -236,12 +253,7 @@ export const getRecommendedProviders = async (req: Request, res: Response) => {
 
     return res.json({
       success: true,
-      data: {
-        providers,
-        total,
-        page,
-        pages: Math.ceil(total / limit),
-      },
+      data: { providers, total, page, pages: Math.ceil(total / limit) },
     });
   } catch (error: any) {
     console.error('Error fetching recommended providers:', error);
@@ -287,12 +299,7 @@ export const getRecommendedHookupProviders = async (req: Request, res: Response)
 
     return res.json({
       success: true,
-      data: {
-        providers,
-        total,
-        page,
-        pages: Math.ceil(total / limit),
-      },
+      data: { providers, total, page, pages: Math.ceil(total / limit) },
     });
   } catch (error: any) {
     console.error('Error fetching recommended hookup providers:', error);
@@ -307,19 +314,7 @@ export const getProviderResponseStats = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'Invalid provider ID' });
     }
 
-    const [result] = await AdultUser.aggregate([
-      { $match: { _id: new mongoose.Types.ObjectId(providerId), role: 'provider' } },
-      ...responseMetricStages,
-      {
-        $project: {
-          _id: 0,
-          recentResponseCount: 1,
-          recentAverageResponseMinutes: 1,
-          effectiveResponseMinutes: 1,
-        },
-      },
-    ]);
-
+    const result = await getRecentResponseMetrics(providerId);
     if (!result) {
       return res.status(404).json({ success: false, error: 'Provider not found' });
     }
@@ -335,5 +330,28 @@ export const getProviderResponseStats = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error fetching provider response stats:', error);
     return res.status(500).json({ success: false, error: 'Failed to load response stats' });
+  }
+};
+
+export const getPublicProviderProfileWithResponseStats = async (req: Request, res: Response) => {
+  try {
+    const providerId = String(req.params.providerId || '');
+    const metrics = await getRecentResponseMetrics(providerId);
+
+    if (metrics?.recentResponseCount > 0 && Number.isFinite(metrics.recentAverageResponseMinutes)) {
+      const originalJson = res.json.bind(res);
+      res.json = ((body: any) => {
+        if (body?.success && body?.data) {
+          body.data.totalResponseCount = metrics.recentResponseCount;
+          body.data.totalResponseMinutes = metrics.recentAverageResponseMinutes * metrics.recentResponseCount;
+        }
+        return originalJson(body);
+      }) as typeof res.json;
+    }
+
+    return getProviderPublicProfile(req, res);
+  } catch (error: any) {
+    console.error('Error enriching provider public profile response stats:', error);
+    return getProviderPublicProfile(req, res);
   }
 };
