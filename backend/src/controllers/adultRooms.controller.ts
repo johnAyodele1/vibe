@@ -125,11 +125,12 @@ export const getRooms = async (req: Request, res: Response) => {
     const l = parseInt(limit as string) || 20;
     const skip = (p - 1) * l;
 
-    // Returns rooms sorted: pinned first, then by memberCount desc
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document instantiation and model hydration overhead.
     const rooms = await Room.find(filter)
       .sort({ isPinned: -1, memberCount: -1 })
       .skip(skip)
-      .limit(l);
+      .limit(l)
+      .lean();
 
     const total = await Room.countDocuments(filter);
 
@@ -285,10 +286,12 @@ export const getRoomMembers = async (req: Request, res: Response) => {
     const l = parseInt(limit as string) || 50;
     const skip = (p - 1) * l;
 
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document instantiation and model hydration overhead.
     const memberships = await RoomMembership.find({ roomId })
       .populate('userId', 'username displayName profilePhoto subscriptionTier role')
       .skip(skip)
-      .limit(l);
+      .limit(l)
+      .lean();
 
     const members = memberships.map((m) => {
       const u = m.userId as any;
@@ -386,11 +389,12 @@ export const getThreads = async (req: Request, res: Response) => {
       sortQuery = { replyCount: -1, createdAt: -1 };
     }
 
-    // Pinned threads always first regardless of sort
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document instantiation and model hydration overhead.
     const threads = await AdultThread.find({ roomId })
       .sort({ isPinned: -1, ...sortQuery })
       .skip(skip)
-      .limit(l);
+      .limit(l)
+      .lean();
 
     res.json({ success: true, data: { threads } });
   } catch (err: any) {
@@ -597,9 +601,11 @@ export const getMessages = async (req: Request, res: Response) => {
       query.createdAt = { $lt: new Date(before as string) };
     }
 
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document instantiation and model hydration overhead.
     const messages = await AdultRoomMessage.find(query)
       .sort({ createdAt: -1 })
-      .limit(l);
+      .limit(l)
+      .lean();
 
     res.json({ success: true, data: { messages: messages.reverse() } });
   } catch (err: any) {
