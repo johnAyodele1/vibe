@@ -239,15 +239,15 @@ const adultUserSchema = new Schema<IAdultUser, IAdultUserModel>(
   }
 );
 
-const canonicalCallRateGetter = function (this: IAdultUser, value: number | undefined): number | undefined {
+const canonicalCallRateGetter = function (this: IAdultUser, _value: number | undefined): number {
   const canonicalRate = this.providerProfile?.pricePerMinute;
-  return typeof canonicalRate === 'number' && Number.isFinite(canonicalRate) && canonicalRate > 0
+  return typeof canonicalRate === 'number' && Number.isFinite(canonicalRate)
     ? canonicalRate
-    : value;
+    : 0;
 };
 
 // Audio and video calls intentionally use the same provider-configured call rate.
-// The stored media-specific fields remain untouched; reads for call pricing resolve to pricePerMinute.
+// The stored media-specific fields remain untouched; reads for call pricing always resolve to pricePerMinute.
 adultUserSchema.path('providerProfile.audioCallPrice').get(canonicalCallRateGetter);
 adultUserSchema.path('providerProfile.videoCallPrice').get(canonicalCallRateGetter);
 
