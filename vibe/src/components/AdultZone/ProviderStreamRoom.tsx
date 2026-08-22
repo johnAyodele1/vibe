@@ -39,6 +39,7 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
   const localVideoTrackRef = useRef<ICameraVideoTrack | null>(null);
   const callAcceptancePollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stoppingRef = useRef(false);
+  const generationRef = useRef(0);
   const onEndRef = useRef(onEnd);
   const onStreamEstablishedRef = useRef(onStreamEstablished);
   const [sessionEndedExternally, setSessionEndedExternally] = useState(false);
@@ -87,11 +88,15 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
   }, [resetReadiness, stopTrack]);
 
   useEffect(() => {
+    const generation = ++generationRef.current;
+    stoppingRef.current = false;
     const client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
     clientRef.current = client;
 
+    const isCurrent = () => generation === generationRef.current && !stoppingRef.current;
+
     const markPublicStreamEnded = () => {
-      if (stoppingRef.current) return;
+      if (!isCurrent()) return;
       setSessionEndedExternally(true);
       void stopLocalMedia();
       onEndRef.current();
@@ -104,7 +109,7 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
       const maxAttempts = 30;
 
       const check = async () => {
-        if (stoppingRef.current) return;
+        if (!isCurrent()) return;
         attempts += 1;
         try {
           const accessToken = localStorage.getItem('adultAccessToken') || '';
@@ -113,8 +118,10 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
           const response = await fetch(`${API_BASE_URL}/v1/adult/sext/calls/${callId}`, {
             headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
           });
+          if (!isCurrent()) return;
           if (!response.ok) return;
           const data = await response.json();
+          if (!isCurrent()) return;
           if (!data?.success) return;
 
           if (data.status === 'active') {
@@ -127,10 +134,11 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
             return;
           }
         } catch {
+          if (!isCurrent()) return;
           // Retry sequentially while the incoming call remains pending.
         }
 
-        if (!stoppingRef.current && attempts < maxAttempts) {
+        if (isCurrent() && attempts < maxAttempts) {
           callAcceptancePollRef.current = setTimeout(() => { void check(); }, 1000);
         }
       };
@@ -139,11 +147,11 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
     };
 
     const handleIncomingCall = (data: { callId?: string }) => {
-      if (data?.callId) pollCallUntilAccepted(data.callId);
+      if (isCurrent() && data?.callId) pollCallUntilAccepted(data.callId);
     };
 
     const handleSessionEnded = (data: { sessionId?: string }) => {
-      if (!data?.sessionId || data.sessionId !== sessionId) return;
+      if (!data?.sessionId || data.sessionId !== sessionId || !isCurrent()) return;
       toast.info('Public stream session ended');
       markPublicStreamEnded();
     };
@@ -154,22 +162,62 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
     }
 
     const initHost = async () => {
+      let createdAudioTrack: IMicrophoneAudioTrack | null = null;
+      let createdVideoTrack: ICameraVideoTrack | null = null;
       try {
         await client.setClientRole('host');
-        await client.join(String(appId), roomId, token, userId);
-        const audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
-        localAudioTrackRef.current = audioTrack;
-        const videoTrack = await AgoraRTC.createCameraVideoTrack();
-        localVideoTrackRef.current = videoTrack;
+        if (!isCurrent()) return;
 
-        if (containerRef.current) videoTrack.play(containerRef.current);
-        if (typeof (videoTrack as any).on === 'function') {
-          (videoTrack as any).on('first-frame-decoded', () => markReady());
+        await client.join(String(appId), roomId, token, userId);
+        if (!isCurrent()) {
+          await client.leave().catch(() => {});
+          return;
         }
-        await client.publish([audioTrack, videoTrack]);
-        if (socket?.connected) socket.emit('cam:host_start', { sessionId });
-        onStreamEstablishedRef.current?.();
+
+        createdAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+        if (!isCurrent()) {
+          stopTrack(createdAudioTrack);
+          await client.leave().catch(() => {});
+          return;
+        }
+        localAudioTrackRef.current = createdAudioTrack;
+
+        createdVideoTrack = await AgoraRTC.createCameraVideoTrack();
+        if (!isCurrent()) {
+          stopTrack(createdVideoTrack);
+          localAudioTrackRef.current = null;
+          stopTrack(createdAudioTrack);
+          await client.leave().catch(() => {});
+          return;
+        }
+        localVideoTrackRef.current = createdVideoTrack;
+
+        if (containerRef.current) createdVideoTrack.play(containerRef.current);
+        if (typeof (createdVideoTrack as any).on === 'function') {
+          (createdVideoTrack as any).on('first-frame-decoded', () => {
+            if (isCurrent()) markReady();
+          });
+        }
+
+        await client.publish([createdAudioTrack, createdVideoTrack]);
+        if (!isCurrent()) {
+          stopTrack(createdVideoTrack);
+          stopTrack(createdAudioTrack);
+          localVideoTrackRef.current = null;
+          localAudioTrackRef.current = null;
+          await client.leave().catch(() => {});
+          return;
+        }
+
+        if (socket?.connected && isCurrent()) socket.emit('cam:host_start', { sessionId });
+        if (isCurrent()) onStreamEstablishedRef.current?.();
       } catch (err) {
+        if (!isCurrent()) {
+          stopTrack(createdVideoTrack);
+          stopTrack(createdAudioTrack);
+          await client.leave().catch(() => {});
+          return;
+        }
         console.error('Agora Host Stream failed to initialize:', err);
         await stopLocalMedia();
         toast.error('Failed to start camera/microphone broadcast. Session cancelled.');
@@ -180,6 +228,8 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
     void initHost();
 
     return () => {
+      generationRef.current += 1;
+      stoppingRef.current = true;
       if (socket) {
         socket.off('cam:session_ended', handleSessionEnded);
         socket.off('call:incoming', handleIncomingCall);
@@ -190,7 +240,7 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
       }
       void stopLocalMedia();
     };
-  }, [appId, token, roomId, userId, sessionId, containerRef, markReady, stopLocalMedia]);
+  }, [appId, token, roomId, userId, sessionId, containerRef, markReady, stopLocalMedia, stopTrack]);
 
   const handleEndClick = () => {
     if (window.confirm('Are you sure you want to end the broadcast?')) onEndRef.current();
