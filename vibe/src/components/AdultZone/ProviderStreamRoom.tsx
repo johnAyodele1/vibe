@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import AgoraRTC, { IAgoraRTCClient, ICameraVideoTrack, IMicrophoneAudioTrack } from 'agora-rtc-sdk-ng';
 import { useVideoReadiness } from '../../hooks/useVideoReadiness';
 import VideoFallbackOverlay from './VideoFallbackOverlay';
@@ -36,6 +36,7 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
   const clientRef = useRef<IAgoraRTCClient | null>(null);
   const localAudioTrackRef = useRef<IMicrophoneAudioTrack | null>(null);
   const localVideoTrackRef = useRef<ICameraVideoTrack | null>(null);
+  const [sessionEndedExternally, setSessionEndedExternally] = useState(false);
 
   const {
     containerRef,
@@ -43,9 +44,53 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
     resetReadiness,
   } = videoState;
 
+  const cleanupAgoraMedia = useRef(() => {}).current;
+  void cleanupAgoraMedia;
+
   useEffect(() => {
     const client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
     clientRef.current = client;
+
+    const stopLocalMedia = async () => {
+      resetReadiness();
+
+      const videoTrack = localVideoTrackRef.current;
+      localVideoTrackRef.current = null;
+      if (videoTrack) {
+        try {
+          videoTrack.stop();
+        } catch {}
+        try {
+          videoTrack.close();
+        } catch {}
+      }
+
+      const audioTrack = localAudioTrackRef.current;
+      localAudioTrackRef.current = null;
+      if (audioTrack) {
+        try {
+          audioTrack.stop();
+        } catch {}
+        try {
+          audioTrack.close();
+        } catch {}
+      }
+
+      const activeClient = clientRef.current;
+      clientRef.current = null;
+      if (activeClient) {
+        try {
+          await activeClient.unpublish().catch(() => {});
+        } catch {}
+        try {
+          await activeClient.leave().catch(() => {});
+        } catch {}
+      }
+
+      if (socket && sessionId) {
+        socket.emit('cam:leave', sessionId);
+      }
+    };
 
     const initHost = async () => {
       try {
@@ -69,7 +114,6 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
 
         await client.publish([audioTrack, videoTrack]);
 
-        // Register host broadcast connection ONLY after media tracks are successfully published
         if (socket && socket.connected) {
           socket.emit('cam:host_start', { sessionId });
         }
@@ -78,51 +122,57 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
         }
       } catch (err) {
         console.error('Agora Host Stream failed to initialize:', err);
+        await stopLocalMedia();
         toast.error('Failed to start camera/microphone broadcast. Session cancelled.');
         onEnd();
       }
     };
 
     const handleSessionEnded = (data: { sessionId?: string }) => {
-      if (!data?.sessionId || data.sessionId === sessionId) {
-        toast.info('Public stream session ended');
-        onEnd();
-      }
+      if (data?.sessionId && data.sessionId !== sessionId) return;
+
+      toast.info('Public stream session ended');
+      setSessionEndedExternally(true);
+
+      // The server-side CamSession ending is not enough. Stop the actual
+      // Agora camera/microphone tracks and leave the Agora channel here.
+      void stopLocalMedia();
     };
 
     if (socket) {
       socket.on('cam:session_ended', handleSessionEnded);
     }
 
-    initHost();
+    void initHost();
 
     return () => {
       if (socket) {
         socket.off('cam:session_ended', handleSessionEnded);
       }
-      resetReadiness();
-      if (localAudioTrackRef.current) {
-        localAudioTrackRef.current.stop();
-        localAudioTrackRef.current.close();
-        localAudioTrackRef.current = null;
-      }
-      if (localVideoTrackRef.current) {
-        localVideoTrackRef.current.stop();
-        localVideoTrackRef.current.close();
-        localVideoTrackRef.current = null;
-      }
-      if (clientRef.current) {
-        clientRef.current.leave().catch(() => {});
-        clientRef.current = null;
-      }
+      void stopLocalMedia();
     };
-  }, [appId, token, roomId, userId, userName, sessionId, containerRef, markReady, resetReadiness]);
+  }, [appId, token, roomId, userId, userName, sessionId, containerRef, markReady, resetReadiness, socket, onEnd, onStreamEstablished]);
 
   const handleEndClick = () => {
     if (window.confirm('Are you sure you want to end the broadcast?')) {
       onEnd();
     }
   };
+
+  if (sessionEndedExternally) {
+    return (
+      <div
+        style={{ position: 'relative', width: '100%', height: '100%', minHeight: '400px' }}
+        className="flex items-center justify-center bg-[#0a0608]"
+        data-testid="provider-stream-ended"
+      >
+        <div className="text-center space-y-2">
+          <span className="text-5xl opacity-40">📹</span>
+          <p className="text-xs text-[var(--az-text-muted)] font-serif italic">Camera Offline</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '400px' }}>
@@ -141,7 +191,6 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
         }`}
         data-testid="zego-provider-stream-room"
       />
-      {/* End Stream floating overlay button */}
       <div className="absolute bottom-6 inset-x-0 flex justify-center z-20">
         <button
           onClick={handleEndClick}
