@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import mongoose from 'mongoose';
+import mongoose, { PipelineStage } from 'mongoose';
 import AdultMessage from '../models/AdultMessage';
 import AdultUser from '../models/AdultUser';
 import { getProviderPublicProfile } from './adultProviders.controller';
@@ -31,56 +31,54 @@ const shuffleInPlace = <T>(items: T[]) => {
   return items;
 };
 
-const responseMetricsLookup = {
-  $lookup: {
-    from: AdultMessage.collection.name,
-    let: { providerId: '$_id' },
-    pipeline: [
-      {
-        $match: {
-          $expr: {
-            $and: [
-              { $eq: ['$receiverId', '$$providerId'] },
-              { $ne: ['$repliedAt', null] },
-              { $gte: ['$replyTimeMinutes', 0] },
-              { $in: ['$messageType', CONVERSATIONAL_MESSAGE_TYPES] },
-            ],
+const responseMetricStages: PipelineStage[] = [
+  {
+    $lookup: {
+      from: AdultMessage.collection.name,
+      let: { providerId: '$_id' },
+      pipeline: [
+        {
+          $match: {
+            $expr: {
+              $and: [
+                { $eq: ['$receiverId', '$$providerId'] },
+                { $ne: ['$repliedAt', null] },
+                { $gte: ['$replyTimeMinutes', 0] },
+                { $in: ['$messageType', CONVERSATIONAL_MESSAGE_TYPES] },
+              ],
+            },
           },
         },
-      },
-      { $sort: { repliedAt: -1 } },
-      {
-        $group: {
-          _id: '$senderId',
-          responseTimeMinutes: { $first: '$replyTimeMinutes' },
-          respondedAt: { $first: '$repliedAt' },
-        },
-      },
-      { $sort: { respondedAt: -1 } },
-      { $limit: 10 },
-      {
-        $group: {
-          _id: null,
-          sampleCount: { $sum: 1 },
-          totalResponseMinutes: { $sum: '$responseTimeMinutes' },
-        },
-      },
-      {
-        $project: {
-          _id: 0,
-          sampleCount: 1,
-          averageResponseMinutes: {
-            $divide: ['$totalResponseMinutes', '$sampleCount'],
+        { $sort: { repliedAt: -1 } },
+        {
+          $group: {
+            _id: '$senderId',
+            responseTimeMinutes: { $first: '$replyTimeMinutes' },
+            respondedAt: { $first: '$repliedAt' },
           },
         },
-      },
-    ],
-    as: 'recentResponseStats',
+        { $sort: { respondedAt: -1 } },
+        { $limit: 10 },
+        {
+          $group: {
+            _id: null,
+            sampleCount: { $sum: 1 },
+            totalResponseMinutes: { $sum: '$responseTimeMinutes' },
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            sampleCount: 1,
+            averageResponseMinutes: {
+              $divide: ['$totalResponseMinutes', '$sampleCount'],
+            },
+          },
+        },
+      ],
+      as: 'recentResponseStats',
+    },
   },
-};
-
-const responseMetricStages = [
-  responseMetricsLookup,
   {
     $set: {
       recentResponseCount: {
@@ -194,7 +192,7 @@ const buildBaseProviderFilter = (req: Request, hookupOnly = false) => {
   return filter;
 };
 
-const buildDiscoveryPipeline = (filter: Record<string, unknown>, page: number, limit: number) => [
+const buildDiscoveryPipeline = (filter: Record<string, unknown>, page: number, limit: number): PipelineStage[] => [
   { $match: filter },
   ...responseMetricStages,
   {
@@ -309,8 +307,10 @@ export const getRecommendedHookupProviders = async (req: Request, res: Response)
 
 export const getProviderResponseStats = async (req: Request, res: Response) => {
   try {
-    const { providerId } = req.params;
-    if (!providerId || !mongoose.Types.ObjectId.isValid(providerId)) {
+    const rawProviderId = req.params.providerId;
+    const providerId = Array.isArray(rawProviderId) ? rawProviderId[0] : rawProviderId;
+
+    if (!mongoose.Types.ObjectId.isValid(providerId)) {
       return res.status(400).json({ success: false, error: 'Invalid provider ID' });
     }
 
@@ -335,7 +335,8 @@ export const getProviderResponseStats = async (req: Request, res: Response) => {
 
 export const getPublicProviderProfileWithResponseStats = async (req: Request, res: Response) => {
   try {
-    const providerId = String(req.params.providerId || '');
+    const rawProviderId = req.params.providerId;
+    const providerId = Array.isArray(rawProviderId) ? rawProviderId[0] : rawProviderId;
     const metrics = await getRecentResponseMetrics(providerId);
 
     if (metrics?.recentResponseCount > 0 && Number.isFinite(metrics.recentAverageResponseMinutes)) {
