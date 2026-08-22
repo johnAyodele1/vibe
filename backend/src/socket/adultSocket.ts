@@ -12,7 +12,7 @@ import { getClientPrice } from '../services/pricingService';
 import app from '../app';
 import Redis from 'ioredis';
 import { billCallMinute } from '../controllers/adultSext.controller';
-import { checkActiveCall, endCamSessionAtomic } from '../services/sessionInvariantService';
+import { checkActiveCall, endCamSessionAtomic, endActiveCamSessionsForUsers } from '../services/sessionInvariantService';
 import { sendPushToUser } from '../shared/push';
 
 // Host Socket Registry for Live Broadcast Sessions
@@ -247,6 +247,7 @@ export const monitorActiveCalls = async (ns: any) => {
                 reason: 'insufficient_credits'
               });
             }
+            await endActiveCamSessionsForUsers([call.callerId, call.receiverId], 'insufficient_credits', ns);
             break; // Stop processing further minutes for this call
           }
         }
@@ -655,7 +656,7 @@ export const setupAdultSocket = (io: Server) => {
           return;
         }
 
-        const rate = data.isVideo ? (provider.providerProfile.videoCallPrice || provider.providerProfile.pricePerMinute || 5) : (provider.providerProfile.audioCallPrice || provider.providerProfile.pricePerMinute || 5);
+        const rate = data.isVideo ? (provider.providerProfile.videoCallPrice ?? provider.providerProfile.pricePerMinute ?? 0) : (provider.providerProfile.audioCallPrice ?? provider.providerProfile.pricePerMinute ?? 0);
         const userPrice = getClientPrice(rate);
 
         if (socket.data.user.credits < userPrice) {
@@ -891,13 +892,16 @@ export const setupAdultSocket = (io: Server) => {
             activeCallTickers.delete(data.callId);
           }
           const call = await AdultCall.findById(data.callId);
-          if (call && call.isActiveSession) {
-            call.status = 'ended';
-            call.endedAt = new Date();
-            call.endReason = data.reason || 'ended';
-            call.isActiveSession = false;
-            call.activeParticipants = [];
-            await call.save();
+          if (call) {
+            if (call.isActiveSession) {
+              call.status = 'ended';
+              call.endedAt = new Date();
+              call.endReason = data.reason || 'ended';
+              call.isActiveSession = false;
+              call.activeParticipants = [];
+              await call.save();
+            }
+            await endActiveCamSessionsForUsers([call.callerId, call.receiverId], data.reason || 'ended', adultNamespace);
           }
         }
         adultNamespace.to(`call:${data.callId}`).emit('call:ended', { reason: data.reason || 'ended' });

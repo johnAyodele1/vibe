@@ -128,6 +128,8 @@ export const getProviderPublicProfile = async (req: Request, res: Response) => {
       perMinuteRate: provider.providerProfile?.servicesOffered?.includes('private_call')
         ? (provider.providerProfile?.pricePerMinute || null)
         : null,
+      videoCallPrice: provider.providerProfile?.videoCallPrice ?? provider.providerProfile?.pricePerMinute ?? null,
+      audioCallPrice: provider.providerProfile?.audioCallPrice ?? provider.providerProfile?.pricePerMinute ?? null,
       tonightRate: provider.providerProfile?.servicesOffered?.includes('hookup')
         ? (provider.providerProfile?.tonightRate || null)
         : null,

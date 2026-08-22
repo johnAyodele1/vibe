@@ -63,6 +63,28 @@ export const endCamSessionAtomic = async (
 };
 
 /**
+ * Finds and atomically ends any live or pending CamSession associated with the given user IDs (caller or receiver).
+ * Idempotent and safe to call multiple times.
+ */
+export const endActiveCamSessionsForUsers = async (
+  userIds: (string | Types.ObjectId)[],
+  reason: string = 'call_ended',
+  ns?: any
+) => {
+  if (mongoose.connection.readyState !== 1 || !userIds || userIds.length === 0) return;
+
+  const validIds = userIds.filter(Boolean);
+  const activeSessions = await CamSession.find({
+    providerId: { $in: validIds },
+    status: { $in: ['live', 'pending', 'scheduled'] },
+  });
+
+  for (const session of activeSessions) {
+    await endCamSessionAtomic(session._id, reason, ns);
+  }
+};
+
+/**
  * Explicit state transition to expire a stale ringing call (>60s without acceptance).
  */
 export const expireStaleRingingCall = async (call: any) => {

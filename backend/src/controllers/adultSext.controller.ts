@@ -19,7 +19,7 @@ import { calculateFees, recordPlatformEarning } from '../shared/fees';
 import { getSignedUrl } from '../shared/media/cloudinaryUpload';
 import { sendPushToUser } from '../shared/push';
 import { sendNewMessageEmail } from '../shared/email/providerEmail';
-import { checkActiveCall, endCamSessionAtomic } from '../services/sessionInvariantService';
+import { checkActiveCall, endCamSessionAtomic, endActiveCamSessionsForUsers } from '../services/sessionInvariantService';
 
 // Backwards compatibility startConversation route
 export const startConversation = async (req: Request, res: Response) => {
@@ -2819,8 +2819,8 @@ export const initiateCall = async (req: Request, res: Response) => {
 
     // Determine cost rate
     const rate = type === 'video'
-      ? (receiver.providerProfile?.videoCallPrice || receiver.providerProfile?.pricePerMinute || 5)
-      : (receiver.providerProfile?.audioCallPrice || receiver.providerProfile?.pricePerMinute || 5);
+      ? (receiver.providerProfile?.videoCallPrice ?? receiver.providerProfile?.pricePerMinute ?? 0)
+      : (receiver.providerProfile?.audioCallPrice ?? receiver.providerProfile?.pricePerMinute ?? 0);
 
     const userPrice = getClientPrice(rate);
 
@@ -3428,6 +3428,8 @@ export const endCall = async (req: Request, res: Response) => {
       ns.to(`user:${updatedCall.receiverId.toString()}`).emit('call:ended', { callId, durationSeconds, creditsDeducted: updatedCall.creditsDeducted });
       ns.to(`call:${callId}`).emit('call:ended', { callId, reason });
     }
+
+    await endActiveCamSessionsForUsers([updatedCall.callerId, updatedCall.receiverId], reason || 'call_ended', ns);
 
     return res.json({
       callId: updatedCall._id,
