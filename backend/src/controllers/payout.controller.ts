@@ -758,20 +758,27 @@ export const adminGetPayouts = async (req: Request, res: Response) => {
       filter.status = status;
     }
 
+    // Optimization (⚡ Bolt): Use .lean() on read-only admin query to eliminate document hydration overhead
     const requests = await PayoutRequest.find(filter)
       .sort({ requestedAt: -1 })
       .skip((page - 1) * limit)
-      .limit(limit);
+      .limit(limit)
+      .lean();
 
     const total = await PayoutRequest.countDocuments(filter);
 
-    // Counts breakdown
+    // Optimization (⚡ Bolt): Single database aggregation query for counts breakdown instead of 5 separate count queries
+    const countAgg = await PayoutRequest.aggregate([
+      { $group: { _id: '$status', count: { $sum: 1 } } }
+    ]);
+    const countsMap = new Map(countAgg.map(item => [item._id, item.count]));
+
     const counts = {
-      queued: await PayoutRequest.countDocuments({ status: 'queued' }),
-      verifying: await PayoutRequest.countDocuments({ status: 'verifying' }),
-      processing: await PayoutRequest.countDocuments({ status: 'processing' }),
-      completed: await PayoutRequest.countDocuments({ status: 'completed' }),
-      rejected: await PayoutRequest.countDocuments({ status: 'rejected' }),
+      queued: countsMap.get('queued') || 0,
+      verifying: countsMap.get('verifying') || 0,
+      processing: countsMap.get('processing') || 0,
+      completed: countsMap.get('completed') || 0,
+      rejected: countsMap.get('rejected') || 0,
     };
 
     return res.json({
