@@ -169,5 +169,8 @@ const adultMessageSchema = new Schema<IMessage>(
   }
 );
 
+// Supports the response-history lookup used by provider recommendations/profile badges.
+adultMessageSchema.index({ receiverId: 1, repliedAt: -1, senderId: 1, createdAt: -1 });
+
 export const AdultMessage = mongoose.model<IMessage>('AdultMessage', adultMessageSchema);
 export default AdultMessage;
