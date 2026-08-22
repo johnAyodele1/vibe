@@ -145,7 +145,7 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [getHeaders]);
 
-  const transitionToTerminalCall = useCallback((reason: string, durationSeconds = 0, creditsDeducted = 0) => {
+  const transitionToTerminalCall = useCallback((reason: string, durationSeconds = 0, creditsDeducted?: number) => {
     const currentCall = activeCallRef.current;
     if (!currentCall) {
       resetCallState();
@@ -158,9 +158,16 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     else if (reason === 'cancelled_by_caller') status = 'cancelled';
     else if (reason === 'connection_failed') status = 'failed';
 
-    const serverChargedCredits = Number.isFinite(creditsDeducted) && creditsDeducted >= 0
-      ? creditsDeducted
-      : 0;
+    if (status === 'ended' && (typeof creditsDeducted !== 'number' || !Number.isFinite(creditsDeducted) || creditsDeducted < 0)) {
+      console.error('[AdultCall] Refusing to finalize ended call without server billing data:', {
+        callId: currentCall.callId,
+        reason,
+        creditsDeducted,
+      });
+      return;
+    }
+
+    const serverChargedCredits = status === 'ended' ? creditsDeducted : 0;
 
     const summary: CallSummaryInfo = {
       status,
@@ -185,6 +192,53 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setIsInitiating(false);
     isInitiatingRef.current = false;
   }, [resetCallState]);
+
+  const reconcileTerminalCall = useCallback(async (
+    callId: string,
+    fallbackReason = 'hung_up',
+    fallbackDurationSeconds = 0
+  ): Promise<boolean> => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/v1/adult/sext/calls/${callId}`, {
+        headers: getHeaders(),
+      });
+      if (!res.ok) return false;
+
+      const data = await res.json();
+      if (!data.success) return false;
+
+      const status = data.status as string;
+      if (status === 'declined' || status === 'missed' || status === 'failed') {
+        transitionToTerminalCall(
+          data.endReason || status,
+          typeof data.durationSeconds === 'number' ? data.durationSeconds : fallbackDurationSeconds,
+          0
+        );
+        return true;
+      }
+
+      if (status !== 'ended') return false;
+
+      if (typeof data.creditsDeducted !== 'number' || !Number.isFinite(data.creditsDeducted) || data.creditsDeducted < 0) {
+        console.warn('[AdultCall] Terminal status is ended but server billing data is not available yet:', {
+          callId,
+          status,
+          creditsDeducted: data.creditsDeducted,
+        });
+        return false;
+      }
+
+      transitionToTerminalCall(
+        data.endReason || fallbackReason,
+        typeof data.durationSeconds === 'number' ? data.durationSeconds : fallbackDurationSeconds,
+        data.creditsDeducted
+      );
+      return true;
+    } catch (err) {
+      console.warn('[AdultCall] Terminal call reconciliation failed:', err);
+      return false;
+    }
+  }, [getHeaders, transitionToTerminalCall]);
 
   // Initiate a call
   const initiateCall = useCallback(async (
@@ -380,17 +434,43 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // End active call
   const endCall = useCallback(async (reason = 'hung_up', durationSeconds = 0) => {
     const currentCall = activeCallRef.current;
-    if (currentCall) {
-      const result = await endCallOnBackend(currentCall.callId, reason);
+    if (!currentCall) {
+      resetCallState();
+      return;
+    }
+
+    setCallState('ending');
+    setZegoToken(null);
+    setZegoAppId(null);
+    setZegoRoomId(null);
+
+    const isNonBilledReason = reason === 'declined' || reason === 'missed' || reason === 'no_answer' || reason === 'cancelled_by_caller' || reason === 'connection_failed';
+    const result = await endCallOnBackend(currentCall.callId, reason);
+
+    if (isNonBilledReason) {
+      transitionToTerminalCall(reason, result.durationSeconds ?? durationSeconds, 0);
+      return;
+    }
+
+    if (typeof result.creditsDeducted === 'number' && Number.isFinite(result.creditsDeducted) && result.creditsDeducted >= 0) {
       transitionToTerminalCall(
         reason,
         result.durationSeconds ?? durationSeconds,
-        result.creditsDeducted ?? 0
+        result.creditsDeducted
       );
-    } else {
-      resetCallState();
+      return;
     }
-  }, [endCallOnBackend, transitionToTerminalCall, resetCallState]);
+
+    const reconciled = await reconcileTerminalCall(
+      currentCall.callId,
+      reason,
+      result.durationSeconds ?? durationSeconds
+    );
+
+    if (!reconciled) {
+      toast.error('Call ended. We are confirming the final billing with the server.');
+    }
+  }, [endCallOnBackend, reconcileTerminalCall, transitionToTerminalCall, resetCallState]);
 
   // Socket event listener setup (Stable socket connection)
   useEffect(() => {
@@ -468,15 +548,29 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
     });
 
-    socket.on('call:ended', (payload: { callId: string; reason?: string; durationSeconds?: number; creditsDeducted?: number }) => {
+    socket.on('call:ended', async (payload: { callId: string; reason?: string; durationSeconds?: number; creditsDeducted?: number }) => {
       const currentCall = activeCallRef.current;
-      if (currentCall && currentCall.callId === payload.callId) {
-        transitionToTerminalCall(
-          payload.reason || 'hung_up',
-          payload.durationSeconds || 0,
-          typeof payload.creditsDeducted === 'number' ? payload.creditsDeducted : 0
-        );
+      if (!currentCall || currentCall.callId !== payload.callId) return;
+
+      setCallState('ending');
+      setZegoToken(null);
+      setZegoAppId(null);
+      setZegoRoomId(null);
+
+      const reason = payload.reason || 'hung_up';
+      const isNonBilledReason = reason === 'declined' || reason === 'missed' || reason === 'no_answer' || reason === 'cancelled_by_caller' || reason === 'connection_failed';
+
+      if (isNonBilledReason) {
+        transitionToTerminalCall(reason, payload.durationSeconds ?? 0, 0);
+        return;
       }
+
+      if (typeof payload.creditsDeducted === 'number' && Number.isFinite(payload.creditsDeducted) && payload.creditsDeducted >= 0) {
+        transitionToTerminalCall(reason, payload.durationSeconds ?? 0, payload.creditsDeducted);
+        return;
+      }
+
+      await reconcileTerminalCall(currentCall.callId, reason, payload.durationSeconds ?? 0);
     });
 
     return () => {
@@ -484,9 +578,9 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
   }, [isAuthenticated, token, user?.id, fetchConnectionToken, endCallOnBackend, transitionToTerminalCall]);
 
-  // Status Reconciliation Polling while in 'calling' or 'incoming'
+  // Status Reconciliation Polling while establishing or finalizing a call.
   useEffect(() => {
-    if (callState !== 'calling' && callState !== 'incoming') return;
+    if (callState !== 'calling' && callState !== 'incoming' && callState !== 'ending') return;
     const currentCall = activeCallRef.current;
     if (!currentCall?.callId) return;
 
@@ -507,12 +601,20 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             setZegoRoomId(data.webrtcRoomId);
             setCallState('active');
           }
-        } else if (data.status === 'declined' || data.status === 'missed' || data.status === 'ended' || data.status === 'failed') {
+        } else if (data.status === 'declined' || data.status === 'missed' || data.status === 'failed') {
           transitionToTerminalCall(
             data.endReason || data.status,
-            data.durationSeconds || 0,
-            typeof data.creditsDeducted === 'number' ? data.creditsDeducted : 0
+            typeof data.durationSeconds === 'number' ? data.durationSeconds : 0,
+            0
           );
+        } else if (data.status === 'ended' && typeof data.creditsDeducted === 'number' && Number.isFinite(data.creditsDeducted) && data.creditsDeducted >= 0) {
+          transitionToTerminalCall(
+            data.endReason || data.status,
+            typeof data.durationSeconds === 'number' ? data.durationSeconds : 0,
+            data.creditsDeducted
+          );
+        } else if (data.status === 'ended') {
+          console.warn('[AdultCall] Reconciliation received ended call without creditsDeducted; keeping finalization pending.');
         }
       } catch {
         // Ignore polling error
@@ -665,7 +767,20 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         </div>
       )}
 
-      {/* 5. Restored Previous Call Ending Summary Modal */}
+      {/* 5. Server-authoritative call finalization */}
+      {callState === 'ending' && activeCall && (
+        <div
+          style={{ paddingTop: 'calc(24px + env(safe-area-inset-top, 0px))' }}
+          className="fixed inset-0 bg-black/95 backdrop-blur-lg z-[13000] flex flex-col items-center justify-center p-6 text-white text-center"
+          data-testid="global-ending-call-modal"
+        >
+          <div className="w-12 h-12 rounded-full border-4 border-pink-500 border-t-transparent animate-spin mb-4" />
+          <h2 className="text-xl font-serif italic text-pink-300 mb-2">Finalizing call...</h2>
+          <p className="text-xs text-gray-400 max-w-xs">Confirming the final server billing before showing the call summary.</p>
+        </div>
+      )}
+
+      {/* 6. Restored Previous Call Ending Summary Modal */}
       {callState === 'summary' && callSummary && (
         <div
           style={{ paddingTop: 'calc(24px + env(safe-area-inset-top, 0px))' }}
