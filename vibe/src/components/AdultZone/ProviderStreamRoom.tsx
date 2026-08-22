@@ -44,9 +44,6 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
     resetReadiness,
   } = videoState;
 
-  const cleanupAgoraMedia = useRef(() => {}).current;
-  void cleanupAgoraMedia;
-
   useEffect(() => {
     const client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
     clientRef.current = client;
@@ -57,34 +54,22 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
       const videoTrack = localVideoTrackRef.current;
       localVideoTrackRef.current = null;
       if (videoTrack) {
-        try {
-          videoTrack.stop();
-        } catch {}
-        try {
-          videoTrack.close();
-        } catch {}
+        try { videoTrack.stop(); } catch {}
+        try { videoTrack.close(); } catch {}
       }
 
       const audioTrack = localAudioTrackRef.current;
       localAudioTrackRef.current = null;
       if (audioTrack) {
-        try {
-          audioTrack.stop();
-        } catch {}
-        try {
-          audioTrack.close();
-        } catch {}
+        try { audioTrack.stop(); } catch {}
+        try { audioTrack.close(); } catch {}
       }
 
       const activeClient = clientRef.current;
       clientRef.current = null;
       if (activeClient) {
-        try {
-          await activeClient.unpublish().catch(() => {});
-        } catch {}
-        try {
-          await activeClient.leave().catch(() => {});
-        } catch {}
+        try { await activeClient.unpublish().catch(() => {}); } catch {}
+        try { await activeClient.leave().catch(() => {}); } catch {}
       }
 
       if (socket && sessionId) {
@@ -134,8 +119,8 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
       toast.info('Public stream session ended');
       setSessionEndedExternally(true);
 
-      // The server-side CamSession ending is not enough. Stop the actual
-      // Agora camera/microphone tracks and leave the Agora channel here.
+      // The backend ending CamSession does not stop the browser camera.
+      // Explicitly tear down Agora so the physical camera and publisher stop.
       void stopLocalMedia();
     };
 
@@ -151,7 +136,7 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
       }
       void stopLocalMedia();
     };
-  }, [appId, token, roomId, userId, userName, sessionId, containerRef, markReady, resetReadiness, socket, onEnd, onStreamEstablished]);
+  }, [appId, token, roomId, userId, sessionId, containerRef, markReady, resetReadiness]);
 
   const handleEndClick = () => {
     if (window.confirm('Are you sure you want to end the broadcast?')) {
