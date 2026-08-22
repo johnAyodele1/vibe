@@ -5,6 +5,7 @@ import { useTipSheetStore } from './useTipSheetStore';
 import { toast } from 'sonner';
 import { DatingCrossPromo } from './DatingCrossPromo';
 import { RewardsButton } from './RewardsButton';
+import { getResponseBadge } from './responseTime';
 import { io } from 'socket.io-client';
 
 interface PerformerItem {
@@ -23,6 +24,9 @@ interface PerformerItem {
     rating?: number | { average?: number };
     totalResponseCount?: number;
     totalResponseMinutes?: number;
+    recentResponseCount?: number;
+    recentAverageResponseMinutes?: number | null;
+    effectiveResponseMinutes?: number | null;
   };
 }
 
@@ -186,10 +190,10 @@ const AdultHome: React.FC = () => {
   useEffect(() => {
     const fetchPerformers = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/adult/providers`);
+        const response = await fetch(`${API_BASE_URL}/adult/providers/recommended?limit=6`);
         const data = await response.json();
         if (data.success && data.data.providers && data.data.providers.length > 0) {
-          setPerformers(data.data.providers.slice(0, 6));
+          setPerformers(data.data.providers);
         } else {
           setPerformers([]);
         }
@@ -371,6 +375,7 @@ const AdultHome: React.FC = () => {
                 const isLiveNow = p.providerProfile?.isLive;
                 const ratingVal = typeof p.providerProfile?.rating === 'object' ? p.providerProfile?.rating?.average : p.providerProfile?.rating;
                 const displayName = p.displayName || p.providerProfile?.stageName || p.firstName;
+                const responseBadge = getResponseBadge(p.providerProfile?.effectiveResponseMinutes);
                 return (
                   <div key={p._id} className="min-w-[280px] bg-[var(--az-bg-secondary)] rounded-xl border border-[var(--az-border)] overflow-hidden snap-start flex-shrink-0 group">
                     <div className="relative aspect-[3/4] overflow-hidden bg-[#1e1318] cursor-pointer" onClick={() => navigate(`/adult/providers/${p.userId || p._id}`)}>
@@ -387,24 +392,11 @@ const AdultHome: React.FC = () => {
                         <div className="cursor-pointer" onClick={() => navigate(`/adult/providers/${p.userId || p._id}`)}>
                           <h4 className="font-serif italic text-white text-lg hover:underline">{displayName}</h4>
                           <p className="text-[10px] text-[var(--az-text-secondary)] uppercase tracking-tighter">{p.age || 23} • {p.country || 'London, UK'}</p>
-                          {(() => {
-                            const totalCount = p.providerProfile?.totalResponseCount || 0;
-                            const totalMinutes = p.providerProfile?.totalResponseMinutes || 0;
-                            const avgResponseMinutes = totalCount > 0 ? totalMinutes / totalCount : null;
-                            const responseBadge = avgResponseMinutes !== null ? (
-                              avgResponseMinutes < 5 ? { label: 'Responds in minutes', color: '#22c55e' } :
-                              avgResponseMinutes < 60 ? { label: 'Responds within 1 hr', color: '#22c55e' } :
-                              avgResponseMinutes < 240 ? { label: 'Responds within 4 hrs', color: '#c9a84c' } :
-                              avgResponseMinutes < 1440 ? { label: 'Responds same day', color: '#f97316' } :
-                              { label: 'Responds slowly', color: '#a08898' }
-                            ) : null;
-                            if (!responseBadge) return null;
-                            return (
-                              <span className="inline-block mt-1 text-[8px] font-bold border rounded px-1.5 py-0.5 leading-none" style={{ borderColor: responseBadge.color, color: responseBadge.color }}>
-                                ⚡ {responseBadge.label}
-                              </span>
-                            );
-                          })()}
+                          {responseBadge && (
+                            <span className="inline-block mt-1 text-[8px] font-bold border rounded px-1.5 py-0.5 leading-none" style={{ borderColor: responseBadge.color, color: responseBadge.color }}>
+                              ⚡ {responseBadge.label}
+                            </span>
+                          )}
                         </div>
                         <div className="text-[var(--az-accent-gold)] text-sm">⭐ {ratingVal || 4.9}</div>
                       </div>
