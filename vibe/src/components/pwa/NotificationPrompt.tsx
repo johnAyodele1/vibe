@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { getInstallContext } from '../../lib/pwa/context';
 import AddToHomeScreenHint from './AddToHomeScreenHint';
 import { usePWAPromptStore, NOTIF_KEYS } from '../../store/pwaPromptStore';
@@ -7,21 +7,30 @@ import { toast } from 'sonner';
 
 const ACTIONABLE_STATUSES = new Set(['permission_required', 'missing_subscription', 'backend_missing', 'unhealthy', 'permission_denied', 'service_worker_unavailable', 'error']);
 const CHECKING_MIN_VISIBLE_MS = 1000;
+const HEALTHY_MESSAGE_VISIBLE_MS = 2000;
 const PUSH_REVERIFICATION_COOLDOWN_MS = 3 * 60 * 60 * 1000;
 const PUSH_REVERIFICATION_EXIT_KEY_PREFIX = 'zippo_push_last_site_exit:';
 const PUSH_REVERIFICATION_TEST_KEY_PREFIX = 'zippo_push_last_health_test:';
 const PUSH_LOGIN_TEST_KEY_PREFIX = 'zippo_push_test_after_login:';
+const PUSH_AUTO_TEST_CLAIM_KEY_PREFIX = 'zippo_push_auto_test_claim:';
+const SWIPE_DISMISS_DISTANCE_PX = 80;
+const SWIPE_ANIMATION_MS = 180;
 
 type InstallContext = ReturnType<typeof getInstallContext>;
 
 // One health request per user at a time. This protects against StrictMode,
 // duplicate lifecycle events and multiple prompt instances starting together.
 const healthChecksInFlight = new Map<string, Promise<PushHealthResult>>();
+// One actual test push per user at a time. This is deliberately separate from
+// the health-check lock because two independent component instances can both
+// reach the test-send decision after sharing the same health response.
+const pushTestsInFlight = new Map<string, Promise<Awaited<ReturnType<typeof sendPushTest>>>>();
 const lastLifecycleVerificationAt = new Map<string, number>();
 
 const getSiteExitKey = (userId: string) => `${PUSH_REVERIFICATION_EXIT_KEY_PREFIX}${userId}`;
 const getHealthTestKey = (userId: string) => `${PUSH_REVERIFICATION_TEST_KEY_PREFIX}${userId}`;
 const getLoginTestKey = (userId: string) => `${PUSH_LOGIN_TEST_KEY_PREFIX}${userId}`;
+const getAutoTestClaimKey = (userId: string, exitAt: number) => `${PUSH_AUTO_TEST_CLAIM_KEY_PREFIX}${userId}:${exitAt}`;
 
 const readTimestamp = (key: string): number | null => {
   const value = localStorage.getItem(key);
@@ -42,7 +51,18 @@ const recordHealthTest = (userId: string) => localStorage.setItem(getHealthTestK
 const consumeLoginTestMarker = (userId: string) => {
   const key = getLoginTestKey(userId);
   if (localStorage.getItem(key) !== '1') return false;
+  // localStorage.setItem/removeItem are synchronous, so this claim is atomic
+  // within the browser event loop. A second mounted instance cannot consume it.
   localStorage.removeItem(key);
+  return true;
+};
+
+const claimAutomaticTestForExit = (userId: string, exitAt: number) => {
+  const key = getAutoTestClaimKey(userId, exitAt);
+  if (localStorage.getItem(key) === '1') return false;
+  // Claim before awaiting the push request. This prevents two independently
+  // mounted NotificationPrompt instances from both sending for one exit.
+  localStorage.setItem(key, '1');
   return true;
 };
 
@@ -83,6 +103,12 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
   const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'waiting' | 'sent' | 'failed'>('idle');
   const [health, setHealth] = useState<PushHealthResult | null>(null);
   const [showHealthy, setShowHealthy] = useState(false);
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const [swipeExiting, setSwipeExiting] = useState(false);
+  const touchStartX = useRef<number | null>(null);
+  const touchCurrentX = useRef<number | null>(null);
+  const swipeExitTimer = useRef<number | null>(null);
+  const healthyHideTimer = useRef<number | null>(null);
   const isSettingsTest = typeof window !== 'undefined' && (window.location.hash === '#push-test-section' || window.location.hash === '#push-notifications');
 
   useEffect(() => {
@@ -92,6 +118,24 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
     window.addEventListener('pageshow', refreshContext);
     document.addEventListener('visibilitychange', handleVisibility);
     return () => { window.removeEventListener('pageshow', refreshContext); document.removeEventListener('visibilitychange', handleVisibility); };
+  }, []);
+
+  useEffect(() => {
+    if (!showHealthy || isSettingsTest) return;
+    if (healthyHideTimer.current) window.clearTimeout(healthyHideTimer.current);
+    healthyHideTimer.current = window.setTimeout(() => {
+      setShowHealthy(false);
+      setVisible(false);
+      setShowNotifPrompt(false);
+    }, HEALTHY_MESSAGE_VISIBLE_MS);
+    return () => {
+      if (healthyHideTimer.current) window.clearTimeout(healthyHideTimer.current);
+    };
+  }, [showHealthy, isSettingsTest, setShowNotifPrompt]);
+
+  useEffect(() => () => {
+    if (swipeExitTimer.current) window.clearTimeout(swipeExitTimer.current);
+    if (healthyHideTimer.current) window.clearTimeout(healthyHideTimer.current);
   }, []);
 
   useEffect(() => {
@@ -115,20 +159,34 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
 
     const sendTest = async (currentHealth: PushHealthResult) => {
       if (currentHealth.status !== 'healthy' && currentHealth.status !== 'verification_required') return false;
-      setTestStatus('sending');
-      const result = await sendPushTest(userId, { silent: true, onWaiting: () => setTestStatus('waiting') });
-      if (cancelled) return true;
-      if (result.success && result.deviceReceived) {
-        recordHealthTest(userId);
-        setHealth(prev => prev ? { ...prev, status: 'healthy', pushHealthStatus: 'healthy' } : prev);
-        setTestStatus('sent');
-        setShowHealthy(true);
-      } else {
-        setHealth(prev => prev ? { ...prev, status: 'unhealthy', pushHealthStatus: 'unhealthy' } : prev);
-        setShowNotifPrompt(true);
-        setVisible(true);
+      const existing = pushTestsInFlight.get(userId);
+      if (existing) {
+        await existing;
+        return true;
       }
-      return true;
+
+      const sendPromise = sendPushTest(userId, { silent: true, onWaiting: () => setTestStatus('waiting') });
+      pushTestsInFlight.set(userId, sendPromise);
+      try {
+        setTestStatus('sending');
+        const result = await sendPromise;
+        if (cancelled) return true;
+        if (result.success && result.deviceReceived) {
+          recordHealthTest(userId);
+          setHealth(prev => prev ? { ...prev, status: 'healthy', pushHealthStatus: 'healthy' } : prev);
+          setTestStatus('sent');
+          setShowHealthy(true);
+          setVisible(true);
+          setShowNotifPrompt(false);
+        } else {
+          setHealth(prev => prev ? { ...prev, status: 'unhealthy', pushHealthStatus: 'unhealthy' } : prev);
+          setShowNotifPrompt(true);
+          setVisible(true);
+        }
+        return true;
+      } finally {
+        if (pushTestsInFlight.get(userId) === sendPromise) pushTestsInFlight.delete(userId);
+      }
     };
 
     const runVerification = async () => {
@@ -151,8 +209,8 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
         }
 
         if (!isSettingsTest) {
-          // LOGIN IS AN EXPLICIT EXCEPTION: every real login gets one test push.
-          // It is NOT subject to the three-hour absence gate.
+          // A successful real login always gets one test. Startup/auth restoration
+          // does not create this marker, so reopening the app cannot look like login.
           const loginTriggered = consumeLoginTestMarker(userId);
           if (loginTriggered) {
             await sendTest(currentHealth);
@@ -160,12 +218,12 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
             return;
           }
 
-          // Outside the login flow, the automatic re-verification push is only
-          // allowed after the user has actually been away for three hours.
+          // Outside login, only a real three-hour site absence can trigger the
+          // automatic test. Claim synchronously before awaiting the push request.
           const lastTestAt = getLastHealthTestAt(userId);
           const lastExitAt = getLastSiteExitAt(userId);
           const alreadyTestedForThisExit = lastTestAt !== null && lastExitAt !== null && lastTestAt >= lastExitAt;
-          if (hasCompletedThreeHourAbsence(userId) && !alreadyTestedForThisExit) {
+          if (lastExitAt !== null && Date.now() - lastExitAt >= PUSH_REVERIFICATION_COOLDOWN_MS && !alreadyTestedForThisExit && claimAutomaticTestForExit(userId, lastExitAt)) {
             await sendTest(currentHealth);
             if (!cancelled) setSelfTesting(false);
             return;
@@ -216,6 +274,56 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
     };
   }, [ctx, userId, isSettingsTest, setShowNotifPrompt]);
 
+  const dismissPrompt = () => {
+    setSwipeExiting(false);
+    setSwipeOffset(0);
+    setShowHealthy(false);
+    setShowNotifPrompt(false);
+    setVisible(false);
+  };
+
+  const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    touchStartX.current = event.touches[0]?.clientX ?? null;
+    touchCurrentX.current = touchStartX.current;
+    setSwipeExiting(false);
+  };
+
+  const handleTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (touchStartX.current === null) return;
+    const currentX = event.touches[0]?.clientX ?? touchStartX.current;
+    touchCurrentX.current = currentX;
+    const delta = currentX - touchStartX.current;
+    setSwipeOffset(delta);
+  };
+
+  const handleTouchEnd = () => {
+    if (touchStartX.current === null || touchCurrentX.current === null) return;
+    const delta = touchCurrentX.current - touchStartX.current;
+    touchStartX.current = null;
+    touchCurrentX.current = null;
+    if (Math.abs(delta) >= SWIPE_DISMISS_DISTANCE_PX) {
+      setSwipeExiting(true);
+      setSwipeOffset(delta > 0 ? window.innerWidth : -window.innerWidth);
+      if (swipeExitTimer.current) window.clearTimeout(swipeExitTimer.current);
+      swipeExitTimer.current = window.setTimeout(dismissPrompt, SWIPE_ANIMATION_MS);
+    } else {
+      setSwipeOffset(0);
+    }
+  };
+
+  const promptInteractionProps = {
+    onTouchStart: handleTouchStart,
+    onTouchMove: handleTouchMove,
+    onTouchEnd: handleTouchEnd,
+    onTouchCancel: handleTouchEnd,
+    style: {
+      transform: `translate3d(${swipeOffset}px, 0, 0)`,
+      transition: swipeExiting || swipeOffset === 0 ? `transform ${SWIPE_ANIMATION_MS}ms ease-out` : 'none',
+      touchAction: 'pan-y' as const,
+      willChange: 'transform',
+    },
+  };
+
   const handleEnable = async () => {
     if (!ctx) return;
     if (ctx.isIOS && !ctx.isStandalone) {
@@ -236,7 +344,8 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
       const currentHealth = await getHealth(userId);
       setHealth(currentHealth);
       if (currentHealth.status !== 'healthy' && currentHealth.status !== 'verification_required') throw new Error(currentHealth.detail || `Push registration is incomplete: ${currentHealth.status}`);
-      const result = await sendPushTest(userId, { onWaiting: () => setTestStatus('waiting') });
+      const existing = pushTestsInFlight.get(userId);
+      const result = existing ? await existing : await sendPushTest(userId, { onWaiting: () => setTestStatus('waiting') });
       if (result.success && result.deviceReceived) {
         recordHealthTest(userId);
         setHealth(prev => prev ? { ...prev, status: 'healthy', pushHealthStatus: 'healthy' } : prev);
@@ -258,7 +367,8 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
   const handleTest = async () => {
     setTestStatus('sending');
     try {
-      const result = await sendPushTest(userId, { onWaiting: () => setTestStatus('waiting') });
+      const existing = pushTestsInFlight.get(userId);
+      const result = existing ? await existing : await sendPushTest(userId, { onWaiting: () => setTestStatus('waiting') });
       if (result.success && result.deviceReceived) {
         setTestStatus('sent'); recordHealthTest(userId);
         setHealth(prev => prev ? { ...prev, status: 'healthy', pushHealthStatus: 'healthy' } : prev);
@@ -280,7 +390,7 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
   const handleDismiss = () => {
     localStorage.setItem(NOTIF_KEYS.dismissed, '1');
     sessionStorage.setItem(NOTIF_KEYS.shownThisSession, '1');
-    setShowNotifPrompt(false); setVisible(false);
+    dismissPrompt();
   };
 
   if (!ctx) return <CheckingNotifications />;
@@ -289,9 +399,9 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
   const needsPermission = health?.status === 'permission_required';
   const needsRepair = ACTIONABLE_STATUSES.has(health?.status ?? '') || health?.status === 'verification_required';
   const testBusy = testStatus === 'sending' || testStatus === 'waiting';
-  if (selfTesting) return <CheckingNotifications waiting={testStatus === 'waiting'} />;
+  if (selfTesting) return <div {...promptInteractionProps}><CheckingNotifications waiting={testStatus === 'waiting'} /></div>;
   if (showHealthy && health?.status === 'healthy') return (
-    <div className="notif-prompt" data-testid="notification-prompt" role="status" aria-live="polite">
+    <div {...promptInteractionProps} className="notif-prompt" data-testid="notification-prompt" role="status" aria-live="polite">
       <div className="notif-prompt__icon" aria-hidden="true">🔔</div>
       <div className="notif-prompt__text"><strong>Notifications enabled on this device</strong><p>Push notifications are connected on this device.</p></div>
     </div>
@@ -299,7 +409,7 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
   if (!visible && !(isSettingsTest && health?.status === 'healthy')) return null;
 
   return (
-    <div className="notif-prompt" data-testid="notification-prompt">
+    <div {...promptInteractionProps} className="notif-prompt" data-testid="notification-prompt">
       <div className="notif-prompt__icon" aria-hidden="true">🔔</div>
       <div className="notif-prompt__text">
         <strong>{isSettingsTest && health?.status === 'healthy' ? 'Test push notifications' : needsRepair ? 'Notifications need attention' : 'Stay in the loop'}</strong>
