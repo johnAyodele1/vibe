@@ -97,9 +97,7 @@ describe('LiveCams 1-to-1 Video Call Flow & Error Handling Regression Tests', ()
 
     ratesToTest.forEach((rate) => {
       it(`respects provider configured rate = ${rate} diamonds`, async () => {
-        let initiatedRate = -1;
-
-        vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string, options?: any) => {
+        vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
           if (url.includes('/adult/cams?status=live')) {
             return Promise.resolve({
               json: () => Promise.resolve({
