@@ -46,53 +46,69 @@ export const adminLogin = async (req: Request, res: Response): Promise<Response>
 
 export const getAnalyticsOverview = async (req: Request, res: Response) => {
   try {
-    const rate = await getDiamondNairaRate();
-
-    // 1. Total Members & Providers
-    const [totalMembers, totalProviders] = await Promise.all([
-      AdultUser.countDocuments({ role: 'user' }),
-      AdultUser.countDocuments({ role: 'provider' }),
-    ]);
-
-    // 2. Active Today
     const todayStr = new Date().toISOString().slice(0, 10);
-    const activeToday = await getDauCount(todayStr);
-
-    // 3. Registered Today
     const startOfToday = new Date();
     startOfToday.setHours(0,0,0,0);
-    const newToday = await AdultUser.countDocuments({
-      createdAt: { $gte: startOfToday }
-    });
 
-    // 4. Online Now
-    const onlineNow = await AdultUser.countDocuments({
-      isOnline: true
-    });
-
-    // 5. Earnings metrics
-    const allTimePlatformFeesSum = await PlatformEarning.aggregate([
-      { $group: { _id: null, total: { $sum: '$amount' }, totalNaira: { $sum: '$nairaValue' } } }
+    // ⚡ OPTIMIZATION (Bolt): Batch 12 sequential database count & aggregate roundtrips into a single Promise.all execution.
+    const [
+      rate,
+      totalMembers,
+      totalProviders,
+      activeToday,
+      newToday,
+      onlineNow,
+      allTimePlatformFeesSum,
+      payoutsSum,
+      providersWalletSum,
+      sourceBreakdowns,
+      camSessionStats,
+      totalMessages,
+      totalTransactions,
+    ] = await Promise.all([
+      getDiamondNairaRate(),
+      AdultUser.countDocuments({ role: 'user' }),
+      AdultUser.countDocuments({ role: 'provider' }),
+      getDauCount(todayStr),
+      AdultUser.countDocuments({ createdAt: { $gte: startOfToday } }),
+      AdultUser.countDocuments({ isOnline: true }),
+      PlatformEarning.aggregate([
+        { $group: { _id: null, total: { $sum: '$amount' }, totalNaira: { $sum: '$nairaValue' } } }
+      ]),
+      CreditTransaction.aggregate([
+        { $match: { type: 'payout', status: 'completed' } },
+        { $group: { _id: null, total: { $sum: '$amount' } } }
+      ]),
+      AdultUser.aggregate([
+        { $match: { role: 'provider' } },
+        { $group: { _id: null, total: { $sum: '$credits' } } }
+      ]),
+      PlatformEarning.aggregate([
+        { $group: { _id: '$source', total: { $sum: '$amount' } } }
+      ]),
+      (async () => {
+        try {
+          const [active, total] = await Promise.all([
+            mongoose.model('CamSession').countDocuments({ status: 'live' }),
+            mongoose.model('CamSession').countDocuments(),
+          ]);
+          return { activeCamSessions: active, totalCamSessions: total };
+        } catch {
+          return { activeCamSessions: 0, totalCamSessions: 0 };
+        }
+      })(),
+      AdultMessage.countDocuments(),
+      CreditTransaction.countDocuments(),
     ]);
+
     const totalPlatformFees = allTimePlatformFeesSum[0]?.total || 0;
     const totalPlatformNaira = allTimePlatformFeesSum[0]?.totalNaira || (totalPlatformFees * rate);
 
-    const payoutsSum = await CreditTransaction.aggregate([
-      { $match: { type: 'payout', status: 'completed' } },
-      { $group: { _id: null, total: { $sum: '$amount' } } }
-    ]);
     const paidOut = Math.abs(payoutsSum[0]?.total || 0);
 
-    const providersWalletSum = await AdultUser.aggregate([
-      { $match: { role: 'provider' } },
-      { $group: { _id: null, total: { $sum: '$credits' } } }
-    ]);
     const pendingPayouts = providersWalletSum[0]?.total || 0;
     const pendingPayoutsNaira = pendingPayouts * rate;
 
-    const sourceBreakdowns = await PlatformEarning.aggregate([
-      { $group: { _id: '$source', total: { $sum: '$amount' } } }
-    ]);
     const breakdown: Record<string, number> = {
       tips: 0,
       gifts: 0,
@@ -108,16 +124,7 @@ export const getAnalyticsOverview = async (req: Request, res: Response) => {
       }
     });
 
-    // 6. Content metrics
-    let activeCamSessions = 0;
-    let totalCamSessions = 0;
-    try {
-      activeCamSessions = await mongoose.model('CamSession').countDocuments({ status: 'live' });
-      totalCamSessions = await mongoose.model('CamSession').countDocuments();
-    } catch (e) {}
-
-    const totalMessages = await AdultMessage.countDocuments();
-    const totalTransactions = await CreditTransaction.countDocuments();
+    const { activeCamSessions, totalCamSessions } = camSessionStats;
 
     return res.json({
       success: true,

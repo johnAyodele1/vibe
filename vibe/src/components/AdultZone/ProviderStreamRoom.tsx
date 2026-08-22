@@ -44,6 +44,34 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
     resetReadiness,
   } = videoState;
 
+  const stopTrack = React.useCallback((track: { getMediaStreamTrack?: () => MediaStreamTrack | null; stop?: () => void; close?: () => void } | null) => {
+    if (!track) return;
+    try {
+      const msTrack = track.getMediaStreamTrack?.();
+      if (msTrack) {
+        msTrack.stop();
+      }
+    } catch {}
+    try {
+      track.stop?.();
+      track.close?.();
+    } catch {}
+  }, []);
+
+  const stopLocalTracks = React.useCallback(() => {
+    resetReadiness();
+    stopTrack(localAudioTrackRef.current);
+    localAudioTrackRef.current = null;
+    stopTrack(localVideoTrackRef.current);
+    localVideoTrackRef.current = null;
+    if (clientRef.current) {
+      try {
+        clientRef.current.leave().catch(() => {});
+      } catch {}
+      clientRef.current = null;
+    }
+  }, [resetReadiness, stopTrack]);
+
   useEffect(() => {
     const client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
     clientRef.current = client;
@@ -109,6 +137,7 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
         console.error('Agora Host Stream failed to initialize:', err);
         await stopLocalMedia();
         toast.error('Failed to start camera/microphone broadcast. Session cancelled.');
+        stopLocalTracks();
         onEnd();
       }
     };

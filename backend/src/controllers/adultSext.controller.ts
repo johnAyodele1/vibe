@@ -2608,7 +2608,8 @@ export const fulfillServiceTonightRequest = async (req: Request, res: Response) 
 // GET /api/v1/adult/gifts/catalogue
 export const getGiftsCatalogue = async (req: Request, res: Response) => {
   try {
-    let gifts = await AdultGift.find({ isActive: true }).sort({ sortOrder: 1 });
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document instantiation and model hydration overhead.
+    let gifts = await AdultGift.find({ isActive: true }).sort({ sortOrder: 1 }).lean();
 
     // Seed default catalogue if empty
     if (gifts.length === 0) {
@@ -2869,8 +2870,13 @@ export const initiateCall = async (req: Request, res: Response) => {
       await call.save();
     } catch (err: any) {
       if (err.code === 11000 || err.name === 'MongoServerError' || err.message?.includes('E11000') || err.message?.includes('duplicate key')) {
+        const callerIdStr = user._id.toString();
+        const dupKeyVal = err.keyValue?.activeParticipants;
+        const dupKeyStr = dupKeyVal ? dupKeyVal.toString() : '';
+        const isCallerDup = dupKeyStr === callerIdStr || err.message?.includes(callerIdStr);
+
         const checkCallerAgain = await checkActiveCall(user._id);
-        if (checkCallerAgain && checkCallerAgain._id.toString() !== call._id.toString()) {
+        if (isCallerDup || (checkCallerAgain && checkCallerAgain._id.toString() !== call._id.toString())) {
           return res.status(409).json({ success: false, error: 'You are already on a call on another device.' });
         }
         return res.status(409).json({ success: false, error: 'This provider is busy. Try again later.' });
@@ -3461,12 +3467,14 @@ export const getCallHistory = async (req: Request, res: Response) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
 
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document instantiation and model hydration overhead.
     const calls = await AdultCall.find({
       $or: [{ callerId: user._id }, { receiverId: user._id }]
     })
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
-      .limit(limit);
+      .limit(limit)
+      .lean();
 
     const results = [];
     for (const c of calls) {

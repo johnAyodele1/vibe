@@ -218,30 +218,44 @@ const CallRoom: React.FC<CallRoomProps> = ({
 
     initCall();
 
-    return () => {
-      genRef.current++;
-      isMountedRef.current = false;
+    const stopTrack = (track: { getMediaStreamTrack?: () => MediaStreamTrack | null; stop?: () => void; close?: () => void } | null) => {
+      if (!track) return;
+      try {
+        const msTrack = track.getMediaStreamTrack?.();
+        if (msTrack) {
+          msTrack.stop();
+        }
+      } catch {}
+      try {
+        track.stop?.();
+        track.close?.();
+      } catch {}
+    };
+
+    const stopLocalMedia = () => {
       remoteResetReadiness();
       localResetReadiness();
-      if (localAudioTrackRef.current) {
-        localAudioTrackRef.current.stop();
-        localAudioTrackRef.current.close();
-        localAudioTrackRef.current = null;
-      }
-      if (localVideoTrackRef.current) {
-        localVideoTrackRef.current.stop();
-        localVideoTrackRef.current.close();
-        localVideoTrackRef.current = null;
-      }
+      stopTrack(localAudioTrackRef.current);
+      localAudioTrackRef.current = null;
+      stopTrack(localVideoTrackRef.current);
+      localVideoTrackRef.current = null;
       if (clientRef.current) {
-        clientRef.current.off('user-published', handleUserPublished);
-        clientRef.current.off('user-unpublished', handleUserUnpublished);
-        clientRef.current.off('user-left', handleUserLeft);
-        clientRef.current.off('volume-indicator', handleVolumeIndicator);
-        clientRef.current.leave().catch(() => {});
+        try {
+          clientRef.current.off('user-published', handleUserPublished);
+          clientRef.current.off('user-unpublished', handleUserUnpublished);
+          clientRef.current.off('user-left', handleUserLeft);
+          clientRef.current.off('volume-indicator', handleVolumeIndicator);
+          clientRef.current.leave().catch(() => {});
+        } catch {}
         clientRef.current = null;
       }
       hasJoined.current = false;
+    };
+
+    return () => {
+      genRef.current++;
+      isMountedRef.current = false;
+      stopLocalMedia();
     };
   }, [retry, appId, token, roomId, userId, callType, remoteContainerRef, localContainerRef, remoteMarkReady, remoteResetReadiness, localMarkReady, localResetReadiness]);
 
@@ -269,16 +283,26 @@ const CallRoom: React.FC<CallRoomProps> = ({
     const elapsed = Math.max(1, Math.floor((Date.now() - (startTimeRef.current || Date.now())) / 1000));
     remoteResetReadiness();
     localResetReadiness();
-    if (localAudioTrackRef.current) {
-      localAudioTrackRef.current.stop();
-      localAudioTrackRef.current.close();
-      localAudioTrackRef.current = null;
-    }
-    if (localVideoTrackRef.current) {
-      localVideoTrackRef.current.stop();
-      localVideoTrackRef.current.close();
-      localVideoTrackRef.current = null;
-    }
+
+    const stopTrack = (track: { getMediaStreamTrack?: () => MediaStreamTrack | null; stop?: () => void; close?: () => void } | null) => {
+      if (!track) return;
+      try {
+        const msTrack = track.getMediaStreamTrack?.();
+        if (msTrack) {
+          msTrack.stop();
+        }
+      } catch {}
+      try {
+        track.stop?.();
+        track.close?.();
+      } catch {}
+    };
+
+    stopTrack(localAudioTrackRef.current);
+    localAudioTrackRef.current = null;
+    stopTrack(localVideoTrackRef.current);
+    localVideoTrackRef.current = null;
+
     if (clientRef.current) {
       try {
         await clientRef.current.leave();

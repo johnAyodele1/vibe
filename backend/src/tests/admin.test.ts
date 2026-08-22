@@ -93,6 +93,22 @@ describe('Admin Endpoints', () => {
     });
   });
 
+  describe('GET /api/admin/analytics/overview', () => {
+    it('should return overview analytics structure correctly', async () => {
+      const res = await request(app)
+        .get('/api/admin/analytics/overview')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.users).toBeDefined();
+      expect(res.body.users.totalMembers).toBeDefined();
+      expect(res.body.users.totalProviders).toBeDefined();
+      expect(res.body.earnings).toBeDefined();
+      expect(res.body.content).toBeDefined();
+    });
+  });
+
   describe('POST /api/analytics/visit', () => {
     it('should increment visit counter', async () => {
       const firstRes = await request(app).post('/api/analytics/visit');

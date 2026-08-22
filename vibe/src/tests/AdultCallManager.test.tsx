@@ -261,7 +261,7 @@ describe('AdultCallManager and AdultCallProvider Route-Independent Call Signalin
       fireEvent.click(startBtn);
     });
 
-    expect(toastSpy).toHaveBeenCalledWith('Insufficient credits to start call');
+    expect(toastSpy).toHaveBeenCalledWith('Insufficient credits to start call. Please top up your wallet.');
     expect(screen.getByTestId('call-state')).toHaveTextContent('idle');
   });
 

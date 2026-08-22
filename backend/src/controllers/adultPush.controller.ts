@@ -23,7 +23,8 @@ export const diagnosePush = async (req: Request, res: Response) => {
     if (!user) return res.status(401).json({ success: false, error: 'Auth required' });
     const userId = user._id;
     const deviceId = req.query.deviceId as string;
-    const allDevices = await PushSubscription.find({ userId });
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document instantiation and model hydration overhead.
+    const allDevices = await PushSubscription.find({ userId }).lean();
     const thisDevice = allDevices.find(d => d.deviceId === deviceId);
     return res.json({
       userId, deviceId, allDevicesCount: allDevices.length,
@@ -44,7 +45,8 @@ export const sendTestPush = async (req: Request, res: Response) => {
     const user = req.adultUser;
     if (!user) return res.status(401).json({ success: false, error: 'Auth required' });
     await ensureVapidKeys();
-    const subscriptions = await PushSubscription.find({ userId: user._id, isActive: true, notificationsEnabled: true });
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document instantiation and model hydration overhead.
+    const subscriptions = await PushSubscription.find({ userId: user._id, isActive: true, notificationsEnabled: true }).lean();
     if (!subscriptions.length) return res.json({ success: false, reason: 'No push subscriptions found for this user' });
     const results = [];
     const isReopen = req.body?.isReopen === true;
