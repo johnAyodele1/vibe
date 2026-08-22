@@ -39,7 +39,8 @@ export interface AdultCallContextType {
     type?: 'video' | 'audio',
     rate?: number,
     conversationId?: string,
-    partnerInfo?: { displayName?: string; avatarUrl?: string }
+    partnerInfo?: { displayName?: string; avatarUrl?: string },
+    camSessionId?: string
   ) => Promise<boolean>;
   acceptCall: () => Promise<void>;
   declineCall: () => Promise<void>;

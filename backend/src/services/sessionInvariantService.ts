@@ -63,24 +63,41 @@ export const endCamSessionAtomic = async (
 };
 
 /**
- * Finds and atomically ends any live or pending CamSession associated with the given user IDs (caller or receiver).
- * Idempotent and safe to call multiple times.
+ * Specifically targets and atomically ends the CamSession associated with a 1-to-1 call.
+ * Reuses call.camSessionId if set, or falls back to finding active live/pending sessions belonging solely
+ * to the call's receiver (provider). Excludes callerId's sessions and excludes scheduled sessions.
+ * Idempotent and safe to execute multiple times.
  */
-export const endActiveCamSessionsForUsers = async (
-  userIds: (string | Types.ObjectId)[],
+export const endCamSessionForCall = async (
+  call: any,
   reason: string = 'call_ended',
   ns?: any
 ) => {
-  if (mongoose.connection.readyState !== 1 || !userIds || userIds.length === 0) return;
+  if (mongoose.connection.readyState !== 1 || !call) return;
 
-  const validIds = userIds.filter(Boolean);
-  const activeSessions = await CamSession.find({
-    providerId: { $in: validIds },
-    status: { $in: ['live', 'pending', 'scheduled'] },
-  });
+  // Stream teardown applies only if the call was accepted/active
+  // (Ringing calls that are declined or cancelled before acceptance preserve the provider's public live stream)
+  const wasCallAcceptedOrActive = !!(call.startedAt || call.status === 'active' || reason === 'accepted_private_call');
+  if (!wasCallAcceptedOrActive) {
+    return;
+  }
 
-  for (const session of activeSessions) {
-    await endCamSessionAtomic(session._id, reason, ns);
+  // 1. If call explicitly recorded a camSessionId, target that session directly
+  if (call.camSessionId) {
+    await endCamSessionAtomic(call.camSessionId, reason, ns);
+    return;
+  }
+
+  // 2. Fallback: Find live/pending CamSession belonging exclusively to the receiver (provider)
+  // Excludes callerId's sessions and excludes 'scheduled' sessions.
+  if (call.receiverId) {
+    const activeSession = await CamSession.findOne({
+      providerId: call.receiverId,
+      status: { $in: ['live', 'pending'] },
+    });
+    if (activeSession) {
+      await endCamSessionAtomic(activeSession._id, reason, ns);
+    }
   }
 };
 

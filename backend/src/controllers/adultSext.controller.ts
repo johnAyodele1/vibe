@@ -19,7 +19,7 @@ import { calculateFees, recordPlatformEarning } from '../shared/fees';
 import { getSignedUrl } from '../shared/media/cloudinaryUpload';
 import { sendPushToUser } from '../shared/push';
 import { sendNewMessageEmail } from '../shared/email/providerEmail';
-import { checkActiveCall, endCamSessionAtomic, endActiveCamSessionsForUsers } from '../services/sessionInvariantService';
+import { checkActiveCall, endCamSessionAtomic, endCamSessionForCall } from '../services/sessionInvariantService';
 
 // Backwards compatibility startConversation route
 export const startConversation = async (req: Request, res: Response) => {
@@ -2788,7 +2788,7 @@ export const initiateCall = async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: 'Auth required' });
     }
 
-    const { conversationId, type } = req.body;
+    const { conversationId, type, camSessionId } = req.body;
     if (!conversationId || !type) {
       return res.status(400).json({ success: false, error: 'conversationId and type (video/audio) are required' });
     }
@@ -2841,6 +2841,17 @@ export const initiateCall = async (req: Request, res: Response) => {
 
     const webrtcRoomId = `room_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
+    let resolvedCamSessionId = camSessionId || null;
+    if (!resolvedCamSessionId) {
+      const activeCam = await CamSession.findOne({
+        providerId: receiver._id,
+        status: { $in: ['live', 'pending'] }
+      });
+      if (activeCam) {
+        resolvedCamSessionId = activeCam._id;
+      }
+    }
+
     const call = new AdultCall({
       conversationId,
       callerId: user._id,
@@ -2850,7 +2861,8 @@ export const initiateCall = async (req: Request, res: Response) => {
       type,
       status: 'ringing',
       perMinuteRate: rate,
-      webrtcRoomId
+      webrtcRoomId,
+      camSessionId: resolvedCamSessionId
     });
 
     try {
@@ -3148,13 +3160,7 @@ export const acceptCall = async (req: Request, res: Response) => {
     }
 
     // 3. Upon successful billing, end active public cam stream if provider is currently streaming
-    const activeCamSession = await CamSession.findOne({
-      providerId: { $in: [updatedCall.callerId, updatedCall.receiverId] },
-      status: { $in: ['live', 'pending'] }
-    });
-    if (activeCamSession) {
-      await endCamSessionAtomic(activeCamSession._id, 'accepted_private_call', ns);
-    }
+    await endCamSessionForCall(updatedCall, 'accepted_private_call', ns);
 
     if (ns) {
       ns.to(`user:${updatedCall.callerId.toString()}`).emit('call:accepted', {
@@ -3213,6 +3219,8 @@ export const declineCall = async (req: Request, res: Response) => {
     if (ns) {
       ns.to(`user:${call.callerId.toString()}`).emit('call:declined', { callId });
     }
+
+    await endCamSessionForCall(call, 'call_declined', ns);
 
     return res.json({ callId });
   } catch (error: any) {
@@ -3429,7 +3437,7 @@ export const endCall = async (req: Request, res: Response) => {
       ns.to(`call:${callId}`).emit('call:ended', { callId, reason });
     }
 
-    await endActiveCamSessionsForUsers([updatedCall.callerId, updatedCall.receiverId], reason || 'call_ended', ns);
+    await endCamSessionForCall(updatedCall, reason || 'call_ended', ns);
 
     return res.json({
       callId: updatedCall._id,

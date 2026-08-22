@@ -183,7 +183,8 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     type: 'video' | 'audio' = 'video',
     overrideRate?: number,
     existingConvId?: string,
-    partnerInfo?: { displayName?: string; avatarUrl?: string }
+    partnerInfo?: { displayName?: string; avatarUrl?: string },
+    camSessionId?: string
   ): Promise<boolean> => {
     if (isInitiatingRef.current || isInitiating || callStateRef.current !== 'idle') {
       return false;
@@ -213,7 +214,7 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const callRes = await fetch(`${API_BASE_URL}/v1/adult/sext/calls/initiate`, {
         method: 'POST',
         headers: getHeaders(),
-        body: JSON.stringify({ conversationId, type })
+        body: JSON.stringify({ conversationId, type, camSessionId })
       });
       const callData = await callRes.json();
 
