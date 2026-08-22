@@ -14,10 +14,10 @@ const PUSH_LOGIN_TEST_KEY_PREFIX = 'zippo_push_test_after_login:';
 
 type InstallContext = ReturnType<typeof getInstallContext>;
 
-// A module-level in-flight registry survives React StrictMode's development
-// remount and other same-document remounts. It prevents two NotificationPrompt
-// instances from performing the same startup health check at once.
+// One health request per user at a time. This protects against StrictMode,
+// duplicate lifecycle events and multiple prompt instances starting together.
 const healthChecksInFlight = new Map<string, Promise<PushHealthResult>>();
+const lastLifecycleVerificationAt = new Map<string, number>();
 
 const getSiteExitKey = (userId: string) => `${PUSH_REVERIFICATION_EXIT_KEY_PREFIX}${userId}`;
 const getHealthTestKey = (userId: string) => `${PUSH_REVERIFICATION_TEST_KEY_PREFIX}${userId}`;
@@ -30,39 +30,38 @@ const readTimestamp = (key: string): number | null => {
   return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : null;
 };
 
-const getLastSiteExitAt = (userId: string): number | null => readTimestamp(getSiteExitKey(userId));
-const getLastHealthTestAt = (userId: string): number | null => readTimestamp(getHealthTestKey(userId));
-
-const hasCompletedThreeHourAbsence = (userId: string): boolean => {
-  const lastSiteExitAt = getLastSiteExitAt(userId);
-  return lastSiteExitAt !== null && Date.now() - lastSiteExitAt >= PUSH_REVERIFICATION_COOLDOWN_MS;
+const getLastSiteExitAt = (userId: string) => readTimestamp(getSiteExitKey(userId));
+const getLastHealthTestAt = (userId: string) => readTimestamp(getHealthTestKey(userId));
+const hasCompletedThreeHourAbsence = (userId: string) => {
+  const exitAt = getLastSiteExitAt(userId);
+  return exitAt !== null && Date.now() - exitAt >= PUSH_REVERIFICATION_COOLDOWN_MS;
 };
+const recordSiteExit = (userId: string) => localStorage.setItem(getSiteExitKey(userId), String(Date.now()));
+const recordHealthTest = (userId: string) => localStorage.setItem(getHealthTestKey(userId), String(Date.now()));
 
-const recordSiteExit = (userId: string) => {
-  localStorage.setItem(getSiteExitKey(userId), String(Date.now()));
-};
-
-const recordHealthTest = (userId: string) => {
-  localStorage.setItem(getHealthTestKey(userId), String(Date.now()));
-};
-
-const consumeLoginTestMarker = (userId: string): boolean => {
+const consumeLoginTestMarker = (userId: string) => {
   const key = getLoginTestKey(userId);
-  const value = localStorage.getItem(key);
-  if (value !== '1') return false;
+  if (localStorage.getItem(key) !== '1') return false;
   localStorage.removeItem(key);
   return true;
 };
 
-const getHealth = (userId: string): Promise<PushHealthResult> => {
+const getHealth = (userId: string) => {
   const existing = healthChecksInFlight.get(userId);
   if (existing) return existing;
-
   const promise = checkPushHealth(userId).finally(() => {
     if (healthChecksInFlight.get(userId) === promise) healthChecksInFlight.delete(userId);
   });
   healthChecksInFlight.set(userId, promise);
   return promise;
+};
+
+const shouldRunLifecycleVerification = (userId: string) => {
+  const now = Date.now();
+  const last = lastLifecycleVerificationAt.get(userId) ?? 0;
+  if (now - last < 500) return false;
+  lastLifecycleVerificationAt.set(userId, now);
+  return true;
 };
 
 const CheckingNotifications = ({ waiting = false }: { waiting?: boolean }) => (
@@ -99,41 +98,26 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
     if (!ctx) return;
     let cancelled = false;
 
-    const runHealthCheck = async () => {
-      const checkingStartedAt = Date.now();
-      setSelfTesting(true);
-      setTestStatus('idle');
-      setShowNotifPrompt(false);
-
-      const remaining = CHECKING_MIN_VISIBLE_MS - (Date.now() - checkingStartedAt);
+    const runHealthCheck = async (showChecking: boolean) => {
+      if (showChecking) {
+        setSelfTesting(true);
+        setTestStatus('idle');
+        setShowNotifPrompt(false);
+      }
+      const startedAt = Date.now();
       const currentHealth = await getHealth(userId);
+      const remaining = CHECKING_MIN_VISIBLE_MS - (Date.now() - startedAt);
       if (remaining > 0) await new Promise(resolve => window.setTimeout(resolve, remaining));
       if (cancelled) return null;
-
       setHealth(currentHealth);
       return currentHealth;
     };
 
-    const runLoginTestIfEligible = async (currentHealth: PushHealthResult) => {
-      // A real test is only ever triggered by an explicit successful login.
-      // App startup/resume only checks health; it never sends a test by itself.
-      const loginTriggered = consumeLoginTestMarker(userId);
-      if (!loginTriggered || isSettingsTest) return false;
-
-      // The three-hour clock starts when the user actually leaves the site.
-      // A successful test timestamp is only a secondary guard against sending
-      // twice for the same absence/login cycle.
-      const lastHealthTestAt = getLastHealthTestAt(userId);
-      const lastSiteExitAt = getLastSiteExitAt(userId);
-      const alreadyTestedSinceExit = lastHealthTestAt !== null && lastSiteExitAt !== null && lastHealthTestAt >= lastSiteExitAt;
-      if (!hasCompletedThreeHourAbsence(userId) || alreadyTestedSinceExit) return false;
-
+    const sendTest = async (currentHealth: PushHealthResult) => {
       if (currentHealth.status !== 'healthy' && currentHealth.status !== 'verification_required') return false;
-
       setTestStatus('sending');
       const result = await sendPushTest(userId, { silent: true, onWaiting: () => setTestStatus('waiting') });
       if (cancelled) return true;
-
       if (result.success && result.deviceReceived) {
         recordHealthTest(userId);
         setHealth(prev => prev ? { ...prev, status: 'healthy', pushHealthStatus: 'healthy' } : prev);
@@ -148,8 +132,9 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
     };
 
     const runVerification = async () => {
+      const showChecking = shouldRunLifecycleVerification(userId);
       try {
-        const currentHealth = await runHealthCheck();
+        const currentHealth = await runHealthCheck(showChecking);
         if (!currentHealth || cancelled) return;
 
         if (ACTIONABLE_STATUSES.has(currentHealth.status)) {
@@ -158,7 +143,6 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
           setVisible(true);
           return;
         }
-
         if (currentHealth.status === 'unsupported') {
           setSelfTesting(false);
           setShowNotifPrompt(false);
@@ -166,10 +150,29 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
           return;
         }
 
-        const didLoginTest = await runLoginTestIfEligible(currentHealth);
-        if (cancelled) return;
+        if (!isSettingsTest) {
+          // LOGIN IS AN EXPLICIT EXCEPTION: every real login gets one test push.
+          // It is NOT subject to the three-hour absence gate.
+          const loginTriggered = consumeLoginTestMarker(userId);
+          if (loginTriggered) {
+            await sendTest(currentHealth);
+            if (!cancelled) setSelfTesting(false);
+            return;
+          }
 
-        if (!didLoginTest) {
+          // Outside the login flow, the automatic re-verification push is only
+          // allowed after the user has actually been away for three hours.
+          const lastTestAt = getLastHealthTestAt(userId);
+          const lastExitAt = getLastSiteExitAt(userId);
+          const alreadyTestedForThisExit = lastTestAt !== null && lastExitAt !== null && lastTestAt >= lastExitAt;
+          if (hasCompletedThreeHourAbsence(userId) && !alreadyTestedForThisExit) {
+            await sendTest(currentHealth);
+            if (!cancelled) setSelfTesting(false);
+            return;
+          }
+        }
+
+        if (!cancelled) {
           setSelfTesting(false);
           setTestStatus('idle');
           if (currentHealth.status === 'healthy') {
@@ -196,7 +199,6 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
 
     void runVerification();
 
-    // Resume means re-check health, never automatically send a test.
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') void runVerification();
     };
@@ -222,10 +224,7 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
       return;
     }
     if (ctx.isAndroid && !ctx.isStandalone) toast.info('Install Zippo to your home screen for the best experience', { duration: 3000 });
-    setLoading(true);
-    setSelfTesting(true);
-    setTestStatus('sending');
-    setShowNotifPrompt(false);
+    setLoading(true); setSelfTesting(true); setTestStatus('sending'); setShowNotifPrompt(false);
     try {
       const connected = await requestAndSubscribe(userId);
       if (!connected) {
@@ -234,15 +233,9 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
         else toast.error('Notifications could not be connected on this device.');
         return;
       }
-
       const currentHealth = await getHealth(userId);
       setHealth(currentHealth);
-      if (currentHealth.status !== 'healthy' && currentHealth.status !== 'verification_required') {
-        throw new Error(currentHealth.detail || `Push registration is incomplete: ${currentHealth.status}`);
-      }
-
-      // Manual enable/repair is an explicit user action, so it may perform the
-      // real device test immediately. This is not an automatic startup test.
+      if (currentHealth.status !== 'healthy' && currentHealth.status !== 'verification_required') throw new Error(currentHealth.detail || `Push registration is incomplete: ${currentHealth.status}`);
       const result = await sendPushTest(userId, { onWaiting: () => setTestStatus('waiting') });
       if (result.success && result.deviceReceived) {
         recordHealthTest(userId);
@@ -259,9 +252,7 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
       console.error('[NotifPrompt] Push registration failed:', error);
       setSelfTesting(false); setTestStatus('idle'); setShowNotifPrompt(true); setVisible(true);
       toast.error(error instanceof Error ? error.message : 'Notifications could not be connected on this device.');
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   const handleTest = async () => {
@@ -269,19 +260,19 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
     try {
       const result = await sendPushTest(userId, { onWaiting: () => setTestStatus('waiting') });
       if (result.success && result.deviceReceived) {
-        setTestStatus('sent');
-        recordHealthTest(userId);
+        setTestStatus('sent'); recordHealthTest(userId);
         setHealth(prev => prev ? { ...prev, status: 'healthy', pushHealthStatus: 'healthy' } : prev);
-        setShowHealthy(true);
-        setVisible(true);
+        setShowHealthy(true); setVisible(true);
         toast.success('This device received the test notification.');
       } else {
-        setTestStatus('failed'); setHealth(prev => prev ? { ...prev, status: 'unhealthy', pushHealthStatus: 'unhealthy' } : prev);
+        setTestStatus('failed');
+        setHealth(prev => prev ? { ...prev, status: 'unhealthy', pushHealthStatus: 'unhealthy' } : prev);
         toast.error(result.reason || 'Push delivery could not be verified.');
       }
     } catch (error) {
       console.error('[NotifPrompt] Push test failed:', error);
-      setTestStatus('failed'); setHealth(prev => prev ? { ...prev, status: 'unhealthy', pushHealthStatus: 'unhealthy' } : prev);
+      setTestStatus('failed');
+      setHealth(prev => prev ? { ...prev, status: 'unhealthy', pushHealthStatus: 'unhealthy' } : prev);
       toast.error('Push delivery could not be verified.');
     } finally { window.setTimeout(() => setTestStatus('idle'), 5000); }
   };
@@ -296,18 +287,15 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
   if (ctx.isIOS && !ctx.isStandalone) return <AddToHomeScreenHint onDismiss={handleDismiss} />;
 
   const needsPermission = health?.status === 'permission_required';
-  const needsRepair = health?.status === 'unhealthy' || health?.status === 'missing_subscription' || health?.status === 'backend_missing' || health?.status === 'verification_required' || health?.status === 'error' || health?.status === 'permission_denied' || health?.status === 'service_worker_unavailable';
+  const needsRepair = ACTIONABLE_STATUSES.has(health?.status ?? '') || health?.status === 'verification_required';
   const testBusy = testStatus === 'sending' || testStatus === 'waiting';
-
   if (selfTesting) return <CheckingNotifications waiting={testStatus === 'waiting'} />;
-
   if (showHealthy && health?.status === 'healthy') return (
     <div className="notif-prompt" data-testid="notification-prompt" role="status" aria-live="polite">
       <div className="notif-prompt__icon" aria-hidden="true">🔔</div>
       <div className="notif-prompt__text"><strong>Notifications enabled on this device</strong><p>Push notifications are connected on this device.</p></div>
     </div>
   );
-
   if (!visible && !(isSettingsTest && health?.status === 'healthy')) return null;
 
   return (
