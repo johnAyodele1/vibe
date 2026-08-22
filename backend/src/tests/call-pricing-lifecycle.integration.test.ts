@@ -5,6 +5,7 @@ import jwt from 'jsonwebtoken';
 import app from '../app';
 import AdultUser from '../models/AdultUser';
 import AdultCall from '../models/AdultCall';
+import AdultConversation from '../models/AdultConversation';
 
 describe('Call pricing server-authoritative lifecycle', () => {
   let mongoServer: MongoMemoryReplSet;
@@ -73,19 +74,26 @@ describe('Call pricing server-authoritative lifecycle', () => {
 
   beforeEach(async () => {
     await AdultCall.deleteMany({});
-    const conversation = await mongoose.connection.collection<{ _id: string }>('adultconversations').findOne({
-      participants: { $all: [new mongoose.Types.ObjectId(memberId), new mongoose.Types.ObjectId(providerId)] },
+
+    const participants = [
+      new mongoose.Types.ObjectId(memberId),
+      new mongoose.Types.ObjectId(providerId),
+    ];
+
+    const conversation = await AdultConversation.findOne({
+      participants: { $all: participants },
     });
 
     if (conversation) {
-      conversationId = conversation._id;
+      conversationId = conversation._id.toString();
       return;
     }
 
     conversationId = [memberId, providerId].sort().join('_');
-    await mongoose.connection.collection<{ _id: string }>('adultconversations').insertOne({
+
+    await AdultConversation.create({
       _id: conversationId,
-      participants: [new mongoose.Types.ObjectId(memberId), new mongoose.Types.ObjectId(providerId)],
+      participants,
       participantProfiles: [
         {
           userId: new mongoose.Types.ObjectId(memberId),
