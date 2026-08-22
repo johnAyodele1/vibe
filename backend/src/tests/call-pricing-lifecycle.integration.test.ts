@@ -82,9 +82,10 @@ describe('Call pricing server-authoritative lifecycle', () => {
       return;
     }
 
-    conversationId = [memberId, providerId].sort().join('_');
+    const conversationObjectId = new mongoose.Types.ObjectId();
+    conversationId = conversationObjectId.toString();
     await mongoose.connection.collection('adultconversations').insertOne({
-      _id: conversationId,
+      _id: conversationObjectId,
       participants: [new mongoose.Types.ObjectId(memberId), new mongoose.Types.ObjectId(providerId)],
       participantProfiles: [
         {
