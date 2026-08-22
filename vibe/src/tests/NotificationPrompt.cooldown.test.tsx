@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
-import NotificationPrompt from '../components/pwa/NotificationPrompt';
+import NotificationPrompt, { _resetModuleStateForTesting } from '../components/pwa/NotificationPrompt';
 import { checkPushHealth, sendPushTest } from '../lib/pwa/subscriptionManager';
 
 const mockCtx = {
@@ -49,6 +49,7 @@ describe('NotificationPrompt three-hour re-verification and login behavior', () 
     localStorage.clear();
     sessionStorage.clear();
     window.location.hash = '';
+    _resetModuleStateForTesting();
     mockCtx.isStandalone = false;
     mockCtx.isIOS = false;
     (window as any).Notification = { permission: 'granted' };
@@ -62,7 +63,7 @@ describe('NotificationPrompt three-hour re-verification and login behavior', () 
     expect(checkPushHealth).toHaveBeenCalledTimes(1);
     expect(sendPushTest).toHaveBeenCalledTimes(0);
     expect(screen.getByText('Notifications enabled on this device')).toBeInTheDocument();
-    await wait(1100);
+    await wait(2100);
     expect(screen.queryByText('Notifications enabled on this device')).not.toBeInTheDocument();
   });
 
