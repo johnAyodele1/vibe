@@ -101,6 +101,12 @@ describe('Provider Camera Teardown & Media Lifecycle Tests', () => {
   });
 
   it('Test 1 — Call ends: Provider camera active -> 1-to-1 call accepted -> call ends -> camera/media cleanup executes', async () => {
+    const mockNativeVideoTrack = { stop: vi.fn(), readyState: 'live' };
+    const mockNativeAudioTrack = { stop: vi.fn(), readyState: 'live' };
+
+    mockVideoTrack.getMediaStreamTrack.mockReturnValue(mockNativeVideoTrack as any);
+    mockAudioTrack.getMediaStreamTrack.mockReturnValue(mockNativeAudioTrack as any);
+
     const onEndMock = vi.fn();
 
     await act(async () => {
@@ -126,7 +132,11 @@ describe('Provider Camera Teardown & Media Lifecycle Tests', () => {
       handlers.forEach(fn => fn({ sessionId: 'session-abc' }));
     });
 
-    // Verify media track teardown executed
+    // Verify native MediaStreamTrack stop executed
+    expect(mockNativeVideoTrack.stop).toHaveBeenCalled();
+    expect(mockNativeAudioTrack.stop).toHaveBeenCalled();
+
+    // Verify Agora SDK track teardown executed
     expect(mockVideoTrack.stop).toHaveBeenCalled();
     expect(mockVideoTrack.close).toHaveBeenCalled();
     expect(mockAudioTrack.stop).toHaveBeenCalled();

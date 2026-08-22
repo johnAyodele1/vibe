@@ -42,6 +42,11 @@ const ProviderLive: React.FC = () => {
   const [agoraRoomId, setAgoraRoomId] = useState<string | null>(null);
   const [agoraSessionId, setAgoraSessionId] = useState<string | null>(null);
 
+  const agoraSessionIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    agoraSessionIdRef.current = agoraSessionId;
+  }, [agoraSessionId]);
+
   const socketRef = useRef<Socket | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -95,8 +100,8 @@ const ProviderLive: React.FC = () => {
     socketRef.current = socket;
 
     socket.on('connect', () => {
-      if (agoraSessionId) {
-        socket.emit('cam:host_start', { sessionId: agoraSessionId });
+      if (agoraSessionIdRef.current) {
+        socket.emit('cam:host_start', { sessionId: agoraSessionIdRef.current });
       }
     });
 
@@ -145,21 +150,10 @@ const ProviderLive: React.FC = () => {
       ]);
     });
 
-    socket.on('cam:session_ended', (data: { sessionId?: string }) => {
-      if (!data?.sessionId || data.sessionId === agoraSessionId) {
-        setIsLive(false);
-        setAgoraToken(null);
-        setAgoraAppId(null);
-        setAgoraRoomId(null);
-        setAgoraSessionId(null);
-        setViewerCount(0);
-      }
-    });
-
     return () => {
       socket.disconnect();
     };
-  }, [token, user, agoraSessionId]);
+  }, [token, user]);
 
   const handleStartStream = useCallback(async () => {
     try {

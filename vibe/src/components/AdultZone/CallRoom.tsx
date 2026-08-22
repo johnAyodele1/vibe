@@ -218,35 +218,27 @@ const CallRoom: React.FC<CallRoomProps> = ({
 
     initCall();
 
+    const stopTrack = (track: { getMediaStreamTrack?: () => MediaStreamTrack | null; stop?: () => void; close?: () => void } | null) => {
+      if (!track) return;
+      try {
+        const msTrack = track.getMediaStreamTrack?.();
+        if (msTrack) {
+          msTrack.stop();
+        }
+      } catch {}
+      try {
+        track.stop?.();
+        track.close?.();
+      } catch {}
+    };
+
     const stopLocalMedia = () => {
       remoteResetReadiness();
       localResetReadiness();
-      if (localAudioTrackRef.current) {
-        try {
-          const msTrack = localAudioTrackRef.current.getMediaStreamTrack();
-          if (msTrack) {
-            msTrack.stop();
-          }
-        } catch {}
-        try {
-          localAudioTrackRef.current.stop();
-          localAudioTrackRef.current.close();
-        } catch {}
-        localAudioTrackRef.current = null;
-      }
-      if (localVideoTrackRef.current) {
-        try {
-          const msTrack = localVideoTrackRef.current.getMediaStreamTrack();
-          if (msTrack) {
-            msTrack.stop();
-          }
-        } catch {}
-        try {
-          localVideoTrackRef.current.stop();
-          localVideoTrackRef.current.close();
-        } catch {}
-        localVideoTrackRef.current = null;
-      }
+      stopTrack(localAudioTrackRef.current);
+      localAudioTrackRef.current = null;
+      stopTrack(localVideoTrackRef.current);
+      localVideoTrackRef.current = null;
       if (clientRef.current) {
         try {
           clientRef.current.off('user-published', handleUserPublished);
@@ -291,32 +283,26 @@ const CallRoom: React.FC<CallRoomProps> = ({
     const elapsed = Math.max(1, Math.floor((Date.now() - (startTimeRef.current || Date.now())) / 1000));
     remoteResetReadiness();
     localResetReadiness();
-    if (localAudioTrackRef.current) {
+
+    const stopTrack = (track: { getMediaStreamTrack?: () => MediaStreamTrack | null; stop?: () => void; close?: () => void } | null) => {
+      if (!track) return;
       try {
-        const msTrack = localAudioTrackRef.current.getMediaStreamTrack();
+        const msTrack = track.getMediaStreamTrack?.();
         if (msTrack) {
           msTrack.stop();
         }
       } catch {}
       try {
-        localAudioTrackRef.current.stop();
-        localAudioTrackRef.current.close();
+        track.stop?.();
+        track.close?.();
       } catch {}
-      localAudioTrackRef.current = null;
-    }
-    if (localVideoTrackRef.current) {
-      try {
-        const msTrack = localVideoTrackRef.current.getMediaStreamTrack();
-        if (msTrack) {
-          msTrack.stop();
-        }
-      } catch {}
-      try {
-        localVideoTrackRef.current.stop();
-        localVideoTrackRef.current.close();
-      } catch {}
-      localVideoTrackRef.current = null;
-    }
+    };
+
+    stopTrack(localAudioTrackRef.current);
+    localAudioTrackRef.current = null;
+    stopTrack(localVideoTrackRef.current);
+    localVideoTrackRef.current = null;
+
     if (clientRef.current) {
       try {
         await clientRef.current.leave();

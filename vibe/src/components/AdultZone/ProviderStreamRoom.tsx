@@ -43,41 +43,33 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
     resetReadiness,
   } = videoState;
 
+  const stopTrack = React.useCallback((track: { getMediaStreamTrack?: () => MediaStreamTrack | null; stop?: () => void; close?: () => void } | null) => {
+    if (!track) return;
+    try {
+      const msTrack = track.getMediaStreamTrack?.();
+      if (msTrack) {
+        msTrack.stop();
+      }
+    } catch {}
+    try {
+      track.stop?.();
+      track.close?.();
+    } catch {}
+  }, []);
+
   const stopLocalTracks = React.useCallback(() => {
     resetReadiness();
-    if (localAudioTrackRef.current) {
-      try {
-        const msTrack = localAudioTrackRef.current.getMediaStreamTrack();
-        if (msTrack) {
-          msTrack.stop();
-        }
-      } catch {}
-      try {
-        localAudioTrackRef.current.stop();
-        localAudioTrackRef.current.close();
-      } catch {}
-      localAudioTrackRef.current = null;
-    }
-    if (localVideoTrackRef.current) {
-      try {
-        const msTrack = localVideoTrackRef.current.getMediaStreamTrack();
-        if (msTrack) {
-          msTrack.stop();
-        }
-      } catch {}
-      try {
-        localVideoTrackRef.current.stop();
-        localVideoTrackRef.current.close();
-      } catch {}
-      localVideoTrackRef.current = null;
-    }
+    stopTrack(localAudioTrackRef.current);
+    localAudioTrackRef.current = null;
+    stopTrack(localVideoTrackRef.current);
+    localVideoTrackRef.current = null;
     if (clientRef.current) {
       try {
         clientRef.current.leave().catch(() => {});
       } catch {}
       clientRef.current = null;
     }
-  }, [resetReadiness]);
+  }, [resetReadiness, stopTrack]);
 
   useEffect(() => {
     const client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
@@ -121,11 +113,10 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
     };
 
     const handleSessionEnded = (data: { sessionId?: string }) => {
-      if (!data?.sessionId || data.sessionId === sessionId) {
-        toast.info('Public stream session ended');
-        stopLocalTracks();
-        onEnd();
-      }
+      if (!data?.sessionId || data.sessionId !== sessionId) return;
+      toast.info('Public stream session ended');
+      stopLocalTracks();
+      onEnd();
     };
 
     if (socket) {
