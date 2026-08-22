@@ -32,6 +32,7 @@ export const normalizeCallError = (errorData: any): string => {
     return 'Call pricing is not configured for this provider.';
   }
 
+  // Block internal Zod/schema/validation/Mongoose errors
   if (
     lower.includes('does not match the expected pattern') ||
     lower.includes('validation failed') ||
@@ -42,6 +43,7 @@ export const normalizeCallError = (errorData: any): string => {
     return 'Failed to initiate call.';
   }
 
+  // Business error mappings
   if (lower.includes('insufficient credits') || lower.includes('insufficient balance')) {
     return 'Insufficient credits to start call. Please top up your wallet.';
   }
@@ -184,6 +186,7 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     isInitiatingRef.current = false;
   }, [resetCallState]);
 
+  // Initiate a call
   const initiateCall = useCallback(async (
     recipientId: string,
     type: 'video' | 'audio' = 'video',
@@ -192,6 +195,7 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     partnerInfo?: { displayName?: string; avatarUrl?: string },
     camSessionId?: string
   ): Promise<boolean> => {
+    // Pricing is authoritative on the backend; caller-provided rates are ignored.
     void overrideRate;
 
     if (isInitiatingRef.current || isInitiating || callStateRef.current !== 'idle') {
@@ -211,7 +215,8 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         });
         const convData = await convRes.json();
         if (!convData.success || !convData.conversationId) {
-          toast.error(normalizeCallError(convData));
+          const errMsg = normalizeCallError(convData);
+          toast.error(errMsg);
           resetCallState();
           return false;
         }
@@ -256,6 +261,7 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setActiveCall(callInfo);
         setCallState('calling');
 
+        // Pre-fetch token in background and report failure if unable to acquire media token
         const conn = await fetchConnectionToken(callInfo.webrtcRoomId);
         if (conn) {
           setZegoToken(conn.token);
@@ -270,12 +276,14 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
         return true;
       } else {
-        toast.error(normalizeCallError(callData));
+        const msg = normalizeCallError(callData);
+        toast.error(msg);
         resetCallState();
         return false;
       }
     } catch (err: any) {
-      toast.error(normalizeCallError(err));
+      const msg = normalizeCallError(err);
+      toast.error(msg);
       resetCallState();
       return false;
     } finally {
@@ -284,6 +292,7 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [isInitiating, getHeaders, user, fetchConnectionToken, endCallOnBackend, resetCallState]);
 
+  // Accept incoming call
   const acceptCall = useCallback(async () => {
     const currentCall = activeCallRef.current;
     if (!currentCall || callStateRef.current !== 'incoming') return;
@@ -339,6 +348,7 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [getHeaders, fetchConnectionToken, endCallOnBackend, transitionToTerminalCall]);
 
+  // Decline incoming call
   const declineCall = useCallback(async () => {
     const currentCall = activeCallRef.current;
     if (currentCall) {
@@ -356,6 +366,7 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [getHeaders, transitionToTerminalCall, resetCallState]);
 
+  // Cancel outgoing call
   const cancelCall = useCallback(async () => {
     const currentCall = activeCallRef.current;
     if (currentCall) {
@@ -366,6 +377,7 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [endCallOnBackend, transitionToTerminalCall, resetCallState]);
 
+  // End active call
   const endCall = useCallback(async (reason = 'hung_up', durationSeconds = 0) => {
     const currentCall = activeCallRef.current;
     if (currentCall) {
@@ -380,6 +392,7 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [endCallOnBackend, transitionToTerminalCall, resetCallState]);
 
+  // Socket event listener setup (Stable socket connection)
   useEffect(() => {
     if (!isAuthenticated || !token || !user?.id) return;
 
@@ -392,10 +405,14 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     socketRef.current = socket;
 
     socket.on('call:incoming', (payload: { callId: string; callerId: string; callerName: string; callerAvatar?: string; receiverId?: string; receiverName?: string; receiverAvatar?: string; type?: 'video' | 'audio'; webrtcRoomId: string; rate: number }) => {
-      if (callStateRef.current !== 'idle') return;
+      if (callStateRef.current !== 'idle') {
+        return;
+      }
 
       const incomingRate = Number(payload.rate);
-      if (!Number.isFinite(incomingRate) || incomingRate <= 0) return;
+      if (!Number.isFinite(incomingRate) || incomingRate <= 0) {
+        return;
+      }
 
       const incomingInfo: ActiveCallInfo = {
         callId: payload.callId,
@@ -421,6 +438,7 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (!currentCall || currentCall.callId !== payload.callId) return;
 
       const targetRoomId = payload.webrtcRoomId || currentCall.webrtcRoomId;
+
       const conn = await fetchConnectionToken(targetRoomId);
       if (conn) {
         setZegoToken(conn.token);
@@ -466,6 +484,7 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
   }, [isAuthenticated, token, user?.id, fetchConnectionToken, endCallOnBackend, transitionToTerminalCall]);
 
+  // Status Reconciliation Polling while in 'calling' or 'incoming'
   useEffect(() => {
     if (callState !== 'calling' && callState !== 'incoming') return;
     const currentCall = activeCallRef.current;
@@ -527,6 +546,9 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }}>
       {children}
 
+      {/* Global Call Overlays (Rendered at Root Layout Level) */}
+
+      {/* 1. Incoming Call Alert Modal */}
       {callState === 'incoming' && activeCall && activeCallPartner && (
         <div
           style={{ paddingTop: 'calc(24px + env(safe-area-inset-top, 0px))' }}
@@ -534,20 +556,46 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           data-testid="global-incoming-call-modal"
         >
           <div className="w-28 h-28 rounded-full border-4 border-pink-500 animate-pulse mb-4 overflow-hidden shadow-lg">
-            <img src={activeCallPartner.avatarUrl} alt={activeCallPartner.displayName} className="w-full h-full object-cover" />
+            <img
+              src={activeCallPartner.avatarUrl}
+              alt={activeCallPartner.displayName}
+              className="w-full h-full object-cover"
+            />
           </div>
           <h3 className="text-2xl font-serif italic text-white mb-1 truncate max-w-xs px-4" title={activeCallPartner.displayName}>
             {activeCallPartner.displayName}
           </h3>
-          <p className="text-xs text-pink-400 uppercase tracking-widest font-mono animate-pulse">Incoming {activeCall.type} call...</p>
-          <p className="text-xs text-yellow-400 mt-2 font-mono">Rate: 💎 {formatAmount(activeCall.rate)} credits / min</p>
+          <p className="text-xs text-pink-400 uppercase tracking-widest font-mono animate-pulse">
+            Incoming {activeCall.type} call...
+          </p>
+          <p className="text-xs text-yellow-400 mt-2 font-mono">
+            Rate: 💎 {formatAmount(activeCall.rate)} credits / min
+          </p>
+
           <div className="flex gap-8 mt-8">
-            <button onClick={declineCall} data-testid="decline-call-btn" className="w-14 h-14 bg-red-600 hover:bg-red-700 text-white text-xl rounded-full flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-all" title="Decline Call" aria-label="Decline Call">✕</button>
-            <button onClick={acceptCall} data-testid="accept-call-btn" className="w-14 h-14 bg-green-600 hover:bg-green-700 text-white text-xl rounded-full flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-all animate-bounce" title="Accept Call" aria-label="Accept Call">✓</button>
+            <button
+              onClick={declineCall}
+              data-testid="decline-call-btn"
+              className="w-14 h-14 bg-red-600 hover:bg-red-700 text-white text-xl rounded-full flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-all"
+              title="Decline Call"
+              aria-label="Decline Call"
+            >
+              ✕
+            </button>
+            <button
+              onClick={acceptCall}
+              data-testid="accept-call-btn"
+              className="w-14 h-14 bg-green-600 hover:bg-green-700 text-white text-xl rounded-full flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-all animate-bounce"
+              title="Accept Call"
+              aria-label="Accept Call"
+            >
+              ✓
+            </button>
           </div>
         </div>
       )}
 
+      {/* 2. Outgoing Ringing Overlay */}
       {callState === 'calling' && activeCall && activeCallPartner && (
         <div
           style={{ paddingTop: 'calc(24px + env(safe-area-inset-top, 0px))' }}
@@ -555,24 +603,49 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           data-testid="global-outgoing-call-modal"
         >
           <div className="w-28 h-28 rounded-full border-4 border-pink-500 animate-pulse mb-4 overflow-hidden shadow-lg">
-            <img src={activeCallPartner.avatarUrl} alt={activeCallPartner.displayName} className="w-full h-full object-cover" />
+            <img
+              src={activeCallPartner.avatarUrl}
+              alt={activeCallPartner.displayName}
+              className="w-full h-full object-cover"
+            />
           </div>
-          <h3 className="text-2xl font-serif italic text-white mb-1 truncate max-w-xs px-4" title={activeCallPartner.displayName}>{activeCallPartner.displayName}</h3>
-          <p className="text-xs text-pink-400 uppercase tracking-widest font-mono animate-pulse">Requesting 1-to-1 {activeCall.type} call...</p>
-          <p className="text-xs text-yellow-400 mt-2 font-mono">Rate: 💎 {formatAmount(activeCall.rate)} credits / min</p>
-          <button onClick={cancelCall} data-testid="cancel-call-btn" className="mt-8 px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-full transition-all">Cancel Call ✕</button>
+          <h3 className="text-2xl font-serif italic text-white mb-1 truncate max-w-xs px-4" title={activeCallPartner.displayName}>
+            {activeCallPartner.displayName}
+          </h3>
+          <p className="text-xs text-pink-400 uppercase tracking-widest font-mono animate-pulse">
+            Requesting 1-to-1 {activeCall.type} call...
+          </p>
+          <p className="text-xs text-yellow-400 mt-2 font-mono">
+            Rate: 💎 {formatAmount(activeCall.rate)} credits / min
+          </p>
+
+          <button
+            onClick={cancelCall}
+            data-testid="cancel-call-btn"
+            className="mt-8 px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-full transition-all"
+          >
+            Cancel Call ✕
+          </button>
         </div>
       )}
 
+      {/* 3. Accepting Loading Overlay */}
       {callState === 'accepting' && (
-        <div style={{ paddingTop: 'calc(24px + env(safe-area-inset-top, 0px))' }} className="fixed inset-0 bg-black/90 backdrop-blur-md z-[11000] flex flex-col items-center justify-center p-6 text-white text-center">
+        <div
+          style={{ paddingTop: 'calc(24px + env(safe-area-inset-top, 0px))' }}
+          className="fixed inset-0 bg-black/90 backdrop-blur-md z-[11000] flex flex-col items-center justify-center p-6 text-white text-center"
+        >
           <div className="w-12 h-12 rounded-full border-4 border-pink-500 border-t-transparent animate-spin mb-4" />
           <p className="text-sm font-serif italic text-pink-400">Connecting private call...</p>
         </div>
       )}
 
+      {/* 4. Active Call Room Overlay */}
       {callState === 'active' && activeCall && zegoToken && zegoAppId && zegoRoomId && activeCallPartner && (
-        <div className="fixed inset-0 z-[12000] bg-black w-full h-full" data-testid="global-active-call-room">
+        <div
+          className="fixed inset-0 z-[12000] bg-black w-full h-full"
+          data-testid="global-active-call-room"
+        >
           <React.Suspense fallback={<div className="flex items-center justify-center h-full text-pink-500">Loading call...</div>}>
             <CallRoom
               key={zegoRoomId}
@@ -592,33 +665,63 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         </div>
       )}
 
+      {/* 5. Restored Previous Call Ending Summary Modal */}
       {callState === 'summary' && callSummary && (
-        <div style={{ paddingTop: 'calc(24px + env(safe-area-inset-top, 0px))' }} className="fixed inset-0 bg-black/95 backdrop-blur-lg z-[13000] flex flex-col items-center justify-center p-6 text-white text-center" data-testid="global-terminal-call-modal">
+        <div
+          style={{ paddingTop: 'calc(24px + env(safe-area-inset-top, 0px))' }}
+          className="fixed inset-0 bg-black/95 backdrop-blur-lg z-[13000] flex flex-col items-center justify-center p-6 text-white text-center"
+          data-testid="global-terminal-call-modal"
+        >
           <div className="w-full max-w-sm flex flex-col items-center justify-center">
-            <span className="text-5xl mb-4">{callSummary.status === 'declined' || callSummary.status === 'missed' ? '📵' : activeCall?.type === 'video' ? '📹' : '📞'}</span>
+            <span className="text-5xl mb-4">
+              {callSummary.status === 'declined' || callSummary.status === 'missed' ? '📵' : activeCall?.type === 'video' ? '📹' : '📞'}
+            </span>
             <h2 className="text-2xl font-serif italic text-pink-300 mb-2">
-              {callSummary.status === 'declined' ? 'Call Declined' : callSummary.status === 'missed' ? 'No Answer' : 'Call Ended'}
+              {callSummary.status === 'declined'
+                ? 'Call Declined'
+                : callSummary.status === 'missed'
+                ? 'No Answer'
+                : 'Call Ended'}
             </h2>
+
             <div className="w-full bg-[#160b13] border border-pink-500/20 rounded-xl p-6 space-y-4 mb-8 text-left">
               {callSummary.status === 'declined' || callSummary.status === 'missed' ? (
                 <div className="text-center space-y-1">
-                  <p className="text-sm font-bold text-red-400">{callSummary.status === 'declined' ? 'Call was declined' : 'No answer from provider'}</p>
+                  <p className="text-sm font-bold text-red-400">
+                    {callSummary.status === 'declined' ? 'Call was declined' : 'No answer from provider'}
+                  </p>
                   <p className="text-xs text-gray-400">No charge</p>
                 </div>
               ) : (
                 <>
-                  <div className="flex justify-between text-xs"><span className="text-gray-400">Duration:</span><span className="font-bold">{callSummary.duration}</span></div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-400">Duration:</span>
+                    <span className="font-bold">{callSummary.duration}</span>
+                  </div>
                   <div className="flex justify-between text-xs border-t border-pink-500/10 pt-3">
                     {user?.role === 'provider' ? (
-                      <><span className="text-gray-400">Credits Earned:</span><span className="font-bold text-yellow-400">💎 {callSummary.cost}</span></>
+                      <>
+                        <span className="text-gray-400">Credits Earned:</span>
+                        <span className="font-bold text-yellow-400">💎 {callSummary.cost}</span>
+                      </>
                     ) : (
-                      <><span className="text-gray-400">Credits Charged:</span><span className="font-bold text-yellow-400">💎 {callSummary.cost} ≈ {formatNaira(callSummary.cost * usePricingStore.getState().diamondNairaRate)}</span></>
+                      <>
+                        <span className="text-gray-400">Credits Charged:</span>
+                        <span className="font-bold text-yellow-400">💎 {callSummary.cost}  ≈  {formatNaira(callSummary.cost * usePricingStore.getState().diamondNairaRate)}</span>
+                      </>
                     )}
                   </div>
                 </>
               )}
             </div>
-            <button onClick={resetCallState} data-testid="dismiss-terminal-call-btn" className="w-full py-3 bg-pink-600 hover:bg-pink-700 text-white font-bold text-xs uppercase tracking-widest rounded-full transition-all shadow-lg shadow-pink-500/20 active:scale-95">Close</button>
+
+            <button
+              onClick={resetCallState}
+              data-testid="dismiss-terminal-call-btn"
+              className="w-full py-3 bg-pink-600 hover:bg-pink-700 text-white font-bold text-xs uppercase tracking-widest rounded-full transition-all shadow-lg shadow-pink-500/20 active:scale-95"
+            >
+              Close
+            </button>
           </div>
         </div>
       )}
