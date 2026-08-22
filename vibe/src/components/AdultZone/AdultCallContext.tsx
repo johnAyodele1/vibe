@@ -106,15 +106,22 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     isInitiatingRef.current = false;
   }, []);
 
-  const endCallOnBackend = useCallback(async (callId: string, reason = 'hung_up') => {
+  const endCallOnBackend = useCallback(async (callId: string, reason = 'hung_up'): Promise<{ success: boolean; creditsDeducted?: number; durationSeconds?: number }> => {
     try {
-      await fetch(`${API_BASE_URL}/v1/adult/sext/calls/${callId}/end`, {
+      const res = await fetch(`${API_BASE_URL}/v1/adult/sext/calls/${callId}/end`, {
         method: 'PUT',
         headers: getHeaders(),
         body: JSON.stringify({ reason })
       });
+      const data = await res.json();
+      return {
+        success: res.ok,
+        creditsDeducted: typeof data.creditsDeducted === 'number' ? data.creditsDeducted : undefined,
+        durationSeconds: typeof data.durationSeconds === 'number' ? data.durationSeconds : undefined,
+      };
     } catch (err) {
       console.error('[AdultCall] Failed to end call on backend:', err);
+      return { success: false };
     }
   }, [getHeaders]);
 
@@ -134,7 +141,7 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [getHeaders]);
 
-  const transitionToTerminalCall = useCallback((reason: string, durationSeconds = 0) => {
+  const transitionToTerminalCall = useCallback((reason: string, durationSeconds = 0, creditsDeducted = 0) => {
     const currentCall = activeCallRef.current;
     if (!currentCall) {
       resetCallState();
@@ -147,17 +154,15 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     else if (reason === 'cancelled_by_caller') status = 'cancelled';
     else if (reason === 'connection_failed') status = 'failed';
 
-    let cost = 0;
-    if (status === 'ended') {
-      const billedMinutes = Math.floor(durationSeconds / 60) + 1;
-      cost = currentCall.rate * billedMinutes;
-    }
+    const serverChargedCredits = Number.isFinite(creditsDeducted) && creditsDeducted >= 0
+      ? creditsDeducted
+      : 0;
 
     const summary: CallSummaryInfo = {
       status,
       duration: formatDuration(durationSeconds),
       durationSeconds,
-      cost,
+      cost: status === 'ended' ? serverChargedCredits : 0,
       endReason: reason,
     };
 
@@ -177,7 +182,7 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     isInitiatingRef.current = false;
   }, [resetCallState]);
 
-  // Initiate a call
+  // Initiate a call. The backend is the only source of the call rate.
   const initiateCall = useCallback(async (
     recipientId: string,
     type: 'video' | 'audio' = 'video',
@@ -186,6 +191,8 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     partnerInfo?: { displayName?: string; avatarUrl?: string },
     camSessionId?: string
   ): Promise<boolean> => {
+    void overrideRate;
+
     if (isInitiatingRef.current || isInitiating || callStateRef.current !== 'idle') {
       return false;
     }
@@ -219,7 +226,14 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const callData = await callRes.json();
 
       if (callData.callId) {
-        const rate = overrideRate || callData.perMinuteRate || 5;
+        const rate = Number(callData.perMinuteRate);
+        if (!Number.isFinite(rate) || rate <= 0) {
+          toast.error('Call pricing is not configured for this provider.');
+          await endCallOnBackend(callData.callId, 'pricing_unavailable');
+          resetCallState();
+          return false;
+        }
+
         const receiverName = partnerInfo?.displayName || callData.receiver?.displayName || 'Provider';
         const receiverAvatar = partnerInfo?.avatarUrl || callData.receiver?.avatarUrl || '/placeholder.svg';
 
@@ -271,7 +285,7 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       isInitiatingRef.current = false;
       setIsInitiating(false);
     }
-  }, [isInitiating, getHeaders, user, fetchConnectionToken, resetCallState]);
+  }, [isInitiating, getHeaders, user, fetchConnectionToken, endCallOnBackend, resetCallState]);
 
   // Accept incoming call
   const acceptCall = useCallback(async () => {
@@ -292,10 +306,18 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         const conn = await fetchConnectionToken(roomId);
 
         if (conn) {
+          const acceptedRate = Number(data.perMinuteRate);
+          if (!Number.isFinite(acceptedRate) || acceptedRate <= 0) {
+            toast.error('Call pricing is not configured for this provider.');
+            const result = await endCallOnBackend(currentCall.callId, 'pricing_unavailable');
+            transitionToTerminalCall('connection_failed', result.durationSeconds || 0, result.creditsDeducted || 0);
+            return;
+          }
+
           const updatedCall: ActiveCallInfo = {
             ...currentCall,
             webrtcRoomId: roomId,
-            rate: data.perMinuteRate || currentCall.rate,
+            rate: acceptedRate,
           };
           activeCallRef.current = updatedCall;
           setActiveCall(updatedCall);
@@ -305,8 +327,8 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           setCallState('active');
         } else {
           toast.error('Failed to establish call media connection');
-          await endCallOnBackend(currentCall.callId, 'connection_failed');
-          transitionToTerminalCall('connection_failed');
+          const result = await endCallOnBackend(currentCall.callId, 'connection_failed');
+          transitionToTerminalCall('connection_failed', result.durationSeconds || 0, result.creditsDeducted || 0);
         }
       } else {
         toast.error(data.error || 'Call is no longer available');
@@ -315,9 +337,9 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     } catch {
       toast.error('Failed to accept call');
       if (currentCall) {
-        await endCallOnBackend(currentCall.callId, 'connection_failed');
+        const result = await endCallOnBackend(currentCall.callId, 'connection_failed');
+        transitionToTerminalCall('connection_failed', result.durationSeconds || 0, result.creditsDeducted || 0);
       }
-      transitionToTerminalCall('connection_failed');
     }
   }, [getHeaders, fetchConnectionToken, endCallOnBackend, transitionToTerminalCall]);
 
@@ -354,8 +376,10 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const endCall = useCallback(async (reason = 'hung_up', durationSeconds = 0) => {
     const currentCall = activeCallRef.current;
     if (currentCall) {
-      await endCallOnBackend(currentCall.callId, reason);
-      transitionToTerminalCall(reason, durationSeconds);
+      const result = await endCallOnBackend(currentCall.callId, reason);
+      const serverDuration = result.durationSeconds ?? durationSeconds;
+      const serverCreditsDeducted = result.creditsDeducted ?? 0;
+      transitionToTerminalCall(reason, serverDuration, serverCreditsDeducted);
     } else {
       resetCallState();
     }
@@ -378,6 +402,11 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return;
       }
 
+      const incomingRate = Number(payload.rate);
+      if (!Number.isFinite(incomingRate) || incomingRate <= 0) {
+        return;
+      }
+
       const incomingInfo: ActiveCallInfo = {
         callId: payload.callId,
         callerId: payload.callerId,
@@ -388,7 +417,7 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         receiverAvatar: payload.receiverAvatar || user?.profilePhoto || '/placeholder.svg',
         type: payload.type || 'video',
         webrtcRoomId: payload.webrtcRoomId,
-        rate: payload.rate,
+        rate: incomingRate,
         isCaller: false,
       };
 
@@ -411,8 +440,8 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setCallState('active');
       } else {
         toast.error('Failed to connect to call');
-        await endCallOnBackend(currentCall.callId, 'connection_failed');
-        transitionToTerminalCall('connection_failed');
+        const result = await endCallOnBackend(currentCall.callId, 'connection_failed');
+        transitionToTerminalCall('connection_failed', result.durationSeconds || 0, result.creditsDeducted || 0);
       }
     });
 
@@ -432,10 +461,14 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
     });
 
-    socket.on('call:ended', (payload: { callId: string; reason?: string; durationSeconds?: number }) => {
+    socket.on('call:ended', (payload: { callId: string; reason?: string; durationSeconds?: number; creditsDeducted?: number }) => {
       const currentCall = activeCallRef.current;
       if (currentCall && currentCall.callId === payload.callId) {
-        transitionToTerminalCall(payload.reason || 'hung_up', payload.durationSeconds || 0);
+        transitionToTerminalCall(
+          payload.reason || 'hung_up',
+          payload.durationSeconds || 0,
+          typeof payload.creditsDeducted === 'number' ? payload.creditsDeducted : 0
+        );
       }
     });
 
@@ -468,7 +501,11 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             setCallState('active');
           }
         } else if (data.status === 'declined' || data.status === 'missed' || data.status === 'ended' || data.status === 'failed') {
-          transitionToTerminalCall(data.endReason || data.status, data.durationSeconds || 0);
+          transitionToTerminalCall(
+            data.endReason || data.status,
+            data.durationSeconds || 0,
+            typeof data.creditsDeducted === 'number' ? data.creditsDeducted : 0
+          );
         }
       } catch {
         // Ignore polling error
