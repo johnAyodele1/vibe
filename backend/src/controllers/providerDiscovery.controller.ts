@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import mongoose from 'mongoose';
 import AdultMessage from '../models/AdultMessage';
 import AdultUser from '../models/AdultUser';
 
@@ -201,6 +202,7 @@ const buildDiscoveryPipeline = (filter: Record<string, unknown>, page: number, l
             country: 1,
             dateOfBirth: 1,
             createdAt: 1,
+            isVerified: 1,
             providerProfile: 1,
             recentResponseCount: 1,
             recentAverageResponseMinutes: 1,
@@ -271,7 +273,7 @@ export const getRecommendedHookupProviders = async (req: Request, res: Response)
         age,
         location: provider.providerProfile?.location,
         isOnline: provider.providerProfile?.isOnline || false,
-        isVerified: provider.isVerified,
+        isVerified: provider.isVerified || false,
         photoUrl: provider.profilePhoto || provider.providerProfile?.photos?.[0] || '/placeholder.svg',
         avatarUrl: provider.profilePhoto || provider.providerProfile?.photos?.[0] || '/placeholder.svg',
         tonightRate: provider.providerProfile?.tonightRate,
@@ -301,12 +303,12 @@ export const getRecommendedHookupProviders = async (req: Request, res: Response)
 export const getProviderResponseStats = async (req: Request, res: Response) => {
   try {
     const { providerId } = req.params;
-    if (!providerId) {
-      return res.status(400).json({ success: false, error: 'Provider ID is required' });
+    if (!providerId || !mongoose.Types.ObjectId.isValid(providerId)) {
+      return res.status(400).json({ success: false, error: 'Invalid provider ID' });
     }
 
     const [result] = await AdultUser.aggregate([
-      { $match: { _id: { $eq: new (require('mongoose').Types.ObjectId)(providerId) }, role: 'provider' } },
+      { $match: { _id: new mongoose.Types.ObjectId(providerId), role: 'provider' } },
       ...responseMetricStages,
       {
         $project: {
