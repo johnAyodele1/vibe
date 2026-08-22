@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
-import NotificationPrompt from '../components/pwa/NotificationPrompt';
+import NotificationPrompt, { _resetModuleStateForTesting } from '../components/pwa/NotificationPrompt';
 import { checkPushHealth, sendPushTest } from '../lib/pwa/subscriptionManager';
 
 const mockCtx = {
@@ -27,10 +27,21 @@ vi.mock('../store/pwaPromptStore', () => ({
 vi.mock('../lib/pwa/subscriptionManager', () => ({ checkPushHealth: vi.fn(), requestAndSubscribe: vi.fn(), sendPushTest: vi.fn() }));
 vi.mock('sonner', () => ({ toast: { info: vi.fn(), success: vi.fn(), error: vi.fn() } }));
 
-const waitForCheckingCycle = async () => act(async () => { await new Promise(resolve => setTimeout(resolve, 1100)); });
+const wait = async (ms = 1100) => act(async () => { await new Promise(resolve => setTimeout(resolve, ms)); });
 const loginKey = 'zippo_push_test_after_login:user-123';
 const exitKey = 'zippo_push_last_site_exit:user-123';
 const testKey = 'zippo_push_last_health_test:user-123';
+
+const healthyResult = {
+  status: 'healthy',
+  permission: 'granted',
+  deviceId: 'device-test',
+  hasBrowserSubscription: true,
+  backendRegistered: true,
+  repaired: false,
+  lastSuccessfulPushAt: new Date().toISOString(),
+  pushHealthStatus: 'healthy',
+};
 
 describe('NotificationPrompt three-hour re-verification and login behavior', () => {
   beforeEach(() => {
@@ -38,23 +49,28 @@ describe('NotificationPrompt three-hour re-verification and login behavior', () 
     localStorage.clear();
     sessionStorage.clear();
     window.location.hash = '';
+    _resetModuleStateForTesting();
     mockCtx.isStandalone = false;
     mockCtx.isIOS = false;
     (window as any).Notification = { permission: 'granted' };
-    (checkPushHealth as any).mockResolvedValue({ status: 'verification_required', permission: 'granted', deviceId: 'device-test', hasBrowserSubscription: true, backendRegistered: true, repaired: false, lastSuccessfulPushAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(), pushHealthStatus: 'healthy' });
+    (checkPushHealth as any).mockResolvedValue(healthyResult);
     (sendPushTest as any).mockResolvedValue({ success: true, status: 'healthy', deliveredToProvider: true, deviceReceived: true });
   });
 
-  it('does not send a test push on normal app startup', async () => {
+  it('checks health on startup, shows enabled state, then removes it after about two seconds without sending a test', async () => {
     render(<NotificationPrompt userId="user-123" />);
-    await waitForCheckingCycle();
+    await wait();
+    expect(checkPushHealth).toHaveBeenCalledTimes(1);
     expect(sendPushTest).toHaveBeenCalledTimes(0);
+    expect(screen.getByText('Notifications enabled on this device')).toBeInTheDocument();
+    await wait(2100);
+    expect(screen.queryByText('Notifications enabled on this device')).not.toBeInTheDocument();
   });
 
   it('sends a test push on every explicit login, regardless of the three-hour absence clock', async () => {
     localStorage.setItem(loginKey, '1');
     render(<NotificationPrompt userId="user-123" />);
-    await waitForCheckingCycle();
+    await wait();
     expect(sendPushTest).toHaveBeenCalledTimes(1);
     expect(localStorage.getItem(loginKey)).toBeNull();
   });
@@ -63,14 +79,14 @@ describe('NotificationPrompt three-hour re-verification and login behavior', () 
     localStorage.setItem(loginKey, '1');
     localStorage.setItem(exitKey, String(Date.now() - 60 * 60 * 1000));
     render(<NotificationPrompt userId="user-123" />);
-    await waitForCheckingCycle();
+    await wait();
     expect(sendPushTest).toHaveBeenCalledTimes(1);
   });
 
   it('does not send an automatic test after less than three hours away', async () => {
     localStorage.setItem(exitKey, String(Date.now() - 60 * 60 * 1000));
     render(<NotificationPrompt userId="user-123" />);
-    await waitForCheckingCycle();
+    await wait();
     expect(sendPushTest).toHaveBeenCalledTimes(0);
     expect(screen.getByText('Notifications enabled on this device')).toBeInTheDocument();
   });
@@ -78,7 +94,7 @@ describe('NotificationPrompt three-hour re-verification and login behavior', () 
   it('sends one automatic test after the user has actually been away for three hours', async () => {
     localStorage.setItem(exitKey, String(Date.now() - (3 * 60 * 60 * 1000 + 1)));
     render(<NotificationPrompt userId="user-123" />);
-    await waitForCheckingCycle();
+    await wait();
     expect(sendPushTest).toHaveBeenCalledTimes(1);
     expect(Number(localStorage.getItem(testKey))).toBeGreaterThan(0);
   });
@@ -87,23 +103,34 @@ describe('NotificationPrompt three-hour re-verification and login behavior', () 
     localStorage.setItem(exitKey, String(Date.now() - (3 * 60 * 60 * 1000 + 1)));
     localStorage.setItem(testKey, String(Date.now() - 1000));
     render(<NotificationPrompt userId="user-123" />);
-    await waitForCheckingCycle();
+    await wait();
     expect(sendPushTest).toHaveBeenCalledTimes(0);
+  });
+
+  it('prevents two independent login-triggered tests when the prompt mounts twice', async () => {
+    localStorage.setItem(loginKey, '1');
+    render(<><NotificationPrompt userId="user-123" /><NotificationPrompt userId="user-123" /></>);
+    await wait();
+    expect(sendPushTest).toHaveBeenCalledTimes(1);
+  });
+
+  it('prevents two independent automatic tests for the same three-hour exit when the prompt mounts twice', async () => {
+    localStorage.setItem(exitKey, String(Date.now() - (3 * 60 * 60 * 1000 + 1)));
+    localStorage.setItem(testKey, String(Date.now() - (4 * 60 * 60 * 1000)));
+    render(<><NotificationPrompt userId="user-123" /><NotificationPrompt userId="user-123" /></>);
+    await wait();
+    expect(sendPushTest).toHaveBeenCalledTimes(1);
   });
 
   it('honors the three-hour rule after an installed iOS PWA is completely closed and reopened', async () => {
     mockCtx.isStandalone = true;
     mockCtx.isIOS = true;
     localStorage.setItem(exitKey, String(Date.now() - 60 * 60 * 1000));
-
     const firstRender = render(<NotificationPrompt userId="user-123" />);
-    await waitForCheckingCycle();
-    expect(sendPushTest).toHaveBeenCalledTimes(0);
-    expect(screen.getByText('Notifications enabled on this device')).toBeInTheDocument();
-
+    await wait();
     firstRender.unmount();
     render(<NotificationPrompt userId="user-123" />);
-    await waitForCheckingCycle();
+    await wait();
     expect(sendPushTest).toHaveBeenCalledTimes(0);
     expect(screen.getByText('Notifications enabled on this device')).toBeInTheDocument();
   });
@@ -113,15 +140,16 @@ describe('NotificationPrompt three-hour re-verification and login behavior', () 
     mockCtx.isIOS = true;
     localStorage.setItem(exitKey, String(Date.now() - (3 * 60 * 60 * 1000 + 1)));
     render(<NotificationPrompt userId="user-123" />);
-    await waitForCheckingCycle();
+    await wait();
     expect(sendPushTest).toHaveBeenCalledTimes(1);
   });
 
   it('does not apply the automatic absence rule to the explicit Settings push test', async () => {
     window.location.hash = '#push-test-section';
     render(<NotificationPrompt userId="user-123" />);
-    await waitForCheckingCycle();
+    await wait();
     expect(sendPushTest).toHaveBeenCalledTimes(0);
     expect(screen.getByText('Test push notifications')).toBeInTheDocument();
+    window.location.hash = '';
   });
 });

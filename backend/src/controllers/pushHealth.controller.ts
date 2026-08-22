@@ -19,9 +19,25 @@ export const sendPushHealthTest = async (req: Request, res: Response) => {
     const subscription = await PushSubscription.findOne({ userId: user._id, deviceId, isActive: true, notificationsEnabled: true });
     if (!subscription?.endpoint || !subscription.keys?.p256dh || !subscription.keys?.auth) return res.status(404).json({ success: false, reason: 'No active push subscription exists for this device', status: 'backend_missing' });
 
+    const isManualTest = req.body?.isManual === true;
+    const now = new Date();
+
+    // Server-side idempotency / deduplication check:
+    // If a test was already initiated for this device in the last 10 seconds and is still pending/delivered,
+    // return the existing test details instead of firing duplicate webpush payloads.
+    if (!isManualTest && subscription.lastTestAt && subscription.lastTestId && (now.getTime() - subscription.lastTestAt.getTime() < 10_000)) {
+      return res.json({
+        success: true,
+        testId: subscription.lastTestId,
+        deliveredToProvider: true,
+        status: subscription.lastTestStatus || 'pending',
+        expiresInMs: TEST_TTL_MS,
+        deduplicated: true,
+      });
+    }
+
     const testId = `push_test_${randomUUID()}`;
     const ackToken = randomBytes(32).toString('hex');
-    const now = new Date();
     await PushSubscription.updateOne({ _id: subscription._id }, { $set: { lastTestAt: now, lastTestId: testId, lastTestAckTokenHash: hashAckToken(ackToken), lastTestStatus: 'pending', pushHealthStatus: 'unknown', lastSeenAt: now } });
 
     const adult = Boolean((req as any).adultUser);
