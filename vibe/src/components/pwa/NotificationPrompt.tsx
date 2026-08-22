@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type TouchEvent } from 'react';
 import { getInstallContext } from '../../lib/pwa/context';
 import AddToHomeScreenHint from './AddToHomeScreenHint';
 import { usePWAPromptStore, NOTIF_KEYS } from '../../store/pwaPromptStore';
@@ -18,12 +18,7 @@ const SWIPE_ANIMATION_MS = 180;
 
 type InstallContext = ReturnType<typeof getInstallContext>;
 
-// One health request per user at a time. This protects against StrictMode,
-// duplicate lifecycle events and multiple prompt instances starting together.
 const healthChecksInFlight = new Map<string, Promise<PushHealthResult>>();
-// One actual test push per user at a time. This is deliberately separate from
-// the health-check lock because two independent component instances can both
-// reach the test-send decision after sharing the same health response.
 const pushTestsInFlight = new Map<string, Promise<Awaited<ReturnType<typeof sendPushTest>>>>();
 const lastLifecycleVerificationAt = new Map<string, number>();
 
@@ -41,18 +36,12 @@ const readTimestamp = (key: string): number | null => {
 
 const getLastSiteExitAt = (userId: string) => readTimestamp(getSiteExitKey(userId));
 const getLastHealthTestAt = (userId: string) => readTimestamp(getHealthTestKey(userId));
-const hasCompletedThreeHourAbsence = (userId: string) => {
-  const exitAt = getLastSiteExitAt(userId);
-  return exitAt !== null && Date.now() - exitAt >= PUSH_REVERIFICATION_COOLDOWN_MS;
-};
 const recordSiteExit = (userId: string) => localStorage.setItem(getSiteExitKey(userId), String(Date.now()));
 const recordHealthTest = (userId: string) => localStorage.setItem(getHealthTestKey(userId), String(Date.now()));
 
 const consumeLoginTestMarker = (userId: string) => {
   const key = getLoginTestKey(userId);
   if (localStorage.getItem(key) !== '1') return false;
-  // localStorage.setItem/removeItem are synchronous, so this claim is atomic
-  // within the browser event loop. A second mounted instance cannot consume it.
   localStorage.removeItem(key);
   return true;
 };
@@ -60,8 +49,6 @@ const consumeLoginTestMarker = (userId: string) => {
 const claimAutomaticTestForExit = (userId: string, exitAt: number) => {
   const key = getAutoTestClaimKey(userId, exitAt);
   if (localStorage.getItem(key) === '1') return false;
-  // Claim before awaiting the push request. This prevents two independently
-  // mounted NotificationPrompt instances from both sending for one exit.
   localStorage.setItem(key, '1');
   return true;
 };
@@ -128,9 +115,7 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
       setVisible(false);
       setShowNotifPrompt(false);
     }, HEALTHY_MESSAGE_VISIBLE_MS);
-    return () => {
-      if (healthyHideTimer.current) window.clearTimeout(healthyHideTimer.current);
-    };
+    return () => { if (healthyHideTimer.current) window.clearTimeout(healthyHideTimer.current); };
   }, [showHealthy, isSettingsTest, setShowNotifPrompt]);
 
   useEffect(() => () => {
@@ -164,7 +149,6 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
         await existing;
         return true;
       }
-
       const sendPromise = sendPushTest(userId, { silent: true, onWaiting: () => setTestStatus('waiting') });
       pushTestsInFlight.set(userId, sendPromise);
       try {
@@ -194,7 +178,6 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
       try {
         const currentHealth = await runHealthCheck(showChecking);
         if (!currentHealth || cancelled) return;
-
         if (ACTIONABLE_STATUSES.has(currentHealth.status)) {
           setSelfTesting(false);
           setShowNotifPrompt(true);
@@ -209,8 +192,6 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
         }
 
         if (!isSettingsTest) {
-          // A successful real login always gets one test. Startup/auth restoration
-          // does not create this marker, so reopening the app cannot look like login.
           const loginTriggered = consumeLoginTestMarker(userId);
           if (loginTriggered) {
             await sendTest(currentHealth);
@@ -218,8 +199,6 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
             return;
           }
 
-          // Outside login, only a real three-hour site absence can trigger the
-          // automatic test. Claim synchronously before awaiting the push request.
           const lastTestAt = getLastHealthTestAt(userId);
           const lastExitAt = getLastSiteExitAt(userId);
           const alreadyTestedForThisExit = lastTestAt !== null && lastExitAt !== null && lastTestAt >= lastExitAt;
@@ -257,9 +236,7 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
 
     void runVerification();
 
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') void runVerification();
-    };
+    const handleVisibilityChange = () => { if (document.visibilityState === 'visible') void runVerification(); };
     const handlePageShow = () => void runVerification();
     const handlePageHide = () => recordSiteExit(userId);
 
@@ -282,18 +259,17 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
     setVisible(false);
   };
 
-  const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+  const handleTouchStart = (event: TouchEvent<HTMLDivElement>) => {
     touchStartX.current = event.touches[0]?.clientX ?? null;
     touchCurrentX.current = touchStartX.current;
     setSwipeExiting(false);
   };
 
-  const handleTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+  const handleTouchMove = (event: TouchEvent<HTMLDivElement>) => {
     if (touchStartX.current === null) return;
     const currentX = event.touches[0]?.clientX ?? touchStartX.current;
     touchCurrentX.current = currentX;
-    const delta = currentX - touchStartX.current;
-    setSwipeOffset(delta);
+    setSwipeOffset(currentX - touchStartX.current);
   };
 
   const handleTouchEnd = () => {
@@ -320,7 +296,7 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
       transform: `translate3d(${swipeOffset}px, 0, 0)`,
       transition: swipeExiting || swipeOffset === 0 ? `transform ${SWIPE_ANIMATION_MS}ms ease-out` : 'none',
       touchAction: 'pan-y' as const,
-      willChange: 'transform',
+      willChange: 'transform' as const,
     },
   };
 
