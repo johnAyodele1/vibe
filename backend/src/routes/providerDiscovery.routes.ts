@@ -1,5 +1,5 @@
 import express from 'express';
-import { verifyAdultJWT } from '../middleware/auth';
+import { verifyAdultJWT } from '../middleware/adultAuth';
 import {
   getRecommendedProviders,
   getRecommendedHookupProviders,
