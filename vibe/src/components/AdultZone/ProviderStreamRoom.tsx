@@ -4,6 +4,7 @@ import { useVideoReadiness } from '../../hooks/useVideoReadiness';
 import VideoFallbackOverlay from './VideoFallbackOverlay';
 import { Socket } from 'socket.io-client';
 import { toast } from 'sonner';
+import { API_BASE_URL } from '../../config';
 
 interface ProviderStreamRoomProps {
   appId: string | number;
@@ -36,6 +37,7 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
   const clientRef = useRef<IAgoraRTCClient | null>(null);
   const localAudioTrackRef = useRef<IMicrophoneAudioTrack | null>(null);
   const localVideoTrackRef = useRef<ICameraVideoTrack | null>(null);
+  const callAcceptancePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [sessionEndedExternally, setSessionEndedExternally] = useState(false);
 
   const {
@@ -79,6 +81,11 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
     const stopLocalMedia = async () => {
       resetReadiness();
 
+      if (callAcceptancePollRef.current) {
+        clearInterval(callAcceptancePollRef.current);
+        callAcceptancePollRef.current = null;
+      }
+
       const videoTrack = localVideoTrackRef.current;
       localVideoTrackRef.current = null;
       if (videoTrack) {
@@ -104,6 +111,75 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
         socket.emit('cam:leave', sessionId);
       }
     };
+
+    const markPublicStreamEnded = () => {
+      setSessionEndedExternally(true);
+      void stopLocalMedia();
+    };
+
+    const pollCallUntilAccepted = (callId: string) => {
+      if (callAcceptancePollRef.current) {
+        clearInterval(callAcceptancePollRef.current);
+      }
+
+      let attempts = 0;
+      const maxAttempts = 120; // 30 seconds at 250ms while the incoming call is ringing.
+
+      const check = async () => {
+        attempts += 1;
+        try {
+          const accessToken = localStorage.getItem('adultAccessToken') || '';
+          if (!accessToken) return;
+
+          const response = await fetch(`${API_BASE_URL}/v1/adult/sext/calls/${callId}`, {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
+          });
+
+          if (!response.ok) return;
+          const data = await response.json();
+          if (!data?.success) return;
+
+          if (data.status === 'active') {
+            markPublicStreamEnded();
+            return;
+          }
+
+          if (['declined', 'missed', 'ended', 'failed', 'cancelled'].includes(data.status) || attempts >= maxAttempts) {
+            if (callAcceptancePollRef.current) {
+              clearInterval(callAcceptancePollRef.current);
+              callAcceptancePollRef.current = null;
+            }
+          }
+        } catch {
+          // Keep polling while the incoming call is still pending.
+        }
+      };
+
+      void check();
+      callAcceptancePollRef.current = setInterval(() => {
+        void check();
+      }, 250);
+    };
+
+    const handleIncomingCall = (data: { callId?: string }) => {
+      if (!data?.callId) return;
+      pollCallUntilAccepted(data.callId);
+    };
+
+    const handleSessionEnded = (data: { sessionId?: string }) => {
+      if (!data?.sessionId || data.sessionId !== sessionId) return;
+
+      toast.info('Public stream session ended');
+      markPublicStreamEnded();
+    };
+
+    if (socket) {
+      socket.on('cam:session_ended', handleSessionEnded);
+      socket.on('call:incoming', handleIncomingCall);
+    }
 
     const initHost = async () => {
       try {
@@ -142,26 +218,16 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
       }
     };
 
-    const handleSessionEnded = (data: { sessionId?: string }) => {
-      if (data?.sessionId && data.sessionId !== sessionId) return;
-
-      toast.info('Public stream session ended');
-      setSessionEndedExternally(true);
-
-      // The backend ending CamSession does not stop the browser camera.
-      // Explicitly tear down Agora so the physical camera and publisher stop.
-      void stopLocalMedia();
-    };
-
-    if (socket) {
-      socket.on('cam:session_ended', handleSessionEnded);
-    }
-
     void initHost();
 
     return () => {
       if (socket) {
         socket.off('cam:session_ended', handleSessionEnded);
+        socket.off('call:incoming', handleIncomingCall);
+      }
+      if (callAcceptancePollRef.current) {
+        clearInterval(callAcceptancePollRef.current);
+        callAcceptancePollRef.current = null;
       }
       void stopLocalMedia();
     };
