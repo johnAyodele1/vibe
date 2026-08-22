@@ -1,9 +1,10 @@
 name: Apply call pricing hotfix
 
 on:
-  push:
+  pull_request:
     branches:
-      - fix/unified-call-pricing-audio-video-20260822
+      - main
+    types: [opened, synchronize]
 
 permissions:
   contents: write
@@ -13,8 +14,10 @@ jobs:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout fix branch
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
 
       - name: Apply production-safe call pricing patch
         shell: python
@@ -243,10 +246,9 @@ jobs:
           frontend_text = frontend_text.replace(old_poll_end, new_poll_end, 1)
 
           frontend.write_text(frontend_text)
-
           print('Call pricing hotfix applied successfully')
 
-      - name: Backend typecheck
+      - name: Backend typecheck/build
         run: |
           npm ci
           npm run build
@@ -258,13 +260,11 @@ jobs:
           npm run build
         working-directory: vibe
 
-      - name: Commit hotfix and remove temporary workflow
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Commit hotfix and remove temporary files
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          rm -f .github/workflows/apply-call-pricing-hotfix.yml
-          git add backend/src/controllers/adultSext.controller.ts vibe/src/components/AdultZone/AdultCallContext.tsx .github/workflows/apply-call-pricing-hotfix.yml
+          rm -f .github/workflows/apply-call-pricing-hotfix.yml HOTFIX_TRIGGER.md
+          git add backend/src/controllers/adultSext.controller.ts vibe/src/components/AdultZone/AdultCallContext.tsx .github/workflows/apply-call-pricing-hotfix.yml HOTFIX_TRIGGER.md
           git commit -m "fix: unify audio and video call pricing" || exit 0
-          git push origin HEAD
+          git push origin HEAD:${{ github.head_ref }}
