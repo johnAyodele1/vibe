@@ -2857,8 +2857,13 @@ export const initiateCall = async (req: Request, res: Response) => {
       await call.save();
     } catch (err: any) {
       if (err.code === 11000 || err.name === 'MongoServerError' || err.message?.includes('E11000') || err.message?.includes('duplicate key')) {
+        const callerIdStr = user._id.toString();
+        const dupKeyVal = err.keyValue?.activeParticipants;
+        const dupKeyStr = dupKeyVal ? dupKeyVal.toString() : '';
+        const isCallerDup = dupKeyStr === callerIdStr || err.message?.includes(callerIdStr);
+
         const checkCallerAgain = await checkActiveCall(user._id);
-        if (checkCallerAgain && checkCallerAgain._id.toString() !== call._id.toString()) {
+        if (isCallerDup || (checkCallerAgain && checkCallerAgain._id.toString() !== call._id.toString())) {
           return res.status(409).json({ success: false, error: 'You are already on a call on another device.' });
         }
         return res.status(409).json({ success: false, error: 'This provider is busy. Try again later.' });
