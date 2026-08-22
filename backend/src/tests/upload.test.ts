@@ -63,6 +63,22 @@ describe('Upload Endpoints', () => {
         expect(user?.photos[0].isMain).toBe(false);
     });
 
+    it('PUT /api/upload/set-main/:index - should return 400 for non-numeric index', async () => {
+        await User.findByIdAndUpdate(userId, {
+            photos: [
+                { url: 'url1', publicId: 'public1', isMain: true, order: 0, uploadedAt: new Date() }
+            ]
+        });
+
+        const res = await request(app)
+          .put('/api/upload/set-main/abc')
+          .set('Authorization', `Bearer ${token}`);
+
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+        expect(res.body.message).toContain('Invalid photo index');
+    });
+
     it('DELETE /api/upload/photo/:publicId - should return 404 for missing photo', async () => {
       const res = await request(app)
         .delete('/api/upload/photo/nonexistent-public-id')

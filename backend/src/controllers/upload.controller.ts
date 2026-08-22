@@ -175,12 +175,12 @@ export const deletePhoto = async (req: Request, res: Response): Promise<Response
 export const setMainPhoto = async (req: Request, res: Response): Promise<Response> => {
   try {
     if (!req.user) return res.status(401).json({ success: false, message: 'Not authenticated' });
-    const photoIndex = parseInt(req.params.index as string);
+    const photoIndex = parseInt(req.params.index as string, 10);
 
     const user = await User.findById(req.user._id) as IUser | null;
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
-    if (photoIndex < 0 || photoIndex >= user.photos.length) {
+    if (isNaN(photoIndex) || photoIndex < 0 || photoIndex >= user.photos.length) {
       return res.status(400).json({
         success: false,
         message: 'Invalid photo index',
