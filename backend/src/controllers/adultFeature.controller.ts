@@ -10,9 +10,11 @@ export const getProviders = async (req: Request, res: Response): Promise<Respons
       query['providerProfile.tags'] = category;
     }
 
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document instantiation and model hydration overhead.
     const providers = await AdultUser.find(query)
       .select('firstName lastName providerProfile photos gender lastActive isOnline role')
-      .sort({ 'providerProfile.isLive': -1, lastActive: -1 });
+      .sort({ 'providerProfile.isLive': -1, lastActive: -1 })
+      .lean();
 
     return res.json({ success: true, data: { providers } });
   } catch (error) {
