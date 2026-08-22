@@ -8,7 +8,7 @@ import { getEligiblePayout, requestPayout, getPayoutStatus, getPayoutHistory } f
 import { getWallet, getBundles, getTransactions, createPurchaseIntent, simulateWebhookSuccess, getSubscriptionPlans, directTip, getDiamondRate } from '../controllers/wallet.controller';
 import { startConversation, getConversations, getUnreadCount, getMessages as getSextMessages, sendMessage as sendSextMessage, unlockMedia, markAsRead, getConversationById, deleteConversation, muteConversation, deleteMessage as deleteSextMessage, reactMessage as reactSextMessage, requestPhoto, fulfillPhotoRequest, declinePhotoRequest, requestService, fulfillServiceTonightRequest, declineServiceTonightRequest, getGiftsCatalogue, sendGift, initiateCall, acceptCall, declineCall, endCall, getCallHistory, missedCall, sendGiftRequest, sendServiceRequest, getTonightRate, payServiceRequest, completeServiceRequest, reportServiceRequest, declineServiceRequest, dismissGiftRequest, fulfillGiftRequest, getCallStatus } from '../controllers/adultSext.controller';
 import { getOfficialNotificationsForUser, markNotificationRead, getOrCreateSupportConversation, sendSupportMessage, getOfficialChannelsConfig } from '../controllers/officialSupport.controller';
-import { getProviderPublicProfile, unlockProviderPhoto } from '../controllers/adultProviders.controller';
+import { unlockProviderPhoto } from '../controllers/adultProviders.controller';
 import { getPublicProviderProfileWithResponseStats } from '../controllers/providerDiscovery.controller';
 import { savePushSubscription, removePushSubscription, getVapidPublicKey, getCurrentDevice, registerDevice, removeDevice, diagnosePush } from '../controllers/adultPush.controller';
 import { sendPushHealthTest, acknowledgePushHealthTest, getPushHealthTestStatus, markPushHealth } from '../controllers/pushHealth.controller';
@@ -130,15 +130,16 @@ router.get('/adult/providers/:providerId/wheel', verifyAdultJWT, getProviderWhee
 router.post('/adult/providers/:providerId/wheel/spin', verifyAdultJWT, spinProviderWheel);
 router.get('/adult/rooms', optionalAdultJWT, getRooms);
 router.post('/adult/rooms', verifyAdultJWT, createAdultRoom);
+router.post('/adult/rooms/:roomId/join', verifyAdultJWT, joinAdultRoom);
+router.put('/adult/rooms/:roomId/leave', verifyAdultJWT, leaveRoom);
 router.get('/adult/rooms/:roomId', optionalAdultJWT, getAdultRoom);
 router.post('/adult/rooms/:roomId/join', verifyAdultJWT, joinAdultRoom);
-router.post('/adult/rooms/:roomId/leave', verifyAdultJWT, leaveAdultRoom);
-router.get('/adult/rooms/:roomId/members', optionalAdultJWT, getAdultRoomMembers);
+router.post('/adult/rooms/:roomId/leave', verifyAdultJWT, leaveRoom);
+router.get('/adult/rooms/:roomId/members', optionalAdultJWT, getRoomMembers);
 router.get('/adult/rooms/:roomId/leaderboard', optionalAdultJWT, getRoomLeaderboard);
 router.get('/adult/rooms/:roomId/threads', optionalAdultJWT, getThreads);
 router.post('/adult/rooms/:roomId/threads', verifyAdultJWT, createThread);
 router.get('/adult/rooms/:roomId/threads/:threadId', optionalAdultJWT, getThread);
-router.post('/adult/rooms/:roomId/threads', verifyAdultJWT, createThread);
 router.post('/adult/rooms/:roomId/threads/:threadId/react', verifyAdultJWT, reactThread);
 router.put('/adult/rooms/:roomId/threads/:threadId/pin', verifyAdultJWT, pinThread);
 router.put('/adult/rooms/:roomId/threads/:threadId/lock', verifyAdultJWT, lockThread);
