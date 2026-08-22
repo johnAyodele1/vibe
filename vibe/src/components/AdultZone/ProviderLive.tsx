@@ -145,10 +145,21 @@ const ProviderLive: React.FC = () => {
       ]);
     });
 
+    socket.on('cam:session_ended', (data: { sessionId?: string }) => {
+      if (!data?.sessionId || data.sessionId === agoraSessionId) {
+        setIsLive(false);
+        setAgoraToken(null);
+        setAgoraAppId(null);
+        setAgoraRoomId(null);
+        setAgoraSessionId(null);
+        setViewerCount(0);
+      }
+    });
+
     return () => {
       socket.disconnect();
     };
-  }, [token, user]);
+  }, [token, user, agoraSessionId]);
 
   const handleStartStream = useCallback(async () => {
     try {
@@ -215,10 +226,10 @@ const ProviderLive: React.FC = () => {
     }
   }, [autoStart, isLive, token, user, handleStartStream]);
 
-  const handleEndStream = async () => {
-    if (!window.confirm('Are you sure you want to end this webcam session?')) return;
+  const handleEndStream = useCallback(async (confirm = true) => {
+    if (confirm && !window.confirm('Are you sure you want to end this webcam session?')) return;
     try {
-      if (agoraSessionId) {
+      if (agoraSessionId && confirm) {
         await fetch(`${API_BASE_URL}/adult/cams/stream/${agoraSessionId}/end`, {
           method: 'PATCH',
           headers: getHeaders()
@@ -240,7 +251,7 @@ const ProviderLive: React.FC = () => {
       setViewerCount(0);
       toast.info(`Session ended. Tips accumulated: 💎 ${formatAmount(sessionTips)}`);
     }
-  };
+  }, [agoraSessionId, getHeaders, sessionTips]);
 
   const handleSendChat = () => {
     const text = inputText.trim();
@@ -305,7 +316,7 @@ const ProviderLive: React.FC = () => {
                       socket={socketRef.current}
                       providerAvatar={(user as any)?.avatarUrl || user?.profilePhoto}
                       providerName={user?.firstName || 'Provider'}
-                      onEnd={handleEndStream}
+                      onEnd={() => handleEndStream(false)}
                     />
                   </React.Suspense>
                 </div>
@@ -328,7 +339,7 @@ const ProviderLive: React.FC = () => {
                 </button>
               ) : (
                 <button
-                  onClick={handleEndStream}
+                  onClick={() => handleEndStream(true)}
                   className="px-10 py-3 bg-red-950 text-red-400 border border-red-500/30 hover:bg-red-900 font-bold text-xs uppercase tracking-widest rounded-full transition-all"
                 >
                   End Session

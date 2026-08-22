@@ -43,6 +43,42 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
     resetReadiness,
   } = videoState;
 
+  const stopLocalTracks = React.useCallback(() => {
+    resetReadiness();
+    if (localAudioTrackRef.current) {
+      try {
+        const msTrack = localAudioTrackRef.current.getMediaStreamTrack();
+        if (msTrack) {
+          msTrack.stop();
+        }
+      } catch {}
+      try {
+        localAudioTrackRef.current.stop();
+        localAudioTrackRef.current.close();
+      } catch {}
+      localAudioTrackRef.current = null;
+    }
+    if (localVideoTrackRef.current) {
+      try {
+        const msTrack = localVideoTrackRef.current.getMediaStreamTrack();
+        if (msTrack) {
+          msTrack.stop();
+        }
+      } catch {}
+      try {
+        localVideoTrackRef.current.stop();
+        localVideoTrackRef.current.close();
+      } catch {}
+      localVideoTrackRef.current = null;
+    }
+    if (clientRef.current) {
+      try {
+        clientRef.current.leave().catch(() => {});
+      } catch {}
+      clientRef.current = null;
+    }
+  }, [resetReadiness]);
+
   useEffect(() => {
     const client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
     clientRef.current = client;
@@ -79,6 +115,7 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
       } catch (err) {
         console.error('Agora Host Stream failed to initialize:', err);
         toast.error('Failed to start camera/microphone broadcast. Session cancelled.');
+        stopLocalTracks();
         onEnd();
       }
     };
@@ -86,6 +123,7 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
     const handleSessionEnded = (data: { sessionId?: string }) => {
       if (!data?.sessionId || data.sessionId === sessionId) {
         toast.info('Public stream session ended');
+        stopLocalTracks();
         onEnd();
       }
     };
@@ -100,23 +138,9 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
       if (socket) {
         socket.off('cam:session_ended', handleSessionEnded);
       }
-      resetReadiness();
-      if (localAudioTrackRef.current) {
-        localAudioTrackRef.current.stop();
-        localAudioTrackRef.current.close();
-        localAudioTrackRef.current = null;
-      }
-      if (localVideoTrackRef.current) {
-        localVideoTrackRef.current.stop();
-        localVideoTrackRef.current.close();
-        localVideoTrackRef.current = null;
-      }
-      if (clientRef.current) {
-        clientRef.current.leave().catch(() => {});
-        clientRef.current = null;
-      }
+      stopLocalTracks();
     };
-  }, [appId, token, roomId, userId, userName, sessionId, containerRef, markReady, resetReadiness]);
+  }, [appId, token, roomId, userId, userName, sessionId, containerRef, markReady, resetReadiness, stopLocalTracks]);
 
   const handleEndClick = () => {
     if (window.confirm('Are you sure you want to end the broadcast?')) {

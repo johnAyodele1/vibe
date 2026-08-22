@@ -218,30 +218,52 @@ const CallRoom: React.FC<CallRoomProps> = ({
 
     initCall();
 
-    return () => {
-      genRef.current++;
-      isMountedRef.current = false;
+    const stopLocalMedia = () => {
       remoteResetReadiness();
       localResetReadiness();
       if (localAudioTrackRef.current) {
-        localAudioTrackRef.current.stop();
-        localAudioTrackRef.current.close();
+        try {
+          const msTrack = localAudioTrackRef.current.getMediaStreamTrack();
+          if (msTrack) {
+            msTrack.stop();
+          }
+        } catch {}
+        try {
+          localAudioTrackRef.current.stop();
+          localAudioTrackRef.current.close();
+        } catch {}
         localAudioTrackRef.current = null;
       }
       if (localVideoTrackRef.current) {
-        localVideoTrackRef.current.stop();
-        localVideoTrackRef.current.close();
+        try {
+          const msTrack = localVideoTrackRef.current.getMediaStreamTrack();
+          if (msTrack) {
+            msTrack.stop();
+          }
+        } catch {}
+        try {
+          localVideoTrackRef.current.stop();
+          localVideoTrackRef.current.close();
+        } catch {}
         localVideoTrackRef.current = null;
       }
       if (clientRef.current) {
-        clientRef.current.off('user-published', handleUserPublished);
-        clientRef.current.off('user-unpublished', handleUserUnpublished);
-        clientRef.current.off('user-left', handleUserLeft);
-        clientRef.current.off('volume-indicator', handleVolumeIndicator);
-        clientRef.current.leave().catch(() => {});
+        try {
+          clientRef.current.off('user-published', handleUserPublished);
+          clientRef.current.off('user-unpublished', handleUserUnpublished);
+          clientRef.current.off('user-left', handleUserLeft);
+          clientRef.current.off('volume-indicator', handleVolumeIndicator);
+          clientRef.current.leave().catch(() => {});
+        } catch {}
         clientRef.current = null;
       }
       hasJoined.current = false;
+    };
+
+    return () => {
+      genRef.current++;
+      isMountedRef.current = false;
+      stopLocalMedia();
     };
   }, [retry, appId, token, roomId, userId, callType, remoteContainerRef, localContainerRef, remoteMarkReady, remoteResetReadiness, localMarkReady, localResetReadiness]);
 
@@ -270,13 +292,29 @@ const CallRoom: React.FC<CallRoomProps> = ({
     remoteResetReadiness();
     localResetReadiness();
     if (localAudioTrackRef.current) {
-      localAudioTrackRef.current.stop();
-      localAudioTrackRef.current.close();
+      try {
+        const msTrack = localAudioTrackRef.current.getMediaStreamTrack();
+        if (msTrack) {
+          msTrack.stop();
+        }
+      } catch {}
+      try {
+        localAudioTrackRef.current.stop();
+        localAudioTrackRef.current.close();
+      } catch {}
       localAudioTrackRef.current = null;
     }
     if (localVideoTrackRef.current) {
-      localVideoTrackRef.current.stop();
-      localVideoTrackRef.current.close();
+      try {
+        const msTrack = localVideoTrackRef.current.getMediaStreamTrack();
+        if (msTrack) {
+          msTrack.stop();
+        }
+      } catch {}
+      try {
+        localVideoTrackRef.current.stop();
+        localVideoTrackRef.current.close();
+      } catch {}
       localVideoTrackRef.current = null;
     }
     if (clientRef.current) {
