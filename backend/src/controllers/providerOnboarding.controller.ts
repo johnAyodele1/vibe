@@ -728,15 +728,34 @@ export const getProviderEarnings = async (req: Request, res: Response) => {
     const breakdown = await calculateProviderBalanceBreakdown(user._id);
 
     // 2. Fetch all transactions for this user
+    // ⚡ OPTIMIZATION (Bolt): Use .select() and .lean() on read-only transactions query to eliminate
+    // Mongoose document instantiation and model hydration overhead, and batch lookup related users into a Map to eliminate populate overhead.
     const transactions = await CreditTransaction.find({ userId: user._id })
-      .populate('relatedUserId', 'username displayName')
-      .sort({ createdAt: -1 });
+      .select('_id createdAt type amount platformFee status eligibleForPayout inDispute relatedUserId')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const relatedUserIds = [
+      ...new Set(
+        transactions
+          .map((tx: any) => tx.relatedUserId?.toString())
+          .filter(Boolean)
+      ),
+    ];
+
+    const relatedUsers = relatedUserIds.length > 0
+      ? await AdultUser.find({ _id: { $in: relatedUserIds } })
+          .select('username displayName')
+          .lean()
+      : [];
+
+    const userMap = new Map(relatedUsers.map((u: any) => [u._id.toString(), u]));
 
     // 3. Filter transactions based on dateRange if specified
     const startDate = getDateRangeBounds(dateRange as string);
     let filteredTransactions = transactions;
     if (startDate) {
-      filteredTransactions = transactions.filter(tx => new Date(tx.createdAt) >= startDate);
+      filteredTransactions = transactions.filter((tx: any) => new Date(tx.createdAt) >= startDate);
     }
 
     const rate = breakdown.rate;
@@ -759,7 +778,7 @@ export const getProviderEarnings = async (req: Request, res: Response) => {
     }
 
     // Populate timeline with positive earnings transactions matching PROVIDER_EARNING_TYPES
-    transactions.forEach(tx => {
+    transactions.forEach((tx: any) => {
       if (tx.status === 'completed' && PROVIDER_EARNING_TYPES.includes(tx.type)) {
         const txDateStr = new Date(tx.createdAt).toDateString();
         const dayObj = timeline.find(t => t.dateString === txDateStr);
@@ -770,7 +789,7 @@ export const getProviderEarnings = async (req: Request, res: Response) => {
     });
 
     // 6. Format transactions list for response
-    const formattedTransactions = filteredTransactions.map(tx => {
+    const formattedTransactions = filteredTransactions.map((tx: any) => {
       const txDate = new Date(tx.createdAt);
       const dateLabel = txDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
@@ -788,8 +807,10 @@ export const getProviderEarnings = async (req: Request, res: Response) => {
         else if (fromLabel === 'crypto') fromLabel = 'Crypto';
         else if (fromLabel === 'check') fromLabel = 'Check';
       } else if (tx.relatedUserId) {
-        const relatedUser = tx.relatedUserId as any;
-        fromLabel = relatedUser.displayName || relatedUser.username || 'Anonymous';
+        const relatedUser: any = userMap.get(tx.relatedUserId.toString());
+        if (relatedUser) {
+          fromLabel = relatedUser.displayName || relatedUser.username || 'Anonymous';
+        }
       }
 
       // Determine display status
