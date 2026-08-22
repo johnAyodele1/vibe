@@ -1,0 +1,44 @@
+name: Terminal billing dependency fix
+
+on:
+  pull_request_target:
+    types: [synchronize, opened, reopened]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.event.pull_request.head.ref == 'fix/call-pricing-server-authoritative-20260822-clean'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Patch dependency array
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('vibe/src/components/AdultZone/AdultCallContext.tsx')
+          text = path.read_text()
+          old = "  }, [isAuthenticated, token, user?.id, fetchConnectionToken, endCallOnBackend, transitionToTerminalCall]);"
+          new = "  }, [isAuthenticated, token, user?.id, fetchConnectionToken, endCallOnBackend, reconcileTerminalCall, transitionToTerminalCall]);"
+          if old in text:
+              path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit dependency fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add vibe/src/components/AdultZone/AdultCallContext.tsx
+          if git diff --cached --quiet; then
+            echo 'Dependency fix already applied.'
+            exit 0
+          fi
+          git commit -m "fix: include call reconciliation dependency"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
