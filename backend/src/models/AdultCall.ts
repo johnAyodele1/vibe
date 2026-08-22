@@ -11,7 +11,11 @@ const adultCallSchema = new Schema(
     endedAt: { type: Date, default: null },
     durationSeconds: { type: Number, default: 0 },
     creditsDeducted: { type: Number, default: 0 },
-    perMinuteRate: { type: Number, required: true },
+    perMinuteRate: {
+      type: Number,
+      required: true,
+      min: [0.01, 'Call per-minute rate must be greater than zero'],
+    },
     billedMinutes: { type: Number, default: 0 },
     lastBilledAt: { type: Date, default: null },
     endedBy: { type: Schema.Types.ObjectId, ref: 'AdultUser', default: null },
