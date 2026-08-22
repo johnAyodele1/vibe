@@ -1,1 +1,1 @@
-Temporary workflow trigger. This file is removed by the hotfix workflow.
+Trigger PR synchronization for the call-pricing hotfix workflow.
