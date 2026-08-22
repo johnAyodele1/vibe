@@ -8,7 +8,8 @@ import { getEligiblePayout, requestPayout, getPayoutStatus, getPayoutHistory } f
 import { getWallet, getBundles, getTransactions, createPurchaseIntent, simulateWebhookSuccess, getSubscriptionPlans, directTip, getDiamondRate } from '../controllers/wallet.controller';
 import { startConversation, getConversations, getUnreadCount, getMessages as getSextMessages, sendMessage as sendSextMessage, unlockMedia, markAsRead, getConversationById, deleteConversation, muteConversation, deleteMessage as deleteSextMessage, reactMessage as reactSextMessage, requestPhoto, fulfillPhotoRequest, declinePhotoRequest, requestService, fulfillServiceTonightRequest, declineServiceTonightRequest, getGiftsCatalogue, sendGift, initiateCall, acceptCall, declineCall, endCall, getCallHistory, missedCall, sendGiftRequest, sendServiceRequest, getTonightRate, payServiceRequest, completeServiceRequest, reportServiceRequest, declineServiceRequest, dismissGiftRequest, fulfillGiftRequest, getCallStatus } from '../controllers/adultSext.controller';
 import { getOfficialNotificationsForUser, markNotificationRead, getOrCreateSupportConversation, sendSupportMessage, getOfficialChannelsConfig } from '../controllers/officialSupport.controller';
-import { getProviderPublicProfile, unlockProviderPhoto } from '../controllers/adultProviders.controller';
+import { getRooms, createRoom as createAdultRoom, getRoom as getAdultRoom, joinRoom as joinAdultRoom, leaveRoom as leaveAdultRoom, getRoomMembers, getRoomLeaderboard, getThreads, createThread, getThread, reactThread, pinThread, lockThread, getMessages as getAdultRoomMessages, sendMessage as sendAdultRoomMessage, reactMessage as reactAdultRoomMessage, deleteMessage as deleteAdultRoomMessage, getReplies, postReply, reactReply, getActivePolls, createPoll, votePoll, reportRoom, muteUser, kickUser } from '../controllers/adultRooms.controller';
+import { unlockProviderPhoto } from '../controllers/adultProviders.controller';
 import { getPublicProviderProfileWithResponseStats } from '../controllers/providerDiscovery.controller';
 import { savePushSubscription, removePushSubscription, getVapidPublicKey, getCurrentDevice, registerDevice, removeDevice, diagnosePush } from '../controllers/adultPush.controller';
 import { sendPushHealthTest, acknowledgePushHealthTest, getPushHealthTestStatus, markPushHealth } from '../controllers/pushHealth.controller';
@@ -113,7 +114,6 @@ router.get('/adult/providers/me/earnings', verifyAdultJWT, getProviderEarnings);
 router.get('/adult/providers/me/payout/eligible', verifyAdultJWT, getEligiblePayout);
 router.post('/adult/providers/me/payout/request', verifyAdultJWT, requestPayout);
 router.get('/adult/providers/me/payout/status', verifyAdultJWT, getPayoutStatus);
-router.get('/adult/providers/me/payout/history', verifyAdultJWT, getPayoutHistory);
 router.post('/adult/providers/me/payout', verifyAdultJWT, requestPayout);
 router.get('/adult/providers/me/wheel/stats', verifyAdultJWT, getProviderWheelStats);
 router.put('/adult/providers/me/wheel', verifyAdultJWT, updateProviderWheel);
@@ -131,8 +131,7 @@ router.get('/adult/providers/:providerId/wheel', verifyAdultJWT, getProviderWhee
 router.post('/adult/providers/:providerId/wheel/spin', verifyAdultJWT, spinProviderWheel);
 router.get('/adult/rooms', optionalAdultJWT, getRooms);
 router.post('/adult/rooms', verifyAdultJWT, createAdultRoom);
-router.get('/adult/rooms/:roomId', optionalAdultJWT, getAdultRoom);
-router.post('/adult/rooms/:roomId/join', verifyAdultJWT, requireAdultAge, joinAdultRoom);
+router.post('/adult/rooms/:roomId/join', verifyAdultJWT, joinAdultRoom);
 router.post('/adult/rooms/:roomId/leave', verifyAdultJWT, leaveAdultRoom);
 router.get('/adult/rooms/:roomId/members', optionalAdultJWT, getRoomMembers);
 router.get('/adult/rooms/:roomId/leaderboard', optionalAdultJWT, getRoomLeaderboard);
