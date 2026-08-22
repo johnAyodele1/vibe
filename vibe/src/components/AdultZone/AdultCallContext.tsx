@@ -576,7 +576,7 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return () => {
       socket.disconnect();
     };
-  }, [isAuthenticated, token, user?.id, fetchConnectionToken, endCallOnBackend, transitionToTerminalCall]);
+  }, [isAuthenticated, token, user?.id, fetchConnectionToken, endCallOnBackend, reconcileTerminalCall, transitionToTerminalCall]);
 
   // Status Reconciliation Polling while establishing or finalizing a call.
   useEffect(() => {
