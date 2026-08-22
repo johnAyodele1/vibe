@@ -167,13 +167,13 @@ export const AdultCallProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       return;
     }
 
-    const serverChargedCredits = status === 'ended' ? creditsDeducted : 0;
+    const serverChargedCredits = status === 'ended' ? (creditsDeducted as number) : 0;
 
     const summary: CallSummaryInfo = {
       status,
       duration: formatDuration(durationSeconds),
       durationSeconds,
-      cost: status === 'ended' ? serverChargedCredits : 0,
+      cost: serverChargedCredits,
       endReason: reason,
     };
 
