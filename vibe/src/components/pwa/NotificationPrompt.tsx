@@ -60,7 +60,6 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
   const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'waiting' | 'sent' | 'failed'>('sending');
   const [health, setHealth] = useState<PushHealthResult | null>(null);
   const [showHealthy, setShowHealthy] = useState(false);
-  const entryTestUserRef = useRef<string | null>(null);
   const selfTestInFlight = useRef(false);
   const isSettingsTest = typeof window !== 'undefined' && (window.location.hash === '#push-test-section' || window.location.hash === '#push-notifications');
 
@@ -78,7 +77,12 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
     let cancelled = false;
 
     const runVerification = async (forceDeviceTest: boolean) => {
+      // pageshow/visibilitychange can fire while the initial verification is
+      // still awaiting the health endpoint. Claim the whole verification run
+      // before the first await so two startup paths cannot both send a test.
       if (selfTestInFlight.current) return;
+      selfTestInFlight.current = true;
+
       const checkingStartedAt = Date.now();
       setSelfTesting(true);
       setTestStatus('sending');
@@ -137,12 +141,10 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
           return;
         }
 
-        selfTestInFlight.current = true;
         setTestStatus('sending');
         const result = await sendPushTest(userId, { silent: true, onWaiting: () => setTestStatus('waiting') });
         if (cancelled) return;
         if (result.success && result.deviceReceived) {
-          entryTestUserRef.current = userId;
           recordHealthTest(userId);
           setHealth(prev => prev ? { ...prev, status: 'healthy', pushHealthStatus: 'healthy' } : prev);
           setTestStatus('sent');
@@ -223,7 +225,6 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
 
       const result = await sendPushTest(userId, { onWaiting: () => setTestStatus('waiting') });
       if (result.success && result.deviceReceived) {
-        entryTestUserRef.current = userId;
         recordHealthTest(userId);
         setHealth(prev => prev ? { ...prev, status: 'healthy', pushHealthStatus: 'healthy' } : prev);
         setTestStatus('sent');
@@ -248,7 +249,7 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
     try {
       const result = await sendPushTest(userId, { onWaiting: () => setTestStatus('waiting') });
       if (result.success && result.deviceReceived) {
-        setTestStatus('sent'); entryTestUserRef.current = userId;
+        setTestStatus('sent');
         recordHealthTest(userId);
         setHealth(prev => prev ? { ...prev, status: 'healthy', pushHealthStatus: 'healthy' } : prev);
         toast.success('This device received the test notification.');
