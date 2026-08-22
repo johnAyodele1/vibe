@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, type TouchEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { getInstallContext } from '../../lib/pwa/context';
 import AddToHomeScreenHint from './AddToHomeScreenHint';
-import { usePWAPromptStore, NOTIF_KEYS } from '../../store/pwaPromptStore';
+import { NOTIF_KEYS } from '../../store/pwaPromptStore';
 import { checkPushHealth, requestAndSubscribe, sendPushTest, type PushHealthResult } from '../../lib/pwa/subscriptionManager';
 import { toast } from 'sonner';
 
@@ -102,10 +102,9 @@ const CheckingNotifications = ({ waiting = false }: { waiting?: boolean }) => (
 );
 
 const NotificationPrompt = ({ userId }: { userId: string }) => {
-  const { setShowNotifPrompt, setShowInstallPrompt } = usePWAPromptStore();
   const [ctx, setCtx] = useState<InstallContext | null>(null);
 
-  // Single authoritative state machine
+  // Single authoritative state machine - uiState alone controls rendering
   const [uiState, setUiState] = useState<NotificationUiState>('checking');
   const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'waiting' | 'sent' | 'failed'>('idle');
   const [health, setHealth] = useState<PushHealthResult | null>(null);
@@ -151,7 +150,6 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
       if (showChecking && !cancelled) {
         setUiState('checking');
         setTestStatus('idle');
-        setShowNotifPrompt(false);
       }
       const startedAt = Date.now();
       const currentHealth = await getHealth(userId);
@@ -181,11 +179,9 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
           setHealth(prev => prev ? { ...prev, status: 'healthy', pushHealthStatus: 'healthy' } : prev);
           setTestStatus('sent');
           setUiState('enabled');
-          setShowNotifPrompt(false);
         } else {
           setHealth(prev => prev ? { ...prev, status: 'unhealthy', pushHealthStatus: 'unhealthy' } : prev);
           setUiState('needsRepair');
-          setShowNotifPrompt(true);
         }
         return true;
       } finally {
@@ -201,25 +197,21 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
 
         if (currentHealth.status === 'unsupported') {
           setUiState('hidden');
-          setShowNotifPrompt(false);
           return;
         }
 
         if (currentHealth.status === 'permission_required') {
           setUiState('needsPermission');
-          setShowNotifPrompt(true);
           return;
         }
 
         if (ACTIONABLE_STATUSES.has(currentHealth.status)) {
           setUiState('needsRepair');
-          setShowNotifPrompt(true);
           return;
         }
 
         if (isSettingsTest && currentHealth.status === 'healthy') {
           setUiState('settingsTest');
-          setShowNotifPrompt(true);
           return;
         }
 
@@ -243,10 +235,8 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
           setTestStatus('idle');
           if (currentHealth.status === 'healthy') {
             setUiState('enabled');
-            setShowNotifPrompt(false);
           } else {
             setUiState('needsRepair');
-            setShowNotifPrompt(true);
           }
         }
       } catch (error) {
@@ -255,7 +245,6 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
           setHealth(prev => prev ? { ...prev, status: 'error', detail: error instanceof Error ? error.message : 'Unknown push error' } : prev);
           setTestStatus('idle');
           setUiState('error');
-          setShowNotifPrompt(true);
         }
       }
     };
@@ -275,7 +264,7 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
       window.removeEventListener('pageshow', handlePageShow);
       window.removeEventListener('pagehide', handlePageHide);
     };
-  }, [ctx, userId, isSettingsTest, setShowNotifPrompt]);
+  }, [ctx, userId, isSettingsTest]);
 
   // Handle auto-hide timer for 'enabled' state
   useEffect(() => {
@@ -283,18 +272,16 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
     if (autoHideTimer.current) window.clearTimeout(autoHideTimer.current);
     autoHideTimer.current = window.setTimeout(() => {
       setUiState('hidden');
-      setShowNotifPrompt(false);
     }, HEALTHY_MESSAGE_VISIBLE_MS);
     return () => {
       if (autoHideTimer.current) window.clearTimeout(autoHideTimer.current);
     };
-  }, [uiState, isSettingsTest, setShowNotifPrompt]);
+  }, [uiState, isSettingsTest]);
 
   const dismissPrompt = () => {
     setSwipeExiting(false);
     setSwipeOffset(0);
     setUiState('hidden');
-    setShowNotifPrompt(false);
   };
 
   const handleTouchStart = (event: TouchEvent<HTMLDivElement>) => {
@@ -342,8 +329,6 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
     if (!ctx) return;
     if (ctx.isIOS && !ctx.isStandalone) {
       setUiState('hidden');
-      setShowNotifPrompt(false);
-      setShowInstallPrompt(true);
       toast.info('Add Zippo to your Home Screen first, then enable notifications.', { duration: 5000 });
       return;
     }
@@ -351,13 +336,11 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
     setLoading(true);
     setUiState('checking');
     setTestStatus('sending');
-    setShowNotifPrompt(false);
     try {
       const connected = await requestAndSubscribe(userId);
       if (!connected) {
         setTestStatus('idle');
         setUiState('needsPermission');
-        setShowNotifPrompt(true);
         if (Notification.permission === 'denied') toast.error('Notifications are blocked. Enable them in your browser settings.');
         else toast.error('Notifications could not be connected on this device.');
         return;
@@ -375,20 +358,17 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
         window.setTimeout(() => {
           setTestStatus('idle');
           setUiState('enabled');
-          setShowNotifPrompt(false);
         }, 2000);
       } else {
         setHealth(prev => prev ? { ...prev, status: 'unhealthy', pushHealthStatus: 'unhealthy' } : prev);
         setTestStatus('idle');
         setUiState('needsRepair');
-        setShowNotifPrompt(true);
         toast.error(result.reason || 'Notifications could not be verified on this device.');
       }
     } catch (error) {
       console.error('[NotifPrompt] Push registration failed:', error);
       setTestStatus('idle');
       setUiState('needsRepair');
-      setShowNotifPrompt(true);
       toast.error(error instanceof Error ? error.message : 'Notifications could not be connected on this device.');
     } finally {
       setLoading(false);

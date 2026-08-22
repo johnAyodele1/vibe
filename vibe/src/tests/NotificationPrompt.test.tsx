@@ -172,7 +172,6 @@ describe('NotificationPrompt Component', () => {
   });
 
   it('dismisses correctly when close is clicked on iOS Add to Home Screen hint', async () => {
-    mockStore.showNotifPrompt = true;
     mockCtx.isIOS = true;
     mockCtx.isStandalone = false;
 
@@ -181,7 +180,7 @@ describe('NotificationPrompt Component', () => {
     const closeBtn = screen.getByLabelText('Close add to home screen hint');
     fireEvent.click(closeBtn);
 
-    expect(mockStore.setShowNotifPrompt).toHaveBeenCalledWith(false);
+    expect(screen.queryByTestId('aths-hint')).not.toBeInTheDocument();
   });
 
   it('handles non-standalone Android users with toast suggestion on Enable click', async () => {
