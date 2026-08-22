@@ -3,6 +3,13 @@ import bcrypt from 'bcryptjs';
 import { IAdultUser, IAdultUserModel } from '../types/adultModels';
 import { validateNoEmojiOrAvatar, USERNAME_EMOJI_ERROR, STAGE_NAME_EMOJI_ERROR } from '../utils/nameValidation';
 
+const canonicalCallRateGetter = function(this: any, value: number) {
+  const canonicalRate = this?.pricePerMinute;
+  return typeof canonicalRate === 'number' && Number.isFinite(canonicalRate) && canonicalRate > 0
+    ? canonicalRate
+    : value;
+};
+
 const adultUserSchema = new Schema<IAdultUser, IAdultUserModel>(
   {
     email: {
@@ -153,8 +160,10 @@ const adultUserSchema = new Schema<IAdultUser, IAdultUserModel>(
       onlineSince: { type: Date, default: null },
       pricePerMinute: { type: Number, default: 0 },
       tipMinimum: { type: Number, default: 0 },
-      videoCallPrice: { type: Number, default: 0 },
-      audioCallPrice: { type: Number, default: 0 },
+      // Legacy per-media fields are retained for backward compatibility, but
+      // direct reads always mirror the canonical providerProfile.pricePerMinute.
+      videoCallPrice: { type: Number, default: 0, get: canonicalCallRateGetter },
+      audioCallPrice: { type: Number, default: 0, get: canonicalCallRateGetter },
       privateSextPrice: { type: Number, default: 0 },
       totalEarnings: { type: Number, default: 0 },
       pendingPayout: { type: Number, default: 0 },
