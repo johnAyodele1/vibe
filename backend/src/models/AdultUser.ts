@@ -239,6 +239,18 @@ const adultUserSchema = new Schema<IAdultUser, IAdultUserModel>(
   }
 );
 
+const canonicalCallRateGetter = function (this: IAdultUser, _value: number | undefined): number {
+  const canonicalRate = this.providerProfile?.pricePerMinute;
+  return typeof canonicalRate === 'number' && Number.isFinite(canonicalRate)
+    ? canonicalRate
+    : 0;
+};
+
+// Audio and video calls intentionally use the same provider-configured call rate.
+// The stored media-specific fields remain untouched; reads for call pricing always resolve to pricePerMinute.
+adultUserSchema.path('providerProfile.audioCallPrice').get(canonicalCallRateGetter);
+adultUserSchema.path('providerProfile.videoCallPrice').get(canonicalCallRateGetter);
+
 // Pre-save hook for password hashing is handled in controller or here
 // Given the requirement "Hash password with bcrypt (12 rounds)"
 adultUserSchema.pre<IAdultUser>('save', async function (next) {
