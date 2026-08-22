@@ -39,9 +39,19 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
   const localVideoTrackRef = useRef<ICameraVideoTrack | null>(null);
   const callAcceptancePollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stoppingRef = useRef(false);
+  const onEndRef = useRef(onEnd);
+  const onStreamEstablishedRef = useRef(onStreamEstablished);
   const [sessionEndedExternally, setSessionEndedExternally] = useState(false);
 
   const { containerRef, markReady, resetReadiness } = videoState;
+
+  useEffect(() => {
+    onEndRef.current = onEnd;
+  }, [onEnd]);
+
+  useEffect(() => {
+    onStreamEstablishedRef.current = onStreamEstablished;
+  }, [onStreamEstablished]);
 
   const stopTrack = React.useCallback((track: { getMediaStreamTrack?: () => MediaStreamTrack | null; stop?: () => void; close?: () => void } | null) => {
     if (!track) return;
@@ -84,7 +94,7 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
       if (stoppingRef.current) return;
       setSessionEndedExternally(true);
       void stopLocalMedia();
-      onEnd();
+      onEndRef.current();
     };
 
     const pollCallUntilAccepted = (callId: string) => {
@@ -158,12 +168,12 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
         }
         await client.publish([audioTrack, videoTrack]);
         if (socket?.connected) socket.emit('cam:host_start', { sessionId });
-        onStreamEstablished?.();
+        onStreamEstablishedRef.current?.();
       } catch (err) {
         console.error('Agora Host Stream failed to initialize:', err);
         await stopLocalMedia();
         toast.error('Failed to start camera/microphone broadcast. Session cancelled.');
-        onEnd();
+        onEndRef.current();
       }
     };
 
@@ -180,10 +190,10 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
       }
       void stopLocalMedia();
     };
-  }, [appId, token, roomId, userId, sessionId, containerRef, markReady, stopLocalMedia, onEnd, onStreamEstablished]);
+  }, [appId, token, roomId, userId, sessionId, containerRef, markReady, stopLocalMedia]);
 
   const handleEndClick = () => {
-    if (window.confirm('Are you sure you want to end the broadcast?')) onEnd();
+    if (window.confirm('Are you sure you want to end the broadcast?')) onEndRef.current();
   };
 
   if (sessionEndedExternally) {
