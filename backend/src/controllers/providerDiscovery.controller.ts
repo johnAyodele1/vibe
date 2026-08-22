@@ -339,12 +339,13 @@ export const getPublicProviderProfileWithResponseStats = async (req: Request, re
     const providerId = Array.isArray(rawProviderId) ? rawProviderId[0] : rawProviderId;
     const metrics = await getRecentResponseMetrics(providerId);
 
-    if (metrics?.recentResponseCount > 0 && Number.isFinite(metrics.recentAverageResponseMinutes)) {
+    if (metrics) {
       const originalJson = res.json.bind(res);
       res.json = ((body: any) => {
         if (body?.success && body?.data) {
-          body.data.totalResponseCount = metrics.recentResponseCount;
-          body.data.totalResponseMinutes = metrics.recentAverageResponseMinutes * metrics.recentResponseCount;
+          body.data.recentResponseCount = metrics.recentResponseCount || 0;
+          body.data.recentAverageResponseMinutes = metrics.recentAverageResponseMinutes ?? null;
+          body.data.effectiveResponseMinutes = metrics.effectiveResponseMinutes ?? null;
         }
         return originalJson(body);
       }) as typeof res.json;
