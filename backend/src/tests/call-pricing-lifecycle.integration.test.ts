@@ -73,19 +73,18 @@ describe('Call pricing server-authoritative lifecycle', () => {
 
   beforeEach(async () => {
     await AdultCall.deleteMany({});
-    const conversation = await mongoose.connection.collection('adultconversations').findOne({
+    const conversation = await mongoose.connection.collection<{ _id: string }>('adultconversations').findOne({
       participants: { $all: [new mongoose.Types.ObjectId(memberId), new mongoose.Types.ObjectId(providerId)] },
     });
 
     if (conversation) {
-      conversationId = conversation._id.toString();
+      conversationId = conversation._id;
       return;
     }
 
-    const conversationObjectId = new mongoose.Types.ObjectId();
-    conversationId = conversationObjectId.toString();
-    await mongoose.connection.collection('adultconversations').insertOne({
-      _id: conversationObjectId,
+    conversationId = [memberId, providerId].sort().join('_');
+    await mongoose.connection.collection<{ _id: string }>('adultconversations').insertOne({
+      _id: conversationId,
       participants: [new mongoose.Types.ObjectId(memberId), new mongoose.Types.ObjectId(providerId)],
       participantProfiles: [
         {
