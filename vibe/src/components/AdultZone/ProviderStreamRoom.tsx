@@ -37,40 +37,42 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
   const clientRef = useRef<IAgoraRTCClient | null>(null);
   const localAudioTrackRef = useRef<IMicrophoneAudioTrack | null>(null);
   const localVideoTrackRef = useRef<ICameraVideoTrack | null>(null);
-  const callAcceptancePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const callAcceptancePollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stoppingRef = useRef(false);
   const [sessionEndedExternally, setSessionEndedExternally] = useState(false);
 
-  const {
-    containerRef,
-    markReady,
-    resetReadiness,
-  } = videoState;
+  const { containerRef, markReady, resetReadiness } = videoState;
 
   const stopTrack = React.useCallback((track: { getMediaStreamTrack?: () => MediaStreamTrack | null; stop?: () => void; close?: () => void } | null) => {
     if (!track) return;
-    try {
-      const msTrack = track.getMediaStreamTrack?.();
-      if (msTrack) {
-        msTrack.stop();
-      }
-    } catch {}
-    try {
-      track.stop?.();
-      track.close?.();
-    } catch {}
+    try { track.getMediaStreamTrack?.()?.stop(); } catch {}
+    try { track.stop?.(); } catch {}
+    try { track.close?.(); } catch {}
   }, []);
 
-  const stopLocalTracks = React.useCallback(() => {
+  const stopLocalMedia = React.useCallback(async () => {
+    if (stoppingRef.current) return;
+    stoppingRef.current = true;
     resetReadiness();
-    stopTrack(localAudioTrackRef.current);
-    localAudioTrackRef.current = null;
-    stopTrack(localVideoTrackRef.current);
+
+    if (callAcceptancePollRef.current) {
+      clearTimeout(callAcceptancePollRef.current);
+      callAcceptancePollRef.current = null;
+    }
+
+    const videoTrack = localVideoTrackRef.current;
     localVideoTrackRef.current = null;
-    if (clientRef.current) {
-      try {
-        clientRef.current.leave().catch(() => {});
-      } catch {}
-      clientRef.current = null;
+    stopTrack(videoTrack);
+
+    const audioTrack = localAudioTrackRef.current;
+    localAudioTrackRef.current = null;
+    stopTrack(audioTrack);
+
+    const activeClient = clientRef.current;
+    clientRef.current = null;
+    if (activeClient) {
+      try { await activeClient.unpublish().catch(() => {}); } catch {}
+      try { await activeClient.leave().catch(() => {}); } catch {}
     }
   }, [resetReadiness, stopTrack]);
 
@@ -78,66 +80,29 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
     const client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
     clientRef.current = client;
 
-    const stopLocalMedia = async () => {
-      resetReadiness();
-
-      if (callAcceptancePollRef.current) {
-        clearInterval(callAcceptancePollRef.current);
-        callAcceptancePollRef.current = null;
-      }
-
-      const videoTrack = localVideoTrackRef.current;
-      localVideoTrackRef.current = null;
-      if (videoTrack) {
-        try { videoTrack.stop(); } catch {}
-        try { videoTrack.close(); } catch {}
-      }
-
-      const audioTrack = localAudioTrackRef.current;
-      localAudioTrackRef.current = null;
-      if (audioTrack) {
-        try { audioTrack.stop(); } catch {}
-        try { audioTrack.close(); } catch {}
-      }
-
-      const activeClient = clientRef.current;
-      clientRef.current = null;
-      if (activeClient) {
-        try { await activeClient.unpublish().catch(() => {}); } catch {}
-        try { await activeClient.leave().catch(() => {}); } catch {}
-      }
-
-      if (socket && sessionId) {
-        socket.emit('cam:leave', sessionId);
-      }
-    };
-
     const markPublicStreamEnded = () => {
+      if (stoppingRef.current) return;
       setSessionEndedExternally(true);
       void stopLocalMedia();
+      onEnd();
     };
 
     const pollCallUntilAccepted = (callId: string) => {
-      if (callAcceptancePollRef.current) {
-        clearInterval(callAcceptancePollRef.current);
-      }
+      if (callAcceptancePollRef.current) clearTimeout(callAcceptancePollRef.current);
 
       let attempts = 0;
-      const maxAttempts = 120; // 30 seconds at 250ms while the incoming call is ringing.
+      const maxAttempts = 30;
 
       const check = async () => {
+        if (stoppingRef.current) return;
         attempts += 1;
         try {
           const accessToken = localStorage.getItem('adultAccessToken') || '';
           if (!accessToken) return;
 
           const response = await fetch(`${API_BASE_URL}/v1/adult/sext/calls/${callId}`, {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              'Content-Type': 'application/json',
-            },
+            headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
           });
-
           if (!response.ok) return;
           const data = await response.json();
           if (!data?.success) return;
@@ -148,30 +113,27 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
           }
 
           if (['declined', 'missed', 'ended', 'failed', 'cancelled'].includes(data.status) || attempts >= maxAttempts) {
-            if (callAcceptancePollRef.current) {
-              clearInterval(callAcceptancePollRef.current);
-              callAcceptancePollRef.current = null;
-            }
+            callAcceptancePollRef.current = null;
+            return;
           }
         } catch {
-          // Keep polling while the incoming call is still pending.
+          // Retry sequentially while the incoming call remains pending.
+        }
+
+        if (!stoppingRef.current && attempts < maxAttempts) {
+          callAcceptancePollRef.current = setTimeout(() => { void check(); }, 1000);
         }
       };
 
       void check();
-      callAcceptancePollRef.current = setInterval(() => {
-        void check();
-      }, 250);
     };
 
     const handleIncomingCall = (data: { callId?: string }) => {
-      if (!data?.callId) return;
-      pollCallUntilAccepted(data.callId);
+      if (data?.callId) pollCallUntilAccepted(data.callId);
     };
 
     const handleSessionEnded = (data: { sessionId?: string }) => {
       if (!data?.sessionId || data.sessionId !== sessionId) return;
-
       toast.info('Public stream session ended');
       markPublicStreamEnded();
     };
@@ -185,35 +147,22 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
       try {
         await client.setClientRole('host');
         await client.join(String(appId), roomId, token, userId);
-
         const audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
         localAudioTrackRef.current = audioTrack;
-
         const videoTrack = await AgoraRTC.createCameraVideoTrack();
         localVideoTrackRef.current = videoTrack;
 
-        if (containerRef.current) {
-          videoTrack.play(containerRef.current);
-        }
+        if (containerRef.current) videoTrack.play(containerRef.current);
         if (typeof (videoTrack as any).on === 'function') {
-          (videoTrack as any).on('first-frame-decoded', () => {
-            markReady();
-          });
+          (videoTrack as any).on('first-frame-decoded', () => markReady());
         }
-
         await client.publish([audioTrack, videoTrack]);
-
-        if (socket && socket.connected) {
-          socket.emit('cam:host_start', { sessionId });
-        }
-        if (onStreamEstablished) {
-          onStreamEstablished();
-        }
+        if (socket?.connected) socket.emit('cam:host_start', { sessionId });
+        onStreamEstablished?.();
       } catch (err) {
         console.error('Agora Host Stream failed to initialize:', err);
         await stopLocalMedia();
         toast.error('Failed to start camera/microphone broadcast. Session cancelled.');
-        stopLocalTracks();
         onEnd();
       }
     };
@@ -226,26 +175,20 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
         socket.off('call:incoming', handleIncomingCall);
       }
       if (callAcceptancePollRef.current) {
-        clearInterval(callAcceptancePollRef.current);
+        clearTimeout(callAcceptancePollRef.current);
         callAcceptancePollRef.current = null;
       }
       void stopLocalMedia();
     };
-  }, [appId, token, roomId, userId, sessionId, containerRef, markReady, resetReadiness]);
+  }, [appId, token, roomId, userId, sessionId, containerRef, markReady, stopLocalMedia, onEnd, onStreamEstablished]);
 
   const handleEndClick = () => {
-    if (window.confirm('Are you sure you want to end the broadcast?')) {
-      onEnd();
-    }
+    if (window.confirm('Are you sure you want to end the broadcast?')) onEnd();
   };
 
   if (sessionEndedExternally) {
     return (
-      <div
-        style={{ position: 'relative', width: '100%', height: '100%', minHeight: '400px' }}
-        className="flex items-center justify-center bg-[#0a0608]"
-        data-testid="provider-stream-ended"
-      >
+      <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '400px' }} className="flex items-center justify-center bg-[#0a0608]" data-testid="provider-stream-ended">
         <div className="text-center space-y-2">
           <span className="text-5xl opacity-40">📹</span>
           <p className="text-xs text-[var(--az-text-muted)] font-serif italic">Camera Offline</p>
@@ -256,28 +199,10 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '400px' }}>
-      {!videoState.isVideoReady && (
-        <VideoFallbackOverlay
-          avatarUrl={providerAvatar}
-          displayName={providerName || userName || 'Provider'}
-          statusText="Starting camera stream..."
-        />
-      )}
-      <div
-        ref={videoState.containerRef}
-        style={{ width: '100%', height: '100%', minHeight: '400px', background: '#0a0608' }}
-        className={`transition-opacity duration-300 ${
-          videoState.isVideoReady ? 'opacity-100 z-0' : 'opacity-0 pointer-events-none'
-        }`}
-        data-testid="zego-provider-stream-room"
-      />
+      {!videoState.isVideoReady && <VideoFallbackOverlay avatarUrl={providerAvatar} displayName={providerName || userName || 'Provider'} statusText="Starting camera stream..." />}
+      <div ref={videoState.containerRef} style={{ width: '100%', height: '100%', minHeight: '400px', background: '#0a0608' }} className={`transition-opacity duration-300 ${videoState.isVideoReady ? 'opacity-100 z-0' : 'opacity-0 pointer-events-none'}`} data-testid="zego-provider-stream-room" />
       <div className="absolute bottom-6 inset-x-0 flex justify-center z-20">
-        <button
-          onClick={handleEndClick}
-          className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-full shadow-[0_0_15px_rgba(220,38,38,0.5)] transition-all"
-        >
-          End Broadcast ✕
-        </button>
+        <button onClick={handleEndClick} className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-full shadow-[0_0_15px_rgba(220,38,38,0.5)] transition-all">End Broadcast ✕</button>
       </div>
     </div>
   );
