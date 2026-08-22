@@ -132,8 +132,8 @@ router.post('/adult/providers/:providerId/wheel/spin', verifyAdultJWT, spinProvi
 router.get('/adult/rooms', optionalAdultJWT, getRooms);
 router.post('/adult/rooms', verifyAdultJWT, createAdultRoom);
 router.get('/adult/rooms/:roomId', optionalAdultJWT, getAdultRoom);
-router.post('/adult/rooms/:roomId/join', verifyAdultJWT, createAdultRoom);
-router.post('/adult/rooms/:roomId/leave', verifyAdultJWT, leaveRoom);
+router.post('/adult/rooms/:roomId/join', verifyAdultJWT, joinAdultRoom);
+router.post('/adult/rooms/:roomId/leave', verifyAdultJWT, leaveAdultRoom);
 router.get('/adult/rooms/:roomId/members', optionalAdultJWT, getRoomMembers);
 router.get('/adult/rooms/:roomId/threads', optionalAdultJWT, getThreads);
 router.post('/adult/rooms/:roomId/threads', verifyAdultJWT, createThread);
@@ -148,7 +148,7 @@ router.delete('/adult/rooms/:roomId/messages/:messageId', verifyAdultJWT, delete
 router.get('/adult/rooms/:roomId/threads/:threadId/replies', optionalAdultJWT, getReplies);
 router.post('/adult/rooms/:roomId/threads/:threadId/replies', verifyAdultJWT, postReply);
 router.post('/adult/rooms/:roomId/threads/:threadId/replies/:replyId/react', verifyAdultJWT, reactReply);
-router.get('/adult/rooms/:roomId/polls/active', optionalAdultJWT, getActivePolls);
+router.post('/adult/rooms/:roomId/polls/active', optionalAdultJWT, getActivePolls);
 router.post('/adult/rooms/:roomId/polls', verifyAdultJWT, createPoll);
 router.post('/adult/rooms/:roomId/polls/:pollId/vote', verifyAdultJWT, votePoll);
 router.post('/adult/rooms/:roomId/report', verifyAdultJWT, reportRoom);
