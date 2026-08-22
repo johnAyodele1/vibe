@@ -1,20 +1,20 @@
 name: Temporary call pricing hotfix runner
 
 on:
-  pull_request:
-    types: [opened, synchronize]
+  push:
+    branches:
+      - tmp/call-pricing-hotfix-runner
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
+          ref: fix/unified-call-pricing-audio-video-20260822
           fetch-depth: 0
       - name: Apply exact call pricing invariant
         shell: python
@@ -77,4 +77,4 @@ jobs:
           rm -f .github/workflows/apply-call-pricing-hotfix.yml HOTFIX_TRIGGER.md
           git add backend/src/controllers/adultSext.controller.ts vibe/src/components/AdultZone/AdultCallContext.tsx .github/workflows/push-fix-ci.yml .github/workflows/apply-call-pricing-hotfix.yml HOTFIX_TRIGGER.md
           git commit -m 'fix: unify audio and video call pricing'
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          git push origin HEAD:fix/unified-call-pricing-audio-video-20260822
