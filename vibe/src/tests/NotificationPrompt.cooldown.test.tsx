@@ -60,7 +60,9 @@ describe('NotificationPrompt three-hour re-verification cooldown', () => {
     vi.clearAllMocks();
     localStorage.clear();
     sessionStorage.clear();
+    window.location.hash = '';
     mockCtx.isStandalone = false;
+    mockCtx.isIOS = false;
     (window as any).Notification = { permission: 'granted' };
 
     (checkPushHealth as any).mockResolvedValue({
@@ -82,15 +84,21 @@ describe('NotificationPrompt three-hour re-verification cooldown', () => {
     });
   });
 
+  it('persists the cooldown when the health test succeeds', async () => {
+    render(<NotificationPrompt userId="user-123" />);
+
+    await waitForCheckingCycle();
+
+    expect(sendPushTest).toHaveBeenCalledTimes(1);
+    expect(Number(localStorage.getItem('zippo_push_last_health_test:user-123'))).toBeGreaterThan(0);
+  });
+
   it('honors the cooldown after a Chrome page is destroyed and recreated', async () => {
     const firstRender = render(<NotificationPrompt userId="user-123" />);
 
     await waitForCheckingCycle();
     expect(sendPushTest).toHaveBeenCalledTimes(1);
 
-    await act(async () => {
-      window.dispatchEvent(new Event('pagehide'));
-    });
     firstRender.unmount();
 
     render(<NotificationPrompt userId="user-123" />);
@@ -100,25 +108,53 @@ describe('NotificationPrompt three-hour re-verification cooldown', () => {
     expect(screen.getByText('Notifications enabled on this device')).toBeInTheDocument();
   });
 
+  it('honors the cooldown after an installed iOS PWA is completely closed and reopened', async () => {
+    mockCtx.isStandalone = true;
+    mockCtx.isIOS = true;
+    localStorage.setItem('zippo_push_last_health_test:user-123', String(Date.now() - 60 * 60 * 1000));
+
+    const firstRender = render(<NotificationPrompt userId="user-123" />);
+    await waitForCheckingCycle();
+    expect(sendPushTest).toHaveBeenCalledTimes(0);
+    expect(screen.getByText('Notifications enabled on this device')).toBeInTheDocument();
+
+    firstRender.unmount();
+    render(<NotificationPrompt userId="user-123" />);
+    await waitForCheckingCycle();
+
+    expect(sendPushTest).toHaveBeenCalledTimes(0);
+    expect(screen.getByText('Notifications enabled on this device')).toBeInTheDocument();
+  });
+
+  it('also honors the legacy site-exit cooldown on installed iOS PWA cold start', async () => {
+    mockCtx.isStandalone = true;
+    mockCtx.isIOS = true;
+    localStorage.setItem('zippo_push_last_site_exit:user-123', String(Date.now() - 60 * 60 * 1000));
+
+    render(<NotificationPrompt userId="user-123" />);
+    await waitForCheckingCycle();
+
+    expect(sendPushTest).toHaveBeenCalledTimes(0);
+    expect(screen.getByText('Notifications enabled on this device')).toBeInTheDocument();
+  });
+
+  it('allows verification again after three hours', async () => {
+    localStorage.setItem('zippo_push_last_health_test:user-123', String(Date.now() - (3 * 60 * 60 * 1000 + 1)));
+
+    render(<NotificationPrompt userId="user-123" />);
+    await waitForCheckingCycle();
+
+    expect(sendPushTest).toHaveBeenCalledTimes(1);
+  });
+
   it('does not apply the cooldown to the explicit Settings push test', async () => {
     window.location.hash = '#push-test-section';
+    localStorage.setItem('zippo_push_last_health_test:user-123', String(Date.now() - 60 * 60 * 1000));
     render(<NotificationPrompt userId="user-123" />);
 
     await waitForCheckingCycle();
 
     expect(sendPushTest).toHaveBeenCalledTimes(1);
     expect(screen.getByText('Test push notifications')).toBeInTheDocument();
-
-    window.location.hash = '';
-  });
-
-  it('preserves the fresh-session bypass for an installed PWA', async () => {
-    mockCtx.isStandalone = true;
-    localStorage.setItem('zippo_push_last_site_exit:user-123', String(Date.now()));
-
-    render(<NotificationPrompt userId="user-123" />);
-    await waitForCheckingCycle();
-
-    expect(sendPushTest).toHaveBeenCalledTimes(1);
   });
 });
