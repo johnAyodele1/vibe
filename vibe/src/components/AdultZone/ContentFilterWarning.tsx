@@ -5,21 +5,23 @@ interface ContentFilterWarningProps {
   onDismiss: () => void;
 }
 
-export const ContentFilterWarning: React.FC<ContentFilterWarningProps> = ({ category, onDismiss }) => {
-  const messages: Record<string, string> = {
-    phone: "It looks like you're sharing a phone number.",
-    platform: "It looks like you're referencing an outside platform.",
-    email: "It looks like you're sharing an email address.",
-    offplatform: "It looks like you're trying to move this conversation elsewhere.",
-  };
+// Optimization (⚡ Bolt): Static lookup object allocated once outside render loop.
+const WARNING_MESSAGES: Record<string, string> = {
+  phone: "It looks like you're sharing a phone number.",
+  platform: "It looks like you're referencing an outside platform.",
+  email: "It looks like you're sharing an email address.",
+  offplatform: "It looks like you're trying to move this conversation elsewhere.",
+};
 
+// Optimization (⚡ Bolt): React.memo prevents unnecessary re-renders when parent chat state updates.
+export const ContentFilterWarning: React.FC<ContentFilterWarningProps> = React.memo(({ category, onDismiss }) => {
   return (
     <div className="content-filter-warning" data-testid="content-filter-warning-member">
       <div className="cfm__icon">⚠️</div>
       <div className="cfm__content">
         <p className="cfm__title">Heads up — stay safe</p>
         <p className="cfm__body">
-          {messages[category || ''] || 'This message may contain contact information.'}{' '}
+          {WARNING_MESSAGES[category || ''] || 'This message may contain contact information.'}{' '}
           <strong>Beware of scammers.</strong> Moving conversations off this platform
           puts you at risk. We cannot protect you outside of this app.
         </p>
@@ -29,14 +31,15 @@ export const ContentFilterWarning: React.FC<ContentFilterWarningProps> = ({ cate
       </button>
     </div>
   );
-};
+});
 
 interface ProviderContentWarningProps {
   onDismiss: () => void;
   onSendAnyway?: () => void;
 }
 
-export const ProviderContentWarning: React.FC<ProviderContentWarningProps> = ({ onDismiss }) => {
+// Optimization (⚡ Bolt): React.memo prevents unnecessary re-renders when parent chat state updates.
+export const ProviderContentWarning: React.FC<ProviderContentWarningProps> = React.memo(({ onDismiss }) => {
   return (
     <div className="content-filter-warning content-filter-warning--provider" data-testid="content-filter-warning-provider">
       <div className="cfm__icon">🚫</div>
@@ -59,4 +62,4 @@ export const ProviderContentWarning: React.FC<ProviderContentWarningProps> = ({ 
       </div>
     </div>
   );
-};
+});

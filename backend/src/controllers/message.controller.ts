@@ -122,10 +122,10 @@ export const sendMessage = async (req: IExpressRequest, res: Response): Promise<
     const { receiverId, content, messageType = 'text' } = req.body;
     const currentUserId = (req.user._id as Types.ObjectId).toString();
 
-    // Check if either user has blocked the other
+    // Optimization (⚡ Bolt): Use .lean() on read-only queries to eliminate Mongoose document hydration overhead.
     const [currentUser, receiverUser] = await Promise.all([
-      User.findById(currentUserId),
-      User.findById(receiverId),
+      User.findById(currentUserId).lean(),
+      User.findById(receiverId).lean(),
     ]);
 
     if (!receiverUser) {

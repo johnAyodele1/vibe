@@ -70,8 +70,8 @@ export const getProviderPublicProfile = async (req: Request, res: Response) => {
           memoryProfileViews.set(viewKey, Date.now());
         }
 
-        // Send push notification to provider
-        const viewer = await AdultUser.findById(viewerId);
+        // Send push notification to provider (⚡ Bolt: .lean() for read-only query)
+        const viewer = await AdultUser.findById(viewerId).lean();
         if (viewer) {
           sendPushToUser(providerId, {
             title:    `👀 ${viewer.displayName || viewer.username || 'Someone'} viewed your profile`,

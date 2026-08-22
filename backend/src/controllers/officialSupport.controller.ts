@@ -30,12 +30,14 @@ export const DEFAULT_OFFICIAL_CONFIG = {
 
 export const getOfficialChannelsConfig = async (req: Request, res: Response) => {
   try {
-    let configDoc = await AppConfig.findOne({ key: OFFICIAL_CHANNELS_KEY });
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document hydration overhead.
+    const configDoc = await AppConfig.findOne({ key: OFFICIAL_CHANNELS_KEY }).lean();
     if (!configDoc) {
-      configDoc = await AppConfig.create({
+      const created = await AppConfig.create({
         key: OFFICIAL_CHANNELS_KEY,
         value: DEFAULT_OFFICIAL_CONFIG,
       });
+      return res.json({ success: true, data: created.value || DEFAULT_OFFICIAL_CONFIG });
     }
     return res.json({ success: true, data: configDoc.value || DEFAULT_OFFICIAL_CONFIG });
   } catch (error: any) {
@@ -49,7 +51,8 @@ export const updateOfficialChannelsConfig = async (req: Request, res: Response) 
       return res.status(403).json({ success: false, error: 'Admin access required' });
     }
     const { notifications, support } = req.body;
-    const existingDoc = await AppConfig.findOne({ key: OFFICIAL_CHANNELS_KEY });
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document hydration overhead.
+    const existingDoc = await AppConfig.findOne({ key: OFFICIAL_CHANNELS_KEY }).lean();
     const currentConfig = (existingDoc && typeof existingDoc.value === 'object' && !Array.isArray(existingDoc.value))
       ? (existingDoc.value as typeof DEFAULT_OFFICIAL_CONFIG)
       : DEFAULT_OFFICIAL_CONFIG;

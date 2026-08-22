@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 
 const STORAGE_KEY = 'az_dating_promo_dismissed';
 
-export const DatingCrossPromo: React.FC = () => {
+// Optimization (⚡ Bolt): React.memo prevents unnecessary re-renders when parent layout updates state.
+export const DatingCrossPromo: React.FC = React.memo(() => {
   const [visible, setVisible] = useState(false);
   const [animateIn, setAnimateIn] = useState(false);
 
@@ -67,6 +68,6 @@ export const DatingCrossPromo: React.FC = () => {
       </a>
     </div>
   );
-};
+});
 
 export default DatingCrossPromo;
