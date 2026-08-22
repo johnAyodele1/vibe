@@ -1,0 +1,80 @@
+name: Temporary call pricing hotfix runner
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Apply exact call pricing invariant
+        shell: python
+        run: |
+          from pathlib import Path
+          backend = Path('backend/src/controllers/adultSext.controller.ts')
+          frontend = Path('vibe/src/components/AdultZone/AdultCallContext.tsx')
+          backend_text = backend.read_text()
+          old = """    // Determine cost rate\n    const rate = type === 'video'\n      ? (receiver.providerProfile?.videoCallPrice ?? receiver.providerProfile?.pricePerMinute ?? 0)\n      : (receiver.providerProfile?.audioCallPrice ?? receiver.providerProfile?.pricePerMinute ?? 0);\n\n    const userPrice = getClientPrice(rate);\n\n    if (user.credits < userPrice) {\n      return res.status(402).json({ success: false, error: 'Insufficient credits to start call' });\n    }\n"""
+          new = """    // One canonical call rate for both audio and video.\n    const rate = receiver.providerProfile?.pricePerMinute;\n\n    if (typeof rate !== 'number' || !Number.isFinite(rate) || rate <= 0) {\n      return res.status(400).json({ success: false, error: 'Provider has not configured a valid call rate' });\n    }\n\n    if (user.credits < rate) {\n      return res.status(402).json({ success: false, error: 'Insufficient credits to start call', required: rate, current: user.credits });\n    }\n"""
+          if old not in backend_text: raise SystemExit('backend initiation pricing block not found')
+          backend_text = backend_text.replace(old, new, 1)
+          old = """        type,\n        webrtcRoomId,\n        rate: userPrice\n"""
+          new = """        type,\n        webrtcRoomId,\n        rate\n"""
+          if old not in backend_text: raise SystemExit('backend incoming rate block not found')
+          backend_text = backend_text.replace(old, new, 1)
+          old = """    const clientPrice = getClientPrice(call.perMinuteRate);\n    const callerUser = await AdultUser.findById(call.callerId).session(dbSession);\n"""
+          new = """    // perMinuteRate is already the exact member charge.\n    // The existing earnings pipeline splits that charge into provider/platform earnings.\n    const clientPrice = call.perMinuteRate;\n    const callerUser = await AdultUser.findById(call.callerId).session(dbSession);\n"""
+          if old not in backend_text: raise SystemExit('backend billing block not found')
+          backend_text = backend_text.replace(old, new, 1)
+          backend.write_text(backend_text)
+          frontend_text = frontend.read_text()
+          old = """  const transitionToTerminalCall = useCallback((reason: string, durationSeconds = 0) => {\n    const currentCall = activeCallRef.current;\n    if (!currentCall) {\n      resetCallState();\n      return;\n    }\n\n    let status: 'ended' | 'declined' | 'missed' | 'failed' | 'cancelled' = 'ended';\n    if (reason === 'declined') status = 'declined';\n    else if (reason === 'missed' || reason === 'no_answer') status = 'missed';\n    else if (reason === 'cancelled_by_caller') status = 'cancelled';\n    else if (reason === 'connection_failed') status = 'failed';\n\n    let cost = 0;\n    if (status === 'ended') {\n      const billedMinutes = Math.floor(durationSeconds / 60) + 1;\n      cost = currentCall.rate * billedMinutes;\n    }\n\n    const summary: CallSummaryInfo = {\n"""
+          new = """  const transitionToTerminalCall = useCallback((reason: string, durationSeconds = 0, creditsDeducted = 0) => {\n    const currentCall = activeCallRef.current;\n    if (!currentCall) {\n      resetCallState();\n      return;\n    }\n\n    let status: 'ended' | 'declined' | 'missed' | 'failed' | 'cancelled' = 'ended';\n    if (reason === 'declined') status = 'declined';\n    else if (reason === 'missed' || reason === 'no_answer') status = 'missed';\n    else if (reason === 'cancelled_by_caller') status = 'cancelled';\n    else if (reason === 'connection_failed') status = 'failed';\n\n    const cost = status === 'ended' ? Math.max(0, Number(creditsDeducted) || 0) : 0;\n\n    const summary: CallSummaryInfo = {\n"""
+          if old not in frontend_text: raise SystemExit('frontend terminal billing block not found')
+          frontend_text = frontend_text.replace(old, new, 1)
+          old = """      if (callData.callId) {\n        const rate = overrideRate || callData.perMinuteRate || 5;\n        const receiverName = partnerInfo?.displayName || callData.receiver?.displayName || 'Provider';\n"""
+          new = """      if (callData.callId) {\n        const rate = Number(callData.perMinuteRate);\n        if (!Number.isFinite(rate) || rate <= 0) {\n          toast.error('Provider has not configured a valid call rate.');\n          await endCallOnBackend(callData.callId, 'invalid_call_rate');\n          resetCallState();\n          return false;\n        }\n        const receiverName = partnerInfo?.displayName || callData.receiver?.displayName || 'Provider';\n"""
+          if old not in frontend_text: raise SystemExit('frontend hardcoded fallback not found')
+          frontend_text = frontend_text.replace(old, new, 1)
+          old = """  const endCallOnBackend = useCallback(async (callId: string, reason = 'hung_up') => {\n    try {\n      await fetch(`${API_BASE_URL}/v1/adult/sext/calls/${callId}/end`, {\n        method: 'PUT',\n        headers: getHeaders(),\n        body: JSON.stringify({ reason })\n      });\n    } catch (err) {\n      console.error('[AdultCall] Failed to end call on backend:', err);\n    }\n  }, [getHeaders]);\n"""
+          new = """  const endCallOnBackend = useCallback(async (callId: string, reason = 'hung_up') => {\n    try {\n      const response = await fetch(`${API_BASE_URL}/v1/adult/sext/calls/${callId}/end`, {\n        method: 'PUT',\n        headers: getHeaders(),\n        body: JSON.stringify({ reason })\n      });\n      if (!response.ok) return null;\n      return await response.json();\n    } catch (err) {\n      console.error('[AdultCall] Failed to end call on backend:', err);\n      return null;\n    }\n  }, [getHeaders]);\n"""
+          if old not in frontend_text: raise SystemExit('frontend end-call API block not found')
+          frontend_text = frontend_text.replace(old, new, 1)
+          old = """  const endCall = useCallback(async (reason = 'hung_up', durationSeconds = 0) => {\n    const currentCall = activeCallRef.current;\n    if (currentCall) {\n      await endCallOnBackend(currentCall.callId, reason);\n      transitionToTerminalCall(reason, durationSeconds);\n    } else {\n      resetCallState();\n    }\n  }, [endCallOnBackend, transitionToTerminalCall, resetCallState]);\n"""
+          new = """  const endCall = useCallback(async (reason = 'hung_up', durationSeconds = 0) => {\n    const currentCall = activeCallRef.current;\n    if (currentCall) {\n      const result = await endCallOnBackend(currentCall.callId, reason);\n      transitionToTerminalCall(reason, durationSeconds, result?.creditsDeducted ?? 0);\n    } else {\n      resetCallState();\n    }\n  }, [endCallOnBackend, transitionToTerminalCall, resetCallState]);\n"""
+          if old not in frontend_text: raise SystemExit('frontend endCall block not found')
+          frontend_text = frontend_text.replace(old, new, 1)
+          old = """    socket.on('call:ended', (payload: { callId: string; reason?: string; durationSeconds?: number }) => {\n      const currentCall = activeCallRef.current;\n      if (currentCall && currentCall.callId === payload.callId) {\n        transitionToTerminalCall(payload.reason || 'hung_up', payload.durationSeconds || 0);\n      }\n    });\n"""
+          new = """    socket.on('call:ended', (payload: { callId: string; reason?: string; durationSeconds?: number; creditsDeducted?: number }) => {\n      const currentCall = activeCallRef.current;\n      if (currentCall && currentCall.callId === payload.callId) {\n        transitionToTerminalCall(payload.reason || 'hung_up', payload.durationSeconds || 0, payload.creditsDeducted || 0);\n      }\n    });\n"""
+          if old not in frontend_text: raise SystemExit('frontend socket-end block not found')
+          frontend_text = frontend_text.replace(old, new, 1)
+          old = """        } else if (data.status === 'declined' || data.status === 'missed' || data.status === 'ended' || data.status === 'failed') {\n          transitionToTerminalCall(data.endReason || data.status, data.durationSeconds || 0);\n        }\n"""
+          new = """        } else if (data.status === 'declined' || data.status === 'missed' || data.status === 'ended' || data.status === 'failed') {\n          transitionToTerminalCall(data.endReason || data.status, data.durationSeconds || 0, data.creditsDeducted || 0);\n        }\n"""
+          if old not in frontend_text: raise SystemExit('frontend polling block not found')
+          frontend_text = frontend_text.replace(old, new, 1)
+          frontend.write_text(frontend_text)
+      - name: Build backend
+        run: npm ci && npm run build
+        working-directory: backend
+      - name: Build frontend
+        run: npm ci && npm run build
+        working-directory: vibe
+      - name: Commit source fix and restore branch hygiene
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch origin main
+          git checkout origin/main -- .github/workflows/push-fix-ci.yml
+          rm -f .github/workflows/apply-call-pricing-hotfix.yml HOTFIX_TRIGGER.md
+          git add backend/src/controllers/adultSext.controller.ts vibe/src/components/AdultZone/AdultCallContext.tsx .github/workflows/push-fix-ci.yml .github/workflows/apply-call-pricing-hotfix.yml HOTFIX_TRIGGER.md
+          git commit -m 'fix: unify audio and video call pricing'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
