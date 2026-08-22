@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { getInstallContext } from '../../lib/pwa/context';
 import AddToHomeScreenHint from './AddToHomeScreenHint';
 import { usePWAPromptStore, NOTIF_KEYS } from '../../store/pwaPromptStore';
@@ -10,11 +10,18 @@ const CHECKING_MIN_VISIBLE_MS = 1000;
 const PUSH_REVERIFICATION_COOLDOWN_MS = 3 * 60 * 60 * 1000;
 const PUSH_REVERIFICATION_EXIT_KEY_PREFIX = 'zippo_push_last_site_exit:';
 const PUSH_REVERIFICATION_TEST_KEY_PREFIX = 'zippo_push_last_health_test:';
+const PUSH_LOGIN_TEST_KEY_PREFIX = 'zippo_push_test_after_login:';
 
 type InstallContext = ReturnType<typeof getInstallContext>;
 
+// A module-level in-flight registry survives React StrictMode's development
+// remount and other same-document remounts. It prevents two NotificationPrompt
+// instances from performing the same startup health check at once.
+const healthChecksInFlight = new Map<string, Promise<PushHealthResult>>();
+
 const getSiteExitKey = (userId: string) => `${PUSH_REVERIFICATION_EXIT_KEY_PREFIX}${userId}`;
 const getHealthTestKey = (userId: string) => `${PUSH_REVERIFICATION_TEST_KEY_PREFIX}${userId}`;
+const getLoginTestKey = (userId: string) => `${PUSH_LOGIN_TEST_KEY_PREFIX}${userId}`;
 
 const readTimestamp = (key: string): number | null => {
   const value = localStorage.getItem(key);
@@ -26,11 +33,9 @@ const readTimestamp = (key: string): number | null => {
 const getLastSiteExitAt = (userId: string): number | null => readTimestamp(getSiteExitKey(userId));
 const getLastHealthTestAt = (userId: string): number | null => readTimestamp(getHealthTestKey(userId));
 
-const isWithinSiteExitCooldown = (userId: string): boolean => {
-  const lastHealthTestAt = getLastHealthTestAt(userId);
+const hasCompletedThreeHourAbsence = (userId: string): boolean => {
   const lastSiteExitAt = getLastSiteExitAt(userId);
-  const lastActivityAt = Math.max(lastHealthTestAt ?? 0, lastSiteExitAt ?? 0);
-  return lastActivityAt > 0 && Date.now() - lastActivityAt < PUSH_REVERIFICATION_COOLDOWN_MS;
+  return lastSiteExitAt !== null && Date.now() - lastSiteExitAt >= PUSH_REVERIFICATION_COOLDOWN_MS;
 };
 
 const recordSiteExit = (userId: string) => {
@@ -39,6 +44,25 @@ const recordSiteExit = (userId: string) => {
 
 const recordHealthTest = (userId: string) => {
   localStorage.setItem(getHealthTestKey(userId), String(Date.now()));
+};
+
+const consumeLoginTestMarker = (userId: string): boolean => {
+  const key = getLoginTestKey(userId);
+  const value = localStorage.getItem(key);
+  if (value !== '1') return false;
+  localStorage.removeItem(key);
+  return true;
+};
+
+const getHealth = (userId: string): Promise<PushHealthResult> => {
+  const existing = healthChecksInFlight.get(userId);
+  if (existing) return existing;
+
+  const promise = checkPushHealth(userId).finally(() => {
+    if (healthChecksInFlight.get(userId) === promise) healthChecksInFlight.delete(userId);
+  });
+  healthChecksInFlight.set(userId, promise);
+  return promise;
 };
 
 const CheckingNotifications = ({ waiting = false }: { waiting?: boolean }) => (
@@ -57,10 +81,9 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
   const [visible, setVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [selfTesting, setSelfTesting] = useState(true);
-  const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'waiting' | 'sent' | 'failed'>('sending');
+  const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'waiting' | 'sent' | 'failed'>('idle');
   const [health, setHealth] = useState<PushHealthResult | null>(null);
   const [showHealthy, setShowHealthy] = useState(false);
-  const selfTestInFlight = useRef(false);
   const isSettingsTest = typeof window !== 'undefined' && (window.location.hash === '#push-test-section' || window.location.hash === '#push-notifications');
 
   useEffect(() => {
@@ -76,32 +99,61 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
     if (!ctx) return;
     let cancelled = false;
 
-    const runVerification = async (forceDeviceTest: boolean) => {
-      // pageshow/visibilitychange can fire while the initial verification is
-      // still awaiting the health endpoint. Claim the whole verification run
-      // before the first await so two startup paths cannot both send a test.
-      if (selfTestInFlight.current) return;
-      selfTestInFlight.current = true;
-
+    const runHealthCheck = async () => {
       const checkingStartedAt = Date.now();
       setSelfTesting(true);
-      setTestStatus('sending');
+      setTestStatus('idle');
       setShowNotifPrompt(false);
 
-      const keepCheckingVisible = async () => {
-        const remaining = CHECKING_MIN_VISIBLE_MS - (Date.now() - checkingStartedAt);
-        if (remaining > 0) await new Promise(resolve => window.setTimeout(resolve, remaining));
-      };
+      const remaining = CHECKING_MIN_VISIBLE_MS - (Date.now() - checkingStartedAt);
+      const currentHealth = await getHealth(userId);
+      if (remaining > 0) await new Promise(resolve => window.setTimeout(resolve, remaining));
+      if (cancelled) return null;
 
+      setHealth(currentHealth);
+      return currentHealth;
+    };
+
+    const runLoginTestIfEligible = async (currentHealth: PushHealthResult) => {
+      // A real test is only ever triggered by an explicit successful login.
+      // App startup/resume only checks health; it never sends a test by itself.
+      const loginTriggered = consumeLoginTestMarker(userId);
+      if (!loginTriggered || isSettingsTest) return false;
+
+      // The three-hour clock starts when the user actually leaves the site.
+      // A successful test timestamp is only a secondary guard against sending
+      // twice for the same absence/login cycle.
+      const lastHealthTestAt = getLastHealthTestAt(userId);
+      const lastSiteExitAt = getLastSiteExitAt(userId);
+      const alreadyTestedSinceExit = lastHealthTestAt !== null && lastSiteExitAt !== null && lastHealthTestAt >= lastSiteExitAt;
+      if (!hasCompletedThreeHourAbsence(userId) || alreadyTestedSinceExit) return false;
+
+      if (currentHealth.status !== 'healthy' && currentHealth.status !== 'verification_required') return false;
+
+      setTestStatus('sending');
+      const result = await sendPushTest(userId, { silent: true, onWaiting: () => setTestStatus('waiting') });
+      if (cancelled) return true;
+
+      if (result.success && result.deviceReceived) {
+        recordHealthTest(userId);
+        setHealth(prev => prev ? { ...prev, status: 'healthy', pushHealthStatus: 'healthy' } : prev);
+        setTestStatus('sent');
+        setShowHealthy(true);
+      } else {
+        setHealth(prev => prev ? { ...prev, status: 'unhealthy', pushHealthStatus: 'unhealthy' } : prev);
+        setShowNotifPrompt(true);
+        setVisible(true);
+      }
+      return true;
+    };
+
+    const runVerification = async () => {
       try {
-        const currentHealth = await checkPushHealth(userId);
-        await keepCheckingVisible();
-        if (cancelled) return;
-        setHealth(currentHealth);
+        const currentHealth = await runHealthCheck();
+        if (!currentHealth || cancelled) return;
 
         if (ACTIONABLE_STATUSES.has(currentHealth.status)) {
           setSelfTesting(false);
-          setTestStatus('idle');
           setShowNotifPrompt(true);
           setVisible(true);
           return;
@@ -109,80 +161,46 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
 
         if (currentHealth.status === 'unsupported') {
           setSelfTesting(false);
-          setTestStatus('idle');
           setShowNotifPrompt(false);
           setVisible(false);
           return;
         }
 
-        // Explicit Settings tests are intentionally exempt from the automatic
-        // three-hour health-test cooldown. Automatic verification is not.
-        // The cooldown is persisted by the successful test itself, so it
-        // survives iOS PWA cold starts and does not depend on pagehide firing.
-        const cooldownActive = !isSettingsTest && isWithinSiteExitCooldown(userId);
-        const shouldTest = isSettingsTest || forceDeviceTest || (!cooldownActive && currentHealth.status === 'verification_required');
+        const didLoginTest = await runLoginTestIfEligible(currentHealth);
+        if (cancelled) return;
 
-        if (!shouldTest) {
+        if (!didLoginTest) {
           setSelfTesting(false);
           setTestStatus('idle');
-
-          if (cooldownActive && (currentHealth.status === 'verification_required' || currentHealth.status === 'healthy')) {
-            setHealth(prev => prev ? { ...prev, status: 'healthy', pushHealthStatus: 'healthy' } : prev);
+          if (currentHealth.status === 'healthy') {
             setShowHealthy(true);
-            window.setTimeout(() => setShowHealthy(false), 4000);
+            setVisible(true);
             setShowNotifPrompt(false);
-            setVisible(false);
-            return;
+          } else {
+            setShowHealthy(false);
+            setShowNotifPrompt(true);
+            setVisible(true);
           }
-
-          const show = isSettingsTest && currentHealth.status === 'healthy';
-          setShowNotifPrompt(show);
-          setVisible(show);
-          return;
-        }
-
-        setTestStatus('sending');
-        const result = await sendPushTest(userId, { silent: true, onWaiting: () => setTestStatus('waiting') });
-        if (cancelled) return;
-        if (result.success && result.deviceReceived) {
-          recordHealthTest(userId);
-          setHealth(prev => prev ? { ...prev, status: 'healthy', pushHealthStatus: 'healthy' } : prev);
-          setTestStatus('sent');
-          setShowNotifPrompt(false);
-          setVisible(false);
-          if (!isSettingsTest) {
-            setShowHealthy(true);
-            window.setTimeout(() => setShowHealthy(false), 4000);
-          }
-        } else {
-          setHealth(prev => prev ? { ...prev, status: 'unhealthy', pushHealthStatus: 'unhealthy' } : prev);
-          setShowNotifPrompt(true);
-          setVisible(true);
         }
       } catch (error) {
-        await keepCheckingVisible();
         if (!cancelled) {
           console.error('[NotifPrompt] Entry health check failed:', error);
           setHealth(prev => prev ? { ...prev, status: 'error', detail: error instanceof Error ? error.message : 'Unknown push error' } : prev);
-          setShowNotifPrompt(true);
-          setVisible(true);
-        }
-      } finally {
-        selfTestInFlight.current = false;
-        if (!cancelled) {
           setSelfTesting(false);
           setTestStatus('idle');
+          setShowNotifPrompt(true);
+          setVisible(true);
         }
       }
     };
 
-    // A new PWA document is NOT a new authenticated notification session.
-    // iOS destroys/recreates the document when the user closes and reopens the
-    // PWA, so the persisted three-hour cooldown must be authoritative here.
-    void runVerification(false);
+    void runVerification();
 
-    const handleVisibilityChange = () => { if (document.visibilityState === 'visible') void runVerification(false); };
-    const handlePageShow = () => void runVerification(false);
+    // Resume means re-check health, never automatically send a test.
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void runVerification();
+    };
+    const handlePageShow = () => void runVerification();
     const handlePageHide = () => recordSiteExit(userId);
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -217,19 +235,21 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
         return;
       }
 
-      const currentHealth = await checkPushHealth(userId);
+      const currentHealth = await getHealth(userId);
       setHealth(currentHealth);
       if (currentHealth.status !== 'healthy' && currentHealth.status !== 'verification_required') {
         throw new Error(currentHealth.detail || `Push registration is incomplete: ${currentHealth.status}`);
       }
 
+      // Manual enable/repair is an explicit user action, so it may perform the
+      // real device test immediately. This is not an automatic startup test.
       const result = await sendPushTest(userId, { onWaiting: () => setTestStatus('waiting') });
       if (result.success && result.deviceReceived) {
         recordHealthTest(userId);
         setHealth(prev => prev ? { ...prev, status: 'healthy', pushHealthStatus: 'healthy' } : prev);
         setTestStatus('sent');
         toast.success('Notifications are enabled and working on this device.');
-        window.setTimeout(() => { setSelfTesting(false); setTestStatus('idle'); setVisible(false); setShowNotifPrompt(false); }, 2000);
+        window.setTimeout(() => { setSelfTesting(false); setTestStatus('idle'); setShowHealthy(true); setVisible(true); setShowNotifPrompt(false); }, 2000);
       } else {
         setHealth(prev => prev ? { ...prev, status: 'unhealthy', pushHealthStatus: 'unhealthy' } : prev);
         setSelfTesting(false); setTestStatus('idle'); setShowNotifPrompt(true); setVisible(true);
@@ -252,6 +272,8 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
         setTestStatus('sent');
         recordHealthTest(userId);
         setHealth(prev => prev ? { ...prev, status: 'healthy', pushHealthStatus: 'healthy' } : prev);
+        setShowHealthy(true);
+        setVisible(true);
         toast.success('This device received the test notification.');
       } else {
         setTestStatus('failed'); setHealth(prev => prev ? { ...prev, status: 'unhealthy', pushHealthStatus: 'unhealthy' } : prev);
@@ -279,7 +301,7 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
 
   if (selfTesting) return <CheckingNotifications waiting={testStatus === 'waiting'} />;
 
-  if (showHealthy && health?.status === 'healthy' && !isSettingsTest) return (
+  if (showHealthy && health?.status === 'healthy') return (
     <div className="notif-prompt" data-testid="notification-prompt" role="status" aria-live="polite">
       <div className="notif-prompt__icon" aria-hidden="true">🔔</div>
       <div className="notif-prompt__text"><strong>Notifications enabled on this device</strong><p>Push notifications are connected on this device.</p></div>
