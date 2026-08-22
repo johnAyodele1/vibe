@@ -85,9 +85,9 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/adult', adultRoutes);
-app.use('/api/v1', v1Routes);
 app.use('/api/adult', providerDiscoveryRoutes);
 app.use('/api/v1/adult', providerDiscoveryRoutes);
+app.use('/api/v1', v1Routes);
 
 app.get('/api/health', (req: Request, res: Response) => res.json({ status: 'OK', timestamp: new Date().toISOString(), uptime: process.uptime() }));
 app.use(express.static(path.join(__dirname, '../../vibe/dist')));
