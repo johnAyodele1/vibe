@@ -9,25 +9,36 @@ const ACTIONABLE_STATUSES = new Set(['permission_required', 'missing_subscriptio
 const CHECKING_MIN_VISIBLE_MS = 1000;
 const PUSH_REVERIFICATION_COOLDOWN_MS = 3 * 60 * 60 * 1000;
 const PUSH_REVERIFICATION_EXIT_KEY_PREFIX = 'zippo_push_last_site_exit:';
+const PUSH_REVERIFICATION_TEST_KEY_PREFIX = 'zippo_push_last_health_test:';
 
 type InstallContext = ReturnType<typeof getInstallContext>;
 
 const getSiteExitKey = (userId: string) => `${PUSH_REVERIFICATION_EXIT_KEY_PREFIX}${userId}`;
+const getHealthTestKey = (userId: string) => `${PUSH_REVERIFICATION_TEST_KEY_PREFIX}${userId}`;
 
-const getLastSiteExitAt = (userId: string): number | null => {
-  const value = localStorage.getItem(getSiteExitKey(userId));
+const readTimestamp = (key: string): number | null => {
+  const value = localStorage.getItem(key);
   if (!value) return null;
   const timestamp = Number(value);
   return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : null;
 };
 
+const getLastSiteExitAt = (userId: string): number | null => readTimestamp(getSiteExitKey(userId));
+const getLastHealthTestAt = (userId: string): number | null => readTimestamp(getHealthTestKey(userId));
+
 const isWithinSiteExitCooldown = (userId: string): boolean => {
+  const lastHealthTestAt = getLastHealthTestAt(userId);
   const lastSiteExitAt = getLastSiteExitAt(userId);
-  return lastSiteExitAt !== null && Date.now() - lastSiteExitAt < PUSH_REVERIFICATION_COOLDOWN_MS;
+  const lastActivityAt = Math.max(lastHealthTestAt ?? 0, lastSiteExitAt ?? 0);
+  return lastActivityAt > 0 && Date.now() - lastActivityAt < PUSH_REVERIFICATION_COOLDOWN_MS;
 };
 
 const recordSiteExit = (userId: string) => {
   localStorage.setItem(getSiteExitKey(userId), String(Date.now()));
+};
+
+const recordHealthTest = (userId: string) => {
+  localStorage.setItem(getHealthTestKey(userId), String(Date.now()));
 };
 
 const CheckingNotifications = ({ waiting = false }: { waiting?: boolean }) => (
@@ -100,10 +111,10 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
           return;
         }
 
-        // An explicit Settings test always runs. The automatic fresh-session
-        // bypass is retained only for an installed PWA; normal browser tabs
-        // must always honor the three-hour site-exit cooldown, even after the
-        // page/component is recreated by Chrome.
+        // Explicit Settings tests are intentionally exempt from the automatic
+        // three-hour health-test cooldown. Automatic verification is not.
+        // The cooldown is persisted by the successful test itself, so it
+        // survives iOS PWA cold starts and does not depend on pagehide firing.
         const cooldownActive = !isSettingsTest && isWithinSiteExitCooldown(userId);
         const shouldTest = isSettingsTest || forceDeviceTest || (!cooldownActive && currentHealth.status === 'verification_required');
 
@@ -132,6 +143,7 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
         if (cancelled) return;
         if (result.success && result.deviceReceived) {
           entryTestUserRef.current = userId;
+          recordHealthTest(userId);
           setHealth(prev => prev ? { ...prev, status: 'healthy', pushHealthStatus: 'healthy' } : prev);
           setTestStatus('sent');
           setShowNotifPrompt(false);
@@ -162,12 +174,11 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
       }
     };
 
-    // Only an installed PWA retains the fresh-authenticated-session bypass.
-    // A normal Chrome tab is a browser-page lifecycle, not a new authenticated
-    // session, so a remount must still respect the persisted site-exit cooldown.
-    const isInstalledPWA = ctx.isStandalone;
+    // A new PWA document is NOT a new authenticated notification session.
+    // iOS destroys/recreates the document when the user closes and reopens the
+    // PWA, so the persisted three-hour cooldown must be authoritative here.
     const isNewAuthenticatedUser = entryTestUserRef.current !== userId;
-    const forceDeviceTest = isInstalledPWA && isNewAuthenticatedUser;
+    const forceDeviceTest = false;
     void runVerification(forceDeviceTest);
 
     const handleVisibilityChange = () => { if (document.visibilityState === 'visible') void runVerification(false); };
@@ -215,6 +226,7 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
       const result = await sendPushTest(userId, { onWaiting: () => setTestStatus('waiting') });
       if (result.success && result.deviceReceived) {
         entryTestUserRef.current = userId;
+        recordHealthTest(userId);
         setHealth(prev => prev ? { ...prev, status: 'healthy', pushHealthStatus: 'healthy' } : prev);
         setTestStatus('sent');
         toast.success('Notifications are enabled and working on this device.');
@@ -239,6 +251,7 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
       const result = await sendPushTest(userId, { onWaiting: () => setTestStatus('waiting') });
       if (result.success && result.deviceReceived) {
         setTestStatus('sent'); entryTestUserRef.current = userId;
+        recordHealthTest(userId);
         setHealth(prev => prev ? { ...prev, status: 'healthy', pushHealthStatus: 'healthy' } : prev);
         toast.success('This device received the test notification.');
       } else {
