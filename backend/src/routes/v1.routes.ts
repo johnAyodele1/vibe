@@ -10,6 +10,7 @@ import { startConversation, getConversations, getUnreadCount, getMessages as get
 import { getOfficialNotificationsForUser, markNotificationRead, getOrCreateSupportConversation, sendSupportMessage, getOfficialChannelsConfig } from '../controllers/officialSupport.controller';
 import { getRooms, createRoom as createAdultRoom, getRoom as getAdultRoom, joinRoom as joinAdultRoom, leaveRoom as leaveAdultRoom, getRoomMembers, getRoomLeaderboard, getThreads, createThread, getThread, reactThread, pinThread, lockThread, getMessages as getAdultRoomMessages, sendMessage as sendAdultRoomMessage, reactMessage as reactAdultRoomMessage, deleteMessage as deleteAdultRoomMessage, getReplies, postReply, reactReply, getActivePolls, createPoll, votePoll, reportRoom, muteUser, kickUser } from '../controllers/adultRooms.controller';
 import { getProviderPublicProfile, unlockProviderPhoto } from '../controllers/adultProviders.controller';
+import { getPublicProviderProfileWithResponseStats } from '../controllers/providerDiscovery.controller';
 import { savePushSubscription, removePushSubscription, getVapidPublicKey, getCurrentDevice, registerDevice, removeDevice, diagnosePush } from '../controllers/adultPush.controller';
 import { sendPushHealthTest, acknowledgePushHealthTest, getPushHealthTestStatus, markPushHealth } from '../controllers/pushHealth.controller';
 import { getUserTasks, completeTask, dailyCheckin } from '../controllers/adultRewards.controller';
@@ -125,7 +126,7 @@ router.put('/adult/providers/me/payout', verifyAdultJWT, updatePayout);
 router.put('/adult/providers/me/photos', verifyAdultJWT, updatePhotos);
 router.put('/adult/providers/me/schedule', verifyAdultJWT, updateSchedule);
 router.get('/adult/providers/me', verifyAdultJWT, getMyProfile);
-router.get('/adult/providers/:providerId', verifyAdultJWT, getProviderPublicProfile);
+router.get('/adult/providers/:providerId', verifyAdultJWT, getPublicProviderProfileWithResponseStats);
 router.post('/adult/providers/:providerId/photos/:photoIndex/unlock', verifyAdultJWT, unlockProviderPhoto);
 router.get('/adult/providers/:providerId/wheel', verifyAdultJWT, getProviderWheel);
 router.post('/adult/providers/:providerId/wheel/spin', verifyAdultJWT, spinProviderWheel);

@@ -5,6 +5,7 @@ import { useTipSheetStore } from './useTipSheetStore';
 import { API_BASE_URL } from '../../config';
 import { toast } from 'sonner';
 import { formatAmount } from '../../lib/pricing';
+import { getResponseBadge } from './responseTime';
 
 const SERVICE_LABELS: Record<string, { icon: string; label: string; color: string }> = {
   live_cam:       { icon: '📹', label: 'Live Webcam Shows',   color: '#e8496a' },
@@ -25,10 +26,8 @@ export const PublicProviderProfile: React.FC = () => {
   const [isStartingConversation, setIsStartingConversation] = useState(false);
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
 
-  // Automatically trigger the authentication modal if user is unauthenticated
   useEffect(() => {
     if (!isAuthenticated) {
-      // Small timeout ensures layout listener is registered and ready to capture the event on direct navigation!
       const timer = setTimeout(() => {
         window.dispatchEvent(new CustomEvent('open-adult-auth-modal'));
       }, 300);
@@ -182,10 +181,10 @@ export const PublicProviderProfile: React.FC = () => {
   }
 
   const activePhoto = provider.photos?.[activePhotoIndex] || { url: provider.avatarUrl, isExplicit: false };
+  const responseBadge = getResponseBadge(provider.effectiveResponseMinutes);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 pb-32 md:pb-16 text-[var(--az-text-primary)]">
-      {/* Back navigation */}
       <button
         onClick={() => navigate(-1)}
         className="mb-6 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[var(--az-bg-secondary)] border border-[var(--az-border)] text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] hover:text-white transition-colors"
@@ -193,23 +192,11 @@ export const PublicProviderProfile: React.FC = () => {
         ← Back
       </button>
 
-      {/* Grid: LEFT Media, RIGHT Info */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 md:gap-12">
-
-        {/* LEFT — Photos & Media (60% width on Desktop) */}
         <div className="lg:col-span-7 flex flex-col">
-          {/* Hero Main Photo */}
           <div className="provider-profile__hero shadow-2xl relative overflow-hidden">
-            <img
-              src={activePhoto.url}
-              alt={provider.stageName}
-              className="w-full h-full object-cover transition-all duration-300"
-            />
-
-            {/* Gradient Overlay */}
+            <img src={activePhoto.url} alt={provider.stageName} className="w-full h-full object-cover transition-all duration-300" />
             <div className="absolute inset-0 bg-gradient-to-t from-[#0a0608]/90 via-transparent to-transparent pointer-events-none" />
-
-            {/* Online badge */}
             {provider.isOnline && (
               <div className="provider-profile__online-badge shadow-md">
                 <div className="provider-profile__online-dot" />
@@ -218,28 +205,20 @@ export const PublicProviderProfile: React.FC = () => {
             )}
           </div>
 
-          {/* Photo strip below */}
           {provider.photos?.length > 1 && (
             <div className="provider-profile__photo-strip mt-3 overflow-x-auto pb-2 no-scrollbar">
-              {provider.photos.map((photo: any, i: number) => {
-                return (
-                  <button
-                    key={i}
-                    className={`photo-strip__thumb flex-shrink-0 relative ${activePhotoIndex === i ? 'active border-[var(--az-accent-crimson)]' : ''}`}
-                    onClick={() => setActivePhotoIndex(i)}
-                  >
-                    <img
-                      src={photo.url}
-                      alt=""
-                      className="w-full h-full object-cover"
-                    />
-                  </button>
-                );
-              })}
+              {provider.photos.map((photo: any, i: number) => (
+                <button
+                  key={i}
+                  className={`photo-strip__thumb flex-shrink-0 relative ${activePhotoIndex === i ? 'active border-[var(--az-accent-crimson)]' : ''}`}
+                  onClick={() => setActivePhotoIndex(i)}
+                >
+                  <img src={photo.url} alt="" className="w-full h-full object-cover" />
+                </button>
+              ))}
             </div>
           )}
 
-          {/* Inline Video Preview playing on Hover */}
           {provider.videoPreviewUrl && (
             <div className="mt-8 bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-2xl p-4">
               <h4 className="text-xs uppercase tracking-widest font-bold text-[var(--az-text-secondary)] mb-3 flex items-center gap-2">
@@ -266,7 +245,6 @@ export const PublicProviderProfile: React.FC = () => {
           )}
         </div>
 
-        {/* RIGHT — Info & Actions (40% width on Desktop) */}
         <div className="lg:col-span-5 flex flex-col justify-start">
           <div className="mb-6 max-w-full">
             <div className="flex items-center gap-3 mb-2 max-w-full">
@@ -292,43 +270,24 @@ export const PublicProviderProfile: React.FC = () => {
               <span>{provider.memberSince}</span>
             </div>
 
-            {(() => {
-              const totalCount = provider.totalResponseCount || 0;
-              const totalMinutes = provider.totalResponseMinutes || 0;
-              const avgResponseMinutes = totalCount > 0 ? totalMinutes / totalCount : null;
-              const responseBadge = avgResponseMinutes !== null ? (
-                avgResponseMinutes < 5 ? { label: 'Responds in minutes', color: '#22c55e' } :
-                avgResponseMinutes < 60 ? { label: 'Responds within 1 hr', color: '#22c55e' } :
-                avgResponseMinutes < 240 ? { label: 'Responds within 4 hrs', color: '#c9a84c' } :
-                avgResponseMinutes < 1440 ? { label: 'Responds same day', color: '#f97316' } :
-                { label: 'Responds slowly', color: '#a08898' }
-              ) : null;
-              if (!responseBadge) return null;
-              return (
-                <div className="mt-3">
-                  <span className="inline-block text-[10px] font-bold border rounded-full px-2.5 py-0.5 leading-none" style={{ borderColor: responseBadge.color, color: responseBadge.color }}>
-                    ⚡ {responseBadge.label}
-                  </span>
-                </div>
-              );
-            })()}
+            {responseBadge && (
+              <div className="mt-3">
+                <span className="inline-block text-[10px] font-bold border rounded-full px-2.5 py-0.5 leading-none" style={{ borderColor: responseBadge.color, color: responseBadge.color }}>
+                  ⚡ {responseBadge.label}
+                </span>
+              </div>
+            )}
           </div>
 
-          {/* Bio section */}
           {provider.bio && (
             <div className="mb-8 p-5 bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-2xl relative overflow-hidden">
-              <p className="text-sm text-[var(--az-text-secondary)] leading-relaxed font-serif italic">
-                "{provider.bio}"
-              </p>
+              <p className="text-sm text-[var(--az-text-secondary)] leading-relaxed font-serif italic">"{provider.bio}"</p>
               {provider.tagline && (
-                <p className="text-xs text-[var(--az-accent-rose)] font-bold uppercase tracking-wider mt-3">
-                  🏷️ {provider.tagline}
-                </p>
+                <p className="text-xs text-[var(--az-accent-rose)] font-bold uppercase tracking-wider mt-3">🏷️ {provider.tagline}</p>
               )}
             </div>
           )}
 
-          {/* SERVICES & PRICING */}
           <div className="mb-8">
             <h3 className="text-xs uppercase tracking-widest font-extrabold text-[var(--az-text-muted)] mb-4 border-b border-[var(--az-border)] pb-2">
               Services & Pricing
@@ -342,9 +301,7 @@ export const PublicProviderProfile: React.FC = () => {
                   const meta = SERVICE_LABELS[service] || { icon: '✨', label: service, color: '#c9a84c' };
                   return (
                     <div className="service-card shadow-lg" key={service}>
-                      <span className="service-card__icon" style={{ textShadow: `0 0 10px ${meta.color}40` }}>
-                        {meta.icon}
-                      </span>
+                      <span className="service-card__icon" style={{ textShadow: `0 0 10px ${meta.color}40` }}>{meta.icon}</span>
                       <div className="service-card__info">
                         <span className="service-card__label">{meta.label}</span>
                         <span className="service-card__price">
@@ -362,43 +319,24 @@ export const PublicProviderProfile: React.FC = () => {
             )}
           </div>
 
-          {/* PRIMARY CTA: MESSAGE BUTTON */}
-          <button
-            className="provider-profile__message-btn truncate max-w-full"
-            onClick={handleStartConversation}
-            disabled={isStartingConversation}
-          >
+          <button className="provider-profile__message-btn truncate max-w-full" onClick={handleStartConversation} disabled={isStartingConversation}>
             {isStartingConversation ? (
               <span className="animate-spin rounded-full h-5 w-5 border-t-2 border-white"></span>
             ) : (
-              <span className="truncate">
-                <span className="message-btn__icon">💬</span>
-                Message {provider.stageName.length > 15 ? `${provider.stageName.slice(0, 15)}...` : provider.stageName}
-              </span>
+              <span className="truncate"><span className="message-btn__icon">💬</span> Message {provider.stageName.length > 15 ? `${provider.stageName.slice(0, 15)}...` : provider.stageName}</span>
             )}
           </button>
 
-          {/* SECONDARY CTA: TIP BUTTON */}
-          <button
-            className="provider-profile__tip-btn"
-            onClick={handleTipClick}
-          >
-            💎 Send a Tip
-          </button>
+          <button className="provider-profile__tip-btn" onClick={handleTipClick}>💎 Send a Tip</button>
         </div>
       </div>
 
-      {/* TIP MENU SECTION */}
       {provider.pricing?.tipMenu?.length > 0 && (
         <section className="provider-profile__tip-menu border-t border-[var(--az-border)] pt-12 mt-12">
           <h3 className="section-title text-2xl mb-6">Tip Menu 💎</h3>
           <div className="tip-menu-grid">
             {provider.pricing.tipMenu.map((item: any, i: number) => (
-              <button
-                key={i}
-                className="tip-menu-item shadow-md"
-                onClick={() => handleTipMenuClick(item.amount)}
-              >
+              <button key={i} className="tip-menu-item shadow-md" onClick={() => handleTipMenuClick(item.amount)}>
                 <span className="tip-menu-item__amount">💎 {formatAmount(item.amount)}</span>
                 <span className="tip-menu-item__desc">{item.description}</span>
               </button>
@@ -407,7 +345,6 @@ export const PublicProviderProfile: React.FC = () => {
         </section>
       )}
 
-      {/* REVIEWS SECTION */}
       <section className="border-t border-[var(--az-border)] pt-12 mt-12 max-w-4xl">
         <h3 className="section-title text-2xl mb-6">Verified Customer Reviews ⭐</h3>
         {provider.reviewCount === 0 ? (
@@ -424,9 +361,7 @@ export const PublicProviderProfile: React.FC = () => {
                 </div>
                 <span className="text-xs text-[var(--az-accent-gold)]">⭐⭐⭐⭐⭐ 5.0</span>
               </div>
-              <p className="text-sm text-[var(--az-text-secondary)] font-serif italic">
-                "Absolutely incredible experience. Very professional, responsive, and accommodating. Completely worth the arrangements!"
-              </p>
+              <p className="text-sm text-[var(--az-text-secondary)] font-serif italic">"Absolutely incredible experience. Very professional, responsive, and accommodating. Completely worth the arrangements!"</p>
             </div>
             <div className="p-5 bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-2xl">
               <div className="flex justify-between items-start mb-2">
@@ -436,9 +371,7 @@ export const PublicProviderProfile: React.FC = () => {
                 </div>
                 <span className="text-xs text-[var(--az-accent-gold)]">⭐⭐⭐⭐⭐ 4.8</span>
               </div>
-              <p className="text-sm text-[var(--az-text-secondary)] font-serif italic">
-                "Super hot stream session! The tip menu rewards are absolutely amazing, responds instantly to tips."
-              </p>
+              <p className="text-sm text-[var(--az-text-secondary)] font-serif italic">"Super hot stream session! The tip menu rewards are absolutely amazing, responds instantly to tips."</p>
             </div>
           </div>
         )}
