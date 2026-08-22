@@ -140,7 +140,6 @@ router.get('/adult/rooms/:roomId/leaderboard', optionalAdultJWT, getRoomLeaderbo
 router.get('/adult/rooms/:roomId/threads', optionalAdultJWT, getThreads);
 router.post('/adult/rooms/:roomId/threads', verifyAdultJWT, createThread);
 router.get('/adult/rooms/:roomId/threads/:threadId', optionalAdultJWT, getThread);
-router.post('/adult/rooms/:roomId/threads', verifyAdultJWT, createThread);
 router.post('/adult/rooms/:roomId/threads/:threadId/react', verifyAdultJWT, reactThread);
 router.put('/adult/rooms/:roomId/threads/:threadId/pin', verifyAdultJWT, pinThread);
 router.put('/adult/rooms/:roomId/threads/:threadId/lock', verifyAdultJWT, lockThread);
@@ -150,7 +149,7 @@ router.post('/adult/rooms/:roomId/messages/:messageId/react', verifyAdultJWT, re
 router.delete('/adult/rooms/:roomId/messages/:messageId', verifyAdultJWT, deleteAdultRoomMessage);
 router.get('/adult/rooms/:roomId/threads/:threadId/replies', optionalAdultJWT, getReplies);
 router.post('/adult/rooms/:roomId/threads/:threadId/replies', verifyAdultJWT, postReply);
-router.post('/adult/rooms/:roomId/threads/:threadId/replies/:replyId/react', verifyAdultJWT, reactReply);
+router.post('/adult/rooms/:roomId/threads/:threadId/react', verifyAdultJWT, reactReply);
 router.get('/adult/rooms/:roomId/polls/active', optionalAdultJWT, getActivePolls);
 router.post('/adult/rooms/:roomId/polls', verifyAdultJWT, createPoll);
 router.post('/adult/rooms/:roomId/polls/:pollId/vote', verifyAdultJWT, votePoll);
