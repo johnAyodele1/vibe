@@ -177,9 +177,7 @@ const NotificationPrompt = ({ userId }: { userId: string }) => {
     // A new PWA document is NOT a new authenticated notification session.
     // iOS destroys/recreates the document when the user closes and reopens the
     // PWA, so the persisted three-hour cooldown must be authoritative here.
-    const isNewAuthenticatedUser = entryTestUserRef.current !== userId;
-    const forceDeviceTest = false;
-    void runVerification(forceDeviceTest);
+    void runVerification(false);
 
     const handleVisibilityChange = () => { if (document.visibilityState === 'visible') void runVerification(false); };
     const handlePageShow = () => void runVerification(false);
