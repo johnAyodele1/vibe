@@ -89,11 +89,12 @@ export const expireStaleRingingCall = async (call: any) => {
  */
 export const checkActiveCall = async (userId: string | Types.ObjectId) => {
   const uid = typeof userId === 'string' ? new Types.ObjectId(userId) : userId;
+  const uidStr = userId.toString();
 
   const activeCall = await AdultCall.findOne({
     $or: [
-      { isActiveSession: true, activeParticipants: uid },
-      { status: { $in: ['ringing', 'active'] }, $or: [{ callerId: uid }, { receiverId: uid }] }
+      { isActiveSession: true, activeParticipants: { $in: [uid, uidStr] } },
+      { status: { $in: ['ringing', 'active'] }, $or: [{ callerId: { $in: [uid, uidStr] } }, { receiverId: { $in: [uid, uidStr] } }] }
     ]
   });
 
