@@ -259,9 +259,6 @@ const AdultZoneLayoutInner: React.FC = () => {
       className={`bg-[var(--az-bg-primary)] text-[var(--az-text-primary)] font-sans az-grain flex flex-col ${
         hideGlobalHeader ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'
       }`}
-      style={{
-        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-      }}
     >
       <nav
         data-testid="global-header"
@@ -341,7 +338,7 @@ const AdultZoneLayoutInner: React.FC = () => {
         </div>
       </nav>
 
-      <main className={`flex-grow ${hideGlobalHeader ? 'h-full overflow-hidden' : ''}`}>
+      <main className={`flex-grow ${hideGlobalHeader ? 'h-full overflow-hidden' : 'pb-[calc(56px+env(safe-area-inset-bottom))] md:pb-0'}`}>
         <Outlet />
       </main>
 

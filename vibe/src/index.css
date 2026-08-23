@@ -77,7 +77,7 @@ body {
   margin: 0;
   min-height: 100vh;
   min-height: 100dvh;
-  background-color: var(--background-dark);
+  background-color: var(--az-bg-primary, #0a0608);
   color: white;
   overflow-x: hidden;
 }
