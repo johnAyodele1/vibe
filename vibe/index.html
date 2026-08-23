@@ -13,33 +13,16 @@
     <link rel="apple-touch-icon" sizes="152x152" href="/icons/apple-touch-icon.png" />
     <link rel="apple-touch-icon" sizes="120x120" href="/icons/apple-touch-icon.png" />
     <title>Vibe - Dating App</title>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,400..900;1,400..700&family=Lora:ital,wght@0,100..700;1,100..700&family=DM+Sans:ital,opsz,wght@0,100..1000;1,100..700&family=JetBrains+Mono:ital,wght@0,100..800;1,100..700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,400..900;1,400..700&family=Lora:ital,wght@0,100..700;1,100..700&family=DM+Sans:ital,opsz,wght@0,100..1000;1,100..1000&family=JetBrains+Mono:ital,wght@0,100..800;1,100..700&display=swap" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined,wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
     <style>
       .hide-scrollbar::-webkit-scrollbar { display: none; }
       .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-
-      :root {
-        --primary: #f42559;
-        --background-dark: #221014;
-        --mobile-nav-bg: #130d10;
-      }
-
-      html, body, #root {
-        min-height: 100%;
-        min-height: 100dvh;
-        background: #221014;
-      }
-
-      body {
-        margin: 0;
-        min-height: 100vh;
-        min-height: 100dvh;
-        overflow-x: clip;
-      }
+      :root { --primary: #f42559; --background-dark: #221014; --mobile-nav-bg: #130d10; }
+      html, body, #root { min-height: 100%; min-height: 100dvh; background: #221014; }
+      body { margin: 0; min-height: 100vh; min-height: 100dvh; overflow-x: clip; }
 
       @media (max-width: 767px) {
-        /* Real DOM element painted in the bottom safe area for iOS Liquid Glass. */
         #mobile-safe-area-fill {
           display: block;
           position: fixed;
@@ -58,7 +41,6 @@
 
         html, body, #root { background: #221014 !important; }
 
-        /* Existing Adult Zone nav stops above the safe-area fill. */
         [data-testid="bottom-tab-bar"] {
           box-sizing: border-box !important;
           position: fixed !important;
@@ -76,29 +58,16 @@
           z-index: 50 !important;
         }
 
-        [data-testid="bottom-tab-bar"] > div {
-          box-sizing: border-box !important;
-          height: 56px !important;
-          min-height: 56px !important;
-        }
-
+        [data-testid="bottom-tab-bar"] > div { box-sizing: border-box !important; height: 56px !important; min-height: 56px !important; }
         #root > div.az-grain { padding-bottom: 0 !important; }
 
         @supports selector(body:has(.conversation-header)) {
           body:has(.chat-page-mobile .conversation-header) [data-testid="global-header"],
           body:has(.chat-page-mobile .conversation-header) [data-testid="bottom-tab-bar"],
-          body:has(.chat-page-mobile .conversation-header) #mobile-safe-area-fill {
-            display: none !important;
-          }
+          body:has(.chat-page-mobile .conversation-header) #mobile-safe-area-fill { display: none !important; }
         }
 
-        .chat-page-mobile {
-          height: 100dvh !important;
-          min-height: 100dvh !important;
-          max-height: 100dvh !important;
-          padding-top: 0 !important;
-          padding-bottom: 0 !important;
-        }
+        .chat-page-mobile { height: 100dvh !important; min-height: 100dvh !important; max-height: 100dvh !important; padding-top: 0 !important; padding-bottom: 0 !important; }
 
         .chat-page-mobile .conversation-header {
           box-sizing: border-box !important;
@@ -113,25 +82,12 @@
         }
 
         .chat-page-mobile .conversation-header__info,
-        .chat-page-mobile .conversation-header__actions {
-          min-width: 0 !important;
-          flex-shrink: 0 !important;
-        }
-
-        .chat-page-mobile .conversation-header__credits {
-          min-width: 0 !important;
-          max-width: 34vw !important;
-          overflow: hidden !important;
-          text-overflow: ellipsis !important;
-          white-space: nowrap !important;
-        }
+        .chat-page-mobile .conversation-header__actions { min-width: 0 !important; flex-shrink: 0 !important; }
+        .chat-page-mobile .conversation-header__credits { min-width: 0 !important; max-width: 34vw !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
       }
 
       @media (orientation: landscape) and (max-width: 900px) {
-        [data-testid="bottom-tab-bar"] {
-          padding-left: max(8px, env(safe-area-inset-left, 0px)) !important;
-          padding-right: max(8px, env(safe-area-inset-right, 0px)) !important;
-        }
+        [data-testid="bottom-tab-bar"] { padding-left: max(8px, env(safe-area-inset-left, 0px)) !important; padding-right: max(8px, env(safe-area-inset-right, 0px)) !important; }
       }
     </style>
   </head>
