@@ -72,6 +72,8 @@ export const HookupMap: React.FC<HookupMapProps> = ({ providers, center, zoom, o
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
+  const initialRafRef = useRef<number | null>(null);
+  const viewRafRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!mapElementRef.current || mapRef.current || !isValidCoordinates(center)) return;
@@ -83,9 +85,22 @@ export const HookupMap: React.FC<HookupMapProps> = ({ providers, center, zoom, o
     }).addTo(map);
     markersLayerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
-    requestAnimationFrame(() => map.invalidateSize());
+
+    initialRafRef.current = requestAnimationFrame(() => {
+      initialRafRef.current = null;
+      map.invalidateSize();
+    });
 
     return () => {
+      if (initialRafRef.current !== null) {
+        cancelAnimationFrame(initialRafRef.current);
+        initialRafRef.current = null;
+      }
+      if (viewRafRef.current !== null) {
+        cancelAnimationFrame(viewRafRef.current);
+        viewRafRef.current = null;
+      }
+
       map.remove();
       mapRef.current = null;
       markersLayerRef.current = null;
@@ -95,8 +110,24 @@ export const HookupMap: React.FC<HookupMapProps> = ({ providers, center, zoom, o
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !isValidCoordinates(center)) return;
+
     map.setView(center, zoom);
-    requestAnimationFrame(() => map.invalidateSize());
+
+    if (viewRafRef.current !== null) {
+      cancelAnimationFrame(viewRafRef.current);
+    }
+
+    viewRafRef.current = requestAnimationFrame(() => {
+      viewRafRef.current = null;
+      map.invalidateSize();
+    });
+
+    return () => {
+      if (viewRafRef.current !== null) {
+        cancelAnimationFrame(viewRafRef.current);
+        viewRafRef.current = null;
+      }
+    };
   }, [center, zoom]);
 
   useEffect(() => {
