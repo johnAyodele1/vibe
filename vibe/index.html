@@ -13,7 +13,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <title>Vibe - Dating App</title>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,400..900;1,400..700&family=Lora:ital,wght@0,100..700;1,100..700&family=DM+Sans:ital,opsz,wght@0,100..1000;1,100..700&family=JetBrains+Mono:ital,wght@0,100..800;1,100..700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,400..900;1,100..700&family=Lora:ital,wght@0,100..700;1,100..700&family=DM+Sans:ital,opsz,wght@0,100..1000;1,100..700&family=JetBrains+Mono:ital,wght@0,100..800;1,100..700&display=swap" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined,wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
     <style>
       .hide-scrollbar::-webkit-scrollbar { display: none; }
@@ -21,84 +21,32 @@
       :root { --primary: #f42559; --background-dark: #221014; --mobile-nav-bg: #130d10; }
       html, body, #root { min-height: 100%; min-height: 100dvh; background: #221014; }
       body { margin: 0; min-height: 100vh; min-height: 100dvh; overflow-x: clip; }
-
       @media (max-width: 767px) {
-        /* iOS Safari Liquid Glass: paint the home-indicator safe area separately from the nav. */
-        #mobile-safe-area-fill {
-          display: block;
-          position: fixed;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          width: 100%;
-          height: env(safe-area-inset-bottom, 0px);
-          background: var(--mobile-nav-bg) !important;
-          border: 0;
-          padding: 0;
-          margin: 0;
-          pointer-events: none;
-          z-index: 49;
-        }
-
-        html, body, #root { background: #221014 !important; }
-
-        [data-testid="bottom-tab-bar"] {
-          box-sizing: border-box !important;
-          position: fixed !important;
-          left: 0 !important;
-          right: 0 !important;
-          bottom: env(safe-area-inset-bottom, 0px) !important;
-          width: 100% !important;
-          height: 56px !important;
-          min-height: 56px !important;
-          padding: 0 !important;
-          background: var(--mobile-nav-bg) !important;
-          backdrop-filter: none !important;
-          -webkit-backdrop-filter: none !important;
-          transform: none !important;
-          z-index: 50 !important;
-        }
-
-        [data-testid="bottom-tab-bar"] > div { box-sizing: border-box !important; height: 56px !important; min-height: 56px !important; }
-        #root > div.az-grain { padding-bottom: 0 !important; }
-
+        #mobile-safe-area-fill { display:block; position:fixed; left:0; right:0; bottom:0; width:100%; height:env(safe-area-inset-bottom,0px); background:var(--mobile-nav-bg)!important; border:0; padding:0; margin:0; pointer-events:none; z-index:49; }
+        html, body, #root { background:#221014!important; }
+        [data-testid="bottom-tab-bar"] { box-sizing:border-box!important; position:fixed!important; left:0!important; right:0!important; bottom:env(safe-area-inset-bottom,0px)!important; width:100%!important; height:56px!important; min-height:56px!important; padding:0!important; background:var(--mobile-nav-bg)!important; backdrop-filter:none!important; -webkit-backdrop-filter:none!important; transform:none!important; z-index:50!important; }
+        [data-testid="bottom-tab-bar"] > div { box-sizing:border-box!important; height:56px!important; min-height:56px!important; }
+        #root > div.az-grain { padding-bottom:0!important; }
         @supports selector(body:has(.conversation-header)) {
           body:has(.chat-page-mobile .conversation-header) [data-testid="global-header"],
           body:has(.chat-page-mobile .conversation-header) [data-testid="bottom-tab-bar"],
-          body:has(.chat-page-mobile .conversation-header) #mobile-safe-area-fill { display: none !important; }
+          body:has(.chat-page-mobile .conversation-header) #mobile-safe-area-fill { display:none!important; }
         }
-
-        .chat-page-mobile { height: 100dvh !important; min-height: 100dvh !important; max-height: 100dvh !important; padding-top: 0 !important; padding-bottom: 0 !important; }
-
-        .chat-page-mobile .conversation-header {
-          box-sizing: border-box !important;
-          flex: 0 0 auto !important;
-          height: calc(56px + env(safe-area-inset-top, 0px)) !important;
-          min-height: calc(56px + env(safe-area-inset-top, 0px)) !important;
-          max-height: calc(56px + env(safe-area-inset-top, 0px)) !important;
-          padding-top: env(safe-area-inset-top, 0px) !important;
-          padding-bottom: 0 !important;
-          padding-left: max(4px, env(safe-area-inset-left, 0px)) !important;
-          padding-right: max(12px, env(safe-area-inset-right, 0px)) !important;
-        }
-
-        .chat-page-mobile .conversation-header__info,
-        .chat-page-mobile .conversation-header__actions { min-width: 0 !important; flex-shrink: 0 !important; }
-        .chat-page-mobile .conversation-header__credits { min-width: 0 !important; max-width: 34vw !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+        .chat-page-mobile { height:100dvh!important; min-height:100dvh!important; max-height:100dvh!important; padding-top:0!important; padding-bottom:0!important; }
+        .chat-page-mobile .conversation-header { box-sizing:border-box!important; flex:0 0 auto!important; height:calc(56px + env(safe-area-inset-top,0px))!important; min-height:calc(56px + env(safe-area-inset-top,0px))!important; max-height:calc(56px + env(safe-area-inset-top,0px))!important; padding-top:env(safe-area-inset-top,0px)!important; padding-bottom:0!important; padding-left:max(4px,env(safe-area-inset-left,0px))!important; padding-right:max(12px,env(safe-area-inset-right,0px))!important; }
+        .chat-page-mobile .conversation-header__info, .chat-page-mobile .conversation-header__actions { min-width:0!important; flex-shrink:0!important; }
+        .chat-page-mobile .conversation-header__credits { min-width:0!important; max-width:34vw!important; overflow:hidden!important; text-overflow:ellipsis!important; white-space:nowrap!important; }
       }
-
-      @media (orientation: landscape) and (max-width: 900px) {
-        [data-testid="bottom-tab-bar"] { padding-left: max(8px, env(safe-area-inset-left, 0px)) !important; padding-right: max(8px, env(safe-area-inset-right, 0px)) !important; }
-      }
+      @media (orientation:landscape) and (max-width:900px) { [data-testid="bottom-tab-bar"] { padding-left:max(8px,env(safe-area-inset-left,0px))!important; padding-right:max(8px,env(safe-area-inset-right,0px))!important; } }
     </style>
   </head>
   <body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-white antialiased selection:bg-primary selection:text-white relative">
     <div id="mobile-safe-area-fill" aria-hidden="true"></div>
     <div id="root">
-      <div style="position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background-color: #221014; z-index: 99999; font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-        <div style="display: flex; flex-direction: column; align-items: center; gap: 1.5rem;">
-          <div style="width: 50px; height: 50px; border: 4px solid rgba(244, 37, 89, 0.1); border-left-color: #f42559; border-radius: 50%; animation: spin 1s linear infinite;"></div>
-          <h1 style="font-size: 2.5rem; font-weight: 900; letter-spacing: 0.2em; color: #f42559; margin: 0;">VIBE</h1>
+      <div style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background-color:#221014;z-index:99999;font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:1.5rem;">
+          <div style="width:50px;height:50px;border:4px solid rgba(244,37,89,0.1);border-left-color:#f42559;border-radius:50%;animation:spin 1s linear infinite;"></div>
+          <h1 style="font-size:2.5rem;font-weight:900;letter-spacing:0.2em;color:#f42559;margin:0;">VIBE</h1>
         </div>
       </div>
       <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
