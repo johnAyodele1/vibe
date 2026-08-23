@@ -15,20 +15,14 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js')
       .then((registration) => {
         console.log('ServiceWorker registration successful with scope: ', registration.scope);
-
-        // Check for updates
         registration.addEventListener('updatefound', () => {
           const newWorker = registration.installing;
           if (newWorker) {
             newWorker.addEventListener('statechange', () => {
               if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                // New version available!
                 toast.info("New version available!", {
                   description: "Please refresh to update the app.",
-                  action: {
-                    label: "Refresh",
-                    onClick: () => window.location.reload(),
-                  },
+                  action: { label: "Refresh", onClick: () => window.location.reload() },
                   duration: Infinity,
                 });
               }
@@ -36,17 +30,13 @@ if ('serviceWorker' in navigator) {
           }
         });
       })
-      .catch((error) => {
-        console.log('ServiceWorker registration failed: ', error);
-      });
+      .catch((error) => console.log('ServiceWorker registration failed: ', error));
   });
 
-  // Handle case where service worker controller changes (e.g., skipWaiting)
   let refreshing = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!refreshing) {
       refreshing = true;
-      console.log('Service worker controller changed. New version active. Reloading...');
       window.location.reload();
     }
   });
