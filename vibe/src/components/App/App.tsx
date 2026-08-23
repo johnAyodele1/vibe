@@ -141,7 +141,7 @@ function App() {
         <Route path="/profile" element={isAuthenticated ? <ProfileCreation /> : <Navigate to="/auth" replace />} />
         <Route path="/favourites" element={isAuthenticated ? (isProfileComplete() ? <Favourites /> : <Navigate to="/profile" replace />) : <Navigate to="/auth" replace />} />
         <Route path="/discovery" element={isAuthenticated ? (isProfileComplete() ? <Discovery /> : <Navigate to="/profile" replace />) : <Navigate to="/auth" replace />} />
-        <Route path="/user/:userId" element={isAuthenticated ? (isProfileComplete() ? <PublicProfileView /> : <Navigate to="/auth" replace />) : <Navigate to="/auth" replace />} />
+        <Route path="/user/:userId" element={isAuthenticated ? (isProfileComplete() ? <PublicProfileView /> : <Navigate to="/profile" replace />) : <Navigate to="/auth" replace />} />
         <Route path="/my-profile" element={isAuthenticated ? (isProfileComplete() ? <UserProfileView /> : <Navigate to="/profile" replace />) : <Navigate to="/auth" replace />} />
         <Route path="/settings" element={isAuthenticated ? (isProfileComplete() ? <Settings /> : <Navigate to="/profile" replace />) : <Navigate to="/auth" replace />} />
         <Route path="/chat" element={isAuthenticated ? (isProfileComplete() ? <ChatInterface /> : <Navigate to="/auth" replace />) : <Navigate to="/auth" replace />} />
