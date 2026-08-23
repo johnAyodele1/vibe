@@ -47,7 +47,7 @@ export const HookupMap: React.FC<HookupMapProps> = ({
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
 
   useEffect(() => {
-    if (!mapElementRef.current || mapRef.current) return;
+    if (!mapElementRef.current || mapRef.current || !isValidCoordinates(center)) return;
 
     const map = L.map(mapElementRef.current, {
       center,
@@ -64,8 +64,6 @@ export const HookupMap: React.FC<HookupMapProps> = ({
     markersLayerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
 
-    // Leaflet needs a layout pass when its container is initially mounted
-    // inside a React conditional branch.
     requestAnimationFrame(() => map.invalidateSize());
 
     return () => {
@@ -73,7 +71,10 @@ export const HookupMap: React.FC<HookupMapProps> = ({
       mapRef.current = null;
       markersLayerRef.current = null;
     };
-  }, [center, zoom]);
+    // The map instance must be created once per mounted map container.
+    // Center/zoom changes are handled by the separate effect below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -106,18 +107,21 @@ export const HookupMap: React.FC<HookupMapProps> = ({
         : '';
 
       const avatarUrl = provider.avatarUrl || '/placeholder.svg';
+      const stageName = provider.stageName || 'Provider';
+      const escapedAvatarUrl = avatarUrl.replace(/"/g, '&quot;');
+      const escapedStageName = stageName.replace(/"/g, '&quot;');
       const onlineLabel = provider.isOnline ? 'Online Now' : 'Offline';
       const onlineClass = provider.isOnline ? 'text-green-500' : 'text-zinc-500';
 
       marker.bindPopup(`
         <div class="map-popup-content flex items-center gap-2.5 p-3 min-w-[200px]">
           <img
-            src="${avatarUrl.replace(/"/g, '&quot;')}"
-            alt="${provider.stageName.replace(/"/g, '&quot;')}"
+            src="${escapedAvatarUrl}"
+            alt="${escapedStageName}"
             class="map-popup-avatar w-10 h-10 rounded-full object-cover flex-shrink-0"
           />
           <div class="map-popup-info flex-grow flex flex-col gap-1">
-            <span class="map-popup-name font-semibold text-sm text-white">${provider.stageName}</span>
+            <span class="map-popup-name font-semibold text-sm text-white">${stageName}</span>
             <span class="map-popup-status text-[11px] font-medium ${onlineClass}">● ${onlineLabel}</span>
             ${rate}
           </div>
