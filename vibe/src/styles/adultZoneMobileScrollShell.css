@@ -54,4 +54,14 @@
   .chat-page-mobile {
     padding-bottom: 0 !important;
   }
+
+  /* The standalone PWA shell already includes the iOS top safe area.
+     Do not add the old extra 32px top inset to the conversation header. */
+  @supports (-webkit-touch-callout: none) {
+    .chat-page-mobile .conversation-header {
+      height: calc(56px + env(safe-area-inset-top, 0px)) !important;
+      padding-top: env(safe-area-inset-top, 0px) !important;
+      padding-bottom: 0 !important;
+    }
+  }
 }
