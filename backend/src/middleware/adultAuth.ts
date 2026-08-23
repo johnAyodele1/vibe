@@ -75,9 +75,10 @@ export const requireAdultAge = (req: Request, res: Response, next: NextFunction)
   next();
 };
 
-export const requireAdultRole = (role: 'user' | 'provider') => {
+export const requireAdultRole = (role: 'user' | 'provider' | 'admin') => {
   return (req: Request, res: Response, next: NextFunction) => {
-    if (req.adultUser?.role !== role) {
+    const hasRole = req.adultUser?.role === role || (role === 'admin' && req.adultUser?.isAdmin === true);
+    if (!hasRole) {
       return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Insufficient role' } });
     }
     next();
