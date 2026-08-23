@@ -9,16 +9,6 @@ import { AdultAuthProvider } from "./contexts/AdultAuthContext";
 import { SocketProvider } from "./contexts/SocketContext";
 import { PWAProvider } from "./contexts/PWAContext";
 
-// iOS Safari Liquid Glass samples actual painted layers at the bottom edge.
-// Keep a dedicated, real DOM safe-area fill separate from the bottom nav so
-// the browser cannot sample scrolling content underneath the home-indicator area.
-if (typeof document !== "undefined" && !document.getElementById("mobile-safe-area-fill")) {
-  const safeAreaFill = document.createElement("div");
-  safeAreaFill.id = "mobile-safe-area-fill";
-  safeAreaFill.setAttribute("aria-hidden", "true");
-  document.body.appendChild(safeAreaFill);
-}
-
 // Register Service Worker
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
