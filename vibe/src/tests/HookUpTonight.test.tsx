@@ -109,6 +109,19 @@ describe('Hook Up Tonight — Horizontal Filters and CustomSelect', () => {
     });
   });
 
+  it('keeps the selected city visible in the city select instead of showing the placeholder', async () => {
+    render(
+      <MemoryRouter>
+        <HookUpTonight />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Los Angeles.*▼/ })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Select City.*▼/ })).not.toBeInTheDocument();
+    });
+  });
+
   it('renders grid providers list when grid mode is active', async () => {
     render(
       <MemoryRouter>

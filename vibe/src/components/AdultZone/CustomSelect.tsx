@@ -58,7 +58,11 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
     }
   }, [searchQuery, onSearchChange]);
 
-  const selectedOption = options.find((opt) => opt.value === value);
+  const selectedOption = options.find((opt) => opt.value === value) ??
+    options.find((opt) => opt.label === value);
+
+  const isOptionSelected = (opt: SelectOption) =>
+    opt.value === value || opt.label === value;
 
   const filteredOptions = onSearchChange
     ? options
@@ -150,24 +154,27 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
             {/* List */}
             <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 min-h-0">
               {filteredOptions && filteredOptions.length > 0 ? (
-                filteredOptions.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => handleSelect(opt)}
-                    className={`w-full text-left py-3 px-4 rounded-xl text-sm transition-all duration-150 flex items-center justify-between
-                      ${opt.value === value
-                        ? 'bg-[rgba(200,16,46,0.12)] text-[var(--az-accent-crimson)] border border-[var(--az-accent-crimson)]/30'
-                        : 'bg-transparent text-white hover:bg-[var(--az-bg-tertiary)] border border-transparent'
-                      }
-                    `}
-                  >
-                    <span>{opt.label}</span>
-                    {opt.value === value && (
-                      <span className="text-xs text-[var(--az-accent-crimson)] font-bold">✓</span>
-                    )}
-                  </button>
-                ))
+                filteredOptions.map((opt) => {
+                  const selected = isOptionSelected(opt);
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => handleSelect(opt)}
+                      className={`w-full text-left py-3 px-4 rounded-xl text-sm transition-all duration-150 flex items-center justify-between
+                        ${selected
+                          ? 'bg-[rgba(200,16,46,0.12)] text-[var(--az-accent-crimson)] border border-[var(--az-accent-crimson)]/30'
+                          : 'bg-transparent text-white hover:bg-[var(--az-bg-tertiary)] border border-transparent'
+                        }
+                      `}
+                    >
+                      <span>{opt.label}</span>
+                      {selected && (
+                        <span className="text-xs text-[var(--az-accent-crimson)] font-bold">✓</span>
+                      )}
+                    </button>
+                  );
+                })
               ) : (
                 <div className="text-center py-10 text-xs text-[var(--az-text-muted)] italic">
                   {options.length === 0 ? `No ${label.toLowerCase()} available` : 'No matches found'}
