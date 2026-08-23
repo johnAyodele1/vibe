@@ -255,9 +255,6 @@ const AdultZoneLayoutInner: React.FC = () => {
       className={`bg-[var(--az-bg-primary)] text-[var(--az-text-primary)] font-sans az-grain flex flex-col ${
         hideGlobalHeader ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'
       }`}
-      style={{
-        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-      }}
     >
       <nav
         data-testid="global-header"
@@ -342,7 +339,7 @@ const AdultZoneLayoutInner: React.FC = () => {
           <Outlet />
         </main>
 
-        <div id="mobile-safe-area-fill" aria-hidden="true" className="mobile-safe-area-fill" />
+        <div aria-hidden="true" className="mobile-safe-area-fill" />
 
         <nav
           data-testid="bottom-tab-bar"
