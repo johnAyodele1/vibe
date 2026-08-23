@@ -1,0 +1,67 @@
+/* iOS 26 Adult Zone scroll-shell compatibility.
+ * The bottom nav is now normal flow inside AdultZoneLayout. The route content
+ * scrolls inside the Adult Zone shell, while PrivateSext and ProviderMessages
+ * own their internal list/message scrolling.
+ */
+@media (max-width: 767px) {
+  /* Critical: do not let the chat/list claim the browser viewport a second time.
+     The old .chat-page-mobile rule in index.css uses 100dvh + fixed-nav padding;
+     these rules are imported from App.tsx and deliberately win in the cascade. */
+  .chat-page-mobile {
+    flex: 1 1 auto !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+  }
+
+  /* The Adult Zone scroll region must not become a second scroll container while
+     the conversation/list component owns its internal scrolling. */
+  .az-grain:has(.chat-page-mobile) > .flex-1 {
+    overflow: hidden !important;
+    min-height: 0 !important;
+  }
+
+  .az-grain:has(.chat-page-mobile) > .flex-1 > main {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    height: 100% !important;
+    overflow: hidden !important;
+  }
+
+  /* The site footer is not part of the mobile messaging UI in either the list
+     or active conversation state. */
+  .az-grain:has(.chat-page-mobile) [data-testid="site-footer"] {
+    display: none !important;
+  }
+
+  /* Both the conversation list and message feed use flex children with their
+     own overflow. Explicit min-height:0 prevents the column from stopping early. */
+  .chat-page-mobile > * {
+    min-height: 0 !important;
+  }
+
+  .chat-page-mobile .message-feed-container,
+  .chat-page-mobile .message-feed {
+    min-height: 0 !important;
+  }
+}
+
+@media (max-width: 767px) and (display-mode: standalone) {
+  .chat-page-mobile {
+    padding-bottom: 0 !important;
+  }
+
+  /* The standalone PWA shell already includes the iOS top safe area.
+     Do not add the old extra 32px top inset to the conversation header. */
+  @supports (-webkit-touch-callout: none) {
+    .chat-page-mobile .conversation-header {
+      height: calc(56px + env(safe-area-inset-top, 0px)) !important;
+      padding-top: env(safe-area-inset-top, 0px) !important;
+      padding-bottom: 0 !important;
+    }
+  }
+}

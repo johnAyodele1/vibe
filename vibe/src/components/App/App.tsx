@@ -45,6 +45,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useAdultAuth } from "../../contexts/AdultAuthContext";
 import { API_BASE_URL } from "../../config";
 import ScrollToTop from "./ScrollToTop";
+import "../../styles/adultZoneMobileScrollShell.css";
 
 function App() {
   const navigate = useNavigate();

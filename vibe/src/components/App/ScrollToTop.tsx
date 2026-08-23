@@ -5,6 +5,18 @@ function ScrollToTop() {
   const { pathname } = useLocation();
 
   useEffect(() => {
+    const adultZoneScrollContainer = document.querySelector<HTMLElement>(
+      ".az-grain > .flex-1"
+    );
+
+    if (adultZoneScrollContainer) {
+      adultZoneScrollContainer.scrollTo({
+        top: 0,
+        left: 0,
+        behavior: "auto",
+      });
+    }
+
     window.scrollTo({
       top: 0,
       left: 0,
