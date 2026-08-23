@@ -22,24 +22,11 @@ interface HookupMapProps {
 
 const isValidCoordinates = (coordinates: unknown): coordinates is [number, number] => {
   if (!Array.isArray(coordinates) || coordinates.length !== 2) return false;
-
   const [lat, lng] = coordinates;
-  return (
-    typeof lat === 'number' &&
-    Number.isFinite(lat) &&
-    lat >= -90 &&
-    lat <= 90 &&
-    typeof lng === 'number' &&
-    Number.isFinite(lng) &&
-    lng >= -180 &&
-    lng <= 180
-  );
+  return typeof lat === 'number' && Number.isFinite(lat) && lat >= -90 && lat <= 90 && typeof lng === 'number' && Number.isFinite(lng) && lng >= -180 && lng <= 180;
 };
 
-const createPopupContent = (
-  provider: MapProvider,
-  onMessage: () => void,
-): HTMLDivElement => {
+const createPopupContent = (provider: MapProvider, onMessage: () => void): HTMLDivElement => {
   const container = document.createElement('div');
   container.className = 'map-popup-content flex items-center gap-2.5 p-3 min-w-[200px]';
 
@@ -48,8 +35,7 @@ const createPopupContent = (
   avatar.alt = provider.stageName || 'Provider';
   avatar.className = 'map-popup-avatar w-10 h-10 rounded-full object-cover flex-shrink-0';
   avatar.addEventListener('error', () => {
-    if (avatar.src.endsWith('/placeholder.svg')) return;
-    avatar.src = '/placeholder.svg';
+    if (!avatar.src.endsWith('/placeholder.svg')) avatar.src = '/placeholder.svg';
   });
 
   const info = document.createElement('div');
@@ -62,7 +48,6 @@ const createPopupContent = (
   const status = document.createElement('span');
   status.className = `map-popup-status text-[11px] font-medium ${provider.isOnline ? 'text-green-500' : 'text-zinc-500'}`;
   status.textContent = provider.isOnline ? '● Online Now' : '● Offline';
-
   info.append(name, status);
 
   if (provider.tonightRate) {
@@ -83,12 +68,7 @@ const createPopupContent = (
   return container;
 };
 
-export const HookupMap: React.FC<HookupMapProps> = ({
-  providers,
-  center,
-  zoom,
-  openConversation,
-}) => {
+export const HookupMap: React.FC<HookupMapProps> = ({ providers, center, zoom, openConversation }) => {
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
@@ -96,21 +76,13 @@ export const HookupMap: React.FC<HookupMapProps> = ({
   useEffect(() => {
     if (!mapElementRef.current || mapRef.current || !isValidCoordinates(center)) return;
 
-    const map = L.map(mapElementRef.current, {
-      center,
-      zoom,
-      zoomControl: true,
-      scrollWheelZoom: true,
-    });
-
+    const map = L.map(mapElementRef.current, { center, zoom, zoomControl: true, scrollWheelZoom: true });
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org">OpenStreetMap</a> &copy; <a href="https://carto.com">CARTO</a>',
       maxZoom: 19,
     }).addTo(map);
-
     markersLayerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
-
     requestAnimationFrame(() => map.invalidateSize());
 
     return () => {
@@ -118,15 +90,11 @@ export const HookupMap: React.FC<HookupMapProps> = ({
       mapRef.current = null;
       markersLayerRef.current = null;
     };
-    // The map instance must be created once per mounted map container.
-    // Center/zoom changes are handled by the separate effect below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !isValidCoordinates(center)) return;
-
     map.setView(center, zoom);
     requestAnimationFrame(() => map.invalidateSize());
   }, [center, zoom]);
@@ -134,12 +102,10 @@ export const HookupMap: React.FC<HookupMapProps> = ({
   useEffect(() => {
     const layer = markersLayerRef.current;
     if (!layer) return;
-
     layer.clearLayers();
 
     providers.forEach((provider) => {
       if (!isValidCoordinates(provider.coordinates)) return;
-
       const marker = L.circleMarker(provider.coordinates, {
         radius: 10,
         color: provider.isOnline ? '#22c55e' : '#c8102e',
@@ -148,25 +114,12 @@ export const HookupMap: React.FC<HookupMapProps> = ({
         weight: 2,
         opacity: 1,
       });
-
       marker.bindPopup(createPopupContent(provider, () => openConversation(provider.id)));
       marker.addTo(layer);
     });
   }, [providers, openConversation]);
 
-  return (
-    <div
-      ref={mapElementRef}
-      style={{
-        width: '100%',
-        height: '100%',
-        minHeight: '500px',
-        borderRadius: '12px',
-        overflow: 'hidden',
-      }}
-      aria-label="Hookup providers map"
-    />
-  );
+  return <div ref={mapElementRef} className="w-full h-full min-h-0 rounded-xl overflow-hidden" aria-label="Hookup providers map" />;
 };
 
 export default HookupMap;
