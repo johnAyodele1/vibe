@@ -36,9 +36,113 @@
         --background-dark: #221014;
       }
 
+      html,
+      body,
+      #root {
+        min-height: 100%;
+        min-height: 100dvh;
+      }
+
       body {
+        margin: 0;
         min-height: 100vh;
         min-height: 100dvh;
+        overflow-x: hidden;
+      }
+
+      /*
+       * Mobile viewport contract.
+       *
+       * The application uses viewport-fit=cover, so fixed UI must explicitly
+       * account for device/system safe areas. Keep the navigation's visual
+       * height fixed and let the safe-area region occupy the extra space.
+       * This avoids changing the content box every time mobile browser chrome
+       * expands/collapses.
+       */
+      @media (max-width: 767px) {
+        [data-testid="bottom-tab-bar"] {
+          box-sizing: border-box !important;
+          position: fixed !important;
+          left: 0 !important;
+          right: 0 !important;
+          bottom: 0 !important;
+          width: 100% !important;
+          height: calc(56px + env(safe-area-max-inset-bottom, env(safe-area-inset-bottom, 0px))) !important;
+          min-height: calc(56px + env(safe-area-max-inset-bottom, env(safe-area-inset-bottom, 0px))) !important;
+          padding: 0 max(env(safe-area-inset-right, 0px), 0px) env(safe-area-max-inset-bottom, env(safe-area-inset-bottom, 0px)) max(env(safe-area-inset-left, 0px), 0px) !important;
+          transform: none !important;
+        }
+
+        [data-testid="bottom-tab-bar"] > div {
+          box-sizing: border-box !important;
+          height: 56px !important;
+          min-height: 56px !important;
+        }
+
+        /*
+         * The Adult Zone root already contains the fixed bottom navigation.
+         * Its old root safe-area padding duplicated that inset and made the
+         * whole page appear to jump on some iPhones/Android devices.
+         */
+        #root > div.az-grain {
+          padding-bottom: 0 !important;
+        }
+
+        /* Private Sext and Provider Messages own the conversation header.
+         * Hide the Adult Zone global header synchronously when that header is
+         * actually mounted, eliminating the effect-driven one-frame flash.
+         */
+        @supports selector(body:has(.conversation-header)) {
+          body:has(.chat-page-mobile .conversation-header) [data-testid="global-header"] {
+            display: none !important;
+          }
+        }
+
+        /* A conversation fills the mobile viewport; do not reserve another
+         * navigation/header-sized strip inside the chat itself. */
+        .chat-page-mobile {
+          height: 100dvh !important;
+          min-height: 100dvh !important;
+          max-height: 100dvh !important;
+          padding-top: 0 !important;
+          padding-bottom: 0 !important;
+        }
+
+        .chat-page-mobile .conversation-header {
+          box-sizing: border-box !important;
+          flex: 0 0 auto !important;
+          height: calc(56px + env(safe-area-inset-top, 0px)) !important;
+          min-height: calc(56px + env(safe-area-inset-top, 0px)) !important;
+          max-height: calc(56px + env(safe-area-inset-top, 0px)) !important;
+          padding-top: env(safe-area-inset-top, 0px) !important;
+          padding-bottom: 0 !important;
+          padding-left: max(4px, env(safe-area-inset-left, 0px)) !important;
+          padding-right: max(12px, env(safe-area-inset-right, 0px)) !important;
+        }
+
+        .chat-page-mobile .conversation-header__info {
+          min-width: 0 !important;
+        }
+
+        .chat-page-mobile .conversation-header__actions {
+          min-width: 0 !important;
+          flex-shrink: 0 !important;
+        }
+
+        .chat-page-mobile .conversation-header__credits {
+          min-width: 0 !important;
+          max-width: 34vw !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+          white-space: nowrap !important;
+        }
+      }
+
+      @media (orientation: landscape) and (max-width: 900px) {
+        [data-testid="bottom-tab-bar"] {
+          padding-left: max(8px, env(safe-area-inset-left, 0px)) !important;
+          padding-right: max(8px, env(safe-area-inset-right, 0px)) !important;
+        }
       }
     </style>
   </head>
