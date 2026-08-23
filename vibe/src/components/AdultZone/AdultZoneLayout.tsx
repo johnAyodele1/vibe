@@ -68,13 +68,11 @@ const AdultZoneLayoutInner: React.FC = () => {
     recordInstallPromptShown,
   } = usePWAPromptStore();
 
-  // Reset any previous PWA dismissals on page reload/mount.
   useEffect(() => {
     localStorage.removeItem('zippo_pwa_dismiss_until');
     localStorage.removeItem('zippo_pwa_dismiss_permanent');
   }, []);
 
-  // PWA install prompt is independent from notification health.
   useEffect(() => {
     const ctx = getInstallContext();
 
@@ -172,7 +170,6 @@ const AdultZoneLayoutInner: React.FC = () => {
     return () => window.removeEventListener('open-adult-auth-modal', handleOpenAuth);
   }, []);
 
-  // Keep the browser subscription synchronized with the authenticated user.
   useEffect(() => {
     const userId = user?.id;
     if (!isAuthenticated || !userId) return;
@@ -208,7 +205,6 @@ const AdultZoneLayoutInner: React.FC = () => {
     return () => cleanup?.();
   }, [user?.id, isAuthenticated, navigate]);
 
-  // Load initial unread count.
   useEffect(() => {
     if (!isAuthenticated || !user?.id) return;
 
@@ -341,9 +337,95 @@ const AdultZoneLayoutInner: React.FC = () => {
         </div>
       </nav>
 
-      <main className={`flex-grow ${hideGlobalHeader ? 'h-full overflow-hidden' : ''}`}>
-        <Outlet />
-      </main>
+      <div className={`adult-zone-scroll-shell flex min-h-0 flex-1 flex-col ${hideGlobalHeader ? 'h-full overflow-hidden' : ''}`}>
+        <main className={`flex-grow ${hideGlobalHeader ? 'h-full overflow-hidden' : ''}`}>
+          <Outlet />
+        </main>
+
+        <div id="mobile-safe-area-fill" aria-hidden="true" className="mobile-safe-area-fill" />
+
+        <nav
+          data-testid="bottom-tab-bar"
+          className="md:hidden sticky bottom-0 z-50 border-t border-[var(--az-border)] mobile-bottom-nav"
+        >
+          <div className="flex justify-around items-center h-14">
+            {isProvider ? [
+              { icon: '📊', path: '/adult/provider/dashboard', label: 'Studio' },
+              { icon: '💰', path: '/adult/provider/earnings', label: 'Earnings' },
+              { icon: '💬', path: '/adult/provider/messages', label: 'Inbox' },
+              { icon: '👤', path: '/adult/provider/profile', label: 'Profile' },
+              { icon: '⚙️', path: '/adult/provider/settings', label: 'Settings' }
+            ].map((item) => (
+              <Link
+                key={item.path}
+                to={item.path}
+                className={`flex flex-col items-center justify-center gap-[3px] flex-1 h-14 transition-all relative ${
+                  location.pathname === item.path ? 'scale-110' : 'opacity-60'
+                }`}
+              >
+                <span className="text-xl relative">
+                  {item.icon}
+                  {item.path === '/adult/provider/messages' && <NavBadge />}
+                </span>
+                <span className={`text-[10px] uppercase tracking-tighter ${location.pathname === item.path ? 'text-[var(--az-accent-rose)] font-bold' : ''}`}>
+                  {item.label}
+                </span>
+              </Link>
+            )) : [
+              { icon: '🔴', path: '/', label: 'Home' },
+              { icon: '📹', path: '/cams', label: 'Live' },
+              { icon: '💬', path: '/sext', label: 'Inbox' },
+              { icon: '🎲', path: '/random', label: 'Random' },
+              { icon: '🌙', path: '/hookup', label: 'Hook Up' },
+            ].map((item) => (
+              <Link
+                key={item.path}
+                to={item.path}
+                className={`flex flex-col items-center justify-center gap-[3px] flex-1 h-14 transition-all relative ${
+                  location.pathname === item.path ? 'scale-110' : 'opacity-60'
+                }`}
+              >
+                <span className="text-xl relative">
+                  {item.icon}
+                  {item.path === '/sext' && <NavBadge />}
+                </span>
+                <span className={`text-[10px] uppercase tracking-tighter ${location.pathname === item.path ? 'text-[var(--az-accent-primary)] font-bold' : ''}`}>
+                  {item.label}
+                </span>
+              </Link>
+            ))}
+          </div>
+        </nav>
+
+        <footer data-testid="site-footer" className={`bg-[#050304] border-t border-[var(--az-border)] px-4 py-12 pb-24 md:pb-12 mt-auto ${
+          hideFooter ? 'hidden md:block' : 'block'
+        }`}>
+          <div className="max-w-7xl mx-auto flex flex-col items-center text-center">
+            <p className="text-[10px] text-[var(--az-text-muted)] max-w-2xl mb-6 leading-relaxed">
+              All performers are 18+ years of age. Age verification records are maintained in compliance with applicable law.
+              The "Adult Zone" is a premium, restricted area of the application. Please use responsibly.
+            </p>
+            <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-[10px] text-[var(--az-text-muted)] uppercase tracking-widest font-bold">
+              <Link to="#" className="hover:text-[var(--az-text-secondary)]">Terms</Link>
+              <Link to="#" className="hover:text-[var(--az-text-secondary)]">Privacy</Link>
+              <Link to="#" className="hover:text-[var(--az-text-secondary)]">DMCA</Link>
+              <button
+                onClick={() => {
+                  window.dispatchEvent(
+                    new CustomEvent('open-adult-auth-modal', {
+                      detail: { mode: 'signup', role: 'provider' }
+                    })
+                  );
+                }}
+                className="text-[10px] text-[var(--az-text-muted)] uppercase tracking-widest font-bold hover:text-[var(--az-text-secondary)] cursor-pointer focus:outline-none bg-transparent border-none p-0 font-sans"
+              >
+                Join as a provider
+              </button>
+              <Link to="#" className="hover:text-[var(--az-text-secondary)]">Support</Link>
+            </div>
+          </div>
+        </footer>
+      </div>
 
       <AdultAuthModal
         isOpen={isAuthModalOpen}
@@ -357,89 +439,6 @@ const AdultZoneLayoutInner: React.FC = () => {
       <InstallPrompt />
 
       {user?.id && <NotifSettingsDialog userId={user.id} />}
-
-      <nav
-        data-testid="bottom-tab-bar"
-        className="md:hidden fixed bottom-0 left-0 right-0 z-50 az-glass border-t border-[var(--az-border)]"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
-      >
-        <div className="flex justify-around items-center h-14">
-          {isProvider ? [
-            { icon: '📊', path: '/adult/provider/dashboard', label: 'Studio' },
-            { icon: '💰', path: '/adult/provider/earnings', label: 'Earnings' },
-            { icon: '💬', path: '/adult/provider/messages', label: 'Inbox' },
-            { icon: '👤', path: '/adult/provider/profile', label: 'Profile' },
-            { icon: '⚙️', path: '/adult/provider/settings', label: 'Settings' }
-          ].map((item) => (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={`flex flex-col items-center justify-center gap-[3px] flex-1 h-14 transition-all relative ${
-                location.pathname === item.path ? 'scale-110' : 'opacity-60'
-              }`}
-            >
-              <span className="text-xl relative">
-                {item.icon}
-                {item.path === '/adult/provider/messages' && <NavBadge />}
-              </span>
-              <span className={`text-[10px] uppercase tracking-tighter ${location.pathname === item.path ? 'text-[var(--az-accent-rose)] font-bold' : ''}`}>
-                {item.label}
-              </span>
-            </Link>
-          )) : [
-            { icon: '🔴', path: '/', label: 'Home' },
-            { icon: '📹', path: '/cams', label: 'Live' },
-            { icon: '💬', path: '/sext', label: 'Inbox' },
-            { icon: '🎲', path: '/random', label: 'Random' },
-            { icon: '🌙', path: '/hookup', label: 'Hook Up' },
-          ].map((item) => (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={`flex flex-col items-center justify-center gap-[3px] flex-1 h-14 transition-all relative ${
-                location.pathname === item.path ? 'scale-110' : 'opacity-60'
-              }`}
-            >
-              <span className="text-xl relative">
-                {item.icon}
-                {item.path === '/sext' && <NavBadge />}
-              </span>
-              <span className={`text-[10px] uppercase tracking-tighter ${location.pathname === item.path ? 'text-[var(--az-accent-primary)] font-bold' : ''}`}>
-                {item.label}
-              </span>
-            </Link>
-          ))}
-        </div>
-      </nav>
-
-      <footer data-testid="site-footer" className={`bg-[#050304] border-t border-[var(--az-border)] px-4 py-12 pb-24 md:pb-12 mt-auto ${
-        hideFooter ? 'hidden md:block' : 'block'
-      }`}>
-        <div className="max-w-7xl mx-auto flex flex-col items-center text-center">
-          <p className="text-[10px] text-[var(--az-text-muted)] max-w-2xl mb-6 leading-relaxed">
-            All performers are 18+ years of age. Age verification records are maintained in compliance with applicable law.
-            The "Adult Zone" is a premium, restricted area of the application. Please use responsibly.
-          </p>
-          <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-[10px] text-[var(--az-text-muted)] uppercase tracking-widest font-bold">
-            <Link to="#" className="hover:text-[var(--az-text-secondary)]">Terms</Link>
-            <Link to="#" className="hover:text-[var(--az-text-secondary)]">Privacy</Link>
-            <Link to="#" className="hover:text-[var(--az-text-secondary)]">DMCA</Link>
-            <button
-              onClick={() => {
-                window.dispatchEvent(
-                  new CustomEvent('open-adult-auth-modal', {
-                    detail: { mode: 'signup', role: 'provider' }
-                  })
-                );
-              }}
-              className="text-[10px] text-[var(--az-text-muted)] uppercase tracking-widest font-bold hover:text-[var(--az-text-secondary)] cursor-pointer focus:outline-none bg-transparent border-none p-0 font-sans"
-            >
-              Join as a provider
-            </button>
-            <Link to="#" className="hover:text-[var(--az-text-secondary)]">Support</Link>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 };
