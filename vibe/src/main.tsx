@@ -32,6 +32,7 @@ if ('serviceWorker' in navigator) {
           if (newWorker) {
             newWorker.addEventListener('statechange', () => {
               if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                // New version available!
                 toast.info("New version available!", {
                   description: "Please refresh to update the app.",
                   action: {
@@ -50,6 +51,7 @@ if ('serviceWorker' in navigator) {
       });
   });
 
+  // Handle case where service worker controller changes (e.g., skipWaiting)
   let refreshing = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!refreshing) {
