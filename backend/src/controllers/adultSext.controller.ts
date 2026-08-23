@@ -3476,12 +3476,27 @@ export const getCallHistory = async (req: Request, res: Response) => {
       .limit(limit)
       .lean();
 
-    const results = [];
-    for (const c of calls) {
-      const otherUserId = c.callerId.toString() === user._id.toString() ? c.receiverId : c.callerId;
-      const otherUser = await AdultUser.findById(otherUserId);
+    // ⚡ OPTIMIZATION (Bolt): Eliminate N+1 database roundtrips.
+    // Batch query all distinct other user profiles in a single query instead of calling AdultUser.findById inside a loop.
+    const otherUserIds = Array.from(
+      new Set(
+        calls.map(c => (c.callerId.toString() === user._id.toString() ? c.receiverId.toString() : c.callerId.toString()))
+      )
+    );
 
-      results.push({
+    const otherUsers = otherUserIds.length > 0
+      ? await AdultUser.find({ _id: { $in: otherUserIds } })
+          .select('displayName username profilePhoto providerProfile')
+          .lean()
+      : [];
+
+    const userMap = new Map(otherUsers.map(u => [u._id.toString(), u]));
+
+    const results = calls.map(c => {
+      const otherUserId = c.callerId.toString() === user._id.toString() ? c.receiverId.toString() : c.callerId.toString();
+      const otherUser = userMap.get(otherUserId);
+
+      return {
         callId: c._id,
         type: c.type,
         otherParticipant: otherUser ? {
@@ -3492,8 +3507,8 @@ export const getCallHistory = async (req: Request, res: Response) => {
         creditsDeducted: c.creditsDeducted,
         status: c.status,
         createdAt: c.createdAt
-      });
-    }
+      };
+    });
 
     return res.json(results);
   } catch (error: any) {
