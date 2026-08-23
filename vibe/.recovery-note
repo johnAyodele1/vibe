@@ -1,1 +1,0 @@
-This branch intentionally preserves the last non-breaking mobile Safari experiment from PR #230. The subsequent internal-scroll/sticky experiment was reverted by superseding PR #230 because it broke normal page scrolling and navigation visibility.
