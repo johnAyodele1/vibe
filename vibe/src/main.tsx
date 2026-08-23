@@ -24,7 +24,7 @@ if ('serviceWorker' in navigator) {
               if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                 // New version available!
                 toast.info("New version available!", {
-                  description: "New version available!",
+                  description: "Please refresh to update the app.",
                   action: {
                     label: "Refresh",
                     onClick: () => window.location.reload(),
