@@ -15,7 +15,7 @@
     <title>Vibe - Dating App</title>
 
     <link
-      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,100..1000&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap"
       rel="stylesheet"
     />
     <link
@@ -40,32 +40,7 @@
         min-height: 100vh;
         min-height: 100dvh;
       }
-
-      /* The conversation already owns its internal message scrolling. Keep the
-         Adult Zone route shell from becoming a second mobile scroll layer. */
-      @media (max-width: 767px) {
-        #root > div:has(.chat-page-mobile) > div:has(> main > .chat-page-mobile) {
-          overflow: hidden !important;
-        }
-
-        #root > div:has(.chat-page-mobile) > div:has(> main > .chat-page-mobile) > main {
-          flex: 1 1 0% !important;
-          min-height: 0 !important;
-          height: 100% !important;
-          display: flex !important;
-          flex-direction: column !important;
-          overflow: hidden !important;
-        }
-
-        #root > div:has(.chat-page-mobile) > div:has(> main > .chat-page-mobile) > main > .chat-page-mobile {
-          flex: 1 1 auto !important;
-          min-height: 0 !important;
-          height: 100% !important;
-          max-height: 100% !important;
-        }
-      }
     </style>
-    <link rel="stylesheet" href="/src/styles/adult-conversation-mobile.css" />
   </head>
   <body
     class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-white antialiased selection:bg-primary selection:text-white relative"
