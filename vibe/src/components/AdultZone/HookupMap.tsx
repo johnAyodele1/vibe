@@ -119,7 +119,13 @@ export const HookupMap: React.FC<HookupMapProps> = ({ providers, center, zoom, o
     });
   }, [providers, openConversation]);
 
-  return <div ref={mapElementRef} className="w-full h-full min-h-0 rounded-xl overflow-hidden" aria-label="Hookup providers map" />;
+  return (
+    <div
+      ref={mapElementRef}
+      className="relative isolate z-0 w-full h-full min-h-0 max-h-full rounded-xl overflow-hidden"
+      aria-label="Hookup providers map"
+    />
+  );
 };
 
 export default HookupMap;
