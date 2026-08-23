@@ -13,40 +13,47 @@
     <link rel="apple-touch-icon" sizes="152x152" href="/icons/apple-touch-icon.png" />
     <link rel="apple-touch-icon" sizes="120x120" href="/icons/apple-touch-icon.png" />
     <title>Vibe - Dating App</title>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,100..1000&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Lora:ital,wght@0,400..700;1,100..700&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,100..700&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined,wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
     <style>
       .hide-scrollbar::-webkit-scrollbar { display: none; }
       .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-      :root { --primary: #f42559; --background-dark: #221014; }
+      :root { --primary: #f42559; --background-dark: #221014; --safari-liquid-glass-edge: #130d10; }
       html, body, #root { min-height: 100%; min-height: 100dvh; background: #221014; }
       body { margin: 0; min-height: 100vh; min-height: 100dvh; overflow-x: hidden; }
 
       /*
-       * iOS Safari Liquid Glass: do not try to paint page content behind the
-       * browser's bottom controls. The application itself remains edge-to-edge,
-       * but its scrollable content is explicitly clipped before the browser
-       * safe-area so Safari cannot reveal cards/divs through its translucent
-       * left/right glass while the toolbar collapses.
+       * iOS 26 Safari Liquid Glass edge tint.
+       *
+       * Safari derives the translucent toolbar's colour from a real fixed/sticky
+       * element touching the relevant viewport edge. A pseudo-element is not a
+       * reliable source. Keep this real element at the document edge so Safari
+       * has an opaque colour to sample instead of arbitrary scrolling content.
        */
-      @media (max-width: 767px) {
-        html, body { background: #221014 !important; }
-        #root { background: #221014 !important; }
+      #safari-liquid-glass-bottom-tint {
+        display: none;
+      }
 
-        /* Keep the document's visual backing opaque at the browser edge. */
-        #root::before {
-          content: "";
+      @media (max-width: 767px) and (supports: (-webkit-touch-callout: none)) {
+        #safari-liquid-glass-bottom-tint {
+          display: block;
           position: fixed;
-          z-index: 2147483640;
           left: 0;
           right: 0;
-          bottom: 0;
-          height: env(safe-area-max-inset-bottom, 0px);
-          background: #221014;
+          bottom: -1px;
+          width: 100%;
+          height: 2px;
+          margin: 0;
+          padding: 0;
+          background: var(--safari-liquid-glass-edge) !important;
+          border: 0;
+          opacity: 1 !important;
           pointer-events: none;
+          z-index: 2147483647;
         }
 
-        /* The existing Adult Zone navigation remains the only bottom nav. */
+        html, body, #root { background: #221014 !important; }
+
         [data-testid="bottom-tab-bar"] {
           box-sizing: border-box !important;
           position: fixed !important;
@@ -58,7 +65,6 @@
           min-height: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
           padding: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px) !important;
           transform: none !important;
-          z-index: 2147483641 !important;
         }
 
         [data-testid="bottom-tab-bar"] > div {
@@ -67,10 +73,8 @@
           min-height: 56px !important;
         }
 
-        /* Do not double-count the navigation safe-area on the Adult Zone root. */
         #root > div.az-grain { padding-bottom: 0 !important; }
 
-        /* Private Sext and Provider Messages own their conversation header only. */
         @supports selector(body:has(.conversation-header)) {
           body:has(.chat-page-mobile .conversation-header) [data-testid="global-header"] { display: none !important; }
           body:has(.chat-page-mobile .conversation-header) [data-testid="bottom-tab-bar"] { display: none !important; }
@@ -120,6 +124,7 @@
     </style>
   </head>
   <body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-white antialiased selection:bg-primary selection:text-white relative">
+    <div id="safari-liquid-glass-bottom-tint" aria-hidden="true"></div>
     <div id="root">
       <div style="position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background-color: #221014; z-index: 99999; font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
         <div style="display: flex; flex-direction: column; align-items: center; gap: 1.5rem;">
