@@ -14,26 +14,16 @@
     <link rel="apple-touch-icon" sizes="120x120" href="/icons/apple-touch-icon.png" />
     <title>Vibe - Dating App</title>
 
-    <link
-      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap"
-      rel="stylesheet"
-    />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
-      rel="stylesheet"
-    />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,100..1000&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
     <style>
-      .hide-scrollbar::-webkit-scrollbar {
-        display: none;
-      }
-      .hide-scrollbar {
-        -ms-overflow-style: none;
-        scrollbar-width: none;
-      }
+      .hide-scrollbar::-webkit-scrollbar { display: none; }
+      .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
       :root {
         --primary: #f42559;
         --background-dark: #221014;
+        --mobile-edge-background: #221014;
       }
 
       html,
@@ -41,6 +31,7 @@
       #root {
         min-height: 100%;
         min-height: 100dvh;
+        background: var(--mobile-edge-background);
       }
 
       body {
@@ -51,15 +42,41 @@
       }
 
       /*
-       * Mobile viewport contract.
-       *
-       * The application uses viewport-fit=cover, so fixed UI must explicitly
-       * account for device/system safe areas. Keep the navigation's visual
-       * height fixed and let the safe-area region occupy the extra space.
-       * This avoids changing the content box every time mobile browser chrome
-       * expands/collapses.
+       * iOS 26 Safari can expose page pixels through the translucent Liquid
+       * Glass browser toolbar while scrolling. This is a WebKit viewport
+       * compositing behavior, not an app bottom-nav movement. Keep a single,
+       * opaque page backing layer behind the unsafe browser edge so the Safari
+       * glass can never reveal arbitrary cards/content underneath it.
        */
       @media (max-width: 767px) {
+        html,
+        body {
+          background: var(--mobile-edge-background) !important;
+        }
+
+        #root {
+          position: relative;
+          min-height: 100dvh;
+          background: var(--mobile-edge-background) !important;
+        }
+
+        #root::after {
+          content: "";
+          position: fixed;
+          z-index: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          height: env(safe-area-max-inset-bottom, env(safe-area-inset-bottom, 0px));
+          background: var(--mobile-edge-background);
+          pointer-events: none;
+        }
+
+        #root > * {
+          position: relative;
+          z-index: 1;
+        }
+
         [data-testid="bottom-tab-bar"] {
           box-sizing: border-box !important;
           position: fixed !important;
@@ -79,27 +96,16 @@
           min-height: 56px !important;
         }
 
-        /*
-         * The Adult Zone root already contains the fixed bottom navigation.
-         * Its old root safe-area padding duplicated that inset and made the
-         * whole page appear to jump on some iPhones/Android devices.
-         */
         #root > div.az-grain {
           padding-bottom: 0 !important;
         }
 
-        /* Private Sext and Provider Messages own the conversation header.
-         * Hide the Adult Zone global header synchronously when that header is
-         * actually mounted, eliminating the effect-driven one-frame flash.
-         */
         @supports selector(body:has(.conversation-header)) {
           body:has(.chat-page-mobile .conversation-header) [data-testid="global-header"] {
             display: none !important;
           }
         }
 
-        /* A conversation fills the mobile viewport; do not reserve another
-         * navigation/header-sized strip inside the chat itself. */
         .chat-page-mobile {
           height: 100dvh !important;
           min-height: 100dvh !important;
@@ -120,10 +126,7 @@
           padding-right: max(12px, env(safe-area-inset-right, 0px)) !important;
         }
 
-        .chat-page-mobile .conversation-header__info {
-          min-width: 0 !important;
-        }
-
+        .chat-page-mobile .conversation-header__info,
         .chat-page-mobile .conversation-header__actions {
           min-width: 0 !important;
           flex-shrink: 0 !important;
@@ -146,47 +149,15 @@
       }
     </style>
   </head>
-  <body
-    class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-white antialiased selection:bg-primary selection:text-white relative"
-  >
+  <body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-white antialiased selection:bg-primary selection:text-white relative">
     <div id="root">
-      <!-- Initial beautiful loader animation while JS loads -->
-      <div style="
-        position: fixed;
-        inset: 0;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        background-color: #221014;
-        z-index: 99999;
-        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-      ">
+      <div style="position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background-color: #221014; z-index: 99999; font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
         <div style="display: flex; flex-direction: column; align-items: center; gap: 1.5rem;">
-          <div style="
-            width: 50px;
-            height: 50px;
-            border: 4px solid rgba(244, 37, 89, 0.1);
-            border-left-color: #f42559;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-          "></div>
-          <h1 style="
-            font-size: 2.5rem;
-            font-weight: 900;
-            letter-spacing: 0.2em;
-            color: #f42559;
-            margin: 0;
-          ">VIBE</h1>
+          <div style="width: 50px; height: 50px; border: 4px solid rgba(244, 37, 89, 0.1); border-left-color: #f42559; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+          <h1 style="font-size: 2.5rem; font-weight: 900; letter-spacing: 0.2em; color: #f42559; margin: 0;">VIBE</h1>
         </div>
       </div>
-      <style>
-        @keyframes spin {
-          to {
-            transform: rotate(360deg);
-          }
-        }
-      </style>
+      <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
     </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
