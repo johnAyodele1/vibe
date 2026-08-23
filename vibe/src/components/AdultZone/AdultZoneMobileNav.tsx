@@ -13,9 +13,26 @@ const NavBadge: React.FC = () => {
   );
 };
 
+const isAdultZonePath = (pathname: string): boolean =>
+  pathname === '/' ||
+  pathname === '/cams' ||
+  pathname.startsWith('/rooms') ||
+  pathname === '/sext' ||
+  pathname.startsWith('/sext/') ||
+  pathname === '/adult/sext' ||
+  pathname.startsWith('/adult/sext/') ||
+  pathname === '/random' ||
+  pathname === '/hookup' ||
+  pathname === '/vip' ||
+  pathname === '/wallet' ||
+  pathname.startsWith('/adult/');
+
 export const AdultZoneMobileNav: React.FC = () => {
   const location = useLocation();
   const { user } = useAdultAuth();
+
+  if (!isAdultZonePath(location.pathname)) return null;
+
   const isProvider = user?.role === 'provider';
   const items = isProvider
     ? [
