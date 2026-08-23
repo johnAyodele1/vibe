@@ -9,6 +9,16 @@ import { AdultAuthProvider } from "./contexts/AdultAuthContext";
 import { SocketProvider } from "./contexts/SocketContext";
 import { PWAProvider } from "./contexts/PWAContext";
 
+// iOS Safari Liquid Glass samples actual painted layers at the bottom edge.
+// Keep a dedicated, real DOM safe-area fill separate from the bottom nav so
+// the browser cannot sample scrolling content underneath the home-indicator area.
+if (typeof document !== "undefined" && !document.getElementById("mobile-safe-area-fill")) {
+  const safeAreaFill = document.createElement("div");
+  safeAreaFill.id = "mobile-safe-area-fill";
+  safeAreaFill.setAttribute("aria-hidden", "true");
+  document.body.appendChild(safeAreaFill);
+}
+
 // Register Service Worker
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -22,7 +32,6 @@ if ('serviceWorker' in navigator) {
           if (newWorker) {
             newWorker.addEventListener('statechange', () => {
               if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                // New version available!
                 toast.info("New version available!", {
                   description: "Please refresh to update the app.",
                   action: {
@@ -41,7 +50,6 @@ if ('serviceWorker' in navigator) {
       });
   });
 
-  // Handle case where service worker controller changes (e.g., skipWaiting)
   let refreshing = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!refreshing) {
