@@ -178,12 +178,15 @@ export const getOfficialNotificationsForUser = async (req: Request, res: Respons
 
     const audienceFilter = getNotificationAudienceQuery(user.role);
 
-    const total = await OfficialNotification.countDocuments(audienceFilter);
-    const notifications = await OfficialNotification.find(audienceFilter)
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(limit)
-      .lean();
+    // Optimization (⚡ Bolt): Fetch total count and notifications list concurrently via Promise.all.
+    const [total, notifications] = await Promise.all([
+      OfficialNotification.countDocuments(audienceFilter),
+      OfficialNotification.find(audienceFilter)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+    ]);
 
     const readDocs = await OfficialNotificationRead.find({
       userId: user._id,

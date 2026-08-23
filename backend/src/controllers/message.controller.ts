@@ -91,18 +91,20 @@ export const getMessages = async (req: IExpressRequest, res: Response): Promise<
       .limit(Number(limit))
       .lean();
 
-    // Mark messages as read
-    await Message.updateMany(
-      {
-        conversation: req.params.conversationId,
-        receiver: req.user._id as Types.ObjectId,
-        isRead: false,
-      },
-      { isRead: true, readAt: new Date() },
-    );
+    // Optimization (⚡ Bolt): Run Message.updateMany and Conversation.findById concurrently via Promise.all.
+    const [, conversation] = await Promise.all([
+      Message.updateMany(
+        {
+          conversation: req.params.conversationId,
+          receiver: req.user._id as Types.ObjectId,
+          isRead: false,
+        },
+        { isRead: true, readAt: new Date() },
+      ),
+      Conversation.findById(req.params.conversationId),
+    ]);
 
     // Reset unread count for conversation
-    const conversation = await Conversation.findById(req.params.conversationId);
     if (conversation) {
       await conversation.resetUnreadCount(req.user._id as Types.ObjectId);
     }

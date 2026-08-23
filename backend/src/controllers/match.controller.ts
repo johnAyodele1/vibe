@@ -45,15 +45,15 @@ export const unmatch = async (req: Request, res: Response): Promise<Response> =>
     if (!req.user) return res.status(401).json({ success: false, message: 'Not authenticated' });
     const matchUserId = req.params.id;
 
-    // Remove match from current user
-    await User.findByIdAndUpdate(req.user._id, {
-      $pull: { matches: { user: matchUserId } },
-    });
-
-    // Remove match from other user
-    await User.findByIdAndUpdate(matchUserId, {
-      $pull: { matches: { user: req.user._id } },
-    });
+    // Optimization (⚡ Bolt): Execute both User.findByIdAndUpdate calls concurrently via Promise.all.
+    await Promise.all([
+      User.findByIdAndUpdate(req.user._id, {
+        $pull: { matches: { user: matchUserId } },
+      }),
+      User.findByIdAndUpdate(matchUserId, {
+        $pull: { matches: { user: req.user._id } },
+      }),
+    ]);
 
     return res.json({ success: true, message: 'Unmatched successfully' });
   } catch (error) {

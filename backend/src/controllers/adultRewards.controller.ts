@@ -41,16 +41,17 @@ export const getUserTasks = async (req: Request, res: Response) => {
       });
     }
 
-    // Optimization (⚡ Bolt): Use .lean() on read-only queries to eliminate Mongoose document hydration overhead.
-    const tasks = await RewardTask.find({ isActive: true }).sort({ sortOrder: 1 }).lean();
     const todayMidnight = getTodayMidnight();
     const tomorrowMidnight = getTomorrowMidnight();
 
-    // Fetch user completions today
-    const completionsToday = await UserTask.find({
-      userId: user._id,
-      completedAt: { $gte: todayMidnight }
-    }).lean();
+    // Optimization (⚡ Bolt): Fetch active tasks and user completions today concurrently via Promise.all.
+    const [tasks, completionsToday] = await Promise.all([
+      RewardTask.find({ isActive: true }).sort({ sortOrder: 1 }).lean(),
+      UserTask.find({
+        userId: user._id,
+        completedAt: { $gte: todayMidnight }
+      }).lean(),
+    ]);
 
     const completionMap = new Set(completionsToday.map(c => c.taskId.toString()));
 

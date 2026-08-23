@@ -29,8 +29,11 @@ export const like = async (req: Request, res: Response): Promise<Response> => {
       });
     }
 
-    const currentUser = await User.findById(req.user._id) as IUser | null;
-    const targetUser = await User.findById(targetUserId) as IUser | null;
+    // Optimization (⚡ Bolt): Fetch currentUser and targetUser concurrently via Promise.all.
+    const [currentUser, targetUser] = (await Promise.all([
+      User.findById(req.user._id),
+      User.findById(targetUserId),
+    ])) as [IUser | null, IUser | null];
 
     if (!currentUser || !targetUser) {
       return res.status(404).json({

@@ -108,11 +108,14 @@ export const discover = async (req: IExpressRequest, res: Response): Promise<Res
     if (!req.user) return res.status(401).json({ success: false, message: 'Not authenticated' });
     const { page = 1, limit = 20 } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
-    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document hydration overhead.
-    const currentUser = await User.findById(req.user._id).lean() as IUser | null;
+    // Optimization (⚡ Bolt): Fetch currentUser and usersWhoBlockedMe concurrently via Promise.all.
+    const [currentUser, usersWhoBlockedMe] = await Promise.all([
+      User.findById(req.user._id).lean() as Promise<IUser | null>,
+      User.find({ blockedUsers: req.user._id as Types.ObjectId }).select('_id').lean(),
+    ]);
+
     if (!currentUser) return res.status(404).json({ success: false, message: 'User not found' });
-    // Optimization (⚡ Bolt): Use .lean() on read-only queries to eliminate Mongoose document hydration overhead.
-    const usersWhoBlockedMe = await User.find({ blockedUsers: req.user._id as Types.ObjectId }).select('_id').lean();
+
     const blockedMeIds = usersWhoBlockedMe.map(u => u._id);
     const query: Record<string, unknown> = {
       isBlocked: { $ne: true },

@@ -150,13 +150,15 @@ export const joinStream = async (req: Request, res: Response) => {
     const session = await CamSession.findById(sessionId);
     if (!session || session.status !== 'live') return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Session not live' } });
 
-    await CamViewer.findOneAndUpdate(
+    // Optimization (⚡ Bolt): Execute CamViewer tracking and CamSession count increment concurrently via Promise.all.
+    await Promise.all([
+      CamViewer.findOneAndUpdate(
         { sessionId, userId: req.adultUser?._id },
         { joinedAt: new Date() },
         { upsert: true }
-    );
-
-    await CamSession.findByIdAndUpdate(sessionId, { $inc: { totalViewerCount: 1 } });
+      ),
+      CamSession.findByIdAndUpdate(sessionId, { $inc: { totalViewerCount: 1 } }),
+    ]);
 
     res.json({ success: true, data: { playbackUrl: session.streamPlaybackUrl } });
 };

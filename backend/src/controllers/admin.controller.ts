@@ -446,16 +446,17 @@ export const getViolations = async (req: Request, res: Response): Promise<Respon
     const limitNum = parseInt(limit as string, 10);
     const skipNum = (pageNum - 1) * limitNum;
 
-    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document hydration overhead.
-    const violations = await ContentViolation.find(query)
-      .select('+messageContent')
-      .populate('userId', 'displayName username email role')
-      .sort({ createdAt: -1 })
-      .skip(skipNum)
-      .limit(limitNum)
-      .lean();
-
-    const total = await ContentViolation.countDocuments(query);
+    // Optimization (⚡ Bolt): Execute data query and count query concurrently via Promise.all.
+    const [violations, total] = await Promise.all([
+      ContentViolation.find(query)
+        .select('+messageContent')
+        .populate('userId', 'displayName username email role')
+        .sort({ createdAt: -1 })
+        .skip(skipNum)
+        .limit(limitNum)
+        .lean(),
+      ContentViolation.countDocuments(query),
+    ]);
 
     return res.json({
       success: true,
@@ -517,16 +518,24 @@ export const updateViolationAction = async (req: Request, res: Response): Promis
 // @access  Private/Admin
 export const getAnalytics = async (req: IExpressRequest, res: Response): Promise<Response> => {
   try {
-    const totalUsers = await User.countDocuments();
-    const totalReports = await Report.countDocuments();
-    const pendingReports = await Report.countDocuments({ status: 'pending' });
-    const activeMatches = await User.aggregate([
-      { $unwind: '$matches' },
-      { $match: { 'matches.isActive': true } },
-      { $count: 'count' },
+    // Optimization (⚡ Bolt): Batch 5 sequential database operations into a single Promise.all execution.
+    const [
+      totalUsers,
+      totalReports,
+      pendingReports,
+      activeMatches,
+      visitStat,
+    ] = await Promise.all([
+      User.countDocuments(),
+      Report.countDocuments(),
+      Report.countDocuments({ status: 'pending' }),
+      User.aggregate([
+        { $unwind: '$matches' },
+        { $match: { 'matches.isActive': true } },
+        { $count: 'count' },
+      ]),
+      VisitorStat.findOne({ key: 'site_visits' }),
     ]);
-
-    const visitStat = await VisitorStat.findOne({ key: 'site_visits' });
 
     return res.json({
       success: true,

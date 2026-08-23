@@ -91,14 +91,15 @@ export const getTransactions = async (req: Request, res: Response) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
 
-    // Optimization (⚡ Bolt): Use .lean() on read-only transaction history query to avoid Mongoose document hydration overhead.
-    const transactions = await CreditTransaction.find({ userId: user._id })
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(limit)
-      .lean();
-
-    const total = await CreditTransaction.countDocuments({ userId: user._id });
+    // Optimization (⚡ Bolt): Fetch transactions and total count concurrently via Promise.all.
+    const [transactions, total] = await Promise.all([
+      CreditTransaction.find({ userId: user._id })
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      CreditTransaction.countDocuments({ userId: user._id }),
+    ]);
 
     return res.json({
       transactions,
