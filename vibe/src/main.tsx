@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { toast } from "sonner";
 import "./index.css";
+import "./mobile-ui-stability.css";
 import App from "./components/App/App";
 import { AuthProvider } from "./contexts/AuthContext";
 import { AdultAuthProvider } from "./contexts/AdultAuthContext";
