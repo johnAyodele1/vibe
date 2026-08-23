@@ -68,11 +68,13 @@ const AdultZoneLayoutInner: React.FC = () => {
     recordInstallPromptShown,
   } = usePWAPromptStore();
 
+  // Reset any previous PWA dismissals on page reload/mount.
   useEffect(() => {
     localStorage.removeItem('zippo_pwa_dismiss_until');
     localStorage.removeItem('zippo_pwa_dismiss_permanent');
   }, []);
 
+  // PWA install prompt is independent from notification health.
   useEffect(() => {
     const ctx = getInstallContext();
 
@@ -170,6 +172,7 @@ const AdultZoneLayoutInner: React.FC = () => {
     return () => window.removeEventListener('open-adult-auth-modal', handleOpenAuth);
   }, []);
 
+  // Keep the browser subscription synchronized with the authenticated user.
   useEffect(() => {
     const userId = user?.id;
     if (!isAuthenticated || !userId) return;
@@ -205,6 +208,7 @@ const AdultZoneLayoutInner: React.FC = () => {
     return () => cleanup?.();
   }, [user?.id, isAuthenticated, navigate]);
 
+  // Load initial unread count.
   useEffect(() => {
     if (!isAuthenticated || !user?.id) return;
 
@@ -254,7 +258,7 @@ const AdultZoneLayoutInner: React.FC = () => {
     <div
       className={`bg-[var(--az-bg-primary)] text-[var(--az-text-primary)] font-sans az-grain flex flex-col h-[100dvh] min-h-0 ${
         hideGlobalHeader ? 'overflow-hidden' : ''
-      } md:min-h-screen md:h-auto`
+      } md:min-h-screen md:h-auto`}
     >
       <nav
         data-testid="global-header"
@@ -334,9 +338,7 @@ const AdultZoneLayoutInner: React.FC = () => {
         </div>
       </nav>
 
-      <div
-        className="adult-zone-mobile-scroll flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden overscroll-y-contain md:contents"
-      >
+      <div className="adult-zone-mobile-scroll flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden overscroll-y-contain md:contents">
         <main className={`flex min-h-0 flex-1 flex-col ${hideGlobalHeader ? 'h-full overflow-hidden' : ''}`}>
           <Outlet />
         </main>
