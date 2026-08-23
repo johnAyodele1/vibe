@@ -258,7 +258,7 @@ const AdultZoneLayoutInner: React.FC = () => {
     <div
       className={`bg-[var(--az-bg-primary)] text-[var(--az-text-primary)] font-sans az-grain flex flex-col h-[100dvh] min-h-0 ${
         hideGlobalHeader ? 'overflow-hidden' : ''
-      } md:min-h-screen md:h-auto`}
+      } md:min-h-screen md:h-auto`
     >
       <nav
         data-testid="global-header"
@@ -338,12 +338,18 @@ const AdultZoneLayoutInner: React.FC = () => {
         </div>
       </nav>
 
-      <div className="adult-zone-mobile-scroll flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden overscroll-y-contain md:contents">
-        <main className={`flex min-h-0 flex-1 flex-col ${hideGlobalHeader ? 'h-full overflow-hidden' : ''}`}>
+      <div
+        className={`adult-zone-mobile-scroll flex min-h-0 flex-1 flex-col md:contents ${
+          hideGlobalHeader
+            ? 'overflow-hidden'
+            : 'overflow-y-auto overflow-x-hidden overscroll-y-contain'
+        }`}
+      >
+        <main className={`flex-grow min-h-0 ${hideGlobalHeader ? 'h-full overflow-hidden' : ''}`}>
           <Outlet />
         </main>
 
-        <footer data-testid="site-footer" className={`bg-[#050304] border-t border-[var(--az-border)] px-4 py-12 pb-24 md:pb-12 mt-auto flex-shrink-0 ${
+        <footer data-testid="site-footer" className={`bg-[#050304] border-t border-[var(--az-border)] px-4 py-12 pb-12 md:pb-12 mt-auto flex-shrink-0 ${
           hideFooter ? 'hidden md:block' : 'block'
         }`}>
           <div className="max-w-7xl mx-auto flex flex-col items-center text-center">
