@@ -41,11 +41,7 @@
       }
 
       @media (max-width: 767px) {
-        /*
-         * iOS Safari 26 Liquid Glass samples the actual painted layer in the
-         * bottom safe-area region. The nav stops at that boundary and this
-         * separate opaque box owns the safe area below it.
-         */
+        /* Dedicated real DOM safe-area layer for iOS Safari Liquid Glass. */
         #mobile-safe-area-fill {
           display: block;
           position: fixed;
@@ -68,7 +64,7 @@
           background: #221014 !important;
         }
 
-        /* The existing Adult Zone bottom nav is the only app bottom nav. */
+        /* Existing Adult Zone bottom nav: opaque, fixed above the fill. */
         [data-testid="bottom-tab-bar"] {
           box-sizing: border-box !important;
           position: fixed !important;
@@ -97,10 +93,7 @@
         }
 
         @supports selector(body:has(.conversation-header)) {
-          body:has(.chat-page-mobile .conversation-header) [data-testid="global-header"] {
-            display: none !important;
-          }
-
+          body:has(.chat-page-mobile .conversation-header) [data-testid="global-header"],
           body:has(.chat-page-mobile .conversation-header) [data-testid="bottom-tab-bar"],
           body:has(.chat-page-mobile .conversation-header) #mobile-safe-area-fill {
             display: none !important;
