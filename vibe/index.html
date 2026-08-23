@@ -25,9 +25,7 @@
         --mobile-nav-bg: #130d10;
       }
 
-      html,
-      body,
-      #root {
+      html, body, #root {
         min-height: 100%;
         min-height: 100dvh;
         background: #221014;
@@ -41,7 +39,6 @@
       }
 
       @media (max-width: 767px) {
-        /* Dedicated real DOM safe-area layer for iOS Safari Liquid Glass. */
         #mobile-safe-area-fill {
           display: block;
           position: fixed;
@@ -58,13 +55,8 @@
           z-index: 49;
         }
 
-        html,
-        body,
-        #root {
-          background: #221014 !important;
-        }
+        html, body, #root { background: #221014 !important; }
 
-        /* Existing Adult Zone bottom nav: opaque, fixed above the fill. */
         [data-testid="bottom-tab-bar"] {
           box-sizing: border-box !important;
           position: fixed !important;
@@ -88,9 +80,7 @@
           min-height: 56px !important;
         }
 
-        #root > div.az-grain {
-          padding-bottom: 0 !important;
-        }
+        #root > div.az-grain { padding-bottom: 0 !important; }
 
         @supports selector(body:has(.conversation-header)) {
           body:has(.chat-page-mobile .conversation-header) [data-testid="global-header"],
