@@ -36,6 +36,53 @@ const isValidCoordinates = (coordinates: unknown): coordinates is [number, numbe
   );
 };
 
+const createPopupContent = (
+  provider: MapProvider,
+  onMessage: () => void,
+): HTMLDivElement => {
+  const container = document.createElement('div');
+  container.className = 'map-popup-content flex items-center gap-2.5 p-3 min-w-[200px]';
+
+  const avatar = document.createElement('img');
+  avatar.src = provider.avatarUrl || '/placeholder.svg';
+  avatar.alt = provider.stageName || 'Provider';
+  avatar.className = 'map-popup-avatar w-10 h-10 rounded-full object-cover flex-shrink-0';
+  avatar.addEventListener('error', () => {
+    if (avatar.src.endsWith('/placeholder.svg')) return;
+    avatar.src = '/placeholder.svg';
+  });
+
+  const info = document.createElement('div');
+  info.className = 'map-popup-info flex-grow flex flex-col gap-1';
+
+  const name = document.createElement('span');
+  name.className = 'map-popup-name font-semibold text-sm text-white';
+  name.textContent = provider.stageName || 'Provider';
+
+  const status = document.createElement('span');
+  status.className = `map-popup-status text-[11px] font-medium ${provider.isOnline ? 'text-green-500' : 'text-zinc-500'}`;
+  status.textContent = provider.isOnline ? '● Online Now' : '● Offline';
+
+  info.append(name, status);
+
+  if (provider.tonightRate) {
+    const rate = document.createElement('span');
+    rate.className = 'map-popup-rate text-xs font-mono';
+    rate.style.color = 'var(--az-accent-gold)';
+    rate.textContent = `💎 ${formatAmount(provider.tonightRate)} tonight`;
+    info.append(rate);
+  }
+
+  const messageButton = document.createElement('button');
+  messageButton.type = 'button';
+  messageButton.className = 'map-popup-btn px-3 py-1.5 rounded-lg bg-[var(--az-accent-primary)] text-white text-xs font-semibold cursor-pointer flex-shrink-0';
+  messageButton.textContent = 'Message';
+  messageButton.addEventListener('click', onMessage);
+
+  container.append(avatar, info, messageButton);
+  return container;
+};
+
 export const HookupMap: React.FC<HookupMapProps> = ({
   providers,
   center,
@@ -102,48 +149,7 @@ export const HookupMap: React.FC<HookupMapProps> = ({
         opacity: 1,
       });
 
-      const rate = provider.tonightRate
-        ? `<span class="map-popup-rate text-xs font-mono" style="color: var(--az-accent-gold)">💎 ${formatAmount(provider.tonightRate)} tonight</span>`
-        : '';
-
-      const avatarUrl = provider.avatarUrl || '/placeholder.svg';
-      const stageName = provider.stageName || 'Provider';
-      const escapedAvatarUrl = avatarUrl.replace(/"/g, '&quot;');
-      const escapedStageName = stageName.replace(/"/g, '&quot;');
-      const onlineLabel = provider.isOnline ? 'Online Now' : 'Offline';
-      const onlineClass = provider.isOnline ? 'text-green-500' : 'text-zinc-500';
-
-      marker.bindPopup(`
-        <div class="map-popup-content flex items-center gap-2.5 p-3 min-w-[200px]">
-          <img
-            src="${escapedAvatarUrl}"
-            alt="${escapedStageName}"
-            class="map-popup-avatar w-10 h-10 rounded-full object-cover flex-shrink-0"
-          />
-          <div class="map-popup-info flex-grow flex flex-col gap-1">
-            <span class="map-popup-name font-semibold text-sm text-white">${stageName}</span>
-            <span class="map-popup-status text-[11px] font-medium ${onlineClass}">● ${onlineLabel}</span>
-            ${rate}
-          </div>
-          <button
-            type="button"
-            class="map-popup-btn px-3 py-1.5 rounded-lg bg-[var(--az-accent-primary)] text-white text-xs font-semibold cursor-pointer flex-shrink-0"
-            data-provider-id="${provider.id}"
-          >
-            Message
-          </button>
-        </div>
-      `);
-
-      marker.on('popupopen', (event) => {
-        const button = event.popup.getElement()?.querySelector<HTMLButtonElement>('[data-provider-id]');
-        if (!button) return;
-
-        button.addEventListener('click', () => {
-          openConversation(provider.id);
-        }, { once: true });
-      });
-
+      marker.bindPopup(createPopupContent(provider, () => openConversation(provider.id)));
       marker.addTo(layer);
     });
   }, [providers, openConversation]);
