@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#221014" />
+    <meta name="theme-color" content="#130d10" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <link rel="manifest" href="/manifest.json" />
@@ -13,100 +13,132 @@
     <link rel="apple-touch-icon" sizes="152x152" href="/icons/apple-touch-icon.png" />
     <link rel="apple-touch-icon" sizes="120x120" href="/icons/apple-touch-icon.png" />
     <title>Vibe - Dating App</title>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Lora:ital,wght@0,400..700;1,100..700&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,100..700&family=JetBrains+Mono:ital,wght@0,100..800;1,100..700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Lora:ital,wght@0,100..700;1,100..700&family=DM+Sans:ital,opsz,wght@0,100..1000;1,100..700&family=JetBrains+Mono:ital,wght@0,100..800;1,100..700&display=swap" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined,wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
     <style>
       .hide-scrollbar::-webkit-scrollbar { display: none; }
       .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-      :root { --primary: #f42559; --background-dark: #221014; --safari-liquid-glass-edge: #130d10; }
-      html, body, #root { min-height: 100%; min-height: 100dvh; background: #221014; }
-      body { margin: 0; min-height: 100vh; min-height: 100dvh; overflow-x: hidden; }
 
-      /* Safari 26 Liquid Glass edge tint source. */
-      #safari-liquid-glass-bottom-tint {
-        display: none;
+      :root {
+        --primary: #f42559;
+        --background-dark: #221014;
+        --mobile-nav-bg: #130d10;
       }
 
-      @supports (-webkit-touch-callout: none) {
-        @media (max-width: 767px) {
-          #safari-liquid-glass-bottom-tint {
-            display: block;
-            position: fixed;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            width: 100%;
-            height: 1px;
-            margin: 0;
-            padding: 0;
-            background: var(--safari-liquid-glass-edge) !important;
-            border: 0;
-            opacity: 1 !important;
-            pointer-events: none;
-            z-index: 2147483647;
+      html,
+      body,
+      #root {
+        min-height: 100%;
+        min-height: 100dvh;
+        background: #221014;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        min-height: 100dvh;
+        overflow-x: clip;
+      }
+
+      @media (max-width: 767px) {
+        /*
+         * iOS Safari 26 Liquid Glass samples the actual painted layer in the
+         * bottom safe-area region. The nav stops at that boundary and this
+         * separate opaque box owns the safe area below it.
+         */
+        #mobile-safe-area-fill {
+          display: block;
+          position: fixed;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          width: 100%;
+          height: env(safe-area-inset-bottom, 0px);
+          background: var(--mobile-nav-bg) !important;
+          border: 0;
+          padding: 0;
+          margin: 0;
+          pointer-events: none;
+          z-index: 49;
+        }
+
+        html,
+        body,
+        #root {
+          background: #221014 !important;
+        }
+
+        /* The existing Adult Zone bottom nav is the only app bottom nav. */
+        [data-testid="bottom-tab-bar"] {
+          box-sizing: border-box !important;
+          position: fixed !important;
+          left: 0 !important;
+          right: 0 !important;
+          bottom: env(safe-area-inset-bottom, 0px) !important;
+          width: 100% !important;
+          height: 56px !important;
+          min-height: 56px !important;
+          padding: 0 !important;
+          background: var(--mobile-nav-bg) !important;
+          backdrop-filter: none !important;
+          -webkit-backdrop-filter: none !important;
+          transform: none !important;
+          z-index: 50 !important;
+        }
+
+        [data-testid="bottom-tab-bar"] > div {
+          box-sizing: border-box !important;
+          height: 56px !important;
+          min-height: 56px !important;
+        }
+
+        #root > div.az-grain {
+          padding-bottom: 0 !important;
+        }
+
+        @supports selector(body:has(.conversation-header)) {
+          body:has(.chat-page-mobile .conversation-header) [data-testid="global-header"] {
+            display: none !important;
           }
 
-          html, body, #root { background: #221014 !important; }
-
-          [data-testid="bottom-tab-bar"] {
-            box-sizing: border-box !important;
-            position: fixed !important;
-            left: 0 !important;
-            right: 0 !important;
-            bottom: 0 !important;
-            width: 100% !important;
-            height: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
-            min-height: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
-            padding: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px) !important;
-            transform: none !important;
+          body:has(.chat-page-mobile .conversation-header) [data-testid="bottom-tab-bar"],
+          body:has(.chat-page-mobile .conversation-header) #mobile-safe-area-fill {
+            display: none !important;
           }
+        }
 
-          [data-testid="bottom-tab-bar"] > div {
-            box-sizing: border-box !important;
-            height: 56px !important;
-            min-height: 56px !important;
-          }
+        .chat-page-mobile {
+          height: 100dvh !important;
+          min-height: 100dvh !important;
+          max-height: 100dvh !important;
+          padding-top: 0 !important;
+          padding-bottom: 0 !important;
+        }
 
-          #root > div.az-grain { padding-bottom: 0 !important; }
+        .chat-page-mobile .conversation-header {
+          box-sizing: border-box !important;
+          flex: 0 0 auto !important;
+          height: calc(56px + env(safe-area-inset-top, 0px)) !important;
+          min-height: calc(56px + env(safe-area-inset-top, 0px)) !important;
+          max-height: calc(56px + env(safe-area-inset-top, 0px)) !important;
+          padding-top: env(safe-area-inset-top, 0px) !important;
+          padding-bottom: 0 !important;
+          padding-left: max(4px, env(safe-area-inset-left, 0px)) !important;
+          padding-right: max(12px, env(safe-area-inset-right, 0px)) !important;
+        }
 
-          @supports selector(body:has(.conversation-header)) {
-            body:has(.chat-page-mobile .conversation-header) [data-testid="global-header"] { display: none !important; }
-            body:has(.chat-page-mobile .conversation-header) [data-testid="bottom-tab-bar"] { display: none !important; }
-          }
+        .chat-page-mobile .conversation-header__info,
+        .chat-page-mobile .conversation-header__actions {
+          min-width: 0 !important;
+          flex-shrink: 0 !important;
+        }
 
-          .chat-page-mobile {
-            height: 100dvh !important;
-            min-height: 100dvh !important;
-            max-height: 100dvh !important;
-            padding-top: 0 !important;
-            padding-bottom: 0 !important;
-          }
-
-          .chat-page-mobile .conversation-header {
-            box-sizing: border-box !important;
-            flex: 0 0 auto !important;
-            height: calc(56px + env(safe-area-inset-top, 0px)) !important;
-            min-height: calc(56px + env(safe-area-inset-top, 0px)) !important;
-            max-height: calc(56px + env(safe-area-inset-top, 0px)) !important;
-            padding-top: env(safe-area-inset-top, 0px) !important;
-            padding-bottom: 0 !important;
-            padding-left: max(4px, env(safe-area-inset-left, 0px)) !important;
-            padding-right: max(12px, env(safe-area-inset-right, 0px)) !important;
-          }
-
-          .chat-page-mobile .conversation-header__info,
-          .chat-page-mobile .conversation-header__actions {
-            min-width: 0 !important;
-            flex-shrink: 0 !important;
-          }
-
-          .chat-page-mobile .conversation-header__credits {
-            min-width: 0 !important;
-            max-width: 34vw !important;
-            overflow: hidden !important;
-            text-overflow: ellipsis !important;
-            white-space: nowrap !important;
-          }
+        .chat-page-mobile .conversation-header__credits {
+          min-width: 0 !important;
+          max-width: 34vw !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+          white-space: nowrap !important;
         }
       }
 
@@ -119,7 +151,6 @@
     </style>
   </head>
   <body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-white antialiased selection:bg-primary selection:text-white relative">
-    <div id="safari-liquid-glass-bottom-tint" aria-hidden="true"></div>
     <div id="root">
       <div style="position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background-color: #221014; z-index: 99999; font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
         <div style="display: flex; flex-direction: column; align-items: center; gap: 1.5rem;">
