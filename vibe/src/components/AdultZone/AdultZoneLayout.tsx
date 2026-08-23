@@ -256,12 +256,7 @@ const AdultZoneLayoutInner: React.FC = () => {
 
   return (
     <div
-      className={`bg-[var(--az-bg-primary)] text-[var(--az-text-primary)] font-sans az-grain flex flex-col ${
-        hideGlobalHeader ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'
-      }`}
-      style={{
-        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-      }}
+      className={`bg-[var(--az-bg-primary)] text-[var(--az-text-primary)] font-sans az-grain flex flex-col h-[100dvh] overflow-hidden md:h-auto md:min-h-screen md:overflow-visible`}
     >
       <nav
         data-testid="global-header"
@@ -341,9 +336,40 @@ const AdultZoneLayoutInner: React.FC = () => {
         </div>
       </nav>
 
-      <main className={`flex-grow ${hideGlobalHeader ? 'h-full overflow-hidden' : ''}`}>
-        <Outlet />
-      </main>
+      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col md:contents">
+        <main className={`flex-grow ${hideGlobalHeader ? 'h-full overflow-hidden' : ''}`}>
+          <Outlet />
+        </main>
+
+        <footer data-testid="site-footer" className={`bg-[#050304] border-t border-[var(--az-border)] px-4 py-12 md:pb-12 mt-auto ${
+          hideFooter ? 'hidden md:block' : 'block'
+        }`}>
+          <div className="max-w-7xl mx-auto flex flex-col items-center text-center">
+            <p className="text-[10px] text-[var(--az-text-muted)] max-w-2xl mb-6 leading-relaxed">
+              All performers are 18+ years of age. Age verification records are maintained in compliance with applicable law.
+              The "Adult Zone" is a premium, restricted area of the application. Please use responsibly.
+            </p>
+            <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-[10px] text-[var(--az-text-muted)] uppercase tracking-widest font-bold">
+              <Link to="#" className="hover:text-[var(--az-text-secondary)]">Terms</Link>
+              <Link to="#" className="hover:text-[var(--az-text-secondary)]">Privacy</Link>
+              <Link to="#" className="hover:text-[var(--az-text-secondary)]">DMCA</Link>
+              <button
+                onClick={() => {
+                  window.dispatchEvent(
+                    new CustomEvent('open-adult-auth-modal', {
+                      detail: { mode: 'signup', role: 'provider' }
+                    })
+                  );
+                }}
+                className="text-[10px] text-[var(--az-text-muted)] uppercase tracking-widest font-bold hover:text-[var(--az-text-secondary)] cursor-pointer focus:outline-none bg-transparent border-none p-0 font-sans"
+              >
+                Join as a provider
+              </button>
+              <Link to="#" className="hover:text-[var(--az-text-secondary)]">Support</Link>
+            </div>
+          </div>
+        </footer>
+      </div>
 
       <AdultAuthModal
         isOpen={isAuthModalOpen}
@@ -360,7 +386,7 @@ const AdultZoneLayoutInner: React.FC = () => {
 
       <nav
         data-testid="bottom-tab-bar"
-        className="md:hidden fixed bottom-0 left-0 right-0 z-50 az-glass border-t border-[var(--az-border)]"
+        className="md:hidden w-full flex-shrink-0 az-glass border-t border-[var(--az-border)]"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         <div className="flex justify-around items-center h-14">
@@ -411,35 +437,6 @@ const AdultZoneLayoutInner: React.FC = () => {
           ))}
         </div>
       </nav>
-
-      <footer data-testid="site-footer" className={`bg-[#050304] border-t border-[var(--az-border)] px-4 py-12 pb-24 md:pb-12 mt-auto ${
-        hideFooter ? 'hidden md:block' : 'block'
-      }`}>
-        <div className="max-w-7xl mx-auto flex flex-col items-center text-center">
-          <p className="text-[10px] text-[var(--az-text-muted)] max-w-2xl mb-6 leading-relaxed">
-            All performers are 18+ years of age. Age verification records are maintained in compliance with applicable law.
-            The "Adult Zone" is a premium, restricted area of the application. Please use responsibly.
-          </p>
-          <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-[10px] text-[var(--az-text-muted)] uppercase tracking-widest font-bold">
-            <Link to="#" className="hover:text-[var(--az-text-secondary)]">Terms</Link>
-            <Link to="#" className="hover:text-[var(--az-text-secondary)]">Privacy</Link>
-            <Link to="#" className="hover:text-[var(--az-text-secondary)]">DMCA</Link>
-            <button
-              onClick={() => {
-                window.dispatchEvent(
-                  new CustomEvent('open-adult-auth-modal', {
-                    detail: { mode: 'signup', role: 'provider' }
-                  })
-                );
-              }}
-              className="text-[10px] text-[var(--az-text-muted)] uppercase tracking-widest font-bold hover:text-[var(--az-text-secondary)] cursor-pointer focus:outline-none bg-transparent border-none p-0 font-sans"
-            >
-              Join as a provider
-            </button>
-            <Link to="#" className="hover:text-[var(--az-text-secondary)]">Support</Link>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 };
