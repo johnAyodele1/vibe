@@ -90,6 +90,9 @@ function App() {
 
   if (loading) return <LoadingScreen />;
 
+  // AdultZone uses its own authentication context. Push health must be mounted
+  // for both auth systems so normal app entry, account switching, and provider
+  // sessions all execute the same push verification path.
   const notificationUserId = adultIsAuthenticated && adultUser?.id
     ? adultUser.id
     : isAuthenticated && user?._id
