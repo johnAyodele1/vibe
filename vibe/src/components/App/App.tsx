@@ -45,6 +45,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useAdultAuth } from "../../contexts/AdultAuthContext";
 import { API_BASE_URL } from "../../config";
 import ScrollToTop from "./ScrollToTop";
+import "../../styles/adultZoneMobileScrollShell.css";
 
 function App() {
   const navigate = useNavigate();
@@ -141,8 +142,8 @@ function App() {
         <Route path="/favourites" element={isAuthenticated ? (isProfileComplete() ? <Favourites /> : <Navigate to="/profile" replace />) : <Navigate to="/auth" replace />} />
         <Route path="/discovery" element={isAuthenticated ? (isProfileComplete() ? <Discovery /> : <Navigate to="/profile" replace />) : <Navigate to="/auth" replace />} />
         <Route path="/user/:userId" element={isAuthenticated ? (isProfileComplete() ? <PublicProfileView /> : <Navigate to="/profile" replace />) : <Navigate to="/auth" replace />} />
-        <Route path="/my-profile" element={isAuthenticated ? (isProfileComplete() ? <UserProfileView /> : <Navigate to="/profile" replace />) : <Navigate to="/auth" replace />} />
-        <Route path="/settings" element={isAuthenticated ? (isProfileComplete() ? <Settings /> : <Navigate to="/profile" replace />) : <Navigate to="/auth" replace />} />
+        <Route path="/my-profile" element={isAuthenticated ? (isProfileComplete() ? <UserProfileView /> : <Navigate to="/auth" replace />) : <Navigate to="/profile" replace />} />
+        <Route path="/settings" element={isAuthenticated ? (isProfileComplete() ? <Settings /> : <Navigate to="/auth" replace />) : <Navigate to="/auth" replace />} />
         <Route path="/chat" element={isAuthenticated ? (isProfileComplete() ? <ChatInterface /> : <Navigate to="/auth" replace />) : <Navigate to="/auth" replace />} />
         <Route path="/direct-message/:conversationId" element={isAuthenticated ? (isProfileComplete() ? <DirectMessage /> : <Navigate to="/auth" replace />) : <Navigate to="/auth" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
