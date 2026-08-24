@@ -1,0 +1,202 @@
+name: Apply Provider Pricing Fix
+
+on:
+  push:
+    branches:
+      - fix/provider-pricing-zero-validation-20260824
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Apply pricing fixes
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace(path: str, old: str, new: str, count: int | None = None) -> None:
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"Expected text not found in {path}: {old[:120]!r}")
+              updated = text.replace(old, new, count if count is not None else -1)
+              p.write_text(updated)
+
+          # ------------------------------------------------------------------
+          # Backend: shared positive-rate validation middleware.
+          # ------------------------------------------------------------------
+          middleware = Path('backend/src/middleware/providerPricingValidation.ts')
+          middleware.parent.mkdir(parents=True, exist_ok=True)
+          middleware.write_text("""import { NextFunction, Request, Response } from 'express';\n\nexport const isValidPositiveRate = (value: unknown): boolean => {\n  if (value === undefined || value === null || (typeof value === 'string' && value.trim() === '')) {\n    return false;\n  }\n\n  const numericValue = Number(value);\n  return Number.isFinite(numericValue) && numericValue > 0;\n};\n\nexport const validateProviderPricing = (req: Request, res: Response, next: NextFunction) => {\n  const isOnboardingStep4 = req.params.stepNumber === '4';\n  const fields = [\n    ['perMinuteRate', 'Per-minute rate'],\n    ['tonightRate', 'Rate for tonight'],\n  ] as const;\n\n  for (const [field, label] of fields) {\n    if (req.body?.[field] === undefined) continue;\n\n    if (!isValidPositiveRate(req.body[field])) {\n      const message = `${label} must be greater than 0 diamonds`;\n\n      if (isOnboardingStep4) {\n        return res.status(400).json({\n          success: false,\n          errors: { [field]: message },\n        });\n      }\n\n      return res.status(400).json({\n        success: false,\n        error: { code: 'VALIDATION_ERROR', message },\n      });\n    }\n\n    req.body[field] = Number(req.body[field]);\n  }\n\n  return next();\n};\n""")
+
+          # ------------------------------------------------------------------
+          # Backend: enforce middleware on the two write paths.
+          # ------------------------------------------------------------------
+          routes = Path('backend/src/routes/v1.routes.ts')
+          text = routes.read_text()
+          import_line = "import { validateProviderPricing } from '../middleware/providerPricingValidation';\n"
+          if import_line not in text:
+              anchor = "import { trackDailyActive } from '../middleware/trackDailyActive';\n"
+              if anchor not in text:
+                  raise SystemExit('v1.routes.ts import anchor not found')
+              text = text.replace(anchor, anchor + import_line)
+          text = text.replace(
+              "router.put('/adult/providers/me/onboarding/step/:stepNumber', verifyAdultJWT, saveOnboardingStep);",
+              "router.put('/adult/providers/me/onboarding/step/:stepNumber', verifyAdultJWT, validateProviderPricing, saveOnboardingStep);"
+          )
+          text = text.replace(
+              "router.put('/adult/providers/me/pricing', verifyAdultJWT, updatePricing);",
+              "router.put('/adult/providers/me/pricing', verifyAdultJWT, validateProviderPricing, updatePricing);"
+          )
+          routes.write_text(text)
+
+          # ------------------------------------------------------------------
+          # Backend: keep controller validation defensive even if middleware is bypassed.
+          # ------------------------------------------------------------------
+          controller = Path('backend/src/controllers/providerOnboarding.controller.ts')
+          text = controller.read_text()
+          replace(
+              str(controller),
+              "} else if (Number(perMinuteRate) < 0) {\n          errors.perMinuteRate = 'Minimum rate per minute is 0 diamonds';\n        }",
+              "} else if (!Number.isFinite(Number(perMinuteRate)) || Number(perMinuteRate) <= 0) {\n          errors.perMinuteRate = 'Per-minute rate must be greater than 0 diamonds';\n        }"
+          )
+          replace(
+              str(controller),
+              "} else if (Number(tonightRate) < 0) {\n          errors.tonightRate = 'Minimum rate for tonight is 0 diamonds';\n        }",
+              "} else if (!Number.isFinite(Number(tonightRate)) || Number(tonightRate) <= 0) {\n          errors.tonightRate = 'Rate for tonight must be greater than 0 diamonds';\n        }"
+          )
+          replace(
+              str(controller),
+              "if (perMinuteRate !== undefined && perMinuteRate < 0) {\n      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Minimum per-minute rate is 0 diamonds' } });\n    }",
+              "if (perMinuteRate !== undefined && (!Number.isFinite(Number(perMinuteRate)) || Number(perMinuteRate) <= 0)) {\n      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Per-minute rate must be greater than 0 diamonds' } });\n    }"
+          )
+          replace(
+              str(controller),
+              "perMinuteRate: profile.pricePerMinute || 1.99,",
+              "perMinuteRate: profile.pricePerMinute ?? 0,"
+          )
+          controller.write_text(text)
+
+          # ------------------------------------------------------------------
+          # Backend: schemas must describe the same invariant.
+          # ------------------------------------------------------------------
+          schema = Path('backend/src/schemas/adult.schemas.ts')
+          text = schema.read_text()
+          text = text.replace('pricePerMinute: z.number().nonnegative().optional(),', 'pricePerMinute: z.number().finite().positive().optional()')
+          text = text.replace('videoCallPrice: z.number().nonnegative().optional(),', 'videoCallPrice: z.number().finite().positive().optional()')
+          text = text.replace('audioCallPrice: z.number().nonnegative().optional(),', 'audioCallPrice: z.number().finite().positive().optional()')
+          text = text.replace('privateSextPrice: z.number().nonnegative().optional(),', 'privateSextPrice: z.number().finite().positive().optional()')
+          schema.write_text(text)
+
+          # ------------------------------------------------------------------
+          # Backend: focused regression tests for zero/negative/non-finite and tiny positive rates.
+          # ------------------------------------------------------------------
+          test = Path('backend/src/tests/provider-pricing-validation.test.ts')
+          test.write_text("""import { validateProviderPricing } from '../middleware/providerPricingValidation';\n\nconst makeResponse = () => {\n  const response: any = {\n    status: jest.fn().mockReturnThis(),\n    json: jest.fn().mockReturnThis(),\n  };\n  return response;\n};\n\ndescribe('provider pricing validation', () => {\n  const invalidRates = [0, -1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, ''];\n\n  it.each(invalidRates)('rejects invalid per-minute rate %p on onboarding step 4', (rate) => {\n    const req: any = { params: { stepNumber: '4' }, body: { perMinuteRate: rate } };\n    const res = makeResponse();\n    const next = jest.fn();\n\n    validateProviderPricing(req, res, next);\n\n    expect(res.status).toHaveBeenCalledWith(400);\n    expect(res.json).toHaveBeenCalledWith({\n      success: false,\n      errors: { perMinuteRate: 'Per-minute rate must be greater than 0 diamonds' },\n    });\n    expect(next).not.toHaveBeenCalled();\n  });\n\n  it.each(invalidRates)('rejects invalid tonight rate %p on pricing update', (rate) => {\n    const req: any = { params: {}, body: { tonightRate: rate } };\n    const res = makeResponse();\n    const next = jest.fn();\n\n    validateProviderPricing(req, res, next);\n\n    expect(res.status).toHaveBeenCalledWith(400);\n    expect(res.json).toHaveBeenCalledWith({\n      success: false,\n      error: { code: 'VALIDATION_ERROR', message: 'Rate for tonight must be greater than 0 diamonds' },\n    });\n    expect(next).not.toHaveBeenCalled();\n  });\n\n  it('accepts a positive fractional rate below 0.01', () => {\n    const req: any = { params: {}, body: { perMinuteRate: 0.001, tonightRate: 0.009 } };\n    const res = makeResponse();\n    const next = jest.fn();\n\n    validateProviderPricing(req, res, next);\n\n    expect(next).toHaveBeenCalledTimes(1);\n    expect(req.body).toEqual({ perMinuteRate: 0.001, tonightRate: 0.009 });\n    expect(res.status).not.toHaveBeenCalled();\n  });\n});\n""")
+
+          # ------------------------------------------------------------------
+          # Frontend: onboarding reads must not manufacture 5/1.99/300-style values,
+          # and zero must be rejected before the request is sent.
+          # ------------------------------------------------------------------
+          onboarding = Path('vibe/src/components/AdultZone/ProviderOnboarding.tsx')
+          text = onboarding.read_text()
+          anchor = "interface LocationValue {\n"
+          helper = "const isValidRate = (value: unknown): value is number =>\n  typeof value === 'number' && Number.isFinite(value) && value > 0;\n\n"
+          if helper not in text:
+              text = text.replace(anchor, helper + anchor, 1)
+          text = text.replace('pricePerMinute: s4.pricing?.perMinuteRate || 5,', 'pricePerMinute: s4.pricing?.perMinuteRate ?? 0,')
+          text = text.replace('tonightRate: s4.pricing?.tonightRate || 300,', 'tonightRate: s4.pricing?.tonightRate ?? 0,')
+          old_validation = """        if (services.includes('private_call') && (pricing.pricePerMinute === undefined || pricing.pricePerMinute < 0)) {\n          toast.error('Per-minute rate is required');\n          setSaving(false);\n          return;\n        }\n        if (services.includes('hookup') && (pricing.tonightRate === undefined || pricing.tonightRate < 0)) {\n          toast.error('Rate for tonight is required');\n          setSaving(false);\n          return;\n        }\n"""
+          new_validation = """        if (services.includes('private_call') && !isValidRate(pricing.pricePerMinute)) {\n          toast.error('Per-minute rate must be greater than 0 diamonds');\n          setSaving(false);\n          return;\n        }\n        if (services.includes('hookup') && !isValidRate(pricing.tonightRate)) {\n          toast.error('Rate for tonight must be greater than 0 diamonds');\n          setSaving(false);\n          return;\n        }\n"""
+          if old_validation not in text:
+              raise SystemExit('ProviderOnboarding validation block not found')
+          text = text.replace(old_validation, new_validation, 1)
+          text = text.replace('min="5"\n                      className=', 'step="any"\n                      className=', 1)
+          text = text.replace(
+              "onChange={e => setPricing({ ...pricing, pricePerMinute: parseFloat(e.target.value) || 0 })}",
+              "onChange={e => {\n                        const value = Number(e.target.value);\n                        setPricing({ ...pricing, pricePerMinute: Number.isFinite(value) ? value : 0 });\n                      }}",
+              1
+          )
+          text = text.replace(
+              "onChange={e => setPricing({ ...pricing, tonightRate: parseInt(e.target.value) || 0 })}",
+              "onChange={e => {\n                        const value = Number(e.target.value);\n                        setPricing({ ...pricing, tonightRate: Number.isFinite(value) ? value : 0 });\n                      }}",
+              1
+          )
+          # Add an explicit step attribute to the tonight-rate field without adding a minimum.
+          needle = "                      type=\"number\"\n                      className=\"bg-black border border-[var(--az-border)] rounded-xl px-4 py-3 text-white font-mono outline-none text-xl w-32\""
+          replacement = "                      type=\"number\"\n                      step=\"any\"\n                      className=\"bg-black border border-[var(--az-border)] rounded-xl px-4 py-3 text-white font-mono outline-none text-xl w-32\""
+          if needle in text:
+              text = text.replace(needle, replacement, 1)
+          onboarding.write_text(text)
+
+          # ------------------------------------------------------------------
+          # Frontend: profile editor must surface save failures and never write
+          # a client-side fallback pretending the server accepted the pricing.
+          # ------------------------------------------------------------------
+          profile = Path('vibe/src/components/AdultZone/ProviderProfile.tsx')
+          text = profile.read_text()
+          text = text.replace('pricePerMinute: 3.99,', 'pricePerMinute: 0,', 1)
+          text = text.replace('tonightRate: 150,', 'tonightRate: 0,', 1)
+          text = text.replace('pricePerMinute: profile.pricePerMinute || 3.99,', 'pricePerMinute: profile.pricePerMinute ?? 0,', 1)
+          text = text.replace('tonightRate: profile.tonightRate || 150', 'tonightRate: profile.tonightRate ?? 0', 1)
+          helper = "const isValidRate = (value: unknown): value is number =>\n  typeof value === 'number' && Number.isFinite(value) && value > 0;\n\n"
+          anchor = 'const ProviderProfile: React.FC = () => {\n'
+          if helper not in text:
+              text = text.replace(anchor, helper + anchor, 1)
+
+          start = text.index('  const handleSaveServicesAndPricing = async () => {')
+          end = text.index('  const handleSaveLocation = async () => {', start)
+          new_handler = """  const handleSaveServicesAndPricing = async () => {\n    if (services.includes('private_call') && !isValidRate(pricing.pricePerMinute)) {\n      toast.error('Per-minute rate must be greater than 0 diamonds');\n      return;\n    }\n\n    if (services.includes('hookup') && !isValidRate(pricing.tonightRate)) {\n      toast.error('Rate for tonight must be greater than 0 diamonds');\n      return;\n    }\n\n    setSavingServices(true);\n    try {\n      const serviceRes = await fetch(`${API_BASE_URL}/v1/adult/providers/me/services`, {\n        method: 'PUT',\n        headers: {\n          'Content-Type': 'application/json',\n          'Authorization': `Bearer ${token}`\n        },\n        body: JSON.stringify({ servicesOffered: services })\n      });\n      const serviceData = await serviceRes.json().catch(() => null);\n      if (!serviceRes.ok || !serviceData?.success) {\n        throw new Error(serviceData?.error?.message || serviceData?.error || serviceData?.message || 'Failed to update services');\n      }\n\n      const pricingRes = await fetch(`${API_BASE_URL}/v1/adult/providers/me/pricing`, {\n        method: 'PUT',\n        headers: {\n          'Content-Type': 'application/json',\n          'Authorization': `Bearer ${token}`\n        },\n        body: JSON.stringify({\n          perMinuteRate: pricing.pricePerMinute,\n          tonightRate: pricing.tonightRate,\n          tipMenu\n        })\n      });\n      const pricingData = await pricingRes.json().catch(() => null);\n      if (!pricingRes.ok || !pricingData?.success) {\n        throw new Error(pricingData?.error?.message || pricingData?.error || pricingData?.message || 'Failed to update pricing / tips');\n      }\n\n      toast.success('Services & Rates configurations saved!');\n    } catch (err: any) {\n      toast.error(err.message || 'Failed to save Services & Rates');\n    } finally {\n      setSavingServices(false);\n    }\n  };\n\n"""
+          text = text[:start] + new_handler + text[end:]
+          text = text.replace(
+              'type="number"\n                      step="0.01"',
+              'type="number"\n                      step="any"',
+              1
+          )
+          text = text.replace(
+              'onChange={e => setPricing({ ...pricing, pricePerMinute: parseFloat(e.target.value) || 0 })}',
+              "onChange={e => {\n                        const value = Number(e.target.value);\n                        setPricing({ ...pricing, pricePerMinute: Number.isFinite(value) ? value : 0 });\n                      }}",
+              1
+          )
+          # The editor's tonight-rate input has no step today; add step="any" and preserve decimals.
+          needle = "                      type=\"number\"\n                      className=\"w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white font-mono outline-none\""
+          replacement = "                      type=\"number\"\n                      step=\"any\"\n                      className=\"w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white font-mono outline-none\""
+          if needle in text:
+              text = text.replace(needle, replacement, 1)
+          text = text.replace(
+              'onChange={e => setPricing({ ...pricing, tonightRate: parseInt(e.target.value) || 0 })}',
+              "onChange={e => {\n                        const value = Number(e.target.value);\n                        setPricing({ ...pricing, tonightRate: Number.isFinite(value) ? value : 0 });\n                      }}",
+              1
+          )
+          profile.write_text(text)
+
+          print('Pricing patch applied successfully')
+          PY
+
+      - name: Verify changed files and run focused tests
+        run: |
+          git diff --check
+          npm ci --ignore-scripts
+          npm test --workspace backend -- --runInBand provider-pricing-validation.test.ts
+          npm run build --workspace vibe
+
+      - name: Commit patched files
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          rm .github/workflows/patch-provider-pricing.yml
+          git add backend/src/middleware/providerPricingValidation.ts backend/src/routes/v1.routes.ts backend/src/controllers/providerOnboarding.controller.ts backend/src/schemas/adult.schemas.ts backend/src/tests/provider-pricing-validation.test.ts vibe/src/components/AdultZone/ProviderOnboarding.tsx vibe/src/components/AdultZone/ProviderProfile.tsx .github/workflows/patch-provider-pricing.yml
+          git commit -m 'fix: reject zero provider pricing and remove fake fallbacks'
+          git push origin HEAD:fix/provider-pricing-zero-validation-20260824
