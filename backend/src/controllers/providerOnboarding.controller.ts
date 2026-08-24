@@ -361,7 +361,7 @@ export const getOnboardingProgress = async (req: Request, res: Response) => {
       } : null,
       4: profile.pricePerMinute || profile.tonightRate || (profile.tipMenu && profile.tipMenu.length > 0) ? {
         pricing: {
-          perMinuteRate: profile.pricePerMinute || 1.99,
+          perMinuteRate: profile.pricePerMinute ?? 0,
           tonightRate: profile.tonightRate || 0,
         },
         tipMenu: profile.tipMenu || [],
@@ -529,16 +529,16 @@ export const saveOnboardingStep = async (req: Request, res: Response) => {
       if (selectedServices.includes('private_call')) {
         if (perMinuteRate === undefined || isNaN(Number(perMinuteRate))) {
           errors.perMinuteRate = 'Per-minute rate is required';
-        } else if (Number(perMinuteRate) < 0) {
-          errors.perMinuteRate = 'Minimum rate per minute is 0 diamonds';
+        } else if (!Number.isFinite(Number(perMinuteRate)) || Number(perMinuteRate) <= 0) {
+          errors.perMinuteRate = 'Per-minute rate must be greater than 0 diamonds';
         }
       }
 
       if (selectedServices.includes('hookup')) {
         if (tonightRate === undefined || isNaN(Number(tonightRate))) {
           errors.tonightRate = 'Rate for tonight is required';
-        } else if (Number(tonightRate) < 0) {
-          errors.tonightRate = 'Minimum rate for tonight is 0 diamonds';
+        } else if (!Number.isFinite(Number(tonightRate)) || Number(tonightRate) <= 0) {
+          errors.tonightRate = 'Rate for tonight must be greater than 0 diamonds';
         }
       }
 
@@ -1306,8 +1306,8 @@ export const updatePricing = async (req: Request, res: Response) => {
 
     const { perMinuteRate, tonightRate, tipMenu, videoCallPrice, audioCallPrice, privateSextPrice } = req.body;
 
-    if (perMinuteRate !== undefined && perMinuteRate < 0) {
-      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Minimum per-minute rate is 0 diamonds' } });
+    if (perMinuteRate !== undefined && (!Number.isFinite(Number(perMinuteRate)) || Number(perMinuteRate) <= 0)) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Per-minute rate must be greater than 0 diamonds' } });
     }
 
     if (!user.providerProfile) {

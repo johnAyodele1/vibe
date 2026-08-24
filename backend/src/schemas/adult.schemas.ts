@@ -41,7 +41,7 @@ export const applyAsProviderSchema = z.object({
     idVerificationDocUrl: z.string().url().optional(),
     categories: z.array(z.string()).min(1),
     contentTags: z.array(z.string()),
-    pricePerMinute: z.number().nonnegative().optional(),
+    pricePerMinute: z.number().finite().positive().optional(),
     tipMinimum: z.number().nonnegative().optional(),
   }),
 });
@@ -54,11 +54,11 @@ export const updateProviderProfileSchema = z.object({
     profilePhoto: z.string().url().optional(),
     categories: z.array(z.string()).optional(),
     contentTags: z.array(z.string()).optional(),
-    pricePerMinute: z.number().nonnegative().optional(),
+    pricePerMinute: z.number().finite().positive().optional(),
     tipMinimum: z.number().nonnegative().optional(),
-    videoCallPrice: z.number().nonnegative().optional(),
-    audioCallPrice: z.number().nonnegative().optional(),
-    privateSextPrice: z.number().nonnegative().optional(),
+    videoCallPrice: z.number().finite().positive().optional(),
+    audioCallPrice: z.number().finite().positive().optional(),
+    privateSextPrice: z.number().finite().positive().optional(),
   }),
 });
 
