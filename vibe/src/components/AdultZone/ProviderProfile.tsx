@@ -203,6 +203,8 @@ const ProviderProfile: React.FC = () => {
     }
 
     setSavingServices(true);
+    let servicesSaved = false;
+
     try {
       const serviceRes = await fetch(`${API_BASE_URL}/v1/adult/providers/me/services`, {
         method: 'PUT',
@@ -216,6 +218,7 @@ const ProviderProfile: React.FC = () => {
       if (!serviceRes.ok || !serviceData?.success) {
         throw new Error(serviceData?.error?.message || serviceData?.error || serviceData?.message || 'Failed to update services');
       }
+      servicesSaved = true;
 
       const pricingRes = await fetch(`${API_BASE_URL}/v1/adult/providers/me/pricing`, {
         method: 'PUT',
@@ -236,7 +239,12 @@ const ProviderProfile: React.FC = () => {
 
       toast.success('Services & Rates configurations saved!');
     } catch (err: any) {
-      toast.error(err.message || 'Failed to save Services & Rates');
+      const message = err.message || 'Failed to save Services & Rates';
+      if (servicesSaved) {
+        toast.error(`Services were saved, but pricing was not: ${message}. Please retry the pricing save.`);
+      } else {
+        toast.error(message);
+      }
     } finally {
       setSavingServices(false);
     }
