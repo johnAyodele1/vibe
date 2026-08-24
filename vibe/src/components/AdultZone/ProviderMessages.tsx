@@ -861,27 +861,71 @@ const ProviderMessages: React.FC = () => {
   };
 
   const handleSendGiftRequest = async () => {
-    if (!selectedGift || !selectedConv) return;
-    if (isSendingGiftRequest) return;
+    if (!selectedGift || !selectedConv || isSendingGiftRequest) return;
     setIsSendingGiftRequest(true);
+
+    const giftToRestore = selectedGift;
+    const noteToRestore = giftRequestNote;
+
+    setShowGiftRequestDialog(false);
+    setSelectedGift(null);
+    setGiftRequestNote('');
+
+    const tempId = `temp_gift_req_${Date.now()}`;
+    const optimisticMessage: Message = {
+      id: tempId,
+      conversationId: selectedConv.conversationId,
+      senderId: user?.id || (user as any)?._id || '',
+      receiverId: selectedConv.otherUser?.id,
+      content: `Requested a gift: ${giftToRestore.name}`,
+      mediaType: 'gift_request',
+      creditCost: 0,
+      isUnlocked: true,
+      isOptimistic: true,
+      isFailed: false,
+      isDeleted: false,
+      createdAt: new Date().toISOString(),
+      giftRequest: {
+        giftId: giftToRestore._id,
+        giftName: giftToRestore.name,
+        giftIconUrl: giftToRestore.iconUrl,
+        giftValue: giftToRestore.creditCost,
+        message: noteToRestore,
+        status: 'pending'
+      }
+    };
+
+    setMessages(prev => [...prev, optimisticMessage]);
+
     try {
       const res = await fetch(`${API_BASE_URL}/v1/adult/sext/conversations/${selectedConv.conversationId}/gift-request`, {
         method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify({
-          giftId: selectedGift._id,
-          message: giftRequestNote
+          giftId: giftToRestore._id,
+          message: noteToRestore
         })
       });
       const data = await res.json();
-      if (data.id) {
-        setMessages(prev => [...prev, data]);
-        setShowGiftRequestDialog(false);
-        setSelectedGift(null);
-        setGiftRequestNote('');
-        toast.success(`Requested a ${selectedGift.name}!`);
+      if (data && data.id) {
+        setMessages(prev => {
+          const filtered = prev.filter(m => m.id !== data.id);
+          return filtered.map(m => m.id === tempId ? { ...data, isOptimistic: false, conversationId: data.conversationId || selectedConv.conversationId } : m);
+        });
+        toast.success(`Requested a ${giftToRestore.name}!`);
+        fetchConversations();
+      } else {
+        setMessages(prev => prev.filter(m => m.id !== tempId));
+        setShowGiftRequestDialog(true);
+        setSelectedGift(giftToRestore);
+        setGiftRequestNote(noteToRestore);
+        toast.error(data?.error || 'Failed to request gift');
       }
     } catch (err) {
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+      setShowGiftRequestDialog(true);
+      setSelectedGift(giftToRestore);
+      setGiftRequestNote(noteToRestore);
       toast.error('Failed to request gift');
     } finally {
       setIsSendingGiftRequest(false);
