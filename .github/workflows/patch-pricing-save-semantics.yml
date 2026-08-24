@@ -1,0 +1,99 @@
+name: Patch Provider Pricing Save Semantics
+
+on:
+  push:
+    branches:
+      - fix/provider-pricing-zero-validation-20260824
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch save flow
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('vibe/src/components/AdultZone/ProviderProfile.tsx')
+          text = path.read_text()
+          pattern = re.compile(r"  const handleSaveServicesAndPricing = async \(\) => \{.*?\n  \};\n\n  const handleSaveLocation", re.S)
+          replacement = '''  const handleSaveServicesAndPricing = async () => {
+    if (services.includes('private_call') && !isValidRate(pricing.pricePerMinute)) {
+      toast.error('Per-minute rate must be greater than 0 diamonds');
+      return;
+    }
+
+    if (services.includes('hookup') && !isValidRate(pricing.tonightRate)) {
+      toast.error('Rate for tonight must be greater than 0 diamonds');
+      return;
+    }
+
+    setSavingServices(true);
+    let servicesSaved = false;
+
+    try {
+      const serviceRes = await fetch(`${API_BASE_URL}/v1/adult/providers/me/services`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ servicesOffered: services })
+      });
+      const serviceData = await serviceRes.json().catch(() => null);
+      if (!serviceRes.ok || !serviceData?.success) {
+        throw new Error(serviceData?.error?.message || serviceData?.error || serviceData?.message || 'Failed to update services');
+      }
+      servicesSaved = true;
+
+      const pricingRes = await fetch(`${API_BASE_URL}/v1/adult/providers/me/pricing`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          perMinuteRate: pricing.pricePerMinute,
+          tonightRate: pricing.tonightRate,
+          tipMenu
+        })
+      });
+      const pricingData = await pricingRes.json().catch(() => null);
+      if (!pricingRes.ok || !pricingData?.success) {
+        throw new Error(pricingData?.error?.message || pricingData?.error || pricingData?.message || 'Failed to update pricing / tips');
+      }
+
+      toast.success('Services & Rates configurations saved!');
+    } catch (err: any) {
+      const message = err.message || 'Failed to save Services & Rates';
+      if (servicesSaved) {
+        toast.error(`Services were saved, but pricing was not: ${message}. Please retry the pricing save.`);
+      } else {
+        toast.error(message);
+      }
+    } finally {
+      setSavingServices(false);
+    }
+  };
+
+  const handleSaveLocation'''
+
+          updated, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit('Could not find handleSaveServicesAndPricing block')
+          path.write_text(updated)
+          PY
+      - name: Remove temporary workflow
+        run: rm .github/workflows/patch-pricing-save-semantics.yml
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add vibe/src/components/AdultZone/ProviderProfile.tsx .github/workflows/patch-pricing-save-semantics.yml
+          git commit -m "fix: report partial provider pricing saves"
+          git push origin HEAD
