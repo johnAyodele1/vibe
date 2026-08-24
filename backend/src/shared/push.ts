@@ -138,6 +138,28 @@ export const sendPushToUser = async (userId: any, payload: any, zone = 'adult') 
             deviceId: device.deviceId,
             message: deactivationError?.message,
           });
+
+          // A legacy unique non-sparse endpoint index rejects a second
+          // document when its indexed endpoint is removed. The primary
+          // cleanup path above is still correct; this fallback makes sure
+          // the stale device is disabled even while index repair is pending.
+          if (deactivationError?.code === 11000) {
+            try {
+              await PushSubscription.findByIdAndUpdate(device._id, {
+                $set: {
+                  isActive: false,
+                  notificationsEnabled: false,
+                  deactivatedAt: new Date(),
+                },
+              });
+            } catch (fallbackError: any) {
+              console.error('[Push] Failed legacy-index fallback deactivation:', {
+                userId,
+                deviceId: device.deviceId,
+                message: fallbackError?.message,
+              });
+            }
+          }
         }
       } else {
         const currentFailCount = (device.failCount || 0) + 1;
