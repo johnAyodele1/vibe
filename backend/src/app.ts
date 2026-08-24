@@ -64,6 +64,14 @@ app.use(
 );
 
 const repairPushSubscriptionEndpointIndex = async () => {
+  // Legacy deployments may contain endpoint:null values. Remove those
+  // explicit nulls before creating the unique sparse index; sparse indexes
+  // still index an explicitly stored null value.
+  await PushSubscription.updateMany(
+    { endpoint: null },
+    { $unset: { endpoint: 1, keys: 1 } },
+  );
+
   const indexes = await PushSubscription.collection.indexes();
   const endpointIndex = indexes.find(index => index.name === 'endpoint_1');
 
