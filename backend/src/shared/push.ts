@@ -119,16 +119,26 @@ export const sendPushToUser = async (userId: any, payload: any, zone = 'adult') 
       failed++;
 
       if (err.statusCode === 410 || err.statusCode === 404 || err.statusCode === 403) {
-        await PushSubscription.findByIdAndUpdate(device._id, {
-          $set: {
-            isActive: false,
-            notificationsEnabled: false,
-            endpoint: null,
-            keys: null,
-            deactivatedAt: new Date(),
-          },
-        });
-        console.log('[Push] Device deactivated and endpoint cleared (expired token):', device.deviceId);
+        try {
+          await PushSubscription.findByIdAndUpdate(device._id, {
+            $set: {
+              isActive: false,
+              notificationsEnabled: false,
+              deactivatedAt: new Date(),
+            },
+            $unset: {
+              endpoint: 1,
+              keys: 1,
+            },
+          });
+          console.log('[Push] Device deactivated and endpoint cleared (expired token):', device.deviceId);
+        } catch (deactivationError: any) {
+          console.error('[Push] Failed to deactivate stale device:', {
+            userId,
+            deviceId: device.deviceId,
+            message: deactivationError?.message,
+          });
+        }
       } else {
         const currentFailCount = (device.failCount || 0) + 1;
         const updateFields: any = {
@@ -143,9 +153,17 @@ export const sendPushToUser = async (userId: any, payload: any, zone = 'adult') 
           console.warn('[Push] Device deactivated after 5 failures:', device.deviceId);
         }
 
-        await PushSubscription.findByIdAndUpdate(device._id, {
-          $set: updateFields
-        });
+        try {
+          await PushSubscription.findByIdAndUpdate(device._id, {
+            $set: updateFields
+          });
+        } catch (updateError: any) {
+          console.error('[Push] Failed to persist device failure state:', {
+            userId,
+            deviceId: device.deviceId,
+            message: updateError?.message,
+          });
+        }
       }
     }
   }
