@@ -8,6 +8,7 @@ import session from 'express-session';
 import dotenv from 'dotenv';
 import passport from './config/passport';
 import User from './models/User';
+import PushSubscription from './models/PushSubscription';
 
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
@@ -62,11 +63,30 @@ app.use(
   })
 );
 
+const repairPushSubscriptionEndpointIndex = async () => {
+  const indexes = await PushSubscription.collection.indexes();
+  const endpointIndex = indexes.find(index => index.name === 'endpoint_1');
+
+  if (endpointIndex) {
+    const isCorrect = endpointIndex.unique === true && endpointIndex.sparse === true;
+    if (!isCorrect) {
+      console.warn('[Push] Rebuilding legacy endpoint_1 index as unique sparse index');
+      await PushSubscription.collection.dropIndex('endpoint_1');
+    }
+  }
+
+  await PushSubscription.collection.createIndex(
+    { endpoint: 1 },
+    { unique: true, sparse: true, name: 'endpoint_1' },
+  );
+};
+
 if (process.env.NODE_ENV !== 'test') {
   const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/vibe';
   mongoose.connect(mongoUri).then(async () => {
     console.log('Connected to MongoDB');
     try {
+      await repairPushSubscriptionEndpointIndex();
       await User.updateMany({}, { isOnline: false });
       const { cleanStalePresence } = require('./socket/adultSocket');
       await cleanStalePresence();
