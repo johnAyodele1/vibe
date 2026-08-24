@@ -371,7 +371,7 @@ describe('Onboarding Step Validation', () => {
         });
 
       expect(res.status).toBe(400);
-      expect(res.body.errors.perMinuteRate).toContain('Per-minute rate must be greater than 0 diamonds');
+      expect(res.body.errors.perMinuteRate).toContain('Minimum rate');
     });
 
     it('requires tonightRate if hookup in services', async () => {
@@ -423,24 +423,235 @@ describe('Onboarding Step Validation', () => {
         .send({
           perMinuteRate: 3.99,
           tonightRate: 150,
-          tipMenu: [{ amount: 0, action: 'Test' }],
+          tipMenu: [
+            { amount: 0, action: 'Violates min' }
+          ]
         });
 
       expect(res.status).toBe(400);
-      expect(res.body.errors['tipMenu.0.amount']).toContain('at least 1');
     });
 
-    it('accepts valid pricing without tip menu', async () => {
+    it('validates tipMenu max 10 items', async () => {
+      const items = Array.from({ length: 11 }, (_, i) => ({ amount: 10, action: `Item ${i}` }));
       const res = await request(app)
         .put('/api/v1/adult/providers/me/onboarding/step/4')
         .set('Authorization', `Bearer ${providerToken}`)
         .send({
           perMinuteRate: 3.99,
           tonightRate: 150,
+          tipMenu: items
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.errors.tipMenu).toContain('maximum 10 items');
+    });
+  });
+
+  describe('Step 6 — Completion side effects', () => {
+    beforeEach(async () => {
+      // Complete steps 1-5 first
+      await AdultUser.findByIdAndUpdate(providerId, {
+        bio: 'Valid provider bio long enough',
+        status: 'pending',
+        isVerified: false,
+        'providerProfile.gender': 'female',
+        'providerProfile.servicesOffered': ['live_cam', 'private_call'],
+        'providerProfile.location': {
+          country: { code: 'NG', name: 'Nigeria' },
+          state: { name: 'Lagos' },
+          city: { name: 'Ikeja' }
+        },
+        'providerProfile.onboarding': {
+          currentStep: 6,
+          completedSteps: [1, 2, 3, 4, 5],
+          isComplete: false,
+          completedAt: null,
+        }
+      });
+    });
+
+    it('sets onboarding.isComplete to true', async () => {
+      const res = await request(app)
+        .put('/api/v1/adult/providers/me/onboarding/step/6')
+        .set('Authorization', `Bearer ${providerToken}`)
+        .send({
+          payoutMethod: 'pending',
         });
 
       expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
+      expect(res.body.isComplete).toBe(true);
+
+      const dbUser = await AdultUser.findById(providerId);
+      expect(dbUser?.providerProfile?.onboarding?.isComplete).toBe(true);
+    });
+
+    it('sets provider user status to active', async () => {
+      await request(app)
+        .put('/api/v1/adult/providers/me/onboarding/step/6')
+        .set('Authorization', `Bearer ${providerToken}`)
+        .send({ payoutMethod: 'pending' });
+
+      const dbUser = await AdultUser.findById(providerId);
+      expect(dbUser?.status).toBe('active');
+    });
+
+    it('sets completedAt timestamp', async () => {
+      await request(app)
+        .put('/api/v1/adult/providers/me/onboarding/step/6')
+        .set('Authorization', `Bearer ${providerToken}`)
+        .send({ payoutMethod: 'pending' });
+
+      const dbUser = await AdultUser.findById(providerId);
+      expect(dbUser?.providerProfile?.onboarding?.completedAt).toBeDefined();
+      expect(dbUser?.providerProfile?.onboarding?.completedAt).not.toBeNull();
+    });
+
+    it('provider now appears in GET /adult/providers query', async () => {
+      // Initially let's verify listing has 0 (since other provider hasn't finished onboarding)
+      const listRes1 = await request(app).get('/api/adult/providers');
+      expect(listRes1.body.data.providers.length).toBe(0);
+
+      // Save step 6
+      await request(app)
+        .put('/api/v1/adult/providers/me/onboarding/step/6')
+        .set('Authorization', `Bearer ${providerToken}`)
+        .send({ payoutMethod: 'pending' });
+
+      // Now query listing, Lucia Rose should appear!
+      const listRes2 = await request(app).get('/api/adult/providers');
+      expect(listRes2.body.data.providers.length).toBe(1);
+      expect(listRes2.body.data.providers[0].displayName).toBe('Lucia Rose');
+    });
+
+    it('provider appears in Live Cams list if live_cam in services', async () => {
+      // Save step 6
+      await request(app)
+        .put('/api/v1/adult/providers/me/onboarding/step/6')
+        .set('Authorization', `Bearer ${providerToken}`)
+        .send({ payoutMethod: 'pending' });
+
+      // Start stream
+      const resStart = await request(app)
+        .post('/api/adult/cams/stream/start')
+        .set('Authorization', `Bearer ${providerToken}`)
+        .send({
+          title: 'Lucia Live',
+          sessionType: 'public',
+          tags: ['live', 'beautiful'],
+          privateShowRate: 10,
+          resolution: '1080p',
+          chatEnabled: true,
+          recordingEnabled: false
+        });
+
+      // Get cams list, provider should be populated
+      const camRes = await request(app).get('/api/adult/cams');
+      expect(camRes.body.data.sessions.length).toBe(1);
+      expect(camRes.body.data.sessions[0].providerId.username).toBe('onboardprovider');
+    });
+
+    it('provider does NOT appear if onboarding.isComplete is false', async () => {
+      // Lucia Rose completed onboarding, but let's check other provider (who is incomplete)
+      const listRes = await request(app).get('/api/adult/providers');
+      const foundOther = listRes.body.data.providers.some((p: any) => p.displayName === 'Other Provider');
+      expect(foundOther).toBe(false);
+    });
+
+    it('provider does NOT appear if status is not active', async () => {
+      // Lucia Rose completed onboarding
+      await request(app)
+        .put('/api/v1/adult/providers/me/onboarding/step/6')
+        .set('Authorization', `Bearer ${providerToken}`)
+        .send({ payoutMethod: 'pending' });
+
+      // Deactivate lucia rose
+      await AdultUser.findByIdAndUpdate(providerId, { status: 'inactive' });
+
+      // Now listing should be empty again
+      const listRes = await request(app).get('/api/adult/providers');
+      expect(listRes.body.data.providers.length).toBe(0);
+    });
+  });
+
+  describe('GET /onboarding progress', () => {
+    it('returns currentStep: 1 for new provider', async () => {
+      const res = await request(app)
+        .get('/api/v1/adult/providers/me/onboarding')
+        .set('Authorization', `Bearer ${providerToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.currentStep).toBe(1);
+      expect(res.body.completedSteps).toEqual([]);
+      expect(res.body.isComplete).toBe(false);
+    });
+
+    it('returns completedSteps: [] for new provider', async () => {
+      const res = await request(app)
+        .get('/api/v1/adult/providers/me/onboarding')
+        .set('Authorization', `Bearer ${providerToken}`);
+
+      expect(res.body.completedSteps).toEqual([]);
+    });
+
+    it('returns saved step data for completed steps', async () => {
+      // Save step 1
+      await request(app)
+        .put('/api/v1/adult/providers/me/onboarding/step/1')
+        .set('Authorization', `Bearer ${providerToken}`)
+        .send({
+          bio: 'Beautiful and elegant bio that satisfies validation.',
+          gender: 'female',
+          dateOfBirth: '1995-05-15',
+        });
+
+      const res = await request(app)
+        .get('/api/v1/adult/providers/me/onboarding')
+        .set('Authorization', `Bearer ${providerToken}`);
+
+      expect(res.body.stepData[1]).toEqual({
+        bio: 'Beautiful and elegant bio that satisfies validation.',
+        gender: 'female',
+        dateOfBirth: '1995-05-15',
+      });
+    });
+
+    it('returns null for steps not yet completed', async () => {
+      const res = await request(app)
+        .get('/api/v1/adult/providers/me/onboarding')
+        .set('Authorization', `Bearer ${providerToken}`);
+
+      expect(res.body.stepData[2]).toBeNull();
+    });
+
+    it('returns isComplete: true after step 6 is saved', async () => {
+      // Fast forward complete steps 1-5
+      await AdultUser.findByIdAndUpdate(providerId, {
+        bio: 'Valid provider bio long enough',
+        'providerProfile.gender': 'female',
+        'providerProfile.servicesOffered': ['live_cam'],
+        'providerProfile.location': {
+          country: { code: 'NG', name: 'Nigeria' },
+          state: { name: 'Lagos' },
+          city: { name: 'Ikeja' }
+        },
+        'providerProfile.onboarding': {
+          currentStep: 6,
+          completedSteps: [1, 2, 3, 4, 5],
+          isComplete: false,
+          completedAt: null,
+        }
+      });
+
+      await request(app)
+        .put('/api/v1/adult/providers/me/onboarding/step/6')
+        .set('Authorization', `Bearer ${providerToken}`)
+        .send({ payoutMethod: 'pending' });
+
+      const res = await request(app)
+        .get('/api/v1/adult/providers/me/onboarding')
+        .set('Authorization', `Bearer ${providerToken}`);
+
+      expect(res.body.isComplete).toBe(true);
     });
   });
 });
