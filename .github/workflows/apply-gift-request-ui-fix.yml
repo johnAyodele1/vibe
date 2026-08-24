@@ -1,0 +1,164 @@
+name: Apply gift request UI fix
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: ${{ !contains(github.event.pull_request.head.ref, 'fix/gift-request-realtime-ui-done') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Patch gift request UI
+        shell: python
+        run: |
+          from pathlib import Path
+
+          component = Path('vibe/src/components/AdultZone/ProviderMessages.tsx')
+          text = component.read_text()
+
+          old = '''  const handleSendGiftRequest = async () => {
+    if (!selectedGift || !selectedConv) return;
+    if (isSendingGiftRequest) return;
+    setIsSendingGiftRequest(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/v1/adult/sext/conversations/${selectedConv.conversationId}/gift-request`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          giftId: selectedGift._id,
+          message: giftRequestNote
+        })
+      });
+      const data = await res.json();
+      if (data.id) {
+        setMessages(prev => [...prev, data]);
+        setShowGiftRequestDialog(false);
+        setSelectedGift(null);
+        setGiftRequestNote('');
+        toast.success(`Requested a ${selectedGift.name}!`);
+      }
+    } catch (err) {
+      toast.error('Failed to request gift');
+    } finally {
+      setIsSendingGiftRequest(false);
+    }
+  };'''
+
+          new = '''  const handleSendGiftRequest = async () => {
+    if (!selectedGift || !selectedConv || isSendingGiftRequest) return;
+
+    const gift = selectedGift;
+    const conversationId = selectedConv.conversationId;
+    const tempId = `temp_gift_request_${Date.now()}`;
+    const optimisticMessage: Message = {
+      id: tempId,
+      conversationId,
+      senderId: user?.id || (user as any)?._id || '',
+      receiverId: selectedConv.otherUser?.id,
+      content: `Requested a gift: ${gift.name}`,
+      mediaType: 'gift_request',
+      creditCost: 0,
+      isUnlocked: true,
+      giftRequest: {
+        giftId: gift._id,
+        giftName: gift.name,
+        giftIconUrl: gift.iconUrl,
+        giftValue: gift.creditCost,
+        message: giftRequestNote,
+        status: 'pending'
+      },
+      isDeleted: false,
+      createdAt: new Date().toISOString(),
+      readAt: null,
+      isOptimistic: true,
+      isFailed: false
+    };
+
+    setIsSendingGiftRequest(true);
+    setMessages(prev => [...prev, optimisticMessage]);
+    setShowGiftRequestDialog(false);
+    setSelectedGift(null);
+    setGiftRequestNote('');
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/v1/adult/sext/conversations/${conversationId}/gift-request`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          giftId: gift._id,
+          message: optimisticMessage.giftRequest?.message || ''
+        })
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.id) {
+        throw new Error(data.error || 'Failed to request gift');
+      }
+
+      setMessages(prev => prev.map(m => m.id === tempId ? {
+        ...data,
+        conversationId: data.conversationId || conversationId,
+        isOptimistic: false,
+        isFailed: false
+      } : m));
+      fetchConversations();
+      toast.success(`Requested a ${gift.name}!`);
+    } catch (err: any) {
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+      setShowGiftRequestDialog(true);
+      setSelectedGift(gift);
+      setGiftRequestNote(optimisticMessage.giftRequest?.message || '');
+      toast.error(err?.message || 'Failed to request gift');
+    } finally {
+      setIsSendingGiftRequest(false);
+    }
+  };'''
+
+          if text.count(old) != 1:
+              raise SystemExit('gift request handler: expected exactly one match')
+          component.write_text(text.replace(old, new, 1))
+
+          tests = Path('vibe/src/tests/ProviderMessages.test.tsx')
+          test_text = tests.read_text()
+          old_assert = '''    // Send Gift Request
+    fireEvent.click(screen.getByTestId('gift-request-send-btn'));
+
+    // Should create a gift request message bubble in feed
+    await waitFor(() => {
+      expect(screen.getByTestId('gift-request-message')).toBeInTheDocument();
+      expect(screen.getByText('You requested a Red Rose')).toBeInTheDocument();
+    });'''
+          new_assert = '''    // Send Gift Request
+    fireEvent.click(screen.getByTestId('gift-request-send-btn'));
+
+    // The provider UI must close immediately and the card must appear optimistically.
+    await waitFor(() => {
+      expect(screen.queryByTestId('gift-request-dialog')).not.toBeInTheDocument();
+      expect(screen.getByTestId('gift-request-message')).toBeInTheDocument();
+      expect(screen.getByText('You requested a Red Rose')).toBeInTheDocument();
+    });'''
+          if test_text.count(old_assert) != 1:
+              raise SystemExit('gift request test assertion: expected exactly one match')
+          tests.write_text(test_text.replace(old_assert, new_assert, 1))
+
+      - name: Verify diff
+        run: git diff --check
+
+      - name: Remove temporary workflow and commit
+        run: |
+          git rm .github/workflows/apply-gift-request-ui-fix.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add vibe/src/components/AdultZone/ProviderMessages.tsx vibe/src/tests/ProviderMessages.test.tsx
+          git commit -m "fix: make gift request UI realtime and optimistic"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
