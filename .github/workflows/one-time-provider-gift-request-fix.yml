@@ -248,3 +248,5 @@ jobs:
           git add vibe/src/components/AdultZone/ProviderMessages.tsx vibe/src/tests/ProviderMessages.test.tsx .github/workflows/one-time-provider-gift-request-fix.yml
           git commit -m "fix: make provider gift requests optimistic and realtime"
           git push origin HEAD:${{ github.event.pull_request.head.ref }}
+
+# trigger synchronize after PR creation
