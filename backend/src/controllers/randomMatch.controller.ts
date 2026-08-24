@@ -41,15 +41,16 @@ export const endMatchSession = async (req: Request, res: Response) => {
     }
 
     const { matchId } = req.params;
-    const match = await RandomMatch.findById(matchId);
+    // Optimization (⚡ Bolt): Update match session status atomically in 1 query roundtrip via findByIdAndUpdate with .lean()
+    const match = await RandomMatch.findByIdAndUpdate(
+      matchId,
+      { status: 'ended', endedAt: new Date() },
+      { new: true }
+    ).lean();
 
     if (!match) {
       return res.status(404).json({ success: false, error: 'Match session not found' });
     }
-
-    match.status = 'ended';
-    match.endedAt = new Date();
-    await match.save();
 
     // Notify partner that session ended
     const partnerId = match.userA.toString() === user._id.toString() ? match.userB.toString() : match.userA.toString();
@@ -72,13 +73,14 @@ export const nextStranger = async (req: Request, res: Response) => {
     }
 
     const { matchId } = req.params;
-    const match = await RandomMatch.findById(matchId);
+    // Optimization (⚡ Bolt): Update match session status atomically in 1 query roundtrip via findByIdAndUpdate with .lean()
+    const match = await RandomMatch.findByIdAndUpdate(
+      matchId,
+      { status: 'ended', endedAt: new Date() },
+      { new: true }
+    ).lean();
 
     if (match) {
-      match.status = 'ended';
-      match.endedAt = new Date();
-      await match.save();
-
       // Notify partner
       const partnerId = match.userA.toString() === user._id.toString() ? match.userB.toString() : match.userA.toString();
       const io = getIO();

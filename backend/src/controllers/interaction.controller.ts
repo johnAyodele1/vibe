@@ -249,8 +249,12 @@ export const superLike = async (req: Request, res: Response): Promise<Response> 
       });
     }
 
-    // Check if target user exists
-    const targetUser = await User.findById(targetUserId);
+    // Optimization (⚡ Bolt): Fetch targetUser (read-only with .lean()) and currentUser concurrently via Promise.all.
+    const [targetUser, currentUser] = await Promise.all([
+      User.findById(targetUserId).select('_id').lean(),
+      User.findById(req.user._id) as Promise<IUser | null>,
+    ]);
+
     if (!targetUser) {
       return res.status(404).json({
         success: false,
@@ -258,7 +262,6 @@ export const superLike = async (req: Request, res: Response): Promise<Response> 
       });
     }
 
-    const currentUser = await User.findById(req.user._id) as IUser | null;
     if (!currentUser) return res.status(404).json({ success: false, message: 'User not found' });
 
     // Check if already favourited

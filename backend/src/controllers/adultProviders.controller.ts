@@ -191,15 +191,16 @@ export const getProviders = async (req: Request, res: Response) => {
   else if (sortBy === 'newest') sort['createdAt'] = -1;
   else if (sortBy === 'popular') sort['providerProfile.viewerCount'] = -1;
 
-  // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document instantiation and model hydration overhead.
-  const providers = await AdultUser.find(query)
-    .select('providerProfile username displayName profilePhoto country createdAt')
-    .sort(sort)
-    .limit(Number(limit))
-    .skip((Number(page) - 1) * Number(limit))
-    .lean();
-
-  const total = await AdultUser.countDocuments(query);
+  // Optimization (⚡ Bolt): Execute data query (with .lean()) and count query concurrently via Promise.all to eliminate database waterfall latency.
+  const [providers, total] = await Promise.all([
+    AdultUser.find(query)
+      .select('providerProfile username displayName profilePhoto country createdAt')
+      .sort(sort)
+      .limit(Number(limit))
+      .skip((Number(page) - 1) * Number(limit))
+      .lean(),
+    AdultUser.countDocuments(query),
+  ]);
 
   res.json({ success: true, data: { providers, total, page: Number(page), pages: Math.ceil(total / Number(limit)) } });
 };
@@ -409,31 +410,31 @@ export const unlockProviderPhoto = async (req: Request, res: Response) => {
       { new: true }
     );
 
-    // Record transaction for member
-    await CreditTransaction.create({
-      userId: memberId,
-      type: 'paid_media_unlock',
-      amount: UNLOCK_COST,
-      usdAmount: 0,
-      description: `Unlocked photo index ${idx} for provider ${provider.providerProfile?.stageName || provider.displayName}`,
-      relatedUserId: provider._id,
-      status: 'completed',
-      platformFee: 0,
-      eligibleForPayout: true,
-    });
-
-    // Record transaction for provider as earning
-    await CreditTransaction.create({
-      userId: provider._id,
-      type: 'paid_media_unlock',
-      amount: UNLOCK_COST,
-      usdAmount: 0,
-      description: `Earning from photo index ${idx} unlocked by member ${updatedMember.displayName}`,
-      relatedUserId: memberId,
-      status: 'completed',
-      platformFee: 0,
-      eligibleForPayout: true,
-    });
+    // Optimization (⚡ Bolt): Record member expense transaction and provider earning transaction concurrently via Promise.all to reduce DB write latency.
+    await Promise.all([
+      CreditTransaction.create({
+        userId: memberId,
+        type: 'paid_media_unlock',
+        amount: UNLOCK_COST,
+        usdAmount: 0,
+        description: `Unlocked photo index ${idx} for provider ${provider.providerProfile?.stageName || provider.displayName}`,
+        relatedUserId: provider._id,
+        status: 'completed',
+        platformFee: 0,
+        eligibleForPayout: true,
+      }),
+      CreditTransaction.create({
+        userId: provider._id,
+        type: 'paid_media_unlock',
+        amount: UNLOCK_COST,
+        usdAmount: 0,
+        description: `Earning from photo index ${idx} unlocked by member ${updatedMember.displayName}`,
+        relatedUserId: memberId,
+        status: 'completed',
+        platformFee: 0,
+        eligibleForPayout: true,
+      }),
+    ]);
 
     // Record the unlock in Redis / Memory cache
     if (redisClient) {

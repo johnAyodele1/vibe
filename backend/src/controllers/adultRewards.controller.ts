@@ -89,7 +89,8 @@ export const completeTask = async (req: Request, res: Response) => {
     }
 
     const { taskId } = req.params;
-    const task = await RewardTask.findOne({ _id: taskId, isActive: true });
+    // Optimization (⚡ Bolt): Use .lean() on read-only queries to eliminate Mongoose document hydration overhead.
+    const task = await RewardTask.findOne({ _id: taskId, isActive: true }).lean();
     if (!task) {
       return res.status(404).json({ success: false, message: 'Active reward task not found' });
     }
@@ -99,7 +100,7 @@ export const completeTask = async (req: Request, res: Response) => {
       userId: user._id,
       taskId: task._id,
       completedAt: { $gte: todayMidnight }
-    });
+    }).lean();
 
     if (existingCompletion) {
       return res.status(409).json({ success: false, message: 'Already completed today' });
@@ -116,24 +117,24 @@ export const completeTask = async (req: Request, res: Response) => {
       return res.status(500).json({ success: false, message: 'Failed to update user wallet' });
     }
 
-    // Create UserTask record
-    await UserTask.create({
-      userId: user._id,
-      taskId: task._id,
-      completedAt: new Date(),
-      creditsAwarded: task.reward,
-      resetDate: getTomorrowMidnight(),
-    });
-
-    // Create CreditTransaction
-    await CreditTransaction.create({
-      userId: user._id,
-      type: 'reward',
-      amount: task.reward,
-      usdAmount: 0,
-      description: `Reward: ${task.title}`,
-      status: 'completed',
-    });
+    // Optimization (⚡ Bolt): Execute UserTask creation and CreditTransaction creation concurrently via Promise.all to reduce write latency.
+    await Promise.all([
+      UserTask.create({
+        userId: user._id,
+        taskId: task._id,
+        completedAt: new Date(),
+        creditsAwarded: task.reward,
+        resetDate: getTomorrowMidnight(),
+      }),
+      CreditTransaction.create({
+        userId: user._id,
+        type: 'reward',
+        amount: task.reward,
+        usdAmount: 0,
+        description: `Reward: ${task.title}`,
+        status: 'completed',
+      }),
+    ]);
 
     // Emit socket update
     socketService.emitToUser(user._id.toString(), 'wallet:updated', { balance: freshUser.credits });
@@ -172,11 +173,12 @@ export const dailyCheckin = async (req: Request, res: Response) => {
     }
 
     const todayMidnight = getTodayMidnight();
+    // Optimization (⚡ Bolt): Use .lean() on read-only queries.
     const existingCompletion = await UserTask.findOne({
       userId: user._id,
       taskId: task._id,
       completedAt: { $gte: todayMidnight }
-    });
+    }).lean();
 
     if (existingCompletion) {
       return res.status(409).json({ success: false, message: 'Already checked in today. Come back tomorrow!' });
@@ -193,24 +195,24 @@ export const dailyCheckin = async (req: Request, res: Response) => {
       return res.status(500).json({ success: false, message: 'Failed to update user wallet' });
     }
 
-    // Create UserTask record
-    await UserTask.create({
-      userId: user._id,
-      taskId: task._id,
-      completedAt: new Date(),
-      creditsAwarded: task.reward,
-      resetDate: getTomorrowMidnight(),
-    });
-
-    // Create CreditTransaction
-    await CreditTransaction.create({
-      userId: user._id,
-      type: 'reward',
-      amount: task.reward,
-      usdAmount: 0,
-      description: `Reward: ${task.title}`,
-      status: 'completed',
-    });
+    // Optimization (⚡ Bolt): Execute UserTask creation and CreditTransaction creation concurrently via Promise.all to reduce write latency.
+    await Promise.all([
+      UserTask.create({
+        userId: user._id,
+        taskId: task._id,
+        completedAt: new Date(),
+        creditsAwarded: task.reward,
+        resetDate: getTomorrowMidnight(),
+      }),
+      CreditTransaction.create({
+        userId: user._id,
+        type: 'reward',
+        amount: task.reward,
+        usdAmount: 0,
+        description: `Reward: ${task.title}`,
+        status: 'completed',
+      }),
+    ]);
 
     // Emit socket update
     socketService.emitToUser(user._id.toString(), 'wallet:updated', { balance: freshUser.credits });
