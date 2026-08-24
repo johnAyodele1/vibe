@@ -207,6 +207,7 @@ export const sendGiftRequest = async (req: Request, res: Response) => {
 
     const responsePayload = {
       id: msg._id,
+      conversationId: msg.conversationId,
       senderId: msg.senderId,
       receiverId: msg.receiverId,
       content: `Requested a gift: ${gift.name}`,
@@ -438,6 +439,7 @@ export const sendServiceRequest = async (req: Request, res: Response) => {
 
     const responsePayload = {
       id: msg._id,
+      conversationId: msg.conversationId,
       senderId: msg.senderId,
       receiverId: msg.receiverId,
       content: `🌙 Service request: 💎 ${totalAmount}`,
@@ -1552,6 +1554,7 @@ export const getMessages = async (req: Request, res: Response) => {
 
       return {
         id: m._id,
+        conversationId: m.conversationId,
         senderId: m.senderId,
         receiverId: m.receiverId,
         content: m.isDeleted ? '[Message deleted]' : decryptedContent,
@@ -2338,6 +2341,7 @@ export const requestPhoto = async (req: Request, res: Response) => {
 
     const responsePayload = {
       id: message._id,
+      conversationId: message.conversationId,
       senderId: message.senderId,
       receiverId: message.receiverId,
       content: `Requested a photo`,
@@ -2413,6 +2417,7 @@ export const fulfillPhotoRequest = async (req: Request, res: Response) => {
       ns.to(`conv:${requestMsg.conversationId}`).emit('sext:new_message', {
         message: {
           id: imageMsg._id,
+          conversationId: imageMsg.conversationId,
           senderId: imageMsg.senderId,
           receiverId: imageMsg.receiverId,
           content: isLocked ? '[Locked Photo]' : 'Fulfilled Photo Request',
@@ -2587,6 +2592,7 @@ export const fulfillServiceTonightRequest = async (req: Request, res: Response) 
       ns.to(`conv:${requestMsg.conversationId}`).emit('sext:new_message', {
         message: {
           id: invoiceMsg._id,
+          conversationId: invoiceMsg.conversationId,
           senderId: invoiceMsg.senderId,
           receiverId: invoiceMsg.receiverId,
           content: `🌙 Service request: 💎 ${totalAmount}`,
@@ -2754,6 +2760,7 @@ export const sendGift = async (req: Request, res: Response) => {
         ns.to(`conv:${conversationId}`).emit('sext:new_message', {
           message: {
             id: msg._id,
+            conversationId: msg.conversationId,
             senderId: msg.senderId,
             receiverId: msg.receiverId,
             content: `Sent you a ${gift.name}`,
