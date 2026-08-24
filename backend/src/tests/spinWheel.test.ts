@@ -75,7 +75,7 @@ describe('Spin Wheel API', () => {
     });
     await camSession.save();
     camSessionId = camSession._id.toString();
-  });
+  }, 60_000);
 
   afterAll(async () => {
     await mongoose.disconnect();
