@@ -9,6 +9,9 @@ import { compressToWebP } from '../../lib/media/compressImage';
 import { usePricingStore } from '../../lib/pricing';
 import { uploadMedia } from '../../lib/media/uploadMedia';
 
+const isValidRate = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value) && value > 0;
+
 interface LocationValue {
   country?: { code: string; name: string };
   state?: { code: string; name: string };
@@ -163,8 +166,8 @@ const ProviderOnboarding: React.FC = () => {
             const s4 = data.stepData[4];
             setPricing(prev => ({
               ...prev,
-              pricePerMinute: s4.pricing?.perMinuteRate || 5,
-              tonightRate: s4.pricing?.tonightRate || 300,
+              pricePerMinute: s4.pricing?.perMinuteRate ?? 0,
+              tonightRate: s4.pricing?.tonightRate ?? 0,
             }));
             setTipMenu(s4.tipMenu || []);
           }
@@ -363,13 +366,13 @@ const ProviderOnboarding: React.FC = () => {
       }
 
       else if (step === 4) {
-        if (services.includes('private_call') && (pricing.pricePerMinute === undefined || pricing.pricePerMinute < 0)) {
-          toast.error('Per-minute rate is required');
+        if (services.includes('private_call') && !isValidRate(pricing.pricePerMinute)) {
+          toast.error('Per-minute rate must be greater than 0 diamonds');
           setSaving(false);
           return;
         }
-        if (services.includes('hookup') && (pricing.tonightRate === undefined || pricing.tonightRate < 0)) {
-          toast.error('Rate for tonight is required');
+        if (services.includes('hookup') && !isValidRate(pricing.tonightRate)) {
+          toast.error('Rate for tonight must be greater than 0 diamonds');
           setSaving(false);
           return;
         }
@@ -859,10 +862,13 @@ const ProviderOnboarding: React.FC = () => {
                     <span className="text-2xl font-mono text-[var(--az-accent-gold)] font-bold">💎</span>
                     <input
                       type="number"
-                      min="5"
+                      step="any"
                       className="bg-black border border-[var(--az-border)] rounded-xl px-4 py-3 text-white font-mono outline-none text-xl w-32"
                       value={pricing.pricePerMinute}
-                      onChange={e => setPricing({ ...pricing, pricePerMinute: parseFloat(e.target.value) || 0 })}
+                      onChange={e => {
+                        const value = Number(e.target.value);
+                        setPricing({ ...pricing, pricePerMinute: Number.isFinite(value) ? value : 0 });
+                      }}
                     />
                     <div className="flex flex-col">
                       <span className="text-xs text-[var(--az-text-muted)]">Suggested range: 💎 5 – 50 / min</span>
@@ -881,9 +887,13 @@ const ProviderOnboarding: React.FC = () => {
                     <span className="text-2xl font-mono text-[var(--az-accent-gold)] font-bold">💎</span>
                     <input
                       type="number"
+                      step="any"
                       className="bg-black border border-[var(--az-border)] rounded-xl px-4 py-3 text-white font-mono outline-none text-xl w-32"
                       value={pricing.tonightRate}
-                      onChange={e => setPricing({ ...pricing, tonightRate: parseInt(e.target.value) || 0 })}
+                      onChange={e => {
+                        const value = Number(e.target.value);
+                        setPricing({ ...pricing, tonightRate: Number.isFinite(value) ? value : 0 });
+                      }}
                     />
                     <div className="flex flex-col">
                       <span className="text-xs text-[var(--az-text-muted)]">Fixed premium flat-fee for tonight arrange requests. (Suggested: 300+ diamonds)</span>

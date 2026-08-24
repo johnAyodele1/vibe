@@ -4,6 +4,9 @@ import { API_BASE_URL } from '../../config';
 import LocationSelect from './LocationSelect';
 import { toast } from 'sonner';
 
+const isValidRate = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value) && value > 0;
+
 const ProviderProfile: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -50,8 +53,8 @@ const ProviderProfile: React.FC = () => {
 
   const [services, setServices] = useState<string[]>(['live_cam', 'private_call']);
   const [pricing, setPricing] = useState({
-    pricePerMinute: 3.99,
-    tonightRate: 150,
+    pricePerMinute: 0,
+    tonightRate: 0,
   });
 
   const [tipMenu, setTipMenu] = useState<{ amount: number; action: string }[]>([
@@ -100,8 +103,8 @@ const ProviderProfile: React.FC = () => {
             setServices(profile.servicesOffered);
           }
           setPricing({
-            pricePerMinute: profile.pricePerMinute || 3.99,
-            tonightRate: profile.tonightRate || 150
+            pricePerMinute: profile.pricePerMinute ?? 0,
+            tonightRate: profile.tonightRate ?? 0
           });
           if (profile.tipMenu && profile.tipMenu.length > 0) {
             setTipMenu(profile.tipMenu);
@@ -189,43 +192,51 @@ const ProviderProfile: React.FC = () => {
   };
 
   const handleSaveServicesAndPricing = async () => {
+    if (services.includes('private_call') && !isValidRate(pricing.pricePerMinute)) {
+      toast.error('Per-minute rate must be greater than 0 diamonds');
+      return;
+    }
+
+    if (services.includes('hookup') && !isValidRate(pricing.tonightRate)) {
+      toast.error('Rate for tonight must be greater than 0 diamonds');
+      return;
+    }
+
     setSavingServices(true);
     try {
-      try {
-        // update services Offered
-        const resSrv = await fetch(`${API_BASE_URL}/v1/adult/providers/me/services`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({ servicesOffered: services })
-        });
-        if (!resSrv.ok) throw new Error('Failed to update services');
+      const serviceRes = await fetch(`${API_BASE_URL}/v1/adult/providers/me/services`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ servicesOffered: services })
+      });
+      const serviceData = await serviceRes.json().catch(() => null);
+      if (!serviceRes.ok || !serviceData?.success) {
+        throw new Error(serviceData?.error?.message || serviceData?.error || serviceData?.message || 'Failed to update services');
+      }
 
-        // update rates & tips (backend expects perMinuteRate, NOT pricePerMinute)
-        const resPrice = await fetch(`${API_BASE_URL}/v1/adult/providers/me/pricing`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            perMinuteRate: pricing.pricePerMinute,
-            tonightRate: pricing.tonightRate,
-            tipMenu
-          })
-        });
-        if (!resPrice.ok) throw new Error('Failed to update pricing / tips');
-      } catch (xhrErr) {
-        console.warn('Profile services/pricing fallback active:', xhrErr);
-        localStorage.setItem('provider_services_details', JSON.stringify(services));
-        localStorage.setItem('provider_pricing_details', JSON.stringify({ pricing, tipMenu }));
+      const pricingRes = await fetch(`${API_BASE_URL}/v1/adult/providers/me/pricing`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          perMinuteRate: pricing.pricePerMinute,
+          tonightRate: pricing.tonightRate,
+          tipMenu
+        })
+      });
+      const pricingData = await pricingRes.json().catch(() => null);
+      if (!pricingRes.ok || !pricingData?.success) {
+        throw new Error(pricingData?.error?.message || pricingData?.error || pricingData?.message || 'Failed to update pricing / tips');
       }
 
       toast.success('Services & Rates configurations saved!');
     } catch (err: any) {
-      toast.error(err.message);
+      toast.error(err.message || 'Failed to save Services & Rates');
     } finally {
       setSavingServices(false);
     }
@@ -390,10 +401,13 @@ const ProviderProfile: React.FC = () => {
                     <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">Rate per Private Minute (💎)</label>
                     <input
                       type="number"
-                      step="0.01"
+                      step="any"
                       className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white font-mono outline-none"
                       value={pricing.pricePerMinute}
-                      onChange={e => setPricing({ ...pricing, pricePerMinute: parseFloat(e.target.value) || 0 })}
+                      onChange={e => {
+                        const value = Number(e.target.value);
+                        setPricing({ ...pricing, pricePerMinute: Number.isFinite(value) ? value : 0 });
+                      }}
                     />
                   </div>
                 )}
@@ -402,9 +416,13 @@ const ProviderProfile: React.FC = () => {
                     <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">Rate for Tonight Arrangement (💎)</label>
                     <input
                       type="number"
+                      step="any"
                       className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white font-mono outline-none"
                       value={pricing.tonightRate}
-                      onChange={e => setPricing({ ...pricing, tonightRate: parseInt(e.target.value) || 0 })}
+                      onChange={e => {
+                        const value = Number(e.target.value);
+                        setPricing({ ...pricing, tonightRate: Number.isFinite(value) ? value : 0 });
+                      }}
                     />
                   </div>
                 )}

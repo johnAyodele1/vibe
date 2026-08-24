@@ -18,6 +18,7 @@ import { getProviderWheel, updateProviderWheel, spinProviderWheel, getProviderWh
 import { getZegoToken } from '../controllers/zego.controller';
 import { joinMatchQueue, leaveMatchQueue, endMatchSession, nextStranger } from '../controllers/randomMatch.controller';
 import { trackDailyActive } from '../middleware/trackDailyActive';
+import { validateProviderPricing } from '../middleware/providerPricingValidation';
 
 const router = express.Router();
 router.use(trackDailyActive);
@@ -108,7 +109,7 @@ router.get('/adult/rewards/tasks', verifyAdultJWT, getUserTasks);
 router.post('/adult/rewards/tasks/:taskId/complete', verifyAdultJWT, completeTask);
 router.post('/adult/rewards/checkin', verifyAdultJWT, dailyCheckin);
 router.get('/adult/providers/me/onboarding', verifyAdultJWT, getOnboardingProgress);
-router.put('/adult/providers/me/onboarding/step/:stepNumber', verifyAdultJWT, saveOnboardingStep);
+router.put('/adult/providers/me/onboarding/step/:stepNumber', verifyAdultJWT, validateProviderPricing, saveOnboardingStep);
 router.get('/adult/providers/me/dashboard', verifyAdultJWT, getProviderDashboard);
 router.get('/adult/providers/me/earnings', verifyAdultJWT, getProviderEarnings);
 router.get('/adult/providers/me/payout/eligible', verifyAdultJWT, getEligiblePayout);
@@ -120,7 +121,7 @@ router.get('/adult/providers/me/wheel/stats', verifyAdultJWT, getProviderWheelSt
 router.put('/adult/providers/me/wheel', verifyAdultJWT, updateProviderWheel);
 router.put('/adult/providers/me/profile', verifyAdultJWT, updateProfile);
 router.put('/adult/providers/me/services', verifyAdultJWT, updateServices);
-router.put('/adult/providers/me/pricing', verifyAdultJWT, updatePricing);
+router.put('/adult/providers/me/pricing', verifyAdultJWT, validateProviderPricing, updatePricing);
 router.put('/adult/providers/me/location', verifyAdultJWT, updateLocation);
 router.put('/adult/providers/me/payout', verifyAdultJWT, updatePayout);
 router.put('/adult/providers/me/photos', verifyAdultJWT, updatePhotos);
