@@ -874,9 +874,17 @@ export const requestPayout = async (req: Request, res: Response) => {
     }
 
     // 1. Calculate pending credits
-    const transactions = await CreditTransaction.find({ userId: user._id, status: 'completed' });
+    // ⚡ OPTIMIZATION (Bolt): Filter by type: 'payout' at database level and use .select('amount') and .lean()
+    // to avoid fetching and hydrating all historical user transactions into Node.js memory.
+    const payoutTxs = await CreditTransaction.find({
+      userId: user._id,
+      type: 'payout',
+      status: 'completed'
+    })
+      .select('amount')
+      .lean();
+
     const totalEarned = user.providerProfile?.totalEarnings || 0;
-    const payoutTxs = transactions.filter(tx => tx.type === 'payout');
     const paidOutCredits = payoutTxs.reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
     const pendingCredits = Math.max(0, totalEarned - paidOutCredits);
 
@@ -990,12 +998,33 @@ export const getProviderDashboard = async (req: Request, res: Response) => {
 
     const minDate = new Date(Math.min(startOfToday.getTime(), startOfWeek.getTime(), startOfMonth.getTime()));
 
-    const txs = await CreditTransaction.find({
-      userId: user._id,
-      type: { $in: PROVIDER_EARNING_TYPES },
-      status: 'completed',
-      createdAt: { $gte: minDate }
-    });
+    // ⚡ OPTIMIZATION (Bolt): Execute independent initial queries concurrently via Promise.all
+    // to eliminate database waterfall latency, and append .select('amount createdAt').lean()
+    // to CreditTransaction query to eliminate Mongoose document instantiation and hydration overhead.
+    const [txs, unreadMessagesCount, recentSessions, recentDbMessages] = await Promise.all([
+      CreditTransaction.find({
+        userId: user._id,
+        type: { $in: PROVIDER_EARNING_TYPES },
+        status: 'completed',
+        createdAt: { $gte: minDate }
+      })
+        .select('amount createdAt')
+        .lean(),
+      AdultMessage.countDocuments({
+        receiverId: user._id,
+        isRead: false
+      }),
+      CamSession.find({ providerId: user._id })
+        .sort({ startedAt: -1 })
+        .limit(5)
+        .lean(),
+      AdultMessage.find({
+        $or: [{ senderId: user._id }, { receiverId: user._id }]
+      })
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .lean()
+    ]);
 
     let todayEarnings = 0;
     let weekEarnings = 0;
@@ -1013,18 +1042,6 @@ export const getProviderDashboard = async (req: Request, res: Response) => {
         monthEarnings += tx.amount;
       }
     });
-
-    // 2. Fetch real unread messages count
-    const unreadMessagesCount = await AdultMessage.countDocuments({
-      receiverId: user._id,
-      isRead: false
-    });
-
-    // 3. Fetch real recent sessions from CamSession using .lean()
-    const recentSessions = await CamSession.find({ providerId: user._id })
-      .sort({ startedAt: -1 })
-      .limit(5)
-      .lean();
 
     const formattedSessions = recentSessions.map((session: any) => {
       let dateLabel = 'Recent Show';
@@ -1063,16 +1080,6 @@ export const getProviderDashboard = async (req: Request, res: Response) => {
         peakViewers: session.peakViewerCount || 0
       };
     });
-
-    // 4. Fetch real recent messages
-    // ⚡ OPTIMIZATION: Eliminate N+1 database queries by batching user profile lookups
-    // and using .lean() for unhydrated read queries.
-    const recentDbMessages = await AdultMessage.find({
-      $or: [{ senderId: user._id }, { receiverId: user._id }]
-    })
-    .sort({ createdAt: -1 })
-    .limit(5)
-    .lean();
 
     const otherUserIds = [...new Set(
       recentDbMessages
