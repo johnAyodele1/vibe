@@ -63,8 +63,18 @@ export const sendTestPush = async (req: Request, res: Response) => {
       } catch (err: any) {
         results.push({ endpoint: sub.endpoint.slice(0, 60), success: false, statusCode: err.statusCode, reason: err.statusCode === 410 ? 'Subscription expired — device was uninstalled or PWA removed' : err.statusCode === 404 ? 'Endpoint not found' : err.message });
         if (err.statusCode === 410 || err.statusCode === 404) {
-          await PushSubscription.findOneAndUpdate({ _id: sub._id }, { $set: { isActive: false, notificationsEnabled: false, endpoint: null, keys: null, deactivatedAt: new Date(), pushHealthStatus: 'unhealthy' } });
-        } else if (err.statusCode === 403) await PushSubscription.deleteOne({ _id: sub._id });
+          try {
+            await PushSubscription.findOneAndUpdate({ _id: sub._id }, { $set: { isActive: false, notificationsEnabled: false, deactivatedAt: new Date(), pushHealthStatus: 'unhealthy' }, $unset: { endpoint: 1, keys: 1 } });
+          } catch (cleanErr: any) {
+            console.error('[Push][Test] Cleanup failed safely:', cleanErr.message);
+          }
+        } else if (err.statusCode === 403) {
+          try {
+            await PushSubscription.deleteOne({ _id: sub._id });
+          } catch (cleanErr: any) {
+            console.error('[Push][Test] Delete sub failed safely:', cleanErr.message);
+          }
+        }
       }
     }
     return res.json({ results, summary: { sent: results.filter(r => r.success).length, failed: results.filter(r => !r.success).length, stale: results.filter(r => r.statusCode === 410).length } });
