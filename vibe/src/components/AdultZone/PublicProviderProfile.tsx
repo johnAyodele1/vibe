@@ -98,15 +98,27 @@ export const PublicProviderProfile: React.FC = () => {
 
   const activePhoto = provider.photos?.[activePhotoIndex] || { url: provider.avatarUrl, isExplicit: false };
   const responseBadge = getResponseBadge(provider.effectiveResponseMinutes);
-  const videoPreviewUrls = Array.isArray(provider.videoPreviewUrls)
-    ? provider.videoPreviewUrls.filter((url: unknown): url is string => typeof url === 'string' && url.trim().length > 0)
-    : typeof provider.videoPreviewUrl === 'string' && provider.videoPreviewUrl.trim().length > 0 ? [provider.videoPreviewUrl] : [];
+
+  // The onboarding/profile editor stores up to two preview URLs in the legacy
+  // videoPreview field as a comma-separated string. Treat both that format and
+  // the newer array response as a list; passing the combined string to <video>
+  // makes the browser request an invalid media URL and produces a blank preview.
+  const rawVideoPreview = provider.videoPreviewUrls ?? provider.videoPreviewUrl;
+  const videoPreviewUrls = Array.isArray(rawVideoPreview)
+    ? rawVideoPreview.filter((url: unknown): url is string => typeof url === 'string' && url.trim().length > 0)
+    : typeof rawVideoPreview === 'string'
+      ? rawVideoPreview.split(',').map((url: string) => url.trim()).filter(Boolean)
+      : [];
   const safeVideoIndex = Math.min(activeVideoIndex, Math.max(videoPreviewUrls.length - 1, 0));
   const activeVideoUrl = videoPreviewUrls[safeVideoIndex];
 
   const toggleVideoPlayback = (video: HTMLVideoElement) => {
-    if (video.paused) video.play().then(() => setIsVideoPlaying(true)).catch((error) => console.error('Unable to play provider preview video:', error));
-    else { video.pause(); setIsVideoPlaying(false); }
+    if (video.paused) {
+      video.play().then(() => setIsVideoPlaying(true)).catch((error) => console.error('Unable to play provider preview video:', error));
+    } else {
+      video.pause();
+      setIsVideoPlaying(false);
+    }
   };
 
   const changeVideo = (direction: -1 | 1) => {
