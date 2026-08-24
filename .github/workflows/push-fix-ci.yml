@@ -35,7 +35,7 @@ jobs:
     if (!selectedGift || !selectedConv) return;
     if (isSendingGiftRequest) return;
     setIsSendingGiftRequest(true);
-    try {
+    try:
       const res = await fetch(`${API_BASE_URL}/v1/adult/sext/conversations/${selectedConv.conversationId}/gift-request`, {
         method: 'POST',
         headers: getHeaders(),
@@ -234,3 +234,5 @@ jobs:
           git diff --cached --check
           git commit -m "fix: make provider gift requests optimistic and realtime"
           git push origin HEAD:fix/provider-gift-request-realtime
+
+# trigger provider gift fix runner
