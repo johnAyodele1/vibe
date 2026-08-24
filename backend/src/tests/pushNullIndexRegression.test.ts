@@ -3,7 +3,6 @@ import { MongoMemoryServer } from 'mongodb-memory-server';
 import AdultUser from '../models/AdultUser';
 import PushSubscription from '../models/PushSubscription';
 import { sendPushToUser } from '../shared/push';
-import webpush from 'web-push';
 
 let sendNotificationMock = jest.fn();
 jest.mock('web-push', () => ({
@@ -94,13 +93,11 @@ describe('Push subscription endpoint index regression', () => {
     const devices = await PushSubscription.find({ userId }).sort({ deviceId: 1 });
     expect(devices).toHaveLength(2);
     expect(devices.every(device => device.isActive === false && device.notificationsEnabled === false)).toBe(true);
+    expect(devices.every(device => device.endpoint == null)).toBe(true);
 
     const endpointIndex = (await PushSubscription.collection.indexes()).find(index => index.name === 'endpoint_1');
     expect(endpointIndex?.unique).toBe(true);
     expect(endpointIndex?.sparse).not.toBe(true);
-
-    const endpointBearingDevices = devices.filter(device => !!device.endpoint);
-    expect(endpointBearingDevices).toHaveLength(1);
   });
 
   afterEach(async () => {
