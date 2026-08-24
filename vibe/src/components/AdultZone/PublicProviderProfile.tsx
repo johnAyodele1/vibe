@@ -244,12 +244,14 @@ export const PublicProviderProfile: React.FC = () => {
                   playsInline
                   loop
                   onClick={(e) => toggleVideoPlayback(e.currentTarget)}
-                  onMouseEnter={(e) => {
+                  onPointerEnter={(e) => {
+                    if (e.pointerType !== 'mouse') return;
                     e.currentTarget.play()
                       .then(() => setIsVideoPlaying(true))
                       .catch((error) => console.error('Unable to play provider preview video:', error));
                   }}
-                  onMouseLeave={(e) => {
+                  onPointerLeave={(e) => {
+                    if (e.pointerType !== 'mouse') return;
                     e.currentTarget.pause();
                     e.currentTarget.currentTime = 0;
                     setIsVideoPlaying(false);
@@ -260,7 +262,7 @@ export const PublicProviderProfile: React.FC = () => {
                   aria-label={isVideoPlaying ? 'Pause video preview' : 'Play video preview'}
                   onClick={(e) => {
                     e.stopPropagation();
-                    const video = e.currentTarget.parentElement?.querySelector('video');
+                    const video = e.currentTarget.parentElement?.querySelector('video') as HTMLVideoElement | null;
                     if (video) toggleVideoPlayback(video);
                   }}
                   className={`absolute inset-0 flex items-center justify-center bg-black/30 transition-opacity ${isVideoPlaying ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
