@@ -60,96 +60,103 @@ export const sendPushToUser = async (userId: any, payload: any, zone = 'adult') 
   console.log('[Push] Fan-out:', { userId, type: payload.type });
 
   try {
-    await ensureVapidKeys();
-  } catch (err: any) {
-    console.error('[Push] VAPID initialization failed in sendPushToUser:', err.message);
-  }
-
-  // Query: Find ALL active, enabled registrations for the user (NOT scoped to deviceId)
-  const devices = await PushSubscription.find({
-    userId,
-    isActive:             true,
-    notificationsEnabled: true,
-    endpoint:             { $exists: true, $ne: null }
-  });
-
-  if (!devices.length) {
-    console.log('[Push] No active devices:', { userId });
-    return { sent: 0, failed: 0, reason: 'no_subscriptions' };
-  }
-
-  console.log('[Push] Devices to notify:', {
-    userId,
-    count:     devices.length,
-    platforms: devices.map(d => d.platform),
-  });
-
-  let sent = 0, failed = 0;
-  const payloadStr = JSON.stringify(payload);
-
-  for (const device of devices) {
-    if (!device.endpoint || !device.keys?.p256dh || !device.keys?.auth) {
-      continue;
-    }
     try {
-      await webpush.sendNotification(
-        {
-          endpoint: device.endpoint,
-          keys:     { p256dh: device.keys.p256dh, auth: device.keys.auth }
-        },
-        payloadStr,
-        {
-          TTL: 86400, // 24 hours
-          urgency: 'normal'
-        }
-      );
-
-      await PushSubscription.findByIdAndUpdate(device._id, {
-        $set: { lastSeenAt: new Date(), failCount: 0, lastUsed: new Date() },
-      });
-      console.log('[Push] ✅ Delivered:', { userId, platform: device.platform });
-      sent++;
+      await ensureVapidKeys();
     } catch (err: any) {
-      console.error('[Push] ❌ Failed:', {
-        userId,
-        platform:   device.platform,
-        statusCode: err.statusCode,
-        endpoint:   device.endpoint?.slice(0, 50),
-      });
-      failed++;
+      console.error('[Push] VAPID initialization failed in sendPushToUser:', err.message);
+    }
 
-      if (err.statusCode === 410 || err.statusCode === 404 || err.statusCode === 403) {
-        await PushSubscription.findByIdAndUpdate(device._id, {
-          $set: {
-            isActive: false,
-            notificationsEnabled: false,
-            endpoint: null,
-            keys: null,
-            deactivatedAt: new Date(),
+    // Query: Find ALL active, enabled registrations for the user (NOT scoped to deviceId)
+    const devices = await PushSubscription.find({
+      userId,
+      isActive:             true,
+      notificationsEnabled: true,
+      endpoint:             { $exists: true, $ne: null }
+    });
+
+    if (!devices.length) {
+      console.log('[Push] No active devices:', { userId });
+      return { sent: 0, failed: 0, reason: 'no_subscriptions' };
+    }
+
+    console.log('[Push] Devices to notify:', {
+      userId,
+      count:     devices.length,
+      platforms: devices.map(d => d.platform),
+    });
+
+    let sent = 0, failed = 0;
+    const payloadStr = JSON.stringify(payload);
+
+    for (const device of devices) {
+      if (!device.endpoint || !device.keys?.p256dh || !device.keys?.auth) {
+        continue;
+      }
+      try {
+        await webpush.sendNotification(
+          {
+            endpoint: device.endpoint,
+            keys:     { p256dh: device.keys.p256dh, auth: device.keys.auth }
           },
-        });
-        console.log('[Push] Device deactivated and endpoint cleared (expired token):', device.deviceId);
-      } else {
-        const currentFailCount = (device.failCount || 0) + 1;
-        const updateFields: any = {
-          failCount: currentFailCount,
-          lastFailedAt: new Date()
-        };
-
-        if (currentFailCount >= 5) {
-          updateFields.isActive = false;
-          updateFields.notificationsEnabled = false;
-          updateFields.deactivatedAt = new Date();
-          console.warn('[Push] Device deactivated after 5 failures:', device.deviceId);
-        }
+          payloadStr,
+          {
+            TTL: 86400, // 24 hours
+            urgency: 'normal'
+          }
+        );
 
         await PushSubscription.findByIdAndUpdate(device._id, {
-          $set: updateFields
+          $set: { lastSeenAt: new Date(), failCount: 0, lastUsed: new Date() },
         });
+        console.log('[Push] ✅ Delivered:', { userId, platform: device.platform });
+        sent++;
+      } catch (err: any) {
+        console.error('[Push] ❌ Failed:', {
+          userId,
+          platform:   device.platform,
+          statusCode: err.statusCode,
+          endpoint:   device.endpoint?.slice(0, 50),
+        });
+        failed++;
+
+        if (err.statusCode === 410 || err.statusCode === 404 || err.statusCode === 403) {
+          await PushSubscription.findByIdAndUpdate(device._id, {
+            $set: {
+              isActive: false,
+              notificationsEnabled: false,
+              endpoint: null,
+              keys: null,
+              deactivatedAt: new Date(),
+            },
+          });
+          console.log('[Push] Device deactivated and endpoint cleared (expired token):', device.deviceId);
+        } else {
+          const currentFailCount = (device.failCount || 0) + 1;
+          const updateFields: any = {
+            failCount: currentFailCount,
+            lastFailedAt: new Date()
+          };
+
+          if (currentFailCount >= 5) {
+            updateFields.isActive = false;
+            updateFields.notificationsEnabled = false;
+            updateFields.deactivatedAt = new Date();
+            console.warn('[Push] Device deactivated after 5 failures:', device.deviceId);
+          }
+
+          await PushSubscription.findByIdAndUpdate(device._id, {
+            $set: updateFields
+          });
+        }
       }
     }
-  }
 
-  console.log('[Push] Complete:', { userId, sent, failed });
-  return { sent, failed };
+    console.log('[Push] Complete:', { userId, sent, failed });
+    return { sent, failed };
+  } catch (err) {
+    // Push notifications are a best-effort side effect. A push provider/database
+    // failure must never turn a successfully persisted application action into a 5xx.
+    console.error('[Push] Fan-out failed (non-fatal):', err);
+    return { sent: 0, failed: 1, reason: 'push_unavailable' };
+  }
 };
