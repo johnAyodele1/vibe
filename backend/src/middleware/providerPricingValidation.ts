@@ -20,7 +20,7 @@ export const validateProviderPricing = (req: Request, res: Response, next: NextF
     if (req.body?.[field] === undefined) continue;
 
     if (!isValidPositiveRate(req.body[field])) {
-      const message = `${label} must be greater than 0 diamonds`;
+      const message = `Minimum rate: ${label.toLowerCase()} must be greater than 0 diamonds`;
 
       if (isOnboardingStep4) {
         return res.status(400).json({
