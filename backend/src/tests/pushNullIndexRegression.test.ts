@@ -93,11 +93,17 @@ describe('Push subscription endpoint index regression', () => {
     const devices = await PushSubscription.find({ userId }).sort({ deviceId: 1 });
     expect(devices).toHaveLength(2);
     expect(devices.every(device => device.isActive === false && device.notificationsEnabled === false)).toBe(true);
-    expect(devices.every(device => device.endpoint == null)).toBe(true);
 
     const endpointIndex = (await PushSubscription.collection.indexes()).find(index => index.name === 'endpoint_1');
     expect(endpointIndex?.unique).toBe(true);
     expect(endpointIndex?.sparse).not.toBe(true);
+
+    // With the legacy non-sparse unique index, the first stale device can
+    // remove its endpoint. The second cannot remove its endpoint because the
+    // index permits only one missing/null indexed value. The fallback must
+    // still disable the device without reintroducing endpoint:null.
+    const endpointBearingDevices = devices.filter(device => !!device.endpoint);
+    expect(endpointBearingDevices).toHaveLength(1);
   });
 
   afterEach(async () => {
