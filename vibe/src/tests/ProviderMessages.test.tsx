@@ -256,11 +256,61 @@ describe('ProviderMessages Frontend Component', () => {
     // Send Gift Request
     fireEvent.click(screen.getByTestId('gift-request-send-btn'));
 
-    // Should create a gift request message bubble in feed
+    // Optimistic UI: Dialog must close immediately!
+    expect(screen.queryByTestId('gift-request-dialog')).not.toBeInTheDocument();
+
+    // Optimistic UI: Should immediately create optimistic gift request message bubble in feed!
+    expect(screen.getByTestId('gift-request-message')).toBeInTheDocument();
+    expect(screen.getByText('You requested a Red Rose')).toBeInTheDocument();
+
+    // Eventually API finishes and persists the real message
     await waitFor(() => {
       expect(screen.getByTestId('gift-request-message')).toBeInTheDocument();
-      expect(screen.getByText('You requested a Red Rose')).toBeInTheDocument();
     });
+  });
+
+  it('handles gift request API failure by rolling back optimistic UI, re-opening dialog with restored input, and displaying error', async () => {
+    // Override MSW handler to return 500 error for gift request
+    server.use(
+      http.post('**/v1/adult/sext/conversations/conv-123/gift-request', () => {
+        return HttpResponse.json({ error: 'Failed to request gift' }, { status: 500 });
+      })
+    );
+
+    render(<ProviderMessages />);
+
+    await waitFor(() => {
+      expect(screen.getByText('BigSpender')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('BigSpender'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('gift-request-btn')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('gift-request-btn'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('gift-request-dialog')).toBeInTheDocument();
+      expect(screen.getByText('Red Rose')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Red Rose'));
+    fireEvent.change(screen.getByPlaceholderText('Add a personal note...'), { target: { value: 'Spicy note!' } });
+
+    fireEvent.click(screen.getByTestId('gift-request-send-btn'));
+
+    // Optimistic UI immediately closes dialog and shows card
+    expect(screen.queryByTestId('gift-request-dialog')).not.toBeInTheDocument();
+    expect(screen.getByTestId('gift-request-message')).toBeInTheDocument();
+
+    // When API fails, card should be removed and dialog re-opened with restored input
+    await waitFor(() => {
+      expect(screen.getByTestId('gift-request-dialog')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTestId('gift-request-message')).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue('Spicy note!')).toBeInTheDocument();
   });
 
   it('opens Service Request Dialog, pre-fills tonightRate and is readonly, adds extra charges, totals update live, and sends request', async () => {
