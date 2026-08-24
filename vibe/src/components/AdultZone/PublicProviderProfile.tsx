@@ -25,6 +25,7 @@ export const PublicProviderProfile: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [isStartingConversation, setIsStartingConversation] = useState(false);
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -183,6 +184,17 @@ export const PublicProviderProfile: React.FC = () => {
   const activePhoto = provider.photos?.[activePhotoIndex] || { url: provider.avatarUrl, isExplicit: false };
   const responseBadge = getResponseBadge(provider.effectiveResponseMinutes);
 
+  const toggleVideoPlayback = (video: HTMLVideoElement) => {
+    if (video.paused) {
+      video.play()
+        .then(() => setIsVideoPlaying(true))
+        .catch((error) => console.error('Unable to play provider preview video:', error));
+    } else {
+      video.pause();
+      setIsVideoPlaying(false);
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 pb-32 md:pb-16 text-[var(--az-text-primary)]">
       <button
@@ -222,24 +234,41 @@ export const PublicProviderProfile: React.FC = () => {
           {provider.videoPreviewUrl && (
             <div className="mt-8 bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-2xl p-4">
               <h4 className="text-xs uppercase tracking-widest font-bold text-[var(--az-text-secondary)] mb-3 flex items-center gap-2">
-                🎥 Video Preview (Hover to Play)
+                🎥 Video Preview (Tap / Hover to Play)
               </h4>
               <div className="relative aspect-video rounded-xl overflow-hidden bg-black group border border-[var(--az-border)]">
                 <video
                   src={provider.videoPreviewUrl}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-cover cursor-pointer"
                   muted
                   playsInline
                   loop
-                  onMouseEnter={(e) => e.currentTarget.play()}
+                  onClick={(e) => toggleVideoPlayback(e.currentTarget)}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.play()
+                      .then(() => setIsVideoPlaying(true))
+                      .catch((error) => console.error('Unable to play provider preview video:', error));
+                  }}
                   onMouseLeave={(e) => {
                     e.currentTarget.pause();
                     e.currentTarget.currentTime = 0;
+                    setIsVideoPlaying(false);
                   }}
                 />
-                <div className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none group-hover:opacity-0 transition-opacity">
-                  <span className="text-3xl">▶</span>
-                </div>
+                <button
+                  type="button"
+                  aria-label={isVideoPlaying ? 'Pause video preview' : 'Play video preview'}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const video = e.currentTarget.parentElement?.querySelector('video');
+                    if (video) toggleVideoPlayback(video);
+                  }}
+                  className={`absolute inset-0 flex items-center justify-center bg-black/30 transition-opacity ${isVideoPlaying ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+                >
+                  <span className="flex h-14 w-14 items-center justify-center rounded-full bg-black/60 text-2xl text-white shadow-lg">
+                    ▶
+                  </span>
+                </button>
               </div>
             </div>
           )}
