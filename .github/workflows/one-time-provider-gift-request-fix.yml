@@ -245,8 +245,8 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add vibe/src/components/AdultZone/ProviderMessages.tsx vibe/src/tests/ProviderMessages.test.tsx .github/workflows/one-time-provider-gift-request-fix.yml
+          git rm .github/workflows/one-time-provider-gift-request-fix.yml
+          git add vibe/src/components/AdultZone/ProviderMessages.tsx vibe/src/tests/ProviderMessages.test.tsx
+          git diff --cached --check
           git commit -m "fix: make provider gift requests optimistic and realtime"
           git push origin HEAD:${{ github.event.pull_request.head.ref }}
-
-# trigger synchronize after PR creation
