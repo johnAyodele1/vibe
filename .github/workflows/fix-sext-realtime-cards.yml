@@ -81,3 +81,5 @@ jobs:
           git diff --cached --quiet && exit 0
           git commit -m "fix: realtime sext special-message payloads"
           git push
+
+# Triggered from the repository default branch to apply the production fix immediately.
