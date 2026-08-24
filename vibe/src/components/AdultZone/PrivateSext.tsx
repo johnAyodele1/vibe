@@ -460,7 +460,10 @@ const PrivateSext: React.FC = () => {
     s.on('sext:new_message', (payload: { message: Message }) => {
       const myUserId = user?.id || (user as any)?._id;
       if (selectedConv && payload.message.conversationId === selectedConv.conversationId && payload.message.senderId !== myUserId) {
-        setMessages(prev => [...prev, payload.message]);
+        setMessages(prev => {
+          if (prev.some(m => m.id === payload.message.id)) return prev;
+          return [...prev, payload.message];
+        });
         markConversationRead(selectedConv.conversationId);
         s.emit('sext:message_delivered', { messageId: payload.message.id });
       }
@@ -1051,8 +1054,7 @@ const PrivateSext: React.FC = () => {
   };
 
   const handleSendGift = async () => {
-    if (!selectedGift || !selectedConv) return;
-    if (isSendingGift) return;
+    if (!selectedGift || !selectedConv || isSendingGift) return;
 
     if (creditsRemaining < selectedGift.creditCost) {
       setShakeGiftButton(true);
@@ -1062,34 +1064,82 @@ const PrivateSext: React.FC = () => {
     }
 
     setIsSendingGift(true);
+
+    const giftToRestore = selectedGift;
+    const noteToRestore = giftNote;
+
+    setShowGiftPicker(false);
+    setSelectedGift(null);
+    setGiftNote('');
+
+    const tempId = `temp_gift_${Date.now()}`;
+    const optimisticMessage: Message = {
+      id: tempId,
+      conversationId: selectedConv.conversationId,
+      senderId: user?.id || (user as any)?._id || '',
+      receiverId: selectedConv.otherUser?.id,
+      content: `Sent you a ${giftToRestore.name}`,
+      mediaType: 'gift',
+      creditCost: giftToRestore.creditCost,
+      isUnlocked: true,
+      isOptimistic: true,
+      isFailed: false,
+      isDeleted: false,
+      createdAt: new Date().toISOString(),
+      gift: {
+        giftId: giftToRestore._id,
+        giftName: giftToRestore.name,
+        giftIconUrl: giftToRestore.iconUrl,
+        giftValue: giftToRestore.creditCost,
+        message: noteToRestore
+      }
+    };
+
+    setMessages(prev => [...prev, optimisticMessage]);
+
     try {
       const res = await fetch(`${API_BASE_URL}/v1/adult/sext/conversations/${selectedConv.conversationId}/send-gift`, {
         method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify({
-          giftId: selectedGift._id,
-          message: giftNote
+          giftId: giftToRestore._id,
+          message: noteToRestore
         })
       });
       const data = await res.json();
-      if (data.message) {
-        setMessages(prev => [...prev, {
-          id: data.message._id,
-          senderId: user?.id || '',
-          content: `Sent you a ${selectedGift.name}`,
+      if (data && data.message) {
+        const realMsg = data.message;
+        const formattedRealMsg: Message = {
+          id: realMsg._id,
+          conversationId: realMsg.conversationId || selectedConv.conversationId,
+          senderId: realMsg.senderId,
+          receiverId: realMsg.receiverId,
+          content: `Sent you a ${giftToRestore.name}`,
           mediaType: 'gift',
-          creditCost: selectedGift.creditCost,
+          creditCost: giftToRestore.creditCost,
           isUnlocked: true,
-          gift: data.message.gift,
+          gift: realMsg.gift,
           isDeleted: false,
-          createdAt: new Date().toISOString()
-        }]);
-        setShowGiftPicker(false);
-        setSelectedGift(null);
-        setGiftNote('');
+          createdAt: realMsg.createdAt || new Date().toISOString()
+        };
+        setMessages(prev => {
+          const filtered = prev.filter(m => m.id !== realMsg._id);
+          return filtered.map(m => m.id === tempId ? formattedRealMsg : m);
+        });
         toast.success('🎁 Gift sent successfully!');
+        fetchConversations();
+      } else {
+        setMessages(prev => prev.filter(m => m.id !== tempId));
+        setShowGiftPicker(true);
+        setSelectedGift(giftToRestore);
+        setGiftNote(noteToRestore);
+        toast.error(data?.error || 'Failed to send gift');
       }
     } catch (err) {
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+      setShowGiftPicker(true);
+      setSelectedGift(giftToRestore);
+      setGiftNote(noteToRestore);
       toast.error('Failed to send gift');
     } finally {
       setIsSendingGift(false);
@@ -1097,24 +1147,61 @@ const PrivateSext: React.FC = () => {
   };
 
   const handleSendPhotoRequest = async () => {
-    if (!selectedConv) return;
-    if (isSendingPhotoRequest) return;
+    if (!selectedConv || isSendingPhotoRequest) return;
 
     setIsSendingPhotoRequest(true);
+
+    const noteToRestore = photoRequestNote;
+
+    setShowPhotoRequestModal(false);
+    setPhotoRequestNote('');
+
+    const tempId = `temp_photo_req_${Date.now()}`;
+    const optimisticMessage: Message = {
+      id: tempId,
+      conversationId: selectedConv.conversationId,
+      senderId: user?.id || (user as any)?._id || '',
+      receiverId: selectedConv.otherUser?.id,
+      content: 'Requested a photo',
+      mediaType: 'request_photo',
+      creditCost: 0,
+      isUnlocked: true,
+      isOptimistic: true,
+      isFailed: false,
+      isDeleted: false,
+      createdAt: new Date().toISOString(),
+      photoRequest: {
+        status: 'pending',
+        note: noteToRestore
+      }
+    };
+
+    setMessages(prev => [...prev, optimisticMessage]);
+
     try {
       const res = await fetch(`${API_BASE_URL}/v1/adult/sext/conversations/${selectedConv.conversationId}/request-photo`, {
         method: 'POST',
         headers: getHeaders(),
-        body: JSON.stringify({ note: photoRequestNote })
+        body: JSON.stringify({ note: noteToRestore })
       });
       const data = await res.json();
-      if (data.id) {
-        setMessages(prev => [...prev, data]);
-        setShowPhotoRequestModal(false);
-        setPhotoRequestNote('');
+      if (data && data.id) {
+        setMessages(prev => {
+          const filtered = prev.filter(m => m.id !== data.id);
+          return filtered.map(m => m.id === tempId ? { ...data, isOptimistic: false, conversationId: data.conversationId || selectedConv.conversationId } : m);
+        });
         toast.success('Photo request sent!');
+        fetchConversations();
+      } else {
+        setMessages(prev => prev.filter(m => m.id !== tempId));
+        setShowPhotoRequestModal(true);
+        setPhotoRequestNote(noteToRestore);
+        toast.error(data?.error || 'Failed to send photo request');
       }
     } catch (err) {
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+      setShowPhotoRequestModal(true);
+      setPhotoRequestNote(noteToRestore);
       toast.error('Failed to send request');
     } finally {
       setIsSendingPhotoRequest(false);
@@ -1122,25 +1209,56 @@ const PrivateSext: React.FC = () => {
   };
 
   const handleSendServiceRequest = async () => {
-    if (!selectedConv) return;
-    if (isSendingServiceRequest) return;
+    if (!selectedConv || isSendingServiceRequest) return;
 
     setIsSendingServiceRequest(true);
     setServiceRequestError(null);
+
+    const noteToRestore = serviceRequestNote;
+
+    setShowServiceRequestModal(false);
+    setServiceRequestNote('');
+
+    const tempId = `temp_service_tonight_req_${Date.now()}`;
+    const optimisticMessage: Message = {
+      id: tempId,
+      conversationId: selectedConv.conversationId,
+      senderId: user?.id || (user as any)?._id || '',
+      receiverId: selectedConv.otherUser?.id,
+      content: 'Requested a tonight service',
+      mediaType: 'request_service',
+      creditCost: 0,
+      isUnlocked: true,
+      isOptimistic: true,
+      isFailed: false,
+      isDeleted: false,
+      createdAt: new Date().toISOString(),
+      serviceTonightRequest: {
+        status: 'pending',
+        note: noteToRestore
+      }
+    };
+
+    setMessages(prev => [...prev, optimisticMessage]);
+
     try {
       const res = await fetch(`${API_BASE_URL}/v1/adult/sext/conversations/${selectedConv.conversationId}/request-service`, {
         method: 'POST',
         headers: getHeaders(),
-        body: JSON.stringify({ note: serviceRequestNote })
+        body: JSON.stringify({ note: noteToRestore })
       });
       const data = await res.json();
 
-      if (res.ok && data.id) {
-        setMessages(prev => [...prev, data]);
-        setShowServiceRequestModal(false);
-        setServiceRequestNote('');
+      if (res.ok && data && data.id) {
+        setMessages(prev => {
+          const filtered = prev.filter(m => m.id !== data.id);
+          return filtered.map(m => m.id === tempId ? { ...data, isOptimistic: false, conversationId: data.conversationId || selectedConv.conversationId } : m);
+        });
         toast.success('Tonight service request sent!');
+        fetchConversations();
       } else {
+        setMessages(prev => prev.filter(m => m.id !== tempId));
+
         const errorType = data.error || data.code;
         const errorMessages: Record<string, { title: string; message: string; action?: string; actionUrl?: string }> = {
           NOT_A_PROVIDER: {
@@ -1172,6 +1290,8 @@ const PrivateSext: React.FC = () => {
             actionUrl: knownError.actionUrl
           });
         } else {
+          setShowServiceRequestModal(true);
+          setServiceRequestNote(noteToRestore);
           setServiceRequestError({
             title: 'Service Request Failed',
             message: data.message || 'Could not request tonight service. Please try again later.'
@@ -1180,6 +1300,9 @@ const PrivateSext: React.FC = () => {
       }
     } catch (err) {
       console.error('Error requesting tonight service:', err);
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+      setShowServiceRequestModal(true);
+      setServiceRequestNote(noteToRestore);
       setServiceRequestError({
         title: 'Connection Error',
         message: 'Could not connect to the server. Please try again.'

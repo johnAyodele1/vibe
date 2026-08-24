@@ -409,7 +409,10 @@ const ProviderMessages: React.FC = () => {
     s.on('sext:new_message', (payload: { message: Message }) => {
       const myUserId = user?.id || (user as any)?._id;
       if (selectedConv && payload.message.conversationId === selectedConv.conversationId && payload.message.senderId !== myUserId) {
-        setMessages(prev => [...prev, payload.message]);
+        setMessages(prev => {
+          if (prev.some(m => m.id === payload.message.id)) return prev;
+          return [...prev, payload.message];
+        });
         markConversationRead(selectedConv.conversationId);
         s.emit('sext:message_delivered', { messageId: payload.message.id });
       }
@@ -942,29 +945,77 @@ const ProviderMessages: React.FC = () => {
   };
 
   const handleSendServiceRequestSubmit = async () => {
-    if (!selectedConv) return;
-    if (isSendingServiceRequest) return;
+    if (!selectedConv || isSendingServiceRequest) return;
     const cleanedExtras = serviceExtras
       .map(e => ({ label: e.label.trim(), amount: Number(e.amount) || 0 }))
       .filter(e => e.label && e.amount > 0);
     const baseRate = dynTonightRate || tonightRate;
+    const totalAmount = baseRate + cleanedExtras.reduce((sum, item) => sum + item.amount, 0);
 
     setIsSendingServiceRequest(true);
+
+    const extrasToRestore = serviceExtras;
+    const noteToRestore = serviceRequestNote;
+    const fulfillIdToRestore = activeServiceTonightRequestFulfillId;
+
+    setShowServiceRequestDialog(false);
+    setServiceExtras([]);
+    setServiceRequestNote('');
+    setActiveServiceTonightRequestFulfillId(null);
+
+    const tempId = `temp_service_req_${Date.now()}`;
+    const optimisticMessage: Message = {
+      id: tempId,
+      conversationId: selectedConv.conversationId,
+      senderId: user?.id || (user as any)?._id || '',
+      receiverId: selectedConv.otherUser?.id,
+      content: `🌙 Service request: 💎 ${totalAmount}`,
+      mediaType: 'service_request',
+      creditCost: 0,
+      isUnlocked: true,
+      isOptimistic: true,
+      isFailed: false,
+      isDeleted: false,
+      createdAt: new Date().toISOString(),
+      serviceRequest: {
+        baseRate,
+        extras: cleanedExtras,
+        totalAmount,
+        note: noteToRestore,
+        status: 'pending',
+        eligibleForPayout: false
+      }
+    };
+
+    setMessages(prev => {
+      let next = [...prev];
+      if (fulfillIdToRestore) {
+        next = next.map(m => m.id === fulfillIdToRestore ? {
+          ...m,
+          serviceTonightRequest: m.serviceTonightRequest ? {
+            ...m.serviceTonightRequest,
+            status: 'fulfilled'
+          } : undefined
+        } : m);
+      }
+      return [...next, optimisticMessage];
+    });
+
     try {
       let url = `${API_BASE_URL}/v1/adult/sext/conversations/${selectedConv.conversationId}/service-request`;
       let method = 'POST';
       let body: any = {
         extras: cleanedExtras,
-        note: serviceRequestNote
+        note: noteToRestore
       };
 
-      if (activeServiceTonightRequestFulfillId) {
-        url = `${API_BASE_URL}/v1/adult/sext/service-tonight-requests/${activeServiceTonightRequestFulfillId}/fulfill`;
+      if (fulfillIdToRestore) {
+        url = `${API_BASE_URL}/v1/adult/sext/service-tonight-requests/${fulfillIdToRestore}/fulfill`;
         method = 'PUT';
         body = {
           baseRate,
           extras: cleanedExtras,
-          note: serviceRequestNote
+          note: noteToRestore
         };
       }
 
@@ -974,45 +1025,87 @@ const ProviderMessages: React.FC = () => {
         body: JSON.stringify(body)
       });
       const data = await res.json();
-      if (res.status === 409) {
+      if (res.status === 409 || (!res.ok && data.error)) {
+        setMessages(prev => {
+          let next = prev.filter(m => m.id !== tempId);
+          if (fulfillIdToRestore) {
+            next = next.map(m => m.id === fulfillIdToRestore ? {
+              ...m,
+              serviceTonightRequest: m.serviceTonightRequest ? {
+                ...m.serviceTonightRequest,
+                status: 'pending'
+              } : undefined
+            } : m);
+          }
+          return next;
+        });
+        setShowServiceRequestDialog(true);
+        setServiceExtras(extrasToRestore);
+        setServiceRequestNote(noteToRestore);
+        setActiveServiceTonightRequestFulfillId(fulfillIdToRestore);
         toast.error(data.error || 'A service request is already active in this conversation');
         return;
       }
 
-      if (activeServiceTonightRequestFulfillId) {
-        if (data.requestMessage) {
-          setMessages(prev => prev.map(m => m.id === activeServiceTonightRequestFulfillId ? {
-            ...m,
-            serviceTonightRequest: { ...m.serviceTonightRequest!, status: 'fulfilled', fulfilledMessageId: data.invoiceMessage._id }
-          } : m));
-          setMessages(prev => [...prev, {
-            id: data.invoiceMessage._id,
-            senderId: data.invoiceMessage.senderId,
-            receiverId: data.invoiceMessage.receiverId,
-            content: `🌙 Service request: 💎 ${data.invoiceMessage.serviceRequest?.totalAmount}`,
-            mediaType: 'service_request',
-            serviceRequest: data.invoiceMessage.serviceRequest,
-            isUnlocked: true,
-            creditCost: 0,
-            isDeleted: false,
-            createdAt: data.invoiceMessage.createdAt
-          }]);
-          setShowServiceRequestDialog(false);
-          setServiceExtras([]);
-          setServiceRequestNote('');
-          setActiveServiceTonightRequestFulfillId(null);
-          toast.success('Tonight service request fulfilled!');
-        }
-      } else {
-        if (data.id) {
-          setMessages(prev => [...prev, data]);
-          setShowServiceRequestDialog(false);
-          setServiceExtras([]);
-          setServiceRequestNote('');
-          toast.success('Tonight service charge request sent!');
-        }
+      if (fulfillIdToRestore && data.requestMessage && data.invoiceMessage) {
+        const realInvoiceId = data.invoiceMessage._id;
+        const realInvoiceMsg: Message = {
+          id: realInvoiceId,
+          conversationId: data.invoiceMessage.conversationId || selectedConv.conversationId,
+          senderId: data.invoiceMessage.senderId,
+          receiverId: data.invoiceMessage.receiverId,
+          content: `🌙 Service request: 💎 ${data.invoiceMessage.serviceRequest?.totalAmount}`,
+          mediaType: 'service_request',
+          serviceRequest: data.invoiceMessage.serviceRequest,
+          isUnlocked: true,
+          creditCost: 0,
+          isDeleted: false,
+          createdAt: data.invoiceMessage.createdAt
+        };
+        setMessages(prev => {
+          const filtered = prev.filter(m => m.id !== realInvoiceId);
+          return filtered.map(m => {
+            if (m.id === tempId) return realInvoiceMsg;
+            if (m.id === fulfillIdToRestore) {
+              return {
+                ...m,
+                serviceTonightRequest: m.serviceTonightRequest ? {
+                  ...m.serviceTonightRequest,
+                  status: 'fulfilled',
+                  fulfilledMessageId: realInvoiceId
+                } : undefined
+              };
+            }
+            return m;
+          });
+        });
+        toast.success('Tonight service request fulfilled!');
+      } else if (data && data.id) {
+        setMessages(prev => {
+          const filtered = prev.filter(m => m.id !== data.id);
+          return filtered.map(m => m.id === tempId ? { ...data, isOptimistic: false, conversationId: data.conversationId || selectedConv.conversationId } : m);
+        });
+        toast.success('Tonight service charge request sent!');
       }
+      fetchConversations();
     } catch (err) {
+      setMessages(prev => {
+        let next = prev.filter(m => m.id !== tempId);
+        if (fulfillIdToRestore) {
+          next = next.map(m => m.id === fulfillIdToRestore ? {
+            ...m,
+            serviceTonightRequest: m.serviceTonightRequest ? {
+              ...m.serviceTonightRequest,
+              status: 'pending'
+            } : undefined
+          } : m);
+        }
+        return next;
+      });
+      setShowServiceRequestDialog(true);
+      setServiceExtras(extrasToRestore);
+      setServiceRequestNote(noteToRestore);
+      setActiveServiceTonightRequestFulfillId(fulfillIdToRestore);
       toast.error('Failed to send service request');
     } finally {
       setIsSendingServiceRequest(false);
