@@ -291,28 +291,30 @@ export const getProviderWheelStats = async (req: Request, res: Response) => {
       return res.status(403).json({ success: false, error: 'Only providers can view their wheel stats' });
     }
 
-    const wheel = await SpinWheel.findOne({ providerId: provider._id });
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document hydration overhead.
+    const wheel = await SpinWheel.findOne({ providerId: provider._id }).lean();
     if (!wheel) {
       return res.status(404).json({ success: false, error: 'No wheel configured' });
     }
 
-    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document hydration overhead.
-    const recentSpins = await SpinResult.find({ providerId: provider._id })
-      .sort({ createdAt: -1 })
-      .limit(10)
-      .lean();
-
-    // Aggregate breakdown by item
-    const breakdown = await SpinResult.aggregate([
-      { $match: { providerId: provider._id } },
-      {
-        $group: {
-          _id: '$itemId',
-          label: { $first: '$itemLabel' },
-          count: { $sum: 1 },
-          earned: { $sum: '$creditsPaid' }
+    // Optimization (⚡ Bolt): Execute recentSpins find query and breakdown aggregate query concurrently via Promise.all
+    // to eliminate sequential database waterfall latency.
+    const [recentSpins, breakdown] = await Promise.all([
+      SpinResult.find({ providerId: provider._id })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .lean(),
+      SpinResult.aggregate([
+        { $match: { providerId: provider._id } },
+        {
+          $group: {
+            _id: '$itemId',
+            label: { $first: '$itemLabel' },
+            count: { $sum: 1 },
+            earned: { $sum: '$creditsPaid' }
+          }
         }
-      }
+      ])
     ]);
 
     return res.json({
