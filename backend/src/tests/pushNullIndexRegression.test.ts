@@ -29,6 +29,12 @@ describe('Push subscription endpoint index regression', () => {
     mongoServer = await MongoMemoryServer.create();
     await mongoose.connect(mongoServer.getUri());
 
+    // Let Mongoose finish its declared sparse endpoint index before this test
+    // deliberately replaces it with the legacy non-sparse variant. Otherwise
+    // Mongoose's automatic index creation can race with the test's manual
+    // index creation and report endpoint_1 as a conflicting index.
+    await PushSubscription.init();
+
     const user = await AdultUser.create({
       email: 'push-index-regression@test.com',
       passwordHash: 'hash123',
