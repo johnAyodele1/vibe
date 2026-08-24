@@ -1,0 +1,96 @@
+name: One-time sext realtime fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/one-time-fix-sext-realtime.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: ${{ !contains(github.event.head_commit.message, '[realtime-fix]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Patch realtime message contract
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('backend/src/controllers/adultSext.controller.ts')
+          text = path.read_text()
+
+          replacements = [
+              (
+                  """    const responsePayload = {\n      id: msg._id,\n      senderId: msg.senderId,""",
+                  """    const responsePayload = {\n      id: msg._id,\n      conversationId: msg.conversationId,\n      senderId: msg.senderId,""",
+                  1,
+                  'gift request response'
+              ),
+              (
+                  """    const responsePayload = {\n      id: msg._id,\n      senderId: msg.senderId,\n      receiverId: msg.receiverId,\n      content: `🌙 Service request: 💎 ${totalAmount}`,""",
+                  """    const responsePayload = {\n      id: msg._id,\n      conversationId: msg.conversationId,\n      senderId: msg.senderId,\n      receiverId: msg.receiverId,\n      content: `🌙 Service request: 💎 ${totalAmount}`,""",
+                  1,
+                  'provider service request response'
+              ),
+              (
+                  """      return {\n        id: m._id,\n        senderId: m.senderId,""",
+                  """      return {\n        id: m._id,\n        conversationId: m.conversationId,\n        senderId: m.senderId,""",
+                  1,
+                  'REST message response'
+              ),
+              (
+                  """    const responsePayload = {\n      id: message._id,\n      senderId: message.senderId,\n      receiverId: message.receiverId,\n      content: `Requested a photo`,""",
+                  """    const responsePayload = {\n      id: message._id,\n      conversationId: message.conversationId,\n      senderId: message.senderId,\n      receiverId: message.receiverId,\n      content: `Requested a photo`,""",
+                  1,
+                  'photo request response'
+              ),
+              (
+                  """          id: imageMsg._id,\n          senderId: imageMsg.senderId,""",
+                  """          id: imageMsg._id,\n          conversationId: imageMsg.conversationId,\n          senderId: imageMsg.senderId,""",
+                  1,
+                  'fulfilled photo socket payload'
+              ),
+              (
+                  """          id: invoiceMsg._id,\n          senderId: invoiceMsg.senderId,""",
+                  """          id: invoiceMsg._id,\n          conversationId: invoiceMsg.conversationId,\n          senderId: invoiceMsg.senderId,""",
+                  1,
+                  'fulfilled service socket payload'
+              ),
+              (
+                  """            id: msg._id,\n            senderId: msg.senderId,\n            receiverId: msg.receiverId,\n            content: `Sent you a ${gift.name}`,""",
+                  """            id: msg._id,\n            conversationId: msg.conversationId,\n            senderId: msg.senderId,\n            receiverId: msg.receiverId,\n            content: `Sent you a ${gift.name}`,""",
+                  1,
+                  'gift socket payload'
+              ),
+          ]
+
+          for old, new, expected, label in replacements:
+              actual = text.count(old)
+              if actual != expected:
+                  raise SystemExit(f'{label}: expected {expected} match(es), found {actual}')
+              text = text.replace(old, new, expected)
+
+          path.write_text(text)
+
+      - name: Verify changes
+        run: |
+          git diff --check
+          grep -n "conversationId: msg.conversationId" backend/src/controllers/adultSext.controller.ts
+          grep -n "conversationId: message.conversationId" backend/src/controllers/adultSext.controller.ts
+          grep -n "conversationId: m.conversationId" backend/src/controllers/adultSext.controller.ts
+          grep -n "conversationId: imageMsg.conversationId" backend/src/controllers/adultSext.controller.ts
+          grep -n "conversationId: invoiceMsg.conversationId" backend/src/controllers/adultSext.controller.ts
+
+      - name: Commit fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend/src/controllers/adultSext.controller.ts
+          git commit -m "fix: include conversationId in realtime sext messages [realtime-fix]"
+          git push
