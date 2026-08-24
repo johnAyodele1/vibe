@@ -56,6 +56,8 @@ export const ensureVapidKeys = async () => {
   }
 };
 
+import { repairPushSubscriptionIndex } from '../services/pushIndexMigrationService';
+
 export const sendPushToUser = async (userId: any, payload: any, zone = 'adult') => {
   console.log('[Push] Fan-out:', { userId, type: payload.type });
 
@@ -63,6 +65,12 @@ export const sendPushToUser = async (userId: any, payload: any, zone = 'adult') 
     await ensureVapidKeys();
   } catch (err: any) {
     console.error('[Push] VAPID initialization failed in sendPushToUser:', err.message);
+  }
+
+  try {
+    await repairPushSubscriptionIndex();
+  } catch (err: any) {
+    console.warn('[Push] Index repair check skipped:', err.message);
   }
 
   // Query: Find ALL active, enabled registrations for the user (NOT scoped to deviceId)
@@ -119,16 +127,24 @@ export const sendPushToUser = async (userId: any, payload: any, zone = 'adult') 
       failed++;
 
       if (err.statusCode === 410 || err.statusCode === 404 || err.statusCode === 403) {
-        await PushSubscription.findByIdAndUpdate(device._id, {
-          $set: {
-            isActive: false,
-            notificationsEnabled: false,
-            endpoint: null,
-            keys: null,
-            deactivatedAt: new Date(),
-          },
-        });
-        console.log('[Push] Device deactivated and endpoint cleared (expired token):', device.deviceId);
+        try {
+          // Deactivate subscription cleanly using $unset to remove endpoint/keys without writing `null`
+          await PushSubscription.findByIdAndUpdate(device._id, {
+            $set: {
+              isActive: false,
+              notificationsEnabled: false,
+              deactivatedAt: new Date(),
+              pushHealthStatus: 'unhealthy',
+            },
+            $unset: {
+              endpoint: 1,
+              keys: 1,
+            },
+          });
+          console.log('[Push] Device deactivated and endpoint unset (expired token):', device.deviceId);
+        } catch (cleanupErr: any) {
+          console.error('[Push] Stale subscription cleanup DB update failed safely:', cleanupErr.message);
+        }
       } else {
         const currentFailCount = (device.failCount || 0) + 1;
         const updateFields: any = {
@@ -136,16 +152,26 @@ export const sendPushToUser = async (userId: any, payload: any, zone = 'adult') 
           lastFailedAt: new Date()
         };
 
+        const unsetFields: any = {};
         if (currentFailCount >= 5) {
           updateFields.isActive = false;
           updateFields.notificationsEnabled = false;
           updateFields.deactivatedAt = new Date();
+          updateFields.pushHealthStatus = 'unhealthy';
+          unsetFields.endpoint = 1;
+          unsetFields.keys = 1;
           console.warn('[Push] Device deactivated after 5 failures:', device.deviceId);
         }
 
-        await PushSubscription.findByIdAndUpdate(device._id, {
-          $set: updateFields
-        });
+        try {
+          const updateDoc: any = { $set: updateFields };
+          if (Object.keys(unsetFields).length > 0) {
+            updateDoc.$unset = unsetFields;
+          }
+          await PushSubscription.findByIdAndUpdate(device._id, updateDoc);
+        } catch (cleanupErr: any) {
+          console.error('[Push] Fail count update failed safely:', cleanupErr.message);
+        }
       }
     }
   }

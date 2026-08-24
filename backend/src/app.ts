@@ -73,6 +73,12 @@ if (process.env.NODE_ENV !== 'test') {
     } catch (err) {
       console.error("Error resetting users' online status:", err);
     }
+    try {
+      const { repairPushSubscriptionIndex } = require('./services/pushIndexMigrationService');
+      await repairPushSubscriptionIndex();
+    } catch (err) {
+      console.error("Error repairing PushSubscription indexes:", err);
+    }
   }).catch(error => console.error('MongoDB connection error:', error));
 }
 
