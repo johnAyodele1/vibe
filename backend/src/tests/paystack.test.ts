@@ -144,6 +144,63 @@ describe('Paystack Wallet Credit Purchases', () => {
     });
   });
 
+  describe('Security & Authorization', () => {
+    it('should reject verify request if requested by another authenticated user', async () => {
+      // Create user B
+      const userB = await AdultUser.create({
+        email: 'user_b@test.com',
+        passwordHash: 'hashedpassword',
+        role: 'user',
+        username: 'userb',
+        displayName: 'User B',
+        ageVerified: true,
+        dateOfBirth: new Date('1995-01-01'),
+        country: 'NG',
+        credits: 0,
+        subscriptionTier: 'none',
+        isActive: true,
+        isBanned: false,
+        twoFactorEnabled: false,
+        emailVerified: true,
+      });
+
+      const userBToken = jwt.sign({ sub: userB._id.toString() }, process.env.ADULT_JWT_SECRET || 'adult_secret');
+
+      // User A initializes transaction
+      const initRes = await request(app)
+        .post('/api/v1/adult/wallet/paystack/initialize')
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({ package: 'popular' });
+
+      const ref = initRes.body.reference;
+
+      // User B attempts to verify User A's transaction reference
+      const verifyRes = await request(app)
+        .get(`/api/v1/adult/wallet/paystack/verify/${ref}`)
+        .set('Authorization', `Bearer ${userBToken}`);
+
+      expect(verifyRes.status).toBe(404);
+      expect(verifyRes.body.error).toBe('Transaction reference not found');
+    });
+
+    it('should reject webhook in non-test environment if signature is invalid', async () => {
+      const origEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'development';
+
+      try {
+        const res = await request(app)
+          .post('/api/v1/adult/wallet/paystack/webhook')
+          .set('x-paystack-signature', 'invalid_signature')
+          .send({ event: 'charge.success', data: { reference: 'some_ref' } });
+
+        expect(res.status).toBe(400);
+        expect(res.body.error).toBe('Invalid webhook signature');
+      } finally {
+        process.env.NODE_ENV = origEnv;
+      }
+    });
+  });
+
   describe('Verification and Wallet Crediting', () => {
     it('should verify transaction server-side and credit user wallet exactly once', async () => {
       const initRes = await request(app)

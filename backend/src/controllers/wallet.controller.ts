@@ -214,13 +214,21 @@ export const initializePurchase = async (req: Request, res: Response) => {
 
 export const verifyPurchase = async (req: Request, res: Response) => {
   try {
+    const user = req.adultUser;
+    if (!user) {
+      return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
+    }
+
     const rawRef = req.params.reference || req.query.reference;
     const reference = Array.isArray(rawRef) ? String(rawRef[0]) : String(rawRef || '');
     if (!reference) {
       return res.status(400).json({ success: false, error: 'Payment reference is required' });
     }
 
-    const transaction = await CreditTransaction.findOne({ paymentIntentId: reference });
+    const transaction = await CreditTransaction.findOne({
+      paymentIntentId: reference,
+      userId: user._id,
+    });
     if (!transaction) {
       return res.status(404).json({ success: false, error: 'Transaction reference not found' });
     }
@@ -271,24 +279,68 @@ export const verifyPurchase = async (req: Request, res: Response) => {
       });
     }
 
-    // Atomic idempotent credit update
-    const updatedTx = await CreditTransaction.findOneAndUpdate(
-      { _id: transaction._id, status: 'pending' },
-      { $set: { status: 'completed' } },
-      { new: true }
-    );
+    // Atomic credit completion inside a MongoDB session transaction (with fallback for standalone Mongo setups)
+    let updatedUserCredits: number | null = null;
+    let dbSession: mongoose.ClientSession | null = null;
 
-    if (updatedTx) {
-      const updatedUser = await AdultUser.findByIdAndUpdate(
-        transaction.userId,
-        { $inc: { credits: transaction.amount } },
-        { new: true }
+    try {
+      dbSession = await mongoose.startSession();
+      dbSession.startTransaction();
+
+      const updatedTx = await CreditTransaction.findOneAndUpdate(
+        { _id: transaction._id, status: 'pending' },
+        { $set: { status: 'completed' } },
+        { new: true, session: dbSession }
       );
-      if (updatedUser) {
-        socketService.emitToUser(updatedUser._id.toString(), 'wallet:updated', {
-          balance: updatedUser.credits,
-        });
+
+      if (updatedTx) {
+        const updatedUser = await AdultUser.findByIdAndUpdate(
+          transaction.userId,
+          { $inc: { credits: transaction.amount } },
+          { new: true, session: dbSession }
+        );
+        if (updatedUser) {
+          updatedUserCredits = updatedUser.credits;
+        }
       }
+
+      await dbSession.commitTransaction();
+    } catch (sessionErr: any) {
+      if (dbSession) {
+        await dbSession.abortTransaction().catch(() => {});
+      }
+
+      // If standalone Mongo doesn't support transactions (code 20 / Transaction numbers error), execute safe atomic fallback
+      if (sessionErr.code === 20 || sessionErr.message?.includes('Transaction numbers are only allowed')) {
+        const updatedTx = await CreditTransaction.findOneAndUpdate(
+          { _id: transaction._id, status: 'pending' },
+          { $set: { status: 'completed' } },
+          { new: true }
+        );
+
+        if (updatedTx) {
+          const updatedUser = await AdultUser.findByIdAndUpdate(
+            transaction.userId,
+            { $inc: { credits: transaction.amount } },
+            { new: true }
+          );
+          if (updatedUser) {
+            updatedUserCredits = updatedUser.credits;
+          }
+        }
+      } else {
+        throw sessionErr;
+      }
+    } finally {
+      if (dbSession) {
+        dbSession.endSession();
+      }
+    }
+
+    if (updatedUserCredits !== null) {
+      socketService.emitToUser(user._id.toString(), 'wallet:updated', {
+        balance: updatedUserCredits,
+      });
     }
 
     return res.json({
@@ -310,7 +362,8 @@ export const handlePaystackWebhook = async (req: Request, res: Response) => {
     const rawBody = (req as any).rawBody || JSON.stringify(req.body);
 
     const isValid = PaystackService.verifyWebhookSignature(rawBody, signature);
-    if (!isValid && process.env.NODE_ENV === 'production') {
+    // Signature verification is enforced in all environments except test environment
+    if (!isValid && process.env.NODE_ENV !== 'test') {
       return res.status(400).json({ success: false, error: 'Invalid webhook signature' });
     }
 
@@ -325,23 +378,69 @@ export const handlePaystackWebhook = async (req: Request, res: Response) => {
         if (transaction && transaction.status === 'pending') {
           const expectedKobo = (transaction.nairaAmount || 0) * 100;
           if (amountKobo === expectedKobo && data.currency?.toUpperCase() === 'NGN') {
-            const updatedTx = await CreditTransaction.findOneAndUpdate(
-              { _id: transaction._id, status: 'pending' },
-              { $set: { status: 'completed' } },
-              { new: true }
-            );
+            let updatedUserId: string | null = null;
+            let updatedUserCredits: number | null = null;
+            let dbSession: mongoose.ClientSession | null = null;
 
-            if (updatedTx) {
-              const updatedUser = await AdultUser.findByIdAndUpdate(
-                transaction.userId,
-                { $inc: { credits: transaction.amount } },
-                { new: true }
+            try {
+              dbSession = await mongoose.startSession();
+              dbSession.startTransaction();
+
+              const updatedTx = await CreditTransaction.findOneAndUpdate(
+                { _id: transaction._id, status: 'pending' },
+                { $set: { status: 'completed' } },
+                { new: true, session: dbSession }
               );
-              if (updatedUser) {
-                socketService.emitToUser(updatedUser._id.toString(), 'wallet:updated', {
-                  balance: updatedUser.credits,
-                });
+
+              if (updatedTx) {
+                const updatedUser = await AdultUser.findByIdAndUpdate(
+                  transaction.userId,
+                  { $inc: { credits: transaction.amount } },
+                  { new: true, session: dbSession }
+                );
+                if (updatedUser) {
+                  updatedUserId = updatedUser._id.toString();
+                  updatedUserCredits = updatedUser.credits;
+                }
               }
+
+              await dbSession.commitTransaction();
+            } catch (sessionErr: any) {
+              if (dbSession) {
+                await dbSession.abortTransaction().catch(() => {});
+              }
+
+              if (sessionErr.code === 20 || sessionErr.message?.includes('Transaction numbers are only allowed')) {
+                const updatedTx = await CreditTransaction.findOneAndUpdate(
+                  { _id: transaction._id, status: 'pending' },
+                  { $set: { status: 'completed' } },
+                  { new: true }
+                );
+
+                if (updatedTx) {
+                  const updatedUser = await AdultUser.findByIdAndUpdate(
+                    transaction.userId,
+                    { $inc: { credits: transaction.amount } },
+                    { new: true }
+                  );
+                  if (updatedUser) {
+                    updatedUserId = updatedUser._id.toString();
+                    updatedUserCredits = updatedUser.credits;
+                  }
+                }
+              } else {
+                throw sessionErr;
+              }
+            } finally {
+              if (dbSession) {
+                dbSession.endSession();
+              }
+            }
+
+            if (updatedUserId && updatedUserCredits !== null) {
+              socketService.emitToUser(updatedUserId, 'wallet:updated', {
+                balance: updatedUserCredits,
+              });
             }
           } else {
             transaction.status = 'failed';

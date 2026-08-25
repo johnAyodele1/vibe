@@ -16,61 +16,71 @@ export const PaymentCallback: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [details, setDetails] = useState<{ diamonds: number; amountNaira: number } | null>(null);
 
-  useEffect(() => {
+  const [retryCount, setRetryCount] = useState(0);
+
+  const verifyPayment = async (isMounted = true) => {
     if (!reference) {
-      setStatus('failed');
-      setErrorMessage('No payment reference found.');
+      if (isMounted) {
+        setStatus('failed');
+        setErrorMessage('No payment reference found.');
+      }
       return;
     }
 
-    let isMounted = true;
+    try {
+      const res = await fetch(`${API_BASE_URL}/v1/adult/wallet/paystack/verify/${encodeURIComponent(reference)}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      const data = await res.json();
 
-    const verify = async () => {
-      try {
-        const res = await fetch(`${API_BASE_URL}/v1/adult/wallet/paystack/verify/${encodeURIComponent(reference)}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
+      if (!isMounted) return;
+
+      if (res.ok && data.success && data.status === 'completed') {
+        setStatus('success');
+        setDetails({
+          diamonds: data.diamonds || 0,
+          amountNaira: data.amountNaira || 0,
         });
-        const data = await res.json();
-
-        if (!isMounted) return;
-
-        if (res.ok && data.success && data.status === 'completed') {
-          setStatus('success');
+        if (refetchUser) await refetchUser();
+        if (typeof data.creditBalance === 'number' && updateCredits) {
+          updateCredits(data.creditBalance);
+        }
+      } else if (data.status === 'pending') {
+        setStatus('pending');
+        if (retryCount < 4) {
+          const delay = Math.min(10000, 2000 * Math.pow(1.5, retryCount));
+          setTimeout(() => {
+            if (isMounted) {
+              setRetryCount((prev) => prev + 1);
+            }
+          }, delay);
+        }
+      } else {
+        setStatus('failed');
+        setErrorMessage(data.error || 'Your payment could not be completed.');
+        if (data.amountNaira) {
           setDetails({
             diamonds: data.diamonds || 0,
             amountNaira: data.amountNaira || 0,
           });
-          if (refetchUser) await refetchUser();
-          if (typeof data.creditBalance === 'number' && updateCredits) {
-            updateCredits(data.creditBalance);
-          }
-        } else if (data.status === 'pending') {
-          setStatus('pending');
-        } else {
-          setStatus('failed');
-          setErrorMessage(data.error || 'Your payment could not be completed.');
-          if (data.amountNaira) {
-            setDetails({
-              diamonds: data.diamonds || 0,
-              amountNaira: data.amountNaira || 0,
-            });
-          }
         }
-      } catch (err: any) {
-        if (!isMounted) return;
-        setStatus('failed');
-        setErrorMessage(err.message || 'Verification request failed.');
       }
-    };
+    } catch (err: any) {
+      if (!isMounted) return;
+      setStatus('failed');
+      setErrorMessage(err.message || 'Verification request failed.');
+    }
+  };
 
-    verify();
-
+  useEffect(() => {
+    let isMounted = true;
+    verifyPayment(isMounted);
     return () => {
       isMounted = false;
     };
-  }, [reference, token]);
+  }, [reference, token, retryCount]);
 
   const handleDone = () => {
     navigate('/wallet');

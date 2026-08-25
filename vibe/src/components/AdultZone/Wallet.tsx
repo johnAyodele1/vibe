@@ -6,7 +6,7 @@ import { usePricingStore, formatNaira, formatAmount } from '../../lib/pricing';
 
 const Wallet: React.FC = () => {
   const navigate = useNavigate();
-  const { user, refetchUser, updateCredits } = useAdultAuth();
+  const { user, updateCredits } = useAdultAuth();
   const [wallet, setWallet] = useState<any>(null);
   const [bundles, setBundles] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);

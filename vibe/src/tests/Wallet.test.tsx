@@ -1,5 +1,4 @@
 import { describe, it, expect, vi } from 'vitest';
-import React from 'react';
 import { render, screen } from '@testing-library/react';
 import Wallet from '../components/AdultZone/Wallet';
 import { BrowserRouter } from 'react-router-dom';
@@ -10,11 +9,10 @@ vi.spyOn(AdultAuthContext, 'useAdultAuth').mockReturnValue({
   refetchUser: vi.fn(),
   updateCredits: vi.fn(),
   isAuthenticated: true,
-  isLoading: false,
-  token: 'mock_token',
+  loading: false,
   login: vi.fn(),
+  signup: vi.fn(),
   logout: vi.fn(),
-  error: null,
 });
 
 describe('Wallet Component', () => {
