@@ -8,6 +8,7 @@ import { getDiamondNairaRate } from '../shared/pricing';
 
 const ACTIVE_PAYOUT_STATUSES = ['pending', 'queued', 'verifying', 'processing'];
 const PROVIDER_ACCOUNTING_STATUSES = ['completed', 'reverted'];
+const CREDIT_PURCHASE_TYPES = ['purchase', 'credit_purchase'];
 
 export const getAccountingSummary = async (_req: Request, res: Response): Promise<Response> => {
   try {
@@ -100,12 +101,13 @@ export const getAccountingSummary = async (_req: Request, res: Response): Promis
         },
       ]),
       CreditTransaction.aggregate([
-        { $match: { type: { $in: ['purchase', 'credit_purchase'] }, status: 'completed' } },
+        { $match: { type: { $in: CREDIT_PURCHASE_TYPES }, status: 'completed' } },
         {
           $group: {
             _id: null,
             credits: { $sum: { $abs: '$amount' } },
-            naira: { $sum: { $abs: '$nairaAmount' } },
+            naira: { $sum: { $abs: { $ifNull: ['$nairaAmount', 0] } } },
+            count: { $sum: 1 },
           },
         },
       ]),
@@ -116,7 +118,7 @@ export const getAccountingSummary = async (_req: Request, res: Response): Promis
     const providerData = providerEarnings[0] || { gross: 0, grossNaira: 0, reverted: 0, revertedNaira: 0, net: 0, netNaira: 0, platformFee: 0, paidOut: 0 };
     const reversalData = reversions[0] || { total: 0, totalNaira: 0 };
     const refundData = refunds[0] || { customerRefunded: 0, customerRefundedNaira: 0, providerReverted: 0, providerRevertedNaira: 0, platformFeeReverted: 0, count: 0 };
-    const purchaseData = purchases[0] || { credits: 0, naira: 0 };
+    const purchaseData = purchases[0] || { credits: 0, naira: 0, count: 0 };
 
     return res.json({
       success: true,
@@ -152,6 +154,7 @@ export const getAccountingSummary = async (_req: Request, res: Response): Promis
         refundCount: refundData.count || 0,
         completedPurchaseCredits: purchaseData.credits || 0,
         completedPurchaseNaira: purchaseData.naira || 0,
+        completedPurchaseCount: purchaseData.count || 0,
       },
     });
   } catch (error: any) {
