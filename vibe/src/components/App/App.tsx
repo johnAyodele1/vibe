@@ -30,6 +30,7 @@ import RandomStranger from "../AdultZone/RandomStranger";
 import HookUpTonight from "../AdultZone/HookUpTonight";
 import VIPLounge from "../AdultZone/VIPLounge";
 import Wallet from "../AdultZone/Wallet";
+import PaymentCallback from "../AdultZone/PaymentCallback";
 import PublicProviderProfile from "../AdultZone/PublicProviderProfile";
 import ProviderOnboarding from "../AdultZone/ProviderOnboarding";
 import ProviderDashboard from "../AdultZone/ProviderDashboard";
@@ -117,6 +118,8 @@ function App() {
           <Route path="hookup" element={<HookUpTonight />} />
           <Route path="vip" element={<VIPLounge />} />
           <Route path="wallet" element={<Wallet />} />
+          <Route path="wallet/payment/callback" element={<PaymentCallback />} />
+          <Route path="adult/wallet/payment/callback" element={<PaymentCallback />} />
           <Route path="adult/providers/:providerId" element={<PublicProviderProfile />} />
           <Route path="adult/provider/onboarding" element={<ProviderOnboarding />} />
           <Route path="adult/provider/dashboard" element={<ProviderDashboard />} />

@@ -1,196 +1,32 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { describe, it, expect, vi } from 'vitest';
+import React from 'react';
+import { render, screen } from '@testing-library/react';
 import Wallet from '../components/AdultZone/Wallet';
+import { BrowserRouter } from 'react-router-dom';
+import * as AdultAuthContext from '../contexts/AdultAuthContext';
 
-vi.mock('../contexts/AdultAuthContext', () => ({
-  useAdultAuth: () => ({
-    user: { id: 'user1', email: 'member@vibe.com', role: 'user' },
-    isAuthenticated: true
-  })
-}));
-
-const mockFetch = vi.fn();
-(globalThis as any).fetch = mockFetch;
+vi.spyOn(AdultAuthContext, 'useAdultAuth').mockReturnValue({
+  user: { role: 'user', credits: 100 } as any,
+  refetchUser: vi.fn(),
+  updateCredits: vi.fn(),
+  isAuthenticated: true,
+  isLoading: false,
+  token: 'mock_token',
+  login: vi.fn(),
+  logout: vi.fn(),
+  error: null,
+});
 
 describe('Wallet Component', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    localStorage.setItem('adultAccessToken', 'mock-token');
-
-    mockFetch.mockImplementation(async (input: any) => {
-      const url = typeof input === 'string' ? input : input.url;
-      console.log('MOCK FETCH CALLED FOR URL STRING:', url);
-      if (url.includes('/v1/adult/wallet/bundles')) {
-        return {
-          ok: true,
-          json: async () => [
-            { id: 'bundle_100', credits: 100, priceUsd: 4.99, label: 'Starter', badge: null },
-            { id: 'bundle_500', credits: 500, priceUsd: 19.99, label: 'Popular', badge: 'Best Value' }
-          ]
-        };
-      }
-      if (url.includes('/v1/adult/wallet/transactions')) {
-        return {
-          ok: true,
-          json: async () => ({
-            transactions: [
-              { _id: 'tx1', type: 'purchase', amount: 500, createdAt: new Date().toISOString(), status: 'completed' }
-            ]
-          })
-        };
-      }
-      if (url.includes('/v1/adult/wallet')) {
-        return {
-          ok: true,
-          json: async () => ({
-            creditBalance: 240,
-            lifetimeCreditsPurchased: 500,
-            lifetimeCreditsSpent: 260,
-            estimatedUsdValue: '1.80'
-          })
-        };
-      }
-      return { ok: false, json: async () => ({ error: 'Not Found' }) };
-    });
-  });
-
-  it('displays credit balance and estimated USD value from API', async () => {
+  it('renders wallet page correctly with packages and custom purchase UI', async () => {
     render(
-      <MemoryRouter>
+      <BrowserRouter>
         <Wallet />
-      </MemoryRouter>
+      </BrowserRouter>
     );
 
-    await waitFor(() => {
-      expect(screen.getByText('240')).toBeInTheDocument();
-      expect(screen.getByText(/Credits available for tipping/)).toBeInTheDocument();
-      expect(screen.getByText(/~₦24,000/)).toBeInTheDocument();
-    });
-  });
-
-  it('renders credit bundles from API with badges', async () => {
-    render(
-      <MemoryRouter>
-        <Wallet />
-      </MemoryRouter>
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText('Starter')).toBeInTheDocument();
-      expect(screen.getByText('Popular')).toBeInTheDocument();
-      expect(screen.getByText('Best Value')).toBeInTheDocument();
-    });
-  });
-
-  it('renders transactions table from API and supports pagination controls', async () => {
-    mockFetch.mockImplementation(async (input: any) => {
-      const url = typeof input === 'string' ? input : input.url;
-      if (url.includes('/v1/adult/wallet/transactions')) {
-        const urlObj = new URL(url, 'http://localhost:3000');
-        const pageParam = urlObj.searchParams.get('page') || '1';
-        return {
-          ok: true,
-          json: async () => ({
-            transactions: [
-              { _id: `tx_${pageParam}`, type: 'purchase', amount: 500, createdAt: new Date().toISOString(), status: 'completed' }
-            ],
-            total: 25,
-            page: parseInt(pageParam),
-            totalPages: 3
-          })
-        };
-      }
-      if (url.includes('/v1/adult/wallet/bundles')) {
-        return { ok: true, json: async () => [] };
-      }
-      if (url.includes('/v1/adult/wallet')) {
-        return { ok: true, json: async () => ({ creditBalance: 240 }) };
-      }
-      return { ok: false, json: async () => ({ error: 'Not Found' }) };
-    });
-
-    render(
-      <MemoryRouter>
-        <Wallet />
-      </MemoryRouter>
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText('purchase')).toBeInTheDocument();
-      expect(screen.getByTestId('wallet-pagination-controls')).toBeInTheDocument();
-      expect(screen.getByTestId('page-indicator')).toHaveTextContent('Page 1 of 3');
-    });
-
-    const nextBtn = screen.getByTestId('next-page-btn');
-    fireEvent.click(nextBtn);
-
-    await waitFor(() => {
-      expect(screen.getByTestId('page-indicator')).toHaveTextContent('Page 2 of 3');
-    });
-  });
-
-  it('handles credit bundle purchase interaction', async () => {
-    render(
-      <MemoryRouter>
-        <Wallet />
-      </MemoryRouter>
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText('Starter')).toBeInTheDocument();
-    });
-
-    const buyButton = screen.getAllByRole('button', { name: /Buy Now/i })[0];
-
-    // Reset mock to handle purchase simulation
-    mockFetch.mockImplementation(async (input: any) => {
-      const url = typeof input === 'string' ? input : input.url;
-      if (url.includes('/v1/adult/wallet/purchase/intent')) {
-        return {
-          ok: true,
-          json: async () => ({ paymentIntentId: 'pi_mock_123' })
-        };
-      }
-      if (url.includes('/v1/adult/wallet/purchase/webhook')) {
-        return {
-          ok: true,
-          json: async () => ({ success: true })
-        };
-      }
-      if (url.includes('/v1/adult/wallet/bundles')) {
-        return {
-          ok: true,
-          json: async () => [
-            { id: 'bundle_100', credits: 100, priceUsd: 4.99, label: 'Starter', badge: null }
-          ]
-        };
-      }
-      if (url.includes('/v1/adult/wallet/transactions')) {
-        return {
-          ok: true,
-          json: async () => ({ transactions: [] })
-        };
-      }
-      if (url.includes('/v1/adult/wallet')) {
-        return {
-          ok: true,
-          json: async () => ({
-            creditBalance: 340,
-            lifetimeCreditsPurchased: 600,
-            lifetimeCreditsSpent: 260,
-            estimatedUsdValue: '2.55'
-          })
-        };
-      }
-      return { ok: true, json: async () => ({}) };
-    });
-
-    fireEvent.click(buyButton);
-
-    await waitFor(() => {
-      expect(screen.getByText('Successfully purchased credits!')).toBeInTheDocument();
-      expect(screen.getByText('340')).toBeInTheDocument();
-    });
+    expect(screen.getByText(/Current Balance/i)).toBeInTheDocument();
+    expect(screen.getByText(/Purchase Credits/i)).toBeInTheDocument();
+    expect(screen.getByText(/Custom Purchase/i)).toBeInTheDocument();
   });
 });

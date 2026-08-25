@@ -16,6 +16,9 @@ const Wallet: React.FC = () => {
   const [purchaseLoading, setPurchaseLoading] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
+  const [customNairaInput, setCustomNairaInput] = useState<string>('');
+  const [customError, setCustomError] = useState<string | null>(null);
+
   const [page, setPage] = useState(1);
   const [limit] = useState(10);
   const [totalPages, setTotalPages] = useState(1);
@@ -101,38 +104,53 @@ const Wallet: React.FC = () => {
     }
   }, [token, page, user?.role]);
 
-  const handlePurchase = async (bundleId: string) => {
+  const handlePurchasePackage = async (packageId: string) => {
     if (!token) {
       showToast('Please sign in to buy credits', 'error');
       return;
     }
-    setPurchaseLoading(bundleId);
+    setPurchaseLoading(packageId);
     try {
-      const res = await fetch(`${API_BASE_URL}/v1/adult/wallet/purchase/intent`, {
+      const res = await fetch(`${API_BASE_URL}/v1/adult/wallet/paystack/initialize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ bundleId })
+        body: JSON.stringify({ package: packageId })
       });
       const data = await res.json();
-      if (!res.ok || !data.paymentIntentId) throw new Error(data.error || 'Failed to create purchase intent');
+      if (!res.ok || !data.authorizationUrl) throw new Error(data.error || 'Unable to start payment. Please try again.');
 
-      const webhookRes = await fetch(`${API_BASE_URL}/v1/adult/wallet/purchase/webhook`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paymentIntentId: data.paymentIntentId })
-      });
-      const webhookData = await webhookRes.json();
-      if (webhookRes.ok && webhookData.success) {
-        showToast('Successfully purchased credits!', 'success');
-        if (refetchUser) await refetchUser();
-        fetchWallet();
-        fetchTransactions();
-      } else {
-        throw new Error(webhookData.error || 'Failed to complete payment simulation');
-      }
+      window.location.href = data.authorizationUrl;
     } catch (err: any) {
-      showToast(err.message || 'Payment simulation failed', 'error');
-    } finally {
+      showToast(err.message || 'Unable to start payment. Please try again.', 'error');
+      setPurchaseLoading(null);
+    }
+  };
+
+  const handleCustomPurchase = async () => {
+    if (!token) {
+      showToast('Please sign in to buy credits', 'error');
+      return;
+    }
+    setCustomError(null);
+    const amount = Number(customNairaInput);
+    if (!customNairaInput || isNaN(amount) || !Number.isInteger(amount) || amount < 1000) {
+      setCustomError('Minimum purchase amount is ₦1,000');
+      return;
+    }
+
+    setPurchaseLoading('custom');
+    try {
+      const res = await fetch(`${API_BASE_URL}/v1/adult/wallet/paystack/initialize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ amountNaira: amount })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.authorizationUrl) throw new Error(data.error || 'Unable to start payment. Please try again.');
+
+      window.location.href = data.authorizationUrl;
+    } catch (err: any) {
+      showToast(err.message || 'Unable to start payment. Please try again.', 'error');
       setPurchaseLoading(null);
     }
   };
@@ -171,21 +189,72 @@ const Wallet: React.FC = () => {
 
       <h2 className="text-2xl font-serif italic text-[var(--az-text-primary)] mb-8">Purchase Credits</h2>
       {loadingBundles ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-20">{[1, 2, 3, 4].map(i => <div key={i} className="bg-[var(--az-bg-secondary)] rounded-2xl p-8 border border-[var(--az-border)] animate-pulse h-40" />)}</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-12">{[1, 2, 3, 4].map(i => <div key={i} className="bg-[var(--az-bg-secondary)] rounded-2xl p-8 border border-[var(--az-border)] animate-pulse h-40" />)}</div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-20">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-12">
           {Array.isArray(bundles) && bundles.map(bundle => {
-            const isBestValue = bundle.badge === 'Best Value';
+            const isBestValue = bundle.badge === 'Best Value' || bundle.badge === 'Most Popular';
             return (
-              <div key={bundle.id} onClick={() => purchaseLoading === null && handlePurchase(bundle.id)} className={`group relative bg-[var(--az-bg-secondary)] rounded-2xl p-8 border-2 transition-all cursor-pointer az-card-hover ${isBestValue ? 'border-[var(--az-accent-gold)]' : 'border-[var(--az-border)]'} ${purchaseLoading === bundle.id ? 'opacity-50 pointer-events-none' : ''}`}>
+              <div key={bundle.id} onClick={() => purchaseLoading === null && handlePurchasePackage(bundle.id)} className={`group relative bg-[var(--az-bg-secondary)] rounded-2xl p-8 border-2 transition-all cursor-pointer az-card-hover ${isBestValue ? 'border-[var(--az-accent-gold)]' : 'border-[var(--az-border)]'} ${purchaseLoading === bundle.id ? 'opacity-50 pointer-events-none' : ''}`}>
                 {bundle.badge && <div className={`absolute top-4 right-4 text-[8px] font-bold uppercase tracking-widest px-2 py-1 rounded ${isBestValue ? 'bg-[var(--az-accent-gold)] text-black' : 'bg-[var(--az-bg-tertiary)] text-[var(--az-text-secondary)]'}`}>{bundle.badge}</div>}
                 <div className="flex items-center gap-4 mb-6"><span className="text-4xl">💎</span><div><h3 className="text-2xl font-mono font-bold text-white">{formatAmount(bundle.credits)}</h3><p className="text-[10px] text-[var(--az-text-muted)] uppercase tracking-widest">{bundle.label || 'Credits'}</p></div></div>
-                <div className="flex items-center justify-between"><span className="text-xl font-bold text-[var(--az-text-primary)]">{formatNaira(bundle.priceNaira || (bundle.credits * usePricingStore.getState().diamondNairaRate))}</span><button disabled={purchaseLoading !== null} className={`px-6 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all ${isBestValue ? 'bg-[var(--az-accent-gold)] text-black shadow-lg shadow-yellow-900/20' : 'bg-[var(--az-bg-tertiary)] text-[var(--az-text-primary)] group-hover:bg-[var(--az-accent-primary)] group-hover:text-white'}`}>{purchaseLoading === bundle.id ? 'Processing...' : 'Buy Now'}</button></div>
+                <div className="flex items-center justify-between"><span className="text-xl font-bold text-[var(--az-text-primary)]">{formatNaira(bundle.priceNaira)}</span><button disabled={purchaseLoading !== null} className={`px-6 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all ${isBestValue ? 'bg-[var(--az-accent-gold)] text-black shadow-lg shadow-yellow-900/20' : 'bg-[var(--az-bg-tertiary)] text-[var(--az-text-primary)] group-hover:bg-[var(--az-accent-primary)] group-hover:text-white'}`}>{purchaseLoading === bundle.id ? 'Processing...' : 'Buy Now'}</button></div>
               </div>
             );
           })}
         </div>
       )}
+
+      {/* Custom Purchase UI */}
+      <div className="mb-20 bg-[var(--az-bg-secondary)] rounded-3xl border border-[var(--az-border)] p-6 sm:p-8">
+        <h3 className="text-xl font-serif italic text-[var(--az-text-primary)] mb-2">Custom Purchase</h3>
+        <p className="text-xs text-[var(--az-text-secondary)] mb-6">Enter a custom amount in Naira (minimum ₦1,000).</p>
+
+        <div className="space-y-4">
+          <div className="bg-[#1b1216] border border-[var(--az-border)] rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3 w-full sm:w-auto flex-1">
+              <span className="text-xl font-bold text-[var(--az-text-muted)] font-mono">₦</span>
+              <input
+                type="number"
+                placeholder="1,000"
+                min={1000}
+                step={100}
+                value={customNairaInput}
+                onChange={(e) => {
+                  setCustomNairaInput(e.target.value);
+                  setCustomError(null);
+                }}
+                className="bg-transparent border-none outline-none font-mono text-2xl font-semibold text-white w-full"
+              />
+            </div>
+
+            <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end shrink-0 border-t sm:border-t-0 border-[var(--az-border)]/50 pt-3 sm:pt-0">
+              <div className="text-right">
+                <span className="text-[10px] font-bold tracking-widest text-[var(--az-text-muted)] uppercase block">You will receive</span>
+                <span className="text-lg font-mono font-bold text-yellow-500">
+                  💎 {formatAmount(customNairaInput && Number(customNairaInput) >= 1000 ? Math.floor(Number(customNairaInput) / 100) : 0)}
+                </span>
+              </div>
+              <button
+                onClick={handleCustomPurchase}
+                disabled={purchaseLoading !== null || !customNairaInput || Number(customNairaInput) < 1000}
+                className="px-6 py-3 rounded-full bg-[var(--az-accent-crimson)] text-white text-xs font-bold uppercase tracking-widest hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-[0_4_24_rgba(200,16,46,0.35)] shrink-0"
+              >
+                {purchaseLoading === 'custom' ? 'Processing...' : 'Continue to Payment'}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between text-xs text-[var(--az-text-muted)] font-mono px-1">
+            <span>Minimum ₦1,000</span>
+            <span>1 Diamond = ₦100</span>
+          </div>
+
+          {customError && (
+            <p className="text-xs text-[var(--az-accent-rose)] font-serif italic">{customError}</p>
+          )}
+        </div>
+      </div>
 
       <div className="space-y-6">
         <div className="flex items-center justify-between">

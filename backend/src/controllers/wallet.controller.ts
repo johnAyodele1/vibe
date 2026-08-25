@@ -7,6 +7,14 @@ import { socketService } from '../services/socketService';
 import { getDiamondNairaRate } from '../shared/pricing';
 import { calculateFees, recordPlatformEarning } from '../shared/fees';
 import { sendPushToUser } from '../shared/push';
+import { PaystackService } from '../services/paystack.service';
+
+const PACKAGES_CONFIG: Record<string, { priceNaira: number; diamonds: number; label: string; badge?: string }> = {
+  starter: { priceNaira: 800, diamonds: 8, label: 'Starter' },
+  popular: { priceNaira: 2000, diamonds: 20, label: 'Popular', badge: 'Most Popular' },
+  premium: { priceNaira: 10000, diamonds: 100, label: 'Premium' },
+  elite: { priceNaira: 50000, diamonds: 500, label: 'Elite', badge: 'Best Value' },
+};
 
 export const getDiamondRate = async (req: Request, res: Response) => {
   try {
@@ -32,7 +40,7 @@ export const getWallet = async (req: Request, res: Response) => {
         $match: {
           userId: user._id,
           status: 'completed',
-          type: { $in: ['purchase', 'tip', 'tip_sent'] }
+          type: { $in: ['purchase', 'credit_purchase', 'tip', 'tip_sent'] }
         }
       },
       {
@@ -40,7 +48,7 @@ export const getWallet = async (req: Request, res: Response) => {
           _id: null,
           purchased: {
             $sum: {
-              $cond: [{ $eq: ['$type', 'purchase'] }, '$amount', 0]
+              $cond: [{ $in: ['$type', ['purchase', 'credit_purchase']] }, '$amount', 0]
             }
           },
           spent: {
@@ -71,12 +79,11 @@ export const getWallet = async (req: Request, res: Response) => {
 };
 
 export const getBundles = async (req: Request, res: Response) => {
-  const rate = await getDiamondNairaRate();
   const bundles = [
-    { id: 'bundle_100',  credits: 100,   priceNaira: 100 * rate,  priceUsd: 4.99,   label: 'Starter' },
-    { id: 'bundle_500',  credits: 500,   priceNaira: 500 * rate,  priceUsd: 19.99,  label: 'Popular',    badge: 'Best Value' },
-    { id: 'bundle_1500', credits: 1500,  priceNaira: 1500 * rate, priceUsd: 49.99,  label: 'Premium' },
-    { id: 'bundle_5000', credits: 5000,  priceNaira: 5000 * rate, priceUsd: 129.99, label: 'Elite',      badge: 'Most Popular' },
+    { id: 'starter', credits: 8, priceNaira: 800, label: 'Starter' },
+    { id: 'popular', credits: 20, priceNaira: 2000, label: 'Popular', badge: 'Most Popular' },
+    { id: 'premium', credits: 100, priceNaira: 10000, label: 'Premium' },
+    { id: 'elite', credits: 500, priceNaira: 50000, label: 'Elite', badge: 'Best Value' },
   ];
   return res.json(bundles);
 };
@@ -112,87 +119,250 @@ export const getTransactions = async (req: Request, res: Response) => {
   }
 };
 
-export const createPurchaseIntent = async (req: Request, res: Response) => {
+export const initializePurchase = async (req: Request, res: Response) => {
   try {
     const user = req.adultUser;
     if (!user) {
       return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
     }
 
-    const { bundleId } = req.body;
-    if (!bundleId) {
-      return res.status(400).json({ success: false, error: 'bundleId is required' });
+    const { package: packageId, amountNaira: customAmount } = req.body;
+
+    let amountNaira = 0;
+    let diamonds = 0;
+
+    if (packageId) {
+      const pkgKey = String(packageId).toLowerCase();
+      const pkgConfig = PACKAGES_CONFIG[pkgKey];
+      if (!pkgConfig) {
+        return res.status(400).json({ success: false, error: 'Invalid wallet package selected' });
+      }
+      amountNaira = pkgConfig.priceNaira;
+      diamonds = pkgConfig.diamonds;
+    } else if (customAmount !== undefined && customAmount !== null) {
+      const parsedAmount = Number(customAmount);
+      if (
+        isNaN(parsedAmount) ||
+        !isFinite(parsedAmount) ||
+        !Number.isInteger(parsedAmount) ||
+        parsedAmount < 1000
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: 'Custom purchase amount must be a whole number of at least ₦1,000',
+        });
+      }
+      amountNaira = parsedAmount;
+      diamonds = Math.floor(amountNaira / 100);
+    } else {
+      return res.status(400).json({ success: false, error: 'Package or custom amount is required' });
     }
 
-    const rate = await getDiamondNairaRate();
-    const bundles = [
-      { id: 'bundle_100',  credits: 100,   priceNaira: 100 * rate,  priceUsd: 4.99 },
-      { id: 'bundle_500',  credits: 500,   priceNaira: 500 * rate,  priceUsd: 19.99 },
-      { id: 'bundle_1500', credits: 1500,  priceNaira: 1500 * rate, priceUsd: 49.99 },
-      { id: 'bundle_5000', credits: 5000,  priceNaira: 5000 * rate, priceUsd: 129.99 },
-    ];
+    const amountKobo = amountNaira * 100;
+    const reference = `paystack_wlt_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
-    const bundle = bundles.find(b => b.id === bundleId);
-    if (!bundle) {
-      return res.status(404).json({ success: false, error: 'Bundle not found' });
-    }
-
-    // Create a transaction record
     const transaction = new CreditTransaction({
       userId: user._id,
-      type: 'purchase',
-      amount: bundle.credits,
-      usdAmount: bundle.priceUsd,
-      nairaAmount: bundle.priceNaira,
-      description: `Purchase of ${bundle.credits} credits`,
-      paymentProvider: 'stripe',
-      paymentIntentId: `pi_mock_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      type: 'credit_purchase',
+      amount: diamonds,
+      usdAmount: parseFloat((diamonds * 0.0075).toFixed(2)),
+      nairaAmount: amountNaira,
+      description: `Credit Purchase - ${diamonds} Diamonds (₦${amountNaira.toLocaleString()})`,
+      paymentProvider: 'paystack',
+      paymentIntentId: reference,
       status: 'pending',
     });
     await transaction.save();
 
-    // In a real flow, confirmPayment or webhook completes it.
-    // For local convenience, let's allow a simulation query/header to complete it or a dedicated complete endpoint,
-    // or let's create a webhook simulation endpoint `/api/v1/adult/wallet/purchase/webhook`
+    const defaultFrontendUrl = process.env.FRONTEND_URL || `${req.protocol}://${req.get('host')}`;
+    const callbackUrl =
+      process.env.PAYSTACK_CALLBACK_URL || `${defaultFrontendUrl}/wallet/payment/callback`;
+
+    const paystackRes = await PaystackService.initializeTransaction({
+      email: user.email || `${user.username}@zippo.app`,
+      amountKobo,
+      reference,
+      callbackUrl,
+      metadata: {
+        userId: user._id.toString(),
+        diamonds,
+        amountNaira,
+        transactionId: transaction._id.toString(),
+      },
+    });
+
+    if (!paystackRes.status || !paystackRes.data?.authorization_url) {
+      transaction.status = 'failed';
+      await transaction.save();
+      return res.status(500).json({
+        success: false,
+        error: paystackRes.message || 'Unable to start payment. Please try again.',
+      });
+    }
+
     return res.json({
-      clientSecret: `seti_mock_secret_${transaction.paymentIntentId}`,
-      transactionId: transaction._id,
-      paymentIntentId: transaction.paymentIntentId,
+      success: true,
+      reference,
+      authorizationUrl: paystackRes.data.authorization_url,
+      amountNaira,
+      diamonds,
     });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
   }
 };
 
-export const simulateWebhookSuccess = async (req: Request, res: Response) => {
+export const verifyPurchase = async (req: Request, res: Response) => {
   try {
-    const { paymentIntentId } = req.body;
-    if (!paymentIntentId) {
-      return res.status(400).json({ success: false, error: 'paymentIntentId is required' });
+    const rawRef = req.params.reference || req.query.reference;
+    const reference = Array.isArray(rawRef) ? String(rawRef[0]) : String(rawRef || '');
+    if (!reference) {
+      return res.status(400).json({ success: false, error: 'Payment reference is required' });
     }
 
-    const transaction = await CreditTransaction.findOne({ paymentIntentId });
+    const transaction = await CreditTransaction.findOne({ paymentIntentId: reference });
     if (!transaction) {
-      return res.status(404).json({ success: false, error: 'Transaction not found' });
+      return res.status(404).json({ success: false, error: 'Transaction reference not found' });
     }
 
     if (transaction.status === 'completed') {
-      return res.json({ success: true, message: 'Already completed', transaction });
+      return res.json({
+        success: true,
+        status: 'completed',
+        diamonds: transaction.amount,
+        amountNaira: transaction.nairaAmount,
+        reference: transaction.paymentIntentId,
+        message: 'Payment verified and wallet credited',
+      });
     }
 
-    transaction.status = 'completed';
-    await transaction.save();
+    const paystackRes = await PaystackService.verifyTransaction(reference);
 
-    const user = await AdultUser.findById(transaction.userId);
-    if (user) {
-      user.credits += transaction.amount;
-      await user.save();
+    if (!paystackRes.status || !paystackRes.data) {
+      return res.status(400).json({
+        success: false,
+        status: 'failed',
+        error: paystackRes.message || 'Payment verification failed',
+      });
     }
 
-    return res.json({ success: true, message: 'Purchase successful, credits added', transaction });
+    const paystackData = paystackRes.data;
+
+    if (paystackData.status !== 'success') {
+      if (paystackData.status === 'failed' || paystackData.status === 'abandoned') {
+        transaction.status = 'failed';
+        await transaction.save();
+      }
+      return res.json({
+        success: false,
+        status: paystackData.status,
+        error: paystackData.gateway_response || 'Payment was not successful',
+      });
+    }
+
+    const expectedKobo = (transaction.nairaAmount || 0) * 100;
+    if (paystackData.amount !== expectedKobo || paystackData.currency?.toUpperCase() !== 'NGN') {
+      transaction.status = 'failed';
+      await transaction.save();
+      return res.status(400).json({
+        success: false,
+        status: 'failed',
+        error: 'Payment amount mismatch or invalid currency',
+      });
+    }
+
+    // Atomic idempotent credit update
+    const updatedTx = await CreditTransaction.findOneAndUpdate(
+      { _id: transaction._id, status: 'pending' },
+      { $set: { status: 'completed' } },
+      { new: true }
+    );
+
+    if (updatedTx) {
+      const updatedUser = await AdultUser.findByIdAndUpdate(
+        transaction.userId,
+        { $inc: { credits: transaction.amount } },
+        { new: true }
+      );
+      if (updatedUser) {
+        socketService.emitToUser(updatedUser._id.toString(), 'wallet:updated', {
+          balance: updatedUser.credits,
+        });
+      }
+    }
+
+    return res.json({
+      success: true,
+      status: 'completed',
+      diamonds: transaction.amount,
+      amountNaira: transaction.nairaAmount,
+      reference: transaction.paymentIntentId,
+      message: 'Payment verified and wallet credited',
+    });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
   }
+};
+
+export const handlePaystackWebhook = async (req: Request, res: Response) => {
+  try {
+    const signature = (req.headers['x-paystack-signature'] as string) || '';
+    const rawBody = (req as any).rawBody || JSON.stringify(req.body);
+
+    const isValid = PaystackService.verifyWebhookSignature(rawBody, signature);
+    if (!isValid && process.env.NODE_ENV === 'production') {
+      return res.status(400).json({ success: false, error: 'Invalid webhook signature' });
+    }
+
+    const payload = req.body;
+    if (payload.event === 'charge.success') {
+      const data = payload.data;
+      const reference = data.reference;
+      const amountKobo = data.amount;
+
+      if (reference) {
+        const transaction = await CreditTransaction.findOne({ paymentIntentId: reference });
+        if (transaction && transaction.status === 'pending') {
+          const expectedKobo = (transaction.nairaAmount || 0) * 100;
+          if (amountKobo === expectedKobo && data.currency?.toUpperCase() === 'NGN') {
+            const updatedTx = await CreditTransaction.findOneAndUpdate(
+              { _id: transaction._id, status: 'pending' },
+              { $set: { status: 'completed' } },
+              { new: true }
+            );
+
+            if (updatedTx) {
+              const updatedUser = await AdultUser.findByIdAndUpdate(
+                transaction.userId,
+                { $inc: { credits: transaction.amount } },
+                { new: true }
+              );
+              if (updatedUser) {
+                socketService.emitToUser(updatedUser._id.toString(), 'wallet:updated', {
+                  balance: updatedUser.credits,
+                });
+              }
+            }
+          } else {
+            transaction.status = 'failed';
+            await transaction.save();
+          }
+        }
+      }
+    }
+
+    return res.status(200).json({ status: 'success' });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const createPurchaseIntent = async (req: Request, res: Response) => {
+  return initializePurchase(req, res);
+};
+
+export const simulateWebhookSuccess = async (req: Request, res: Response) => {
+  return handlePaystackWebhook(req, res);
 };
 
 export const getSubscriptionPlans = async (req: Request, res: Response) => {
