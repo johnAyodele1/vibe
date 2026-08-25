@@ -19,6 +19,7 @@ import {
   getUserRetention,
   getRecentTransactions,
 } from '../controllers/admin.controller';
+import { getReconciledAnalyticsOverview } from '../controllers/adminAccountingOverview.controller';
 import { getAccountingSummary } from '../controllers/adminAccounting.controller';
 import {
   adminGetTasks,
@@ -63,7 +64,7 @@ router.post('/login', adminLogin);
 router.use(authenticateAdmin);
 
 router.get('/analytics', getAnalytics);
-router.get('/analytics/overview', getAnalyticsOverview);
+router.get('/analytics/overview', getReconciledAnalyticsOverview);
 router.get('/analytics/accounting', getAccountingSummary);
 router.get('/analytics/users/daily', getDailyUsers);
 router.get('/analytics/earnings/daily', getDailyEarnings);
