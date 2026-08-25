@@ -19,6 +19,7 @@ import {
   getUserRetention,
   getRecentTransactions,
 } from '../controllers/admin.controller';
+import { getAccountingSummary } from '../controllers/adminAccounting.controller';
 import {
   adminGetTasks,
   adminCreateTask,
@@ -58,14 +59,12 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 
 
 const router = Router();
 
-// Public route
 router.post('/login', adminLogin);
-
-// Protected admin routes
 router.use(authenticateAdmin);
 
 router.get('/analytics', getAnalytics);
 router.get('/analytics/overview', getAnalyticsOverview);
+router.get('/analytics/accounting', getAccountingSummary);
 router.get('/analytics/users/daily', getDailyUsers);
 router.get('/analytics/earnings/daily', getDailyEarnings);
 router.get('/analytics/earnings/breakdown', getEarningsBreakdown);
@@ -82,26 +81,22 @@ router.put('/violations/:id/action', updateViolationAction);
 router.get('/config/diamond-rate', getAdminDiamondRate);
 router.put('/config/diamond-rate', updateAdminDiamondRate);
 
-// Reward Tasks management routes
 router.get('/rewards/tasks', adminGetTasks);
 router.post('/rewards/tasks', adminCreateTask);
 router.put('/rewards/tasks/:id', adminUpdateTask);
 router.delete('/rewards/tasks/:id', adminDeleteTask);
 router.get('/rewards/stats', adminGetStats);
 
-// Admin Payout management routes
 router.get('/payouts', adminGetPayouts);
 router.put('/payouts/:requestId/verify', adminVerifyPayout);
 router.put('/payouts/:requestId/process', adminProcessPayout);
 router.put('/payouts/:requestId/complete', adminCompletePayout);
 router.put('/payouts/:requestId/reject', adminRejectPayout);
 
-// Admin Dispute management routes
 router.get('/disputes', adminGetDisputes);
 router.put('/disputes/:reportId/resolve', resolveDispute);
 router.put('/disputes/:reportId/refund-complete', markRefundCompleted);
 
-// Admin Official Notifications & Customer Support management
 router.post('/official-notifications', adminCreateNotification);
 router.get('/official-notifications', adminGetNotifications);
 router.get('/support/conversations', adminGetSupportQueue);
@@ -112,7 +107,6 @@ router.get('/official-channels/config', getOfficialChannelsConfig);
 router.put('/official-channels/config', updateOfficialChannelsConfig);
 router.post('/official-channels/upload-avatar', upload.single('file'), adminUploadChannelAvatar);
 
-// Admin Error Monitoring routes
 router.get('/errors', listErrors);
 router.get('/errors/:errorId', getError);
 router.put('/errors/:errorId/resolve', resolveError);
