@@ -20,7 +20,12 @@ type Accounting = {
   rejectedPayoutsNaira: number;
   providerEarnings: number;
   providerEarningsNaira: number;
+  grossProviderEarnings: number;
+  grossProviderEarningsNaira: number;
+  providerAmountReverted: number;
+  providerAmountRevertedNaira: number;
   providerPaidOutFromTransactions: number;
+  grossProviderPlatformFee: number;
   totalReversions: number;
   totalReversionsNaira: number;
   customerRefunded: number;
@@ -82,7 +87,7 @@ const AdminAccountingPage: React.FC = () => {
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-red-950 pb-6">
         <div>
           <h1 className="text-3xl font-serif italic">Accounting & Reconciliation</h1>
-          <p className="text-xs text-neutral-500 mt-1">Operational money movement. Gross, net, payout, refund and reversal views are kept separate.</p>
+          <p className="text-xs text-neutral-500 mt-1">Ledger-based money movement. Historical Naira values come from the transaction-time records.</p>
         </div>
         <div className="flex gap-3">
           <Link to="/admin/analytics" className="px-4 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-xs font-bold">Analytics</Link>
@@ -91,38 +96,48 @@ const AdminAccountingPage: React.FC = () => {
       </header>
 
       <section>
-        <h2 className="text-xs uppercase tracking-widest text-neutral-400 font-bold mb-4">Platform revenue</h2>
+        <h2 className="text-xs uppercase tracking-widest text-neutral-400 font-bold mb-4">Platform revenue ledger</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Metric label="Gross Platform Fees" value={money(data.grossPlatformFees)} sub={naira(data.grossPlatformFeesNaira)} />
-          <Metric label="Reverted Platform Fees" value={money(data.revertedPlatformFees)} sub={naira(data.revertedPlatformFeesNaira)} tone="text-red-400" />
-          <Metric label="Net Platform Fees" value={money(data.netPlatformFees)} sub={naira(data.netPlatformFeesNaira)} tone="text-green-400" />
-          <Metric label="Completed Purchases" value={money(data.completedPurchaseCredits)} sub={naira(data.completedPurchaseNaira)} tone="text-purple-400" />
+          <Metric label="Platform Fees Reverted" value={money(data.revertedPlatformFees)} sub={naira(data.revertedPlatformFeesNaira)} tone="text-red-400" />
+          <Metric label="Current Platform Earnings" value={money(data.netPlatformFees)} sub={naira(data.netPlatformFeesNaira)} tone="text-green-400" />
+          <Metric label="Completed Credit Purchases" value={money(data.completedPurchaseCredits)} sub={naira(data.completedPurchaseNaira)} tone="text-purple-400" />
+        </div>
+      </section>
+
+      <section>
+        <h2 className="text-xs uppercase tracking-widest text-neutral-400 font-bold mb-4">Provider earnings reconciliation</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Metric label="Gross Provider Earnings" value={money(data.grossProviderEarnings)} sub={naira(data.grossProviderEarningsNaira)} tone="text-blue-400" />
+          <Metric label="Provider Amount Reverted" value={money(data.providerAmountReverted)} sub={naira(data.providerAmountRevertedNaira)} tone="text-orange-400" />
+          <Metric label="Current Provider Earnings" value={money(data.providerEarnings)} sub={naira(data.providerEarningsNaira)} tone="text-green-400" />
+          <Metric label="Recorded Provider Fees" value={money(data.grossProviderPlatformFee)} sub="15% fee field on provider earning transactions" tone="text-amber-400" />
         </div>
       </section>
 
       <section>
         <h2 className="text-xs uppercase tracking-widest text-neutral-400 font-bold mb-4">Provider liability & payouts</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Metric label="Pending Payouts" value={money(data.pendingPayouts)} sub={`${naira(data.pendingPayoutsNaira)} · ${data.pendingPayoutCount} request(s)`} tone="text-amber-400" />
+          <Metric label="Pending Payout Liability" value={money(data.pendingPayouts)} sub={`${naira(data.pendingPayoutsNaira)} · ${data.pendingPayoutCount} request(s)`} tone="text-amber-400" />
           <Metric label="Completed Payouts" value={money(data.completedPayouts)} sub={naira(data.completedPayoutsNaira)} tone="text-green-400" />
           <Metric label="Rejected Payouts" value={money(data.rejectedPayouts)} sub={naira(data.rejectedPayoutsNaira)} tone="text-red-400" />
-          <Metric label="Provider Earnings" value={money(data.providerEarnings)} sub={naira(data.providerEarningsNaira)} tone="text-blue-400" />
+          <Metric label="Payouts Recorded on Earnings" value={money(data.providerPaidOutFromTransactions)} sub="Provider earning transactions marked paid out" tone="text-blue-400" />
         </div>
       </section>
 
       <section>
-        <h2 className="text-xs uppercase tracking-widest text-neutral-400 font-bold mb-4">Money returned / reversed</h2>
+        <h2 className="text-xs uppercase tracking-widest text-neutral-400 font-bold mb-4">Refunds & reversions</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Metric label="Customer Refunds" value={money(data.customerRefunded)} sub={`${naira(data.customerRefundedNaira)} · ${data.refundCount} completed`} tone="text-red-400" />
-          <Metric label="Provider Reverted" value={money(data.providerReverted)} sub={naira(data.providerRevertedNaira)} tone="text-orange-400" />
+          <Metric label="Provider Amount Reverted" value={money(data.providerReverted)} sub={naira(data.providerRevertedNaira)} tone="text-orange-400" />
           <Metric label="All Reversions" value={money(data.totalReversions)} sub={naira(data.totalReversionsNaira)} tone="text-red-400" />
-          <Metric label="Fees Lost to Refunds" value={money(data.revertedPlatformFees)} sub={naira(data.revertedPlatformFeesNaira)} tone="text-orange-400" />
+          <Metric label="Platform Fee Reversions" value={money(data.revertedPlatformFees)} sub={naira(data.revertedPlatformFeesNaira)} tone="text-orange-400" />
         </div>
       </section>
 
       <section className="bg-[#130d10] border border-red-950/40 rounded-2xl p-5 text-sm text-neutral-400">
-        <p className="font-bold text-white mb-2">Accounting rule</p>
-        <p>Pending Payouts is the sum of payout requests in pending, queued, verifying, or processing states. It is not the sum of every provider wallet balance. Platform fees are shown gross, then reduced by completed refund reversals to produce net platform fees.</p>
+        <p className="font-bold text-white mb-2">How the reconciliation works</p>
+        <p>PlatformEarning is a signed ledger: normal 15% fees are positive entries and dispute reversals are negative entries. Therefore Current Platform Earnings is the signed ledger total; the refund record is not subtracted a second time. Provider earnings separately track completed and reverted provider earning transactions. Credit purchases are shown separately and are not treated as 15% platform revenue.</p>
       </section>
     </main>
   );
