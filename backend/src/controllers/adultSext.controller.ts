@@ -1270,13 +1270,19 @@ export const getUnreadCount = async (req: Request, res: Response) => {
     }
 
     const userIdStr = user._id.toString();
+    // Optimization (⚡ Bolt): Use .select('unreadCounts').lean() to avoid loading heavy document fields and hydrating Mongoose models
     const conversations = await AdultConversation.find({
       participants: user._id
-    });
+    }).select('unreadCounts').lean();
 
     let totalUnread = 0;
     for (const conv of conversations) {
-      totalUnread += conv.unreadCounts?.get(userIdStr) || 0;
+      const count = conv.unreadCounts
+        ? (typeof (conv.unreadCounts as any).get === 'function'
+            ? (conv.unreadCounts as any).get(userIdStr)
+            : (conv.unreadCounts as any)[userIdStr]) || 0
+        : 0;
+      totalUnread += count;
     }
 
     return res.json({ success: true, total: totalUnread });
@@ -1354,7 +1360,8 @@ export const getConversationById = async (req: Request, res: Response) => {
     }
 
     const otherProfile = conversation.participantProfiles.find(p => p.userId?.toString() !== user._id.toString());
-    const otherUser = otherProfile ? await AdultUser.findById(otherProfile.userId) : null;
+    // Optimization (⚡ Bolt): Use .lean() on read-only user query
+    const otherUser = otherProfile ? await AdultUser.findById(otherProfile.userId).lean() : null;
 
     return res.json({
       conversationId: conversation._id,
@@ -1535,7 +1542,8 @@ export const getMessages = async (req: Request, res: Response) => {
       queryBuilder = queryBuilder.skip((page - 1) * limit);
     }
 
-    const messages = await queryBuilder.limit(limit);
+    // Optimization (⚡ Bolt): Append .lean() to read-only query to eliminate Mongoose document instantiation and model hydration overhead
+    const messages = await queryBuilder.limit(limit).lean();
 
     const formatted = messages.map(m => {
       let decryptedContent = '';
@@ -1549,7 +1557,7 @@ export const getMessages = async (req: Request, res: Response) => {
       const cost = m.creditCost || m.unlockCost || 0;
       const isUnlocked = cost === 0 ||
         m.senderId.toString() === user._id.toString() ||
-        m.unlockedBy.some(id => id.toString() === user._id.toString());
+        (m.unlockedBy || []).some((id: any) => id.toString() === user._id.toString());
 
       let finalMediaUrl = m.mediaUrl || '';
       if (isUnlocked && m.cloudinaryPublicId) {
