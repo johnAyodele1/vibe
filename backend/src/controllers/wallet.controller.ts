@@ -223,40 +223,83 @@ export const completeCreditPurchase = async (transactionId: mongoose.Types.Objec
   let updatedUserCredits: number | null = null;
   let isAlreadyCompleted = false;
 
-  const dbSession = await mongoose.startSession();
-  dbSession.startTransaction();
+  const maxRetries = 5;
+  let attempt = 0;
 
-  try {
-    const updatedTx = await CreditTransaction.findOneAndUpdate(
-      { _id: transactionId, status: 'pending' },
-      { $set: { status: 'completed' } },
-      { new: true, session: dbSession }
-    );
+  while (attempt < maxRetries) {
+    attempt++;
 
-    if (!updatedTx) {
-      // Transaction was already completed or not in pending status
-      await dbSession.commitTransaction();
-      isAlreadyCompleted = true;
-    } else {
+    const runMutations = async (session?: mongoose.ClientSession) => {
+      const opts = session ? { session, new: true } : { new: true };
+
+      const updatedTx = await CreditTransaction.findOneAndUpdate(
+        { _id: transactionId, status: 'pending' },
+        { $set: { status: 'completed' } },
+        opts
+      );
+
+      if (!updatedTx) {
+        isAlreadyCompleted = true;
+        return;
+      }
+
       const updatedUser = await AdultUser.findByIdAndUpdate(
         updatedTx.userId,
         { $inc: { credits: updatedTx.amount } },
-        { new: true, session: dbSession }
+        opts
       );
 
       if (!updatedUser) {
+        if (!session) {
+          // Revert transaction status if non-session user update fails
+          await CreditTransaction.updateOne(
+            { _id: transactionId, status: 'completed' },
+            { $set: { status: 'pending' } }
+          );
+        }
         throw new Error('Wallet owner not found; refusing to complete payment transaction');
       }
 
       updatedUserId = updatedUser._id.toString();
       updatedUserCredits = updatedUser.credits;
+    };
+
+    let dbSession: mongoose.ClientSession | null = null;
+    try {
+      dbSession = await mongoose.startSession();
+      dbSession.startTransaction();
+      await runMutations(dbSession);
       await dbSession.commitTransaction();
+      break; // Transaction committed successfully
+    } catch (err: any) {
+      if (dbSession) {
+        await dbSession.abortTransaction().catch(() => {});
+        dbSession.endSession();
+        dbSession = null;
+      }
+
+      const isTransient =
+        err.message?.includes('WriteConflict') ||
+        err.message?.includes('lock') ||
+        err.code === 112 ||
+        err.hasErrorLabel?.('TransientTransactionError');
+
+      if (isTransient && attempt < maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, Math.random() * 50 + 10));
+        continue;
+      }
+
+      if (err.code === 20 || err.message?.includes('Transaction numbers are only allowed')) {
+        await runMutations();
+        break;
+      } else {
+        throw err;
+      }
+    } finally {
+      if (dbSession) {
+        dbSession.endSession();
+      }
     }
-  } catch (err) {
-    await dbSession.abortTransaction().catch(() => {});
-    throw err;
-  } finally {
-    dbSession.endSession();
   }
 
   if (updatedUserId && updatedUserCredits !== null) {
