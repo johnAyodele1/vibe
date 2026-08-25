@@ -20,7 +20,6 @@ type Accounting = {
   rejectedPayoutsNaira: number;
   providerEarnings: number;
   providerEarningsNaira: number;
-  providerPaidOutFromTransactions: number;
   totalReversions: number;
   totalReversionsNaira: number;
   customerRefunded: number;
@@ -30,6 +29,7 @@ type Accounting = {
   refundCount: number;
   completedPurchaseCredits: number;
   completedPurchaseNaira: number;
+  completedPurchaseCount?: number;
 };
 
 const money = (diamonds: number) => `💎 ${formatAmount(diamonds)}`;
@@ -82,7 +82,7 @@ const AdminAccountingPage: React.FC = () => {
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-red-950 pb-6">
         <div>
           <h1 className="text-3xl font-serif italic">Accounting & Reconciliation</h1>
-          <p className="text-xs text-neutral-500 mt-1">Operational money movement. Gross, net, payout, refund and reversal views are kept separate.</p>
+          <p className="text-xs text-neutral-500 mt-1">Operational money movement. Credit purchases, platform fees, provider liability, payouts and reversals are kept separate.</p>
         </div>
         <div className="flex gap-3">
           <Link to="/admin/analytics" className="px-4 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-xs font-bold">Analytics</Link>
@@ -91,12 +91,21 @@ const AdminAccountingPage: React.FC = () => {
       </header>
 
       <section>
+        <h2 className="text-xs uppercase tracking-widest text-neutral-400 font-bold mb-4">Credit purchases</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <Metric label="Credit Purchases" value={money(data.completedPurchaseCredits)} sub={naira(data.completedPurchaseNaira)} tone="text-purple-400" />
+          <Metric label="Purchase Count" value={(data.completedPurchaseCount ?? 0).toLocaleString()} sub="Completed credit purchases" tone="text-purple-300" />
+          <Metric label="Purchase Value" value={naira(data.completedPurchaseNaira)} sub="Completed credit purchase value" tone="text-purple-400" />
+        </div>
+        <p className="text-xs text-neutral-600 mt-3">Credit purchases represent customers buying diamonds. They are not treated as 15% platform revenue; the platform fee is generated later when applicable diamonds are spent on monetized provider transactions.</p>
+      </section>
+
+      <section>
         <h2 className="text-xs uppercase tracking-widest text-neutral-400 font-bold mb-4">Platform revenue</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Metric label="Gross Platform Fees" value={money(data.grossPlatformFees)} sub={naira(data.grossPlatformFeesNaira)} />
           <Metric label="Reverted Platform Fees" value={money(data.revertedPlatformFees)} sub={naira(data.revertedPlatformFeesNaira)} tone="text-red-400" />
-          <Metric label="Net Platform Fees" value={money(data.netPlatformFees)} sub={naira(data.netPlatformFeesNaira)} tone="text-green-400" />
-          <Metric label="Completed Purchases" value={money(data.completedPurchaseCredits)} sub={naira(data.completedPurchaseNaira)} tone="text-purple-400" />
+          <Metric label="Net Platform Earnings" value={money(data.netPlatformFees)} sub={naira(data.netPlatformFeesNaira)} tone="text-green-400" />
         </div>
       </section>
 
@@ -122,7 +131,7 @@ const AdminAccountingPage: React.FC = () => {
 
       <section className="bg-[#130d10] border border-red-950/40 rounded-2xl p-5 text-sm text-neutral-400">
         <p className="font-bold text-white mb-2">Accounting rule</p>
-        <p>Pending Payouts is the sum of payout requests in pending, queued, verifying, or processing states. It is not the sum of every provider wallet balance. Platform fees are shown gross, then reduced by completed refund reversals to produce net platform fees.</p>
+        <p>Credit purchases are shown as their own money-in category and are not counted as platform fee revenue. Pending payouts are the sum of payout requests in pending, queued, verifying, or processing states, not provider wallet balances. Platform earnings are based on the signed platform earning ledger, so reversals are not subtracted a second time.</p>
       </section>
     </main>
   );
