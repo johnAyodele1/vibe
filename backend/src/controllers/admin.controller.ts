@@ -152,7 +152,8 @@ export const getAnalyticsOverview = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('getAnalyticsOverview error:', error);
-    return res.status(500).json({ success: false, error: error.message });
+    // Sentinel Security: Mask raw exception details to prevent error information disclosure
+    return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };
 
@@ -179,7 +180,9 @@ export const getDailyUsers = async (req: Request, res: Response) => {
 
     return res.json({ success: true, data: formatted });
   } catch (error: any) {
-    return res.status(500).json({ success: false, error: error.message });
+    console.error('getDailyUsers error:', error);
+    // Sentinel Security: Mask raw exception details to prevent error information disclosure
+    return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };
 
@@ -211,7 +214,9 @@ export const getDailyEarnings = async (req: Request, res: Response) => {
 
     return res.json({ success: true, data: formatted });
   } catch (error: any) {
-    return res.status(500).json({ success: false, error: error.message });
+    console.error('getDailyEarnings error:', error);
+    // Sentinel Security: Mask raw exception details to prevent error information disclosure
+    return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };
 
@@ -237,7 +242,9 @@ export const getEarningsBreakdown = async (req: Request, res: Response) => {
 
     return res.json({ success: true, data });
   } catch (error: any) {
-    return res.status(500).json({ success: false, error: error.message });
+    console.error('getEarningsBreakdown error:', error);
+    // Sentinel Security: Mask raw exception details to prevent error information disclosure
+    return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };
 
@@ -296,7 +303,9 @@ export const getTopProviders = async (req: Request, res: Response) => {
 
     return res.json({ success: true, data: results });
   } catch (error: any) {
-    return res.status(500).json({ success: false, error: error.message });
+    console.error('getTopProviders error:', error);
+    // Sentinel Security: Mask raw exception details to prevent error information disclosure
+    return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };
 
@@ -309,7 +318,9 @@ export const getUserRetention = async (req: Request, res: Response) => {
       day30: 12,
     });
   } catch (error: any) {
-    return res.status(500).json({ success: false, error: error.message });
+    console.error('getUserRetention error:', error);
+    // Sentinel Security: Mask raw exception details to prevent error information disclosure
+    return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };
 
@@ -349,7 +360,9 @@ export const getRecentTransactions = async (req: Request, res: Response) => {
 
     return res.json({ success: true, data: formatted });
   } catch (error: any) {
-    return res.status(500).json({ success: false, error: error.message });
+    console.error('getRecentTransactions error:', error);
+    // Sentinel Security: Mask raw exception details to prevent error information disclosure
+    return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };
 
@@ -367,7 +380,9 @@ export const getAdminDiamondRate = async (req: Request, res: Response): Promise<
       updatedBy: config?.updatedBy,
     });
   } catch (error: any) {
-    return res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    console.error('getAdminDiamondRate error:', error);
+    // Sentinel Security: Mask raw exception details to prevent error information disclosure
+    return res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 
@@ -424,7 +439,9 @@ export const updateAdminDiamondRate = async (req: Request, res: Response): Promi
       message: 'Rate updated successfully',
     });
   } catch (error: any) {
-    return res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    console.error('updateAdminDiamondRate error:', error);
+    // Sentinel Security: Mask raw exception details to prevent error information disclosure
+    return res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 
@@ -472,7 +489,8 @@ export const getViolations = async (req: Request, res: Response): Promise<Respon
     });
   } catch (error: any) {
     console.error('Get violations error:', error);
-    return res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    // Sentinel Security: Mask raw exception details to prevent error information disclosure
+    return res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 
@@ -510,7 +528,8 @@ export const updateViolationAction = async (req: Request, res: Response): Promis
     });
   } catch (error: any) {
     console.error('Update violation action error:', error);
-    return res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    // Sentinel Security: Mask raw exception details to prevent error information disclosure
+    return res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 

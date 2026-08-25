@@ -198,4 +198,25 @@ describe('Admin Endpoints', () => {
       expect(deletedUser).toBeNull();
     });
   });
+
+  describe('Security: Error Information Disclosure Prevention', () => {
+    it('should return generic error and mask internal exception details on server failure', async () => {
+      // Mock AdultUser.countDocuments to simulate an unexpected internal database error
+      const AdultUser = (await import('../models/AdultUser')).default;
+      const countSpy = jest.spyOn(AdultUser, 'countDocuments').mockImplementationOnce(() => {
+        throw new Error('SIMULATED_DB_FAILURE_DETAILS_SECRET_TABLE_COLUMN');
+      });
+
+      const res = await request(app)
+        .get('/api/admin/analytics/overview')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      countSpy.mockRestore();
+
+      expect(res.status).toBe(500);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error).toBe('Internal server error');
+      expect(JSON.stringify(res.body)).not.toContain('SIMULATED_DB_FAILURE_DETAILS_SECRET_TABLE_COLUMN');
+    });
+  });
 });
