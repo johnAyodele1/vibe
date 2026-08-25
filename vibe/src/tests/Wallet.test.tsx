@@ -5,7 +5,7 @@ import { BrowserRouter } from 'react-router-dom';
 import * as AdultAuthContext from '../contexts/AdultAuthContext';
 
 vi.spyOn(AdultAuthContext, 'useAdultAuth').mockReturnValue({
-  user: { id: 'u1', username: 'testuser', role: 'user', credits: 100 },
+  user: { id: 'u1', username: 'testuser', email: 'test@test.com', firstName: 'Test', role: 'user', credits: 100 } as any,
   refetchUser: vi.fn(),
   updateCredits: vi.fn(),
   isAuthenticated: true,
@@ -13,7 +13,7 @@ vi.spyOn(AdultAuthContext, 'useAdultAuth').mockReturnValue({
   login: vi.fn(),
   signup: vi.fn(),
   logout: vi.fn(),
-} as ReturnType<typeof AdultAuthContext.useAdultAuth>);
+} as unknown as ReturnType<typeof AdultAuthContext.useAdultAuth>);
 
 describe('Wallet Component', () => {
   it('renders wallet page correctly with packages and custom purchase UI', async () => {
