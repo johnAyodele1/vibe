@@ -1011,7 +1011,7 @@ const PrivateSext: React.FC = () => {
 
   const handleUnlockMedia = async (msgId: string, cost: number) => {
     if (processingIds[msgId]) return;
-    const clientCost = Math.ceil(cost * 1.15);
+    const clientCost = cost;
     if (creditsRemaining < clientCost) {
       setInsufficientCreditsMsgId(msgId);
       setTimeout(() => setInsufficientCreditsMsgId(null), 800);
@@ -1768,7 +1768,7 @@ const PrivateSext: React.FC = () => {
                                 disabled={processingIds[m.id]}
                                 className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-yellow-600 text-black font-bold rounded-full text-[10px] uppercase tracking-wider shadow-[0_0_15px_rgba(245,158,11,0.5)] hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
                               >
-                                {processingIds[m.id] ? 'Unlocking...' : `Unlock for ${formatAmount(m.creditCost * 1.15)} 💎`}
+                                {processingIds[m.id] ? 'Unlocking...' : `Unlock for ${formatAmount(m.creditCost)} 💎`}
                               </button>
                             ) : (
                               <p className="text-[10px] text-amber-400 italic">Your premium locked content</p>

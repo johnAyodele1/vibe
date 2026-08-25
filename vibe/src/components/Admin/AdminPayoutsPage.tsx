@@ -70,6 +70,9 @@ export const AdminPayoutsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'queued' | 'verifying' | 'processing' | 'completed' | 'rejected' | 'disputes'>('queued');
   const [loading, setLoading] = useState(true);
 
+  // Processing state maps for buttons
+  const [processingIds, setProcessingIds] = useState<Record<string, boolean>>({});
+
   // Modals / Action Prompts
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectId, setRejectId] = useState<string | null>(null);
@@ -155,6 +158,8 @@ export const AdminPayoutsPage: React.FC = () => {
   }, [fetchPayoutsAndDisputes, navigate]);
 
   const handleVerify = async (requestId: string) => {
+    if (processingIds[requestId]) return;
+    setProcessingIds(prev => ({ ...prev, [requestId]: true }));
     try {
       const token = localStorage.getItem("adminToken");
       const res = await fetch(`${API_BASE_URL}/admin/payouts/${requestId}/verify`, {
@@ -170,10 +175,14 @@ export const AdminPayoutsPage: React.FC = () => {
       }
     } catch {
       toast.error("Network error occurred");
+    } finally {
+      setProcessingIds(prev => ({ ...prev, [requestId]: false }));
     }
   };
 
   const handleProcess = async (requestId: string) => {
+    if (processingIds[requestId]) return;
+    setProcessingIds(prev => ({ ...prev, [requestId]: true }));
     try {
       const token = localStorage.getItem("adminToken");
       const res = await fetch(`${API_BASE_URL}/admin/payouts/${requestId}/process`, {
@@ -189,6 +198,8 @@ export const AdminPayoutsPage: React.FC = () => {
       }
     } catch {
       toast.error("Network error occurred");
+    } finally {
+      setProcessingIds(prev => ({ ...prev, [requestId]: false }));
     }
   };
 
@@ -200,8 +211,9 @@ export const AdminPayoutsPage: React.FC = () => {
 
   const handleCompleteSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!completeId) return;
+    if (!completeId || processingIds[`complete_${completeId}`]) return;
 
+    setProcessingIds(prev => ({ ...prev, [`complete_${completeId}`]: true }));
     try {
       const token = localStorage.getItem("adminToken");
       const res = await fetch(`${API_BASE_URL}/admin/payouts/${completeId}/complete`, {
@@ -222,6 +234,8 @@ export const AdminPayoutsPage: React.FC = () => {
       }
     } catch {
       toast.error("Network error occurred");
+    } finally {
+      setProcessingIds(prev => ({ ...prev, [`complete_${completeId}`]: false }));
     }
   };
 
@@ -233,11 +247,12 @@ export const AdminPayoutsPage: React.FC = () => {
 
   const handleRejectSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!rejectId || !rejectReason.trim()) {
-      toast.error("Rejection reason is required");
+    if (!rejectId || !rejectReason.trim() || processingIds[`reject_${rejectId}`]) {
+      if (!rejectReason.trim()) toast.error("Rejection reason is required");
       return;
     }
 
+    setProcessingIds(prev => ({ ...prev, [`reject_${rejectId}`]: true }));
     try {
       const token = localStorage.getItem("adminToken");
       const res = await fetch(`${API_BASE_URL}/admin/payouts/${rejectId}/reject`, {
@@ -258,6 +273,8 @@ export const AdminPayoutsPage: React.FC = () => {
       }
     } catch {
       toast.error("Network error occurred");
+    } finally {
+      setProcessingIds(prev => ({ ...prev, [`reject_${rejectId}`]: false }));
     }
   };
 
@@ -277,8 +294,9 @@ export const AdminPayoutsPage: React.FC = () => {
 
   const handleMarkRefundSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!refundReportId) return;
+    if (!refundReportId || processingIds[`refund_${refundReportId}`]) return;
 
+    setProcessingIds(prev => ({ ...prev, [`refund_${refundReportId}`]: true }));
     try {
       const token = localStorage.getItem("adminToken");
       const res = await fetch(`${API_BASE_URL}/admin/disputes/${refundReportId}/refund-complete`, {
@@ -299,13 +317,16 @@ export const AdminPayoutsPage: React.FC = () => {
       }
     } catch {
       toast.error("Network error occurred");
+    } finally {
+      setProcessingIds(prev => ({ ...prev, [`refund_${refundReportId}`]: false }));
     }
   };
 
   const handleResolveDisputeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!disputeIdToResolve) return;
+    if (!disputeIdToResolve || processingIds[`dispute_${disputeIdToResolve}`]) return;
 
+    setProcessingIds(prev => ({ ...prev, [`dispute_${disputeIdToResolve}`]: true }));
     try {
       const token = localStorage.getItem("adminToken");
       const res = await fetch(`${API_BASE_URL}/admin/disputes/${disputeIdToResolve}/resolve`, {
@@ -329,6 +350,8 @@ export const AdminPayoutsPage: React.FC = () => {
       }
     } catch {
       toast.error("Network error occurred");
+    } finally {
+      setProcessingIds(prev => ({ ...prev, [`dispute_${disputeIdToResolve}`]: false }));
     }
   };
 
@@ -470,23 +493,26 @@ export const AdminPayoutsPage: React.FC = () => {
                         {p.status === 'queued' && (
                           <button
                             onClick={() => handleVerify(p._id)}
-                            className="bg-amber-600 hover:bg-amber-700 text-black text-xs font-bold px-3 py-1.5 rounded uppercase tracking-wider"
+                            disabled={!!processingIds[p._id]}
+                            className="bg-amber-600 hover:bg-amber-700 text-black text-xs font-bold px-3 py-1.5 rounded uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                           >
-                            Verify
+                            {processingIds[p._id] ? 'Verifying...' : 'Verify'}
                           </button>
                         )}
                         {p.status === 'verifying' && (
                           <button
                             onClick={() => handleProcess(p._id)}
-                            className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-1.5 rounded uppercase tracking-wider"
+                            disabled={!!processingIds[p._id]}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-1.5 rounded uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                           >
-                            Process
+                            {processingIds[p._id] ? 'Processing...' : 'Process'}
                           </button>
                         )}
                         {p.status === 'processing' && (
                           <button
                             onClick={() => triggerCompletePrompt(p._id)}
-                            className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-3 py-1.5 rounded uppercase tracking-wider"
+                            disabled={!!processingIds[p._id]}
+                            className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-3 py-1.5 rounded uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                           >
                             Complete
                           </button>
@@ -494,7 +520,8 @@ export const AdminPayoutsPage: React.FC = () => {
                         {['queued', 'verifying', 'processing'].includes(p.status) && (
                           <button
                             onClick={() => triggerRejectPrompt(p._id)}
-                            className="bg-red-900 hover:bg-red-800 text-white text-xs font-bold px-3 py-1.5 rounded uppercase tracking-wider"
+                            disabled={!!processingIds[p._id]}
+                            className="bg-red-900 hover:bg-red-800 text-white text-xs font-bold px-3 py-1.5 rounded uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                           >
                             Reject
                           </button>
@@ -687,9 +714,10 @@ export const AdminPayoutsPage: React.FC = () => {
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold uppercase"
+                disabled={!!(rejectId && processingIds[`reject_${rejectId}`])}
+                className="px-5 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold uppercase disabled:opacity-50 disabled:cursor-not-allowed transition-all"
               >
-                Reject Request
+                {rejectId && processingIds[`reject_${rejectId}`] ? 'Rejecting...' : 'Reject Request'}
               </button>
             </div>
           </form>
@@ -729,9 +757,10 @@ export const AdminPayoutsPage: React.FC = () => {
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-xs font-bold uppercase"
+                disabled={!!(completeId && processingIds[`complete_${completeId}`])}
+                className="px-5 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-xs font-bold uppercase disabled:opacity-50 disabled:cursor-not-allowed transition-all"
               >
-                Confirm Paid
+                {completeId && processingIds[`complete_${completeId}`] ? 'Completing...' : 'Confirm Paid'}
               </button>
             </div>
           </form>
@@ -813,11 +842,14 @@ export const AdminPayoutsPage: React.FC = () => {
               </button>
               <button
                 type="submit"
-                className={`px-5 py-2 rounded-lg text-white text-xs font-bold uppercase ${
+                disabled={!!(disputeIdToResolve && processingIds[`dispute_${disputeIdToResolve}`])}
+                className={`px-5 py-2 rounded-lg text-white text-xs font-bold uppercase disabled:opacity-50 disabled:cursor-not-allowed transition-all ${
                   disputeResolution === 'upheld' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'
                 }`}
               >
-                {disputeResolution === 'upheld' ? 'Confirm Reversion' : 'Confirm Release'}
+                {disputeIdToResolve && processingIds[`dispute_${disputeIdToResolve}`]
+                  ? 'Resolving...'
+                  : disputeResolution === 'upheld' ? 'Confirm Reversion' : 'Confirm Release'}
               </button>
             </div>
           </form>
@@ -857,9 +889,10 @@ export const AdminPayoutsPage: React.FC = () => {
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold uppercase"
+                disabled={!!(refundReportId && processingIds[`refund_${refundReportId}`])}
+                className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold uppercase disabled:opacity-50 disabled:cursor-not-allowed transition-all"
               >
-                Confirm Refund Completed
+                {refundReportId && processingIds[`refund_${refundReportId}`] ? 'Updating...' : 'Confirm Refund Completed'}
               </button>
             </div>
           </form>

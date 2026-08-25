@@ -312,16 +312,17 @@ const ProviderPayout: React.FC = () => {
                     onClick={() => {
                       navigate('/adult/provider/profile?tab=payment');
                     }}
-                    className="block w-full py-3 bg-[#1b0a14] hover:bg-[#2b1020] border border-gray-800 text-amber-500 font-semibold rounded-xl text-sm transition-all"
+                    disabled={isSubmitting}
+                    className="block w-full py-3 bg-[#1b0a14] hover:bg-[#2b1020] border border-gray-800 text-amber-500 font-semibold rounded-xl text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Update Payout Settings →
                   </button>
                   <button
                     onClick={handleRequestPayout}
                     disabled={isSubmitting}
-                    className="block w-full py-3 bg-amber-500 hover:bg-amber-600 text-[#0d040e] font-bold rounded-xl text-sm transition-all disabled:opacity-50"
+                    className="block w-full py-3 bg-amber-500 hover:bg-amber-600 text-[#0d040e] font-bold rounded-xl text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Submit New Request
+                    {isSubmitting ? 'Submitting...' : 'Submit New Request'}
                   </button>
                 </div>
               </div>

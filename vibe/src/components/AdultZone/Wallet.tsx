@@ -206,14 +206,14 @@ const Wallet: React.FC = () => {
       )}
 
       {/* Custom Purchase UI */}
-      <div className="mb-20 bg-[var(--az-bg-secondary)] rounded-3xl border border-[var(--az-border)] p-6 sm:p-8">
-        <h3 className="text-xl font-serif italic text-[var(--az-text-primary)] mb-2">Custom Purchase</h3>
-        <p className="text-xs text-[var(--az-text-secondary)] mb-6">Enter a custom amount in Naira (minimum ₦1,000).</p>
+      <div className="mb-20 bg-[var(--az-bg-secondary)] rounded-3xl border border-[var(--az-border)] p-4 sm:p-6 md:p-8 w-full min-w-0">
+        <h3 className="text-lg sm:text-xl font-serif italic text-[var(--az-text-primary)] mb-1 sm:mb-2">Custom Purchase</h3>
+        <p className="text-xs text-[var(--az-text-secondary)] mb-6 leading-relaxed">Enter a custom amount in Naira (minimum ₦1,000).</p>
 
-        <div className="space-y-4">
-          <div className="bg-[#1b1216] border border-[var(--az-border)] rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3 w-full sm:w-auto flex-1">
-              <span className="text-xl font-bold text-[var(--az-text-muted)] font-mono">₦</span>
+        <div className="space-y-4 w-full min-w-0">
+          <div className="bg-[#1b1216] border border-[var(--az-border)] rounded-2xl p-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 w-full min-w-0">
+            <div className="flex items-center gap-3 w-full md:w-auto flex-1 min-w-0 bg-[#120a0e] px-3 py-2 rounded-xl border border-[var(--az-border)]/50">
+              <span className="text-xl font-bold text-[var(--az-text-muted)] font-mono shrink-0 select-none">₦</span>
               <input
                 type="number"
                 placeholder="1,000"
@@ -224,30 +224,30 @@ const Wallet: React.FC = () => {
                   setCustomNairaInput(e.target.value);
                   setCustomError(null);
                 }}
-                className="bg-transparent border-none outline-none font-mono text-2xl font-semibold text-white w-full"
+                className="bg-transparent border-none outline-none font-mono text-xl sm:text-2xl font-semibold text-white w-full min-w-0"
               />
             </div>
 
-            <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end shrink-0 border-t sm:border-t-0 border-[var(--az-border)]/50 pt-3 sm:pt-0">
-              <div className="text-right">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 md:gap-4 w-full md:w-auto shrink-0 border-t md:border-t-0 border-[var(--az-border)]/50 pt-3 md:pt-0 min-w-0">
+              <div className="text-left sm:text-right shrink-0 min-w-0">
                 <span className="text-[10px] font-bold tracking-widest text-[var(--az-text-muted)] uppercase block">You will receive</span>
-                <span className="text-lg font-mono font-bold text-yellow-500">
+                <span className="text-base sm:text-lg font-mono font-bold text-yellow-500 break-all">
                   💎 {formatAmount(customNairaInput && Number(customNairaInput) >= 1000 ? Math.floor(Number(customNairaInput) / 100) : 0)}
                 </span>
               </div>
               <button
                 onClick={handleCustomPurchase}
                 disabled={purchaseLoading !== null || !customNairaInput || Number(customNairaInput) < 1000}
-                className="px-6 py-3 rounded-full bg-[var(--az-accent-crimson)] text-white text-xs font-bold uppercase tracking-widest hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-[0_4_24_rgba(200,16,46,0.35)] shrink-0"
+                className="w-full sm:w-auto px-5 sm:px-6 py-3 rounded-full bg-[var(--az-accent-crimson)] text-white text-xs font-bold uppercase tracking-widest hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-[0_4_24_rgba(200,16,46,0.35)] shrink-0 text-center"
               >
                 {purchaseLoading === 'custom' ? 'Processing...' : 'Continue to Payment'}
               </button>
             </div>
           </div>
 
-          <div className="flex items-center justify-between text-xs text-[var(--az-text-muted)] font-mono px-1">
-            <span>Minimum ₦1,000</span>
-            <span>1 Diamond = ₦100</span>
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--az-text-muted)] font-mono px-1">
+            <span className="shrink-0">Minimum ₦1,000</span>
+            <span className="shrink-0">1 Diamond = ₦100</span>
           </div>
 
           {customError && (
@@ -274,8 +274,38 @@ const Wallet: React.FC = () => {
             ) : (
               <>
                 {transactions.map(tx => {
-                  const isPositive = tx.type === 'purchase' || tx.type === 'deposit';
-                  return <div key={tx._id} className="p-4 border-b border-[var(--az-border)]/50 flex items-center justify-between last:border-0 hover:bg-[var(--az-bg-tertiary)]/30 transition-colors"><div><h4 className="text-xs font-bold text-[var(--az-text-primary)] capitalize">{tx.type}</h4><p className="text-[10px] text-[var(--az-text-muted)]">{new Date(tx.createdAt).toLocaleDateString()}</p></div><div className="text-right flex flex-col items-end"><p className={`text-xs font-mono font-bold ${isPositive ? 'text-green-400' : 'text-[var(--az-accent-rose)]'}`}>{isPositive ? '+' : '-'}{formatAmount(tx.amount)} 💎</p><p className="text-[10px] text-[var(--az-text-muted)] font-mono">≈ {formatNaira(Math.abs(tx.amount) * usePricingStore.getState().diamondNairaRate)}</p><p className="text-[8px] uppercase tracking-tighter text-[var(--az-text-muted)] font-bold">{tx.status}</p></div></div>;
+                  const isPositive = tx.type === 'purchase' || tx.type === 'credit_purchase' || tx.type === 'deposit';
+                  const getStatusBadgeStyle = (status: string) => {
+                    const s = (status || '').toLowerCase();
+                    if (['completed', 'success'].includes(s)) {
+                      return 'bg-green-950/40 text-green-400 border-green-500/30';
+                    }
+                    if (['pending', 'queued', 'verifying', 'processing'].includes(s)) {
+                      return 'bg-amber-950/40 text-amber-400 border-amber-500/30';
+                    }
+                    if (['failed', 'rejected', 'refunded', 'reverted'].includes(s)) {
+                      return 'bg-red-950/40 text-red-400 border-red-500/30';
+                    }
+                    return 'bg-neutral-800 text-neutral-300 border-neutral-700';
+                  };
+
+                  return (
+                    <div key={tx._id} className="p-4 border-b border-[var(--az-border)]/50 flex items-center justify-between last:border-0 hover:bg-[var(--az-bg-tertiary)]/30 transition-colors">
+                      <div>
+                        <h4 className="text-xs font-bold text-[var(--az-text-primary)] capitalize">{tx.type.replace('_', ' ')}</h4>
+                        <p className="text-[10px] text-[var(--az-text-muted)]">{new Date(tx.createdAt).toLocaleDateString()}</p>
+                      </div>
+                      <div className="text-right flex flex-col items-end">
+                        <p className={`text-xs font-mono font-bold ${isPositive ? 'text-green-400' : 'text-[var(--az-accent-rose)]'}`}>
+                          {isPositive ? '+' : '-'}{formatAmount(tx.amount)} 💎
+                        </p>
+                        <p className="text-[10px] text-[var(--az-text-muted)] font-mono">≈ {formatNaira(Math.abs(tx.amount) * usePricingStore.getState().diamondNairaRate)}</p>
+                        <span className={`px-2 py-0.5 rounded text-[8px] uppercase tracking-wider font-bold border mt-0.5 ${getStatusBadgeStyle(tx.status)}`} data-testid={`tx-status-${tx._id}`}>
+                          {tx.status}
+                        </span>
+                      </div>
+                    </div>
+                  );
                 })}
 
                 {totalPages > 1 && (
