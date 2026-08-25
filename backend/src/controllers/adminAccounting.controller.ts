@@ -21,7 +21,13 @@ export const getAccountingSummary = async (_req: Request, res: Response): Promis
       purchases,
     ] = await Promise.all([
       PlatformEarning.aggregate([
-        { $group: { _id: null, gross: { $sum: '$amount' }, grossNaira: { $sum: { $ifNull: ['$nairaValue', 0] } } } },
+        {
+          $group: {
+            _id: null,
+            gross: { $sum: '$amount' },
+            grossNaira: { $sum: { $ifNull: ['$nairaValue', 0] } },
+          },
+        },
       ]),
       PayoutRequest.aggregate([
         {
@@ -32,14 +38,29 @@ export const getAccountingSummary = async (_req: Request, res: Response): Promis
                 $cond: [{ $in: ['$status', ACTIVE_PAYOUT_STATUSES] }, '$amount', 0],
               },
             },
+            pendingNaira: {
+              $sum: {
+                $cond: [{ $in: ['$status', ACTIVE_PAYOUT_STATUSES] }, { $ifNull: ['$amountNaira', 0] }, 0],
+              },
+            },
             completed: {
               $sum: {
                 $cond: [{ $eq: ['$status', 'completed'] }, '$amount', 0],
               },
             },
+            completedNaira: {
+              $sum: {
+                $cond: [{ $eq: ['$status', 'completed'] }, { $ifNull: ['$amountNaira', 0] }, 0],
+              },
+            },
             rejected: {
               $sum: {
                 $cond: [{ $eq: ['$status', 'rejected'] }, '$amount', 0],
+              },
+            },
+            rejectedNaira: {
+              $sum: {
+                $cond: [{ $eq: ['$status', 'rejected'] }, { $ifNull: ['$amountNaira', 0] }, 0],
               },
             },
             pendingCount: {
@@ -80,8 +101,20 @@ export const getAccountingSummary = async (_req: Request, res: Response): Promis
         { $group: { _id: null, total: { $sum: { $abs: '$amount' } } } },
       ]),
       CustomerRefund.aggregate([
+        { $match: { status: 'REFUND_COMPLETED' } },
         {
-          $match: { status: 'REFUND_COMPLETED' },
+          $lookup: {
+            from: 'platform_earnings',
+            localField: 'originalTxId',
+            foreignField: 'referenceId',
+            as: 'platformEarning',
+          },
+        },
+        {
+          $unwind: {
+            path: '$platformEarning',
+            preserveNullAndEmptyArrays: true,
+          },
         },
         {
           $group: {
@@ -89,44 +122,91 @@ export const getAccountingSummary = async (_req: Request, res: Response): Promis
             customerRefunded: { $sum: '$amount' },
             providerReverted: { $sum: '$providerAmountReverted' },
             platformFeeReverted: { $sum: '$platformFeeReverted' },
+            historicalPlatformFeeRevertedNaira: {
+              $sum: {
+                $cond: [
+                  {
+                    $and: [
+                      { $gt: [{ $ifNull: ['$platformEarning.amount', 0] }, 0] },
+                      { $gt: [{ $ifNull: ['$platformEarning.nairaValue', 0] }, 0] },
+                    ],
+                  },
+                  {
+                    $multiply: [
+                      {
+                        $divide: [
+                          { $ifNull: ['$platformFeeReverted', 0] },
+                          '$platformEarning.amount',
+                        ],
+                      },
+                      '$platformEarning.nairaValue',
+                    ],
+                  },
+                  0,
+                ],
+              },
+            },
             count: { $sum: 1 },
           },
         },
       ]),
       CreditTransaction.aggregate([
         { $match: { type: { $in: ['purchase', 'credit_purchase'] }, status: 'completed' } },
-        { $group: { _id: null, credits: { $sum: { $abs: '$amount' } }, naira: { $sum: { $abs: '$nairaAmount' } } } },
+        {
+          $group: {
+            _id: null,
+            credits: { $sum: { $abs: '$amount' } },
+            naira: { $sum: { $abs: '$nairaAmount' } },
+          },
+        },
       ]),
     ]);
 
     const feeData = platformFees[0] || { gross: 0, grossNaira: 0 };
-    const payoutData = payoutRequests[0] || { pending: 0, completed: 0, rejected: 0, pendingCount: 0 };
+    const payoutData = payoutRequests[0] || {
+      pending: 0,
+      pendingNaira: 0,
+      completed: 0,
+      completedNaira: 0,
+      rejected: 0,
+      rejectedNaira: 0,
+      pendingCount: 0,
+    };
     const providerData = providerEarnings[0] || { gross: 0, platformFee: 0, paidOut: 0 };
     const reversalData = reversions[0] || { total: 0 };
-    const refundData = refunds[0] || { customerRefunded: 0, providerReverted: 0, platformFeeReverted: 0, count: 0 };
+    const refundData = refunds[0] || {
+      customerRefunded: 0,
+      providerReverted: 0,
+      platformFeeReverted: 0,
+      historicalPlatformFeeRevertedNaira: 0,
+      count: 0,
+    };
     const purchaseData = purchases[0] || { credits: 0, naira: 0 };
 
-    const grossPlatformFees = feeData.gross || providerData.platformFee || 0;
+    const grossPlatformFees = feeData.gross || 0;
+    const grossPlatformFeesNaira = feeData.grossNaira || 0;
     const revertedPlatformFees = refundData.platformFeeReverted || 0;
+    const revertedPlatformFeesNaira = refundData.historicalPlatformFeeRevertedNaira || 0;
     const netPlatformFees = Math.max(0, grossPlatformFees - revertedPlatformFees);
+    const netPlatformFeesNaira = Math.max(0, grossPlatformFeesNaira - revertedPlatformFeesNaira);
 
     return res.json({
       success: true,
       rate,
       accounting: {
         grossPlatformFees,
-        grossPlatformFeesNaira: grossPlatformFees * rate,
+        grossPlatformFeesNaira,
         revertedPlatformFees,
-        revertedPlatformFeesNaira: revertedPlatformFees * rate,
+        revertedPlatformFeesNaira,
         netPlatformFees,
-        netPlatformFeesNaira: netPlatformFees * rate,
+        netPlatformFeesNaira,
         pendingPayouts: payoutData.pending || 0,
-        pendingPayoutsNaira: (payoutData.pending || 0) * rate,
+        pendingPayoutsNaira: payoutData.pendingNaira || 0,
         pendingPayoutCount: payoutData.pendingCount || 0,
         completedPayouts: payoutData.completed || 0,
-        completedPayoutsNaira: (payoutData.completed || 0) * rate,
+        completedPayoutsNaira: payoutData.completedNaira || 0,
         rejectedPayouts: payoutData.rejected || 0,
-        rejectedPayoutsNaira: (payoutData.rejected || 0) * rate,
+        rejectedPayoutsNaira: payoutData.rejectedNaira || 0,
         providerEarnings: providerData.gross || 0,
         providerEarningsNaira: (providerData.gross || 0) * rate,
         providerPaidOutFromTransactions: providerData.paidOut || 0,
