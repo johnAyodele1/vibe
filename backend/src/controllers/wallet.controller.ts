@@ -212,6 +212,62 @@ export const initializePurchase = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * Canonical helper for completing credit purchase transactions atomically.
+ * Guarantees that CreditTransaction status transition ('pending' -> 'completed')
+ * and AdultUser wallet credit increment occur within a single MongoDB session transaction.
+ * If the user document is not found, throws an error so the transaction rolls back cleanly.
+ */
+export const completeCreditPurchase = async (transactionId: mongoose.Types.ObjectId | string) => {
+  let updatedUserId: string | null = null;
+  let updatedUserCredits: number | null = null;
+  let isAlreadyCompleted = false;
+
+  const dbSession = await mongoose.startSession();
+  dbSession.startTransaction();
+
+  try {
+    const updatedTx = await CreditTransaction.findOneAndUpdate(
+      { _id: transactionId, status: 'pending' },
+      { $set: { status: 'completed' } },
+      { new: true, session: dbSession }
+    );
+
+    if (!updatedTx) {
+      // Transaction was already completed or not in pending status
+      await dbSession.commitTransaction();
+      isAlreadyCompleted = true;
+    } else {
+      const updatedUser = await AdultUser.findByIdAndUpdate(
+        updatedTx.userId,
+        { $inc: { credits: updatedTx.amount } },
+        { new: true, session: dbSession }
+      );
+
+      if (!updatedUser) {
+        throw new Error('Wallet owner not found; refusing to complete payment transaction');
+      }
+
+      updatedUserId = updatedUser._id.toString();
+      updatedUserCredits = updatedUser.credits;
+      await dbSession.commitTransaction();
+    }
+  } catch (err) {
+    await dbSession.abortTransaction().catch(() => {});
+    throw err;
+  } finally {
+    dbSession.endSession();
+  }
+
+  if (updatedUserId && updatedUserCredits !== null) {
+    socketService.emitToUser(updatedUserId, 'wallet:updated', {
+      balance: updatedUserCredits,
+    });
+  }
+
+  return { success: true, isAlreadyCompleted, updatedUserCredits };
+};
+
 export const verifyPurchase = async (req: Request, res: Response) => {
   try {
     const user = req.adultUser;
@@ -279,42 +335,8 @@ export const verifyPurchase = async (req: Request, res: Response) => {
       });
     }
 
-    // Atomic credit completion strictly requiring MongoDB session transaction
-    let updatedUserCredits: number | null = null;
-    const dbSession = await mongoose.startSession();
-    dbSession.startTransaction();
-
-    try {
-      const updatedTx = await CreditTransaction.findOneAndUpdate(
-        { _id: transaction._id, status: 'pending' },
-        { $set: { status: 'completed' } },
-        { new: true, session: dbSession }
-      );
-
-      if (updatedTx) {
-        const updatedUser = await AdultUser.findByIdAndUpdate(
-          transaction.userId,
-          { $inc: { credits: transaction.amount } },
-          { new: true, session: dbSession }
-        );
-        if (updatedUser) {
-          updatedUserCredits = updatedUser.credits;
-        }
-      }
-
-      await dbSession.commitTransaction();
-    } catch (sessionErr: any) {
-      await dbSession.abortTransaction().catch(() => {});
-      throw sessionErr;
-    } finally {
-      dbSession.endSession();
-    }
-
-    if (updatedUserCredits !== null) {
-      socketService.emitToUser(user._id.toString(), 'wallet:updated', {
-        balance: updatedUserCredits,
-      });
-    }
+    // Execute atomic credit completion
+    await completeCreditPurchase(transaction._id);
 
     return res.json({
       success: true,
@@ -351,44 +373,7 @@ export const handlePaystackWebhook = async (req: Request, res: Response) => {
         if (transaction && transaction.status === 'pending') {
           const expectedKobo = (transaction.nairaAmount || 0) * 100;
           if (amountKobo === expectedKobo && data.currency?.toUpperCase() === 'NGN') {
-            let updatedUserId: string | null = null;
-            let updatedUserCredits: number | null = null;
-
-            const dbSession = await mongoose.startSession();
-            dbSession.startTransaction();
-
-            try {
-              const updatedTx = await CreditTransaction.findOneAndUpdate(
-                { _id: transaction._id, status: 'pending' },
-                { $set: { status: 'completed' } },
-                { new: true, session: dbSession }
-              );
-
-              if (updatedTx) {
-                const updatedUser = await AdultUser.findByIdAndUpdate(
-                  transaction.userId,
-                  { $inc: { credits: transaction.amount } },
-                  { new: true, session: dbSession }
-                );
-                if (updatedUser) {
-                  updatedUserId = updatedUser._id.toString();
-                  updatedUserCredits = updatedUser.credits;
-                }
-              }
-
-              await dbSession.commitTransaction();
-            } catch (sessionErr: any) {
-              await dbSession.abortTransaction().catch(() => {});
-              throw sessionErr;
-            } finally {
-              dbSession.endSession();
-            }
-
-            if (updatedUserId && updatedUserCredits !== null) {
-              socketService.emitToUser(updatedUserId, 'wallet:updated', {
-                balance: updatedUserCredits,
-              });
-            }
+            await completeCreditPurchase(transaction._id);
           } else {
             transaction.status = 'failed';
             await transaction.save();
