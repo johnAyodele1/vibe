@@ -279,14 +279,12 @@ export const verifyPurchase = async (req: Request, res: Response) => {
       });
     }
 
-    // Atomic credit completion inside a MongoDB session transaction (with fallback for standalone Mongo setups)
+    // Atomic credit completion strictly requiring MongoDB session transaction
     let updatedUserCredits: number | null = null;
-    let dbSession: mongoose.ClientSession | null = null;
+    const dbSession = await mongoose.startSession();
+    dbSession.startTransaction();
 
     try {
-      dbSession = await mongoose.startSession();
-      dbSession.startTransaction();
-
       const updatedTx = await CreditTransaction.findOneAndUpdate(
         { _id: transaction._id, status: 'pending' },
         { $set: { status: 'completed' } },
@@ -306,35 +304,10 @@ export const verifyPurchase = async (req: Request, res: Response) => {
 
       await dbSession.commitTransaction();
     } catch (sessionErr: any) {
-      if (dbSession) {
-        await dbSession.abortTransaction().catch(() => {});
-      }
-
-      // If standalone Mongo doesn't support transactions (code 20 / Transaction numbers error), execute safe atomic fallback
-      if (sessionErr.code === 20 || sessionErr.message?.includes('Transaction numbers are only allowed')) {
-        const updatedTx = await CreditTransaction.findOneAndUpdate(
-          { _id: transaction._id, status: 'pending' },
-          { $set: { status: 'completed' } },
-          { new: true }
-        );
-
-        if (updatedTx) {
-          const updatedUser = await AdultUser.findByIdAndUpdate(
-            transaction.userId,
-            { $inc: { credits: transaction.amount } },
-            { new: true }
-          );
-          if (updatedUser) {
-            updatedUserCredits = updatedUser.credits;
-          }
-        }
-      } else {
-        throw sessionErr;
-      }
+      await dbSession.abortTransaction().catch(() => {});
+      throw sessionErr;
     } finally {
-      if (dbSession) {
-        dbSession.endSession();
-      }
+      dbSession.endSession();
     }
 
     if (updatedUserCredits !== null) {
@@ -380,12 +353,11 @@ export const handlePaystackWebhook = async (req: Request, res: Response) => {
           if (amountKobo === expectedKobo && data.currency?.toUpperCase() === 'NGN') {
             let updatedUserId: string | null = null;
             let updatedUserCredits: number | null = null;
-            let dbSession: mongoose.ClientSession | null = null;
+
+            const dbSession = await mongoose.startSession();
+            dbSession.startTransaction();
 
             try {
-              dbSession = await mongoose.startSession();
-              dbSession.startTransaction();
-
               const updatedTx = await CreditTransaction.findOneAndUpdate(
                 { _id: transaction._id, status: 'pending' },
                 { $set: { status: 'completed' } },
@@ -406,35 +378,10 @@ export const handlePaystackWebhook = async (req: Request, res: Response) => {
 
               await dbSession.commitTransaction();
             } catch (sessionErr: any) {
-              if (dbSession) {
-                await dbSession.abortTransaction().catch(() => {});
-              }
-
-              if (sessionErr.code === 20 || sessionErr.message?.includes('Transaction numbers are only allowed')) {
-                const updatedTx = await CreditTransaction.findOneAndUpdate(
-                  { _id: transaction._id, status: 'pending' },
-                  { $set: { status: 'completed' } },
-                  { new: true }
-                );
-
-                if (updatedTx) {
-                  const updatedUser = await AdultUser.findByIdAndUpdate(
-                    transaction.userId,
-                    { $inc: { credits: transaction.amount } },
-                    { new: true }
-                  );
-                  if (updatedUser) {
-                    updatedUserId = updatedUser._id.toString();
-                    updatedUserCredits = updatedUser.credits;
-                  }
-                }
-              } else {
-                throw sessionErr;
-              }
+              await dbSession.abortTransaction().catch(() => {});
+              throw sessionErr;
             } finally {
-              if (dbSession) {
-                dbSession.endSession();
-              }
+              dbSession.endSession();
             }
 
             if (updatedUserId && updatedUserCredits !== null) {

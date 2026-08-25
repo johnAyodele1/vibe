@@ -1,6 +1,6 @@
 import request from 'supertest';
 import mongoose from 'mongoose';
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import app from '../app';
 import AdultUser from '../models/AdultUser';
 import CreditTransaction from '../models/CreditTransaction';
@@ -9,7 +9,7 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 
 describe('Paystack Wallet Credit Purchases', () => {
-  let mongoServer: MongoMemoryServer;
+  let replSet: MongoMemoryReplSet;
   let userToken: string;
   let userId: string;
 
@@ -17,10 +17,12 @@ describe('Paystack Wallet Credit Purchases', () => {
     process.env.PAYSTACK_SECRET_KEY = 'sk_test_mock_paystack_secret_key';
     process.env.ADULT_JWT_SECRET = 'adult_secret';
 
-    mongoServer = await MongoMemoryServer.create();
-    const mongoUri = mongoServer.getUri();
+    replSet = await MongoMemoryReplSet.create({
+      replSet: { count: 1 },
+    });
+    const mongoUri = replSet.getUri();
     await mongoose.connect(mongoUri);
-  }, 30000);
+  }, 60000);
 
   afterAll(async () => {
     if (mongoose.connection.readyState !== 0) {
@@ -28,8 +30,8 @@ describe('Paystack Wallet Credit Purchases', () => {
       await CreditTransaction.deleteMany({});
       await mongoose.disconnect();
     }
-    if (mongoServer) {
-      await mongoServer.stop();
+    if (replSet) {
+      await replSet.stop();
     }
   });
 

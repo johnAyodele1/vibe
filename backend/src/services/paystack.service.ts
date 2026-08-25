@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import CreditTransaction from '../models/CreditTransaction';
 
 export interface PaystackInitializeOptions {
   email: string;
@@ -44,7 +45,11 @@ export interface PaystackVerifyResponse {
 
 export class PaystackService {
   private static getSecretKey(): string {
-    return process.env.PAYSTACK_SECRET_KEY || 'sk_test_mock_paystack_secret_key';
+    const key = process.env.PAYSTACK_SECRET_KEY;
+    if (!key) {
+      throw new Error('PAYSTACK_SECRET_KEY is not configured');
+    }
+    return key;
   }
 
   public static async initializeTransaction(
@@ -52,8 +57,6 @@ export class PaystackService {
   ): Promise<PaystackInitializeResponse> {
     const secretKey = this.getSecretKey();
 
-    // If using mock secret in test/dev environment without real Paystack network call,
-    // allow clean test behavior if configured, or hit real Paystack API.
     if (process.env.NODE_ENV === 'test' && secretKey === 'sk_test_mock_paystack_secret_key') {
       return {
         status: true,
@@ -91,7 +94,9 @@ export class PaystackService {
     const secretKey = this.getSecretKey();
 
     if (process.env.NODE_ENV === 'test' && secretKey === 'sk_test_mock_paystack_secret_key') {
-      // In test mode with mock key, simulate verification based on reference naming or default success
+      const dbTx = await CreditTransaction.findOne({ paymentIntentId: reference }).lean();
+      const expectedKobo = dbTx && dbTx.nairaAmount ? dbTx.nairaAmount * 100 : 200000;
+
       if (reference.includes('fail')) {
         return {
           status: true,
@@ -101,7 +106,7 @@ export class PaystackService {
             domain: 'test',
             status: 'failed',
             reference,
-            amount: 200000,
+            amount: expectedKobo,
             currency: 'NGN',
           },
         };
@@ -114,7 +119,7 @@ export class PaystackService {
           domain: 'test',
           status: 'success',
           reference,
-          amount: 200000,
+          amount: expectedKobo,
           currency: 'NGN',
         },
       };
@@ -145,6 +150,14 @@ export class PaystackService {
       .createHmac('sha512', secretKey)
       .update(rawBody)
       .digest('hex');
-    return hash === signature;
+
+    const hashBuffer = Buffer.from(hash, 'hex');
+    const signatureBuffer = Buffer.from(signature, 'hex');
+
+    if (hashBuffer.length !== signatureBuffer.length) {
+      return false;
+    }
+
+    return crypto.timingSafeEqual(hashBuffer, signatureBuffer);
   }
 }

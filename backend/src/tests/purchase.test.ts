@@ -1,19 +1,24 @@
 import request from 'supertest';
 import mongoose from 'mongoose';
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import app from '../app';
 import AdultUser from '../models/AdultUser';
 import CreditTransaction from '../models/CreditTransaction';
 import jwt from 'jsonwebtoken';
 
 describe('Wallet & Credit Purchase Integration Tests', () => {
-  let mongoServer: MongoMemoryServer;
+  let replSet: MongoMemoryReplSet;
   let userToken: string;
   let userId: string;
 
   beforeAll(async () => {
-    mongoServer = await MongoMemoryServer.create();
-    const mongoUri = mongoServer.getUri();
+    process.env.PAYSTACK_SECRET_KEY = 'sk_test_mock_paystack_secret_key';
+    process.env.ADULT_JWT_SECRET = 'adult_secret';
+
+    replSet = await MongoMemoryReplSet.create({
+      replSet: { count: 1 },
+    });
+    const mongoUri = replSet.getUri();
     await mongoose.connect(mongoUri);
 
     const user = new AdultUser({
@@ -30,11 +35,13 @@ describe('Wallet & Credit Purchase Integration Tests', () => {
     userId = user._id.toString();
 
     userToken = jwt.sign({ sub: userId }, process.env.ADULT_JWT_SECRET || 'adult_secret');
-  });
+  }, 60000);
 
   afterAll(async () => {
     await mongoose.disconnect();
-    await mongoServer.stop();
+    if (replSet) {
+      await replSet.stop();
+    }
   });
 
   it('GET /api/v1/adult/wallet/bundles returns 4 credit bundles', async () => {
