@@ -17,7 +17,6 @@ import AdminDashboard from "../Admin/AdminDashboard";
 import AdminLogin from "../Admin/AdminLogin";
 import AdminRewardsPage from "../Admin/AdminRewardsPage";
 import AdminAnalyticsWithAccounting from "../Admin/AdminAnalyticsWithAccounting";
-import AdminAccountingPage from "../Admin/AdminAccountingPage";
 import AdminPayoutsPage from "../Admin/AdminPayoutsPage";
 import AdminErrorsPage from "../Admin/AdminErrorsPage";
 import AdminOfficialChannels from "../Admin/AdminOfficialChannels";
@@ -134,7 +133,7 @@ function App() {
         <Route path="/admin/errors" element={isAdminAuthenticated ? <AdminErrorsPage /> : <Navigate to="/admin/login" replace />} />
         <Route path="/admin/payouts" element={isAdminAuthenticated ? <AdminPayoutsPage /> : <Navigate to="/admin/login" replace />} />
         <Route path="/admin/analytics" element={isAdminAuthenticated ? <AdminAnalyticsWithAccounting /> : <Navigate to="/admin/login" replace />} />
-        <Route path="/admin/accounting" element={isAdminAuthenticated ? <AdminAccountingPage /> : <Navigate to="/admin/login" replace />} />
+        <Route path="/admin/accounting" element={<Navigate to="/admin/analytics" replace />} />
         <Route path="/admin/rewards" element={isAdminAuthenticated ? <AdminRewardsPage /> : <Navigate to="/admin/login" replace />} />
         <Route path="/admin/login" element={<AdminLogin />} />
         <Route path="/admin" element={isAdminAuthenticated ? <AdminDashboard /> : <Navigate to="/admin/login" replace />} />

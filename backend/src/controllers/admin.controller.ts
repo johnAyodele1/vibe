@@ -186,28 +186,37 @@ export const getDailyUsers = async (req: Request, res: Response) => {
 export const getDailyEarnings = async (req: Request, res: Response) => {
   try {
     const { from, to } = req.query;
-    const query: any = {};
+
+    const matchQuery: any = {
+      type: { $in: PROVIDER_EARNING_TYPES },
+      status: 'completed',
+    };
+
     if (from || to) {
-      query.date = {};
-      if (from) query.date.$gte = String(from);
-      if (to) query.date.$lte = String(to);
+      matchQuery.createdAt = {};
+      if (from) matchQuery.createdAt.$gte = new Date(String(from) + 'T00:00:00.000Z');
+      if (to) matchQuery.createdAt.$lte = new Date(String(to) + 'T23:59:59.999Z');
     }
 
-    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document hydration overhead.
-    const stats = await DailyStat.find(query).sort({ date: 1 }).lean();
+    const dailyAgg = await CreditTransaction.aggregate([
+      { $match: matchQuery },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+          providerEarnings: { $sum: '$amount' },
+          platformFees: { $sum: { $ifNull: ['$platformFee', 0] } },
+          memberSpend: { $sum: { $add: ['$amount', { $ifNull: ['$platformFee', 0] }] } },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
 
-    const formatted = stats.map(s => {
-      const fees = s.platformEarnings || 0;
-      const memberSpend = Math.round(fees / 0.15);
-      const providerEarnings = memberSpend - fees;
-
-      return {
-        date: s.date,
-        platformFees: fees,
-        memberSpend,
-        providerEarnings,
-      };
-    });
+    const formatted = dailyAgg.map(item => ({
+      date: item._id,
+      platformFees: item.platformFees || 0,
+      memberSpend: item.memberSpend || 0,
+      providerEarnings: item.providerEarnings || 0,
+    }));
 
     return res.json({ success: true, data: formatted });
   } catch (error: any) {
