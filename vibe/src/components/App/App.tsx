@@ -17,6 +17,7 @@ import AdminDashboard from "../Admin/AdminDashboard";
 import AdminLogin from "../Admin/AdminLogin";
 import AdminRewardsPage from "../Admin/AdminRewardsPage";
 import AdminAnalytics from "../Admin/AdminAnalytics";
+import AdminAccountingPage from "../Admin/AdminAccountingPage";
 import AdminPayoutsPage from "../Admin/AdminPayoutsPage";
 import AdminErrorsPage from "../Admin/AdminErrorsPage";
 import AdminOfficialChannels from "../Admin/AdminOfficialChannels";
@@ -91,9 +92,6 @@ function App() {
 
   if (loading) return <LoadingScreen />;
 
-  // AdultZone uses its own authentication context. Push health must be mounted
-  // for both auth systems so normal app entry, account switching, and provider
-  // sessions all execute the same push verification path.
   const notificationUserId = adultIsAuthenticated && adultUser?.id
     ? adultUser.id
     : isAuthenticated && user?._id
@@ -136,6 +134,7 @@ function App() {
         <Route path="/admin/errors" element={isAdminAuthenticated ? <AdminErrorsPage /> : <Navigate to="/admin/login" replace />} />
         <Route path="/admin/payouts" element={isAdminAuthenticated ? <AdminPayoutsPage /> : <Navigate to="/admin/login" replace />} />
         <Route path="/admin/analytics" element={isAdminAuthenticated ? <AdminAnalytics /> : <Navigate to="/admin/login" replace />} />
+        <Route path="/admin/accounting" element={isAdminAuthenticated ? <AdminAccountingPage /> : <Navigate to="/admin/login" replace />} />
         <Route path="/admin/rewards" element={isAdminAuthenticated ? <AdminRewardsPage /> : <Navigate to="/admin/login" replace />} />
         <Route path="/admin/login" element={<AdminLogin />} />
         <Route path="/admin" element={isAdminAuthenticated ? <AdminDashboard /> : <Navigate to="/admin/login" replace />} />
