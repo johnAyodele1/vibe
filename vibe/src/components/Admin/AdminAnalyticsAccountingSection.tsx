@@ -28,6 +28,7 @@ type Accounting = {
   refundCount: number;
   completedPurchaseCredits: number;
   completedPurchaseNaira: number;
+  completedPurchaseCount: number;
 };
 
 const money = (value: number) => `💎 ${formatAmount(value || 0)}`;
@@ -140,19 +141,21 @@ const AdminAnalyticsAccountingSection: React.FC = () => {
           </div>
 
           <div>
-            <h3 className="text-[10px] uppercase tracking-widest text-neutral-400 font-bold mb-3">Purchase volume</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Metric label="Completed Purchase Volume" value={money(data.completedPurchaseCredits)} sub={naira(data.completedPurchaseNaira)} tone="text-purple-400" />
-              <div className="bg-[#130d10] border border-red-950/40 rounded-2xl p-4 md:p-5">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-500">Net reconciliation</p>
-                <p className="text-sm md:text-base font-mono font-bold text-white mt-2">
-                  Gross fees − reverted fees = net fees
-                </p>
-                <p className="text-[11px] text-neutral-500 mt-1">
-                  {money(data.grossPlatformFees)} − {money(data.revertedPlatformFees)} = {money(data.netPlatformFees)}
-                </p>
+            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-2 mb-3">
+              <div>
+                <h3 className="text-[10px] uppercase tracking-widest text-neutral-400 font-bold">Credit purchases</h3>
+                <p className="text-[11px] text-neutral-600 mt-1">Money customers paid to acquire diamonds. This is separate from platform-fee revenue.</p>
               </div>
             </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <Metric label="Credit Purchases" value={money(data.completedPurchaseCredits)} sub="Completed purchase volume" tone="text-purple-400" />
+              <Metric label="Purchase Count" value={data.completedPurchaseCount.toLocaleString()} sub="Completed credit purchases" tone="text-purple-300" />
+              <Metric label="Purchase Value" value={naira(data.completedPurchaseNaira)} sub="Historical Naira value" tone="text-purple-400" />
+            </div>
+          </div>
+
+          <div className="bg-[#130d10] border border-red-950/40 rounded-2xl p-4 md:p-5 text-xs text-neutral-500">
+            Credit purchases are not multiplied by 15%. The platform fee is recorded separately when diamonds are spent on applicable provider transactions.
           </div>
         </>
       )}
