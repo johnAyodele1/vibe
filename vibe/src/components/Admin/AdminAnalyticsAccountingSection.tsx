@@ -28,23 +28,13 @@ type Accounting = {
   refundCount: number;
   completedPurchaseCredits: number;
   completedPurchaseNaira: number;
-  completedPurchaseCount: number;
+  completedPurchaseCount?: number;
 };
 
 const money = (value: number) => `💎 ${formatAmount(value || 0)}`;
 const naira = (value: number) => `₦${Math.round(value || 0).toLocaleString()}`;
 
-const Metric = ({
-  label,
-  value,
-  sub,
-  tone = 'text-amber-500',
-}: {
-  label: string;
-  value: string;
-  sub: string;
-  tone?: string;
-}) => (
+const Metric = ({ label, value, sub, tone = 'text-amber-500' }: { label: string; value: string; sub: string; tone?: string }) => (
   <div className="bg-[#130d10] border border-red-950/40 rounded-2xl p-4 md:p-5">
     <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-500">{label}</p>
     <p className={`text-xl md:text-2xl font-mono font-bold mt-2 ${tone}`}>{value}</p>
@@ -58,19 +48,12 @@ const AdminAnalyticsAccountingSection: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
-
     const load = async () => {
       try {
         const token = localStorage.getItem('adminToken');
-        const response = await fetch(`${API_BASE_URL}/admin/analytics/accounting`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const response = await fetch(`${API_BASE_URL}/admin/analytics/accounting`, { headers: { Authorization: `Bearer ${token}` } });
         const json = await response.json();
-
-        if (!response.ok || !json.success) {
-          throw new Error(json.error || 'Failed to load accounting data');
-        }
-
+        if (!response.ok || !json.success) throw new Error(json.error || 'Failed to load accounting data');
         if (!cancelled) setData(json.accounting);
       } catch (error) {
         console.error('Failed to load accounting analytics:', error);
@@ -79,35 +62,24 @@ const AdminAnalyticsAccountingSection: React.FC = () => {
         if (!cancelled) setLoading(false);
       }
     };
-
     void load();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
   return (
     <section className="space-y-6 border-t border-red-950/60 pt-10">
-      <div>
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-2">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-amber-500">Financial reconciliation</p>
-            <h2 className="text-2xl md:text-3xl font-serif italic text-white mt-1">Accounting Overview</h2>
-          </div>
-          <p className="text-[11px] text-neutral-500 max-w-xl">
-            Historical Naira values come from the recorded transaction values. Pending payout liability is based on payout requests, not provider wallet balances.
-          </p>
+      <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-amber-500">Financial reconciliation</p>
+          <h2 className="text-2xl md:text-3xl font-serif italic text-white mt-1">Accounting Overview</h2>
         </div>
+        <p className="text-[11px] text-neutral-500 max-w-xl">Historical Naira values come from recorded transaction values. Pending payout liability is based on payout requests, not provider wallet balances.</p>
       </div>
 
       {loading ? (
-        <div className="bg-[#130d10] border border-red-950/40 rounded-2xl p-8 text-center text-xs text-neutral-500 animate-pulse">
-          Loading accounting figures...
-        </div>
+        <div className="bg-[#130d10] border border-red-950/40 rounded-2xl p-8 text-center text-xs text-neutral-500 animate-pulse">Loading accounting figures...</div>
       ) : !data ? (
-        <div className="bg-[#130d10] border border-red-950/40 rounded-2xl p-8 text-center text-xs text-neutral-500">
-          Accounting figures are unavailable.
-        </div>
+        <div className="bg-[#130d10] border border-red-950/40 rounded-2xl p-8 text-center text-xs text-neutral-500">Accounting figures are unavailable.</div>
       ) : (
         <>
           <div>
@@ -141,22 +113,18 @@ const AdminAnalyticsAccountingSection: React.FC = () => {
           </div>
 
           <div>
-            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-2 mb-3">
-              <div>
-                <h3 className="text-[10px] uppercase tracking-widest text-neutral-400 font-bold">Credit purchases</h3>
-                <p className="text-[11px] text-neutral-600 mt-1">Money customers paid to acquire diamonds. This is separate from platform-fee revenue.</p>
-              </div>
+            <div className="mb-3">
+              <h3 className="text-[10px] uppercase tracking-widest text-neutral-400 font-bold">Credit purchases</h3>
+              <p className="text-[11px] text-neutral-600 mt-1">Money customers paid to acquire diamonds. This is separate from platform-fee revenue.</p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <Metric label="Credit Purchases" value={money(data.completedPurchaseCredits)} sub="Completed purchase volume" tone="text-purple-400" />
-              <Metric label="Purchase Count" value={data.completedPurchaseCount.toLocaleString()} sub="Completed credit purchases" tone="text-purple-300" />
+              <Metric label="Purchase Count" value={(data.completedPurchaseCount ?? 0).toLocaleString()} sub="Completed credit purchases" tone="text-purple-300" />
               <Metric label="Purchase Value" value={naira(data.completedPurchaseNaira)} sub="Historical Naira value" tone="text-purple-400" />
             </div>
           </div>
 
-          <div className="bg-[#130d10] border border-red-950/40 rounded-2xl p-4 md:p-5 text-xs text-neutral-500">
-            Credit purchases are not multiplied by 15%. The platform fee is recorded separately when diamonds are spent on applicable provider transactions.
-          </div>
+          <div className="bg-[#130d10] border border-red-950/40 rounded-2xl p-4 md:p-5 text-xs text-neutral-500">Credit purchases are not multiplied by 15%. The platform fee is recorded separately when diamonds are spent on applicable provider transactions.</div>
         </>
       )}
     </section>
