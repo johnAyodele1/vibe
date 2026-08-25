@@ -69,8 +69,12 @@ describe('Admin accounting analytics', () => {
       eligibleTransactionIds: [],
     });
 
+    // Insert only the fields needed by the analytics aggregation. The AdultUser
+    // schema has unique email/username indexes, so these must never be null.
     await mongoose.connection.collection('adultusers').insertOne({
       _id: providerId,
+      email: `accounting-provider-${providerId}@test.local`,
+      username: `accounting_provider_${providerId.toString().slice(-8)}`,
       role: 'provider',
       credits: 25000,
     });
