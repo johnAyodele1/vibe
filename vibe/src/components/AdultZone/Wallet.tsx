@@ -7,9 +7,9 @@ import { usePricingStore, formatNaira, formatAmount } from '../../lib/pricing';
 const Wallet: React.FC = () => {
   const navigate = useNavigate();
   const { user, updateCredits } = useAdultAuth();
-  const [wallet, setWallet] = useState<any>(null);
-  const [bundles, setBundles] = useState<any[]>([]);
-  const [transactions, setTransactions] = useState<any[]>([]);
+  const [wallet, setWallet] = useState<{ creditBalance?: number } | null>(null);
+  const [bundles, setBundles] = useState<{ id: string; credits: number; priceNaira: number; label?: string; badge?: string }[]>([]);
+  const [transactions, setTransactions] = useState<{ _id: string; type: string; amount: number; status: string; createdAt: string }[]>([]);
   const [loadingWallet, setLoadingWallet] = useState(true);
   const [loadingBundles, setLoadingBundles] = useState(true);
   const [loadingTx, setLoadingTx] = useState(true);
@@ -94,13 +94,17 @@ const Wallet: React.FC = () => {
       navigate('/adult/provider/dashboard');
       return;
     }
-    fetchWallet();
-    fetchBundles();
+    Promise.resolve().then(() => {
+      void fetchWallet();
+      void fetchBundles();
+    });
   }, [token, user?.role, navigate]);
 
   useEffect(() => {
     if (user && user.role !== 'provider') {
-      fetchTransactions(page);
+      Promise.resolve().then(() => {
+        void fetchTransactions(page);
+      });
     }
   }, [token, page, user?.role]);
 
@@ -119,9 +123,10 @@ const Wallet: React.FC = () => {
       const data = await res.json();
       if (!res.ok || !data.authorizationUrl) throw new Error(data.error || 'Unable to start payment. Please try again.');
 
-      window.location.href = data.authorizationUrl;
-    } catch (err: any) {
-      showToast(err.message || 'Unable to start payment. Please try again.', 'error');
+      window.location.assign(data.authorizationUrl);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unable to start payment. Please try again.';
+      showToast(msg, 'error');
       setPurchaseLoading(null);
     }
   };
@@ -148,9 +153,10 @@ const Wallet: React.FC = () => {
       const data = await res.json();
       if (!res.ok || !data.authorizationUrl) throw new Error(data.error || 'Unable to start payment. Please try again.');
 
-      window.location.href = data.authorizationUrl;
-    } catch (err: any) {
-      showToast(err.message || 'Unable to start payment. Please try again.', 'error');
+      window.location.assign(data.authorizationUrl);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unable to start payment. Please try again.';
+      showToast(msg, 'error');
       setPurchaseLoading(null);
     }
   };

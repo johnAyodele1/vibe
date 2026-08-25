@@ -67,16 +67,19 @@ export const PaymentCallback: React.FC = () => {
           });
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (!isMounted) return;
       setStatus('failed');
-      setErrorMessage(err.message || 'Verification request failed.');
+      const msg = err instanceof Error ? err.message : 'Verification request failed.';
+      setErrorMessage(msg);
     }
   };
 
   useEffect(() => {
     let isMounted = true;
-    verifyPayment(isMounted);
+    Promise.resolve().then(() => {
+      void verifyPayment(isMounted);
+    });
     return () => {
       isMounted = false;
     };
