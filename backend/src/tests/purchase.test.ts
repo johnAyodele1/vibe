@@ -1,19 +1,24 @@
 import request from 'supertest';
 import mongoose from 'mongoose';
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import app from '../app';
 import AdultUser from '../models/AdultUser';
 import CreditTransaction from '../models/CreditTransaction';
 import jwt from 'jsonwebtoken';
 
 describe('Wallet & Credit Purchase Integration Tests', () => {
-  let mongoServer: MongoMemoryServer;
+  let replSet: MongoMemoryReplSet;
   let userToken: string;
   let userId: string;
 
   beforeAll(async () => {
-    mongoServer = await MongoMemoryServer.create();
-    const mongoUri = mongoServer.getUri();
+    process.env.PAYSTACK_SECRET_KEY = 'sk_test_mock_paystack_secret_key';
+    process.env.ADULT_JWT_SECRET = 'adult_secret';
+
+    replSet = await MongoMemoryReplSet.create({
+      replSet: { count: 1 },
+    });
+    const mongoUri = replSet.getUri();
     await mongoose.connect(mongoUri);
 
     const user = new AdultUser({
@@ -30,11 +35,13 @@ describe('Wallet & Credit Purchase Integration Tests', () => {
     userId = user._id.toString();
 
     userToken = jwt.sign({ sub: userId }, process.env.ADULT_JWT_SECRET || 'adult_secret');
-  });
+  }, 60000);
 
   afterAll(async () => {
     await mongoose.disconnect();
-    await mongoServer.stop();
+    if (replSet) {
+      await replSet.stop();
+    }
   });
 
   it('GET /api/v1/adult/wallet/bundles returns 4 credit bundles', async () => {
@@ -45,45 +52,45 @@ describe('Wallet & Credit Purchase Integration Tests', () => {
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body.length).toBe(4);
 
-    const bundle500 = res.body.find((b: any) => b.id === 'bundle_500');
-    expect(bundle500).toBeDefined();
-    expect(bundle500.credits).toBe(500);
-    expect(bundle500.priceUsd).toBe(19.99);
-    expect(bundle500.badge).toBe('Best Value');
+    const popularBundle = res.body.find((b: any) => b.id === 'popular');
+    expect(popularBundle).toBeDefined();
+    expect(popularBundle.credits).toBe(20);
+    expect(popularBundle.priceNaira).toBe(2000);
+    expect(popularBundle.badge).toBe('Most Popular');
   });
 
-  it('POST /api/v1/adult/wallet/purchase/intent creates pending transaction and returns simulated Stripe intent details', async () => {
+  it('POST /api/v1/adult/wallet/paystack/initialize creates pending transaction and returns Paystack initialization details', async () => {
     const res = await request(app)
-      .post('/api/v1/adult/wallet/purchase/intent')
+      .post('/api/v1/adult/wallet/paystack/initialize')
       .set('Authorization', `Bearer ${userToken}`)
-      .send({ bundleId: 'bundle_500' })
+      .send({ package: 'popular' })
       .expect(200);
 
-    expect(res.body.clientSecret).toBeDefined();
-    expect(res.body.paymentIntentId).toBeDefined();
+    expect(res.body.authorizationUrl).toBeDefined();
+    expect(res.body.reference).toBeDefined();
 
-    const pendingTx = await CreditTransaction.findOne({ paymentIntentId: res.body.paymentIntentId });
+    const pendingTx = await CreditTransaction.findOne({ paymentIntentId: res.body.reference });
     expect(pendingTx).toBeDefined();
     expect(pendingTx?.status).toBe('pending');
-    expect(pendingTx?.amount).toBe(500);
+    expect(pendingTx?.amount).toBe(20);
   });
 
-  it('POST /api/v1/adult/wallet/purchase/webhook successfully completes transaction and updates wallet balance', async () => {
-    const intentRes = await request(app)
-      .post('/api/v1/adult/wallet/purchase/intent')
+  it('GET /api/v1/adult/wallet/paystack/verify/:reference completes transaction and updates wallet balance', async () => {
+    const initRes = await request(app)
+      .post('/api/v1/adult/wallet/paystack/initialize')
       .set('Authorization', `Bearer ${userToken}`)
-      .send({ bundleId: 'bundle_1500' })
+      .send({ package: 'popular' })
       .expect(200);
 
-    const paymentIntentId = intentRes.body.paymentIntentId;
+    const reference = initRes.body.reference;
 
-    const webhookRes = await request(app)
-      .post('/api/v1/adult/wallet/purchase/webhook')
-      .send({ paymentIntentId })
+    const verifyRes = await request(app)
+      .get(`/api/v1/adult/wallet/paystack/verify/${reference}`)
+      .set('Authorization', `Bearer ${userToken}`)
       .expect(200);
 
-    expect(webhookRes.body.success).toBe(true);
-    expect(webhookRes.body.transaction.status).toBe('completed');
+    expect(verifyRes.body.success).toBe(true);
+    expect(verifyRes.body.status).toBe('completed');
 
     // Fetch updated wallet balance
     const walletRes = await request(app)
@@ -91,9 +98,9 @@ describe('Wallet & Credit Purchase Integration Tests', () => {
       .set('Authorization', `Bearer ${userToken}`)
       .expect(200);
 
-    // Initial 50 + 1500 = 1550
-    expect(walletRes.body.creditBalance).toBe(1550);
-    expect(walletRes.body.lifetimeCreditsPurchased).toBe(1500);
+    // Initial 50 + 20 = 70
+    expect(walletRes.body.creditBalance).toBe(70);
+    expect(walletRes.body.lifetimeCreditsPurchased).toBe(20);
   });
 
   it('GET /api/v1/adult/wallet/transactions returns paginated history list', async () => {

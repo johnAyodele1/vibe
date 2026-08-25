@@ -111,13 +111,13 @@ export interface IAdultUserModel extends Model<IAdultUser> {}
 
 export interface ICreditTransaction extends Document {
   userId: Types.ObjectId;
-  type: 'purchase' | 'spend' | 'refund' | 'tip_sent' | 'tip_received' | 'cam_tip' | 'payout' | 'bonus' | 'tip' | 'subscription' | 'reward' | 'call_charge' | 'call_earning' | 'service_payment_received' | 'service_payment_sent' | 'paid_media_unlock' | 'spin_wheel' | 'call_refund' | 'dispute_refund' | 'reversion';
+  type: 'purchase' | 'spend' | 'refund' | 'tip_sent' | 'tip_received' | 'cam_tip' | 'payout' | 'bonus' | 'tip' | 'subscription' | 'reward' | 'call_charge' | 'call_earning' | 'service_payment_received' | 'service_payment_sent' | 'paid_media_unlock' | 'spin_wheel' | 'call_refund' | 'dispute_refund' | 'reversion' | 'credit_purchase';
   amount: number;
   usdAmount: number;
   nairaAmount?: number;
   description: string;
   relatedUserId?: Types.ObjectId;
-  paymentProvider?: 'stripe' | 'apple' | 'google' | 'crypto';
+  paymentProvider?: 'stripe' | 'apple' | 'google' | 'crypto' | 'paystack';
   paymentIntentId?: string;
   status: 'pending' | 'completed' | 'failed' | 'refunded' | 'reverted';
   platformFee?: number;

@@ -30,7 +30,8 @@ const creditTransactionSchema = new Schema<ICreditTransaction>(
         'service_payment_sent',
         'paid_media_unlock',
         'spin_wheel',
-        'call_refund'
+        'call_refund',
+        'credit_purchase'
       ],
     },
     amount: {
@@ -55,7 +56,7 @@ const creditTransactionSchema = new Schema<ICreditTransaction>(
     },
     paymentProvider: {
       type: String,
-      enum: ['stripe', 'apple', 'google', 'crypto'],
+      enum: ['stripe', 'apple', 'google', 'crypto', 'paystack'],
     },
     paymentIntentId: {
       type: String,
