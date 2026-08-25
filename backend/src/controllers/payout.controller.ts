@@ -40,25 +40,27 @@ export const getEligiblePayout = async (req: Request, res: Response) => {
       return res.status(403).json({ success: false, error: 'Only providers can check eligible payouts' });
     }
 
-    // Unpaid, eligible transactions for this provider
-    const eligibleTxs = await CreditTransaction.find({
-      userId: user._id,
-      type: { $in: PROVIDER_EARNING_TYPES },
-      status: 'completed',
-      eligibleForPayout: true,
-      paidOut: { $ne: true },
-      inPayoutRequest: { $exists: false },
-      inDispute: { $ne: true }
-    });
-
-    const disputedTxs = await CreditTransaction.find({
-      userId: user._id,
-      inDispute: true,
-      paidOut: { $ne: true }
-    });
+    // Optimization (⚡ Bolt): Execute independent queries for eligible transactions, disputed transactions,
+    // and diamond rate concurrently via Promise.all with .lean() to eliminate waterfall latency and hydration overhead.
+    const [eligibleTxs, disputedTxs, rate] = await Promise.all([
+      CreditTransaction.find({
+        userId: user._id,
+        type: { $in: PROVIDER_EARNING_TYPES },
+        status: 'completed',
+        eligibleForPayout: true,
+        paidOut: { $ne: true },
+        inPayoutRequest: { $exists: false },
+        inDispute: { $ne: true }
+      }).lean(),
+      CreditTransaction.find({
+        userId: user._id,
+        inDispute: true,
+        paidOut: { $ne: true }
+      }).lean(),
+      getDiamondNairaRate(),
+    ]);
 
     const eligibleTotal = eligibleTxs.reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
-    const rate = await getDiamondNairaRate();
     const eligibleNaira = eligibleTotal * rate;
 
     const disputedAmount = disputedTxs.reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
