@@ -69,8 +69,6 @@ describe('Admin accounting analytics', () => {
       eligibleTransactionIds: [],
     });
 
-    // Insert only the fields needed by the analytics aggregation. The AdultUser
-    // schema has unique email/username indexes, so these must never be null.
     await mongoose.connection.collection('adultusers').insertOne({
       _id: providerId,
       email: `accounting-provider-${providerId}@test.local`,
@@ -122,19 +120,19 @@ describe('Admin accounting analytics', () => {
     expect(res.body.rate).toBe(200);
     expect(res.body.accounting.grossPlatformFees).toBe(1000);
     expect(res.body.accounting.grossPlatformFeesNaira).toBe(100000);
+    expect(res.body.accounting.netPlatformFees).toBe(1000);
+    expect(res.body.accounting.netPlatformFeesNaira).toBe(100000);
   });
 
-  it('separates gross, reverted, and net platform fees using historical refund values', async () => {
+  it('does not subtract a platform reversal twice when the reversal is already recorded as a negative PlatformEarning', async () => {
     const txId = new mongoose.Types.ObjectId();
     const customerId = new mongoose.Types.ObjectId();
     const providerId = new mongoose.Types.ObjectId();
 
-    await PlatformEarning.create({
-      source: 'tip',
-      amount: 1000,
-      nairaValue: 100000,
-      referenceId: txId,
-    });
+    await PlatformEarning.create([
+      { source: 'tip', amount: 1000, nairaValue: 100000, referenceId: txId },
+      { source: 'service', amount: -75, nairaValue: -7500, referenceId: txId },
+    ]);
 
     await CustomerRefund.create({
       originalTxId: txId,
