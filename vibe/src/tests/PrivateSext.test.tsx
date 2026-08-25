@@ -341,4 +341,47 @@ describe('PrivateSext Frontend Component', () => {
     // Expected: Card for conv_B MUST NOT be rendered in conv_A
     expect(screen.queryByTestId('gift-request-message')).not.toBeInTheDocument();
   });
+
+  it('displays exact media unlock price without adding 15% markup (100 diamonds displays "Unlock for 100 💎")', async () => {
+    server.use(
+      http.get('*/api/v1/adult/sext/conversations/conv_xyz/messages', () => {
+        return HttpResponse.json([
+          {
+            id: 'msg-locked-1',
+            conversationId: 'conv_xyz',
+            senderId: 'provider123',
+            receiverId: 'user123',
+            content: '[Locked Premium Media]',
+            mediaType: 'locked_image',
+            mediaThumbnailUrl: 'https://test.com/thumb.jpg',
+            creditCost: 100,
+            isUnlocked: false,
+            isDeleted: false,
+            createdAt: new Date().toISOString()
+          }
+        ]);
+      })
+    );
+
+    render(
+      <MemoryRouter>
+        <AdultCallProvider>
+          <PrivateSext />
+        </AdultCallProvider>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Sasha Lux')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('Sasha Lux'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('message-locked-media')).toBeInTheDocument();
+    });
+
+    // Should display exact 100 diamonds, NOT 115
+    expect(screen.getByRole('button', { name: /Unlock for 100 💎/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Unlock for 115 💎/i })).not.toBeInTheDocument();
+  });
 });

@@ -278,4 +278,58 @@ describe('ProviderPayout Component', () => {
       expect(screen.getByRole('button', { name: /Submit New Request/i })).toBeInTheDocument();
     });
   });
+
+  it('resubmitting a rejected request enters a processing state ("Submitting...") and disables duplicate clicks', async () => {
+    let resolveRequestPromise: (value: any) => void;
+    const pendingPromise = new Promise((resolve) => {
+      resolveRequestPromise = resolve;
+    });
+
+    mockFetch.mockImplementation(async (input: any, options: any = {}) => {
+      const url = typeof input === 'string' ? input : input.url;
+      const method = (typeof input === 'object' && input.method) ? input.method : (options?.method || 'GET');
+
+      if (method === 'POST' && url.includes('/v1/adult/providers/me/payout/request')) {
+        await pendingPromise;
+        return {
+          ok: true,
+          status: 201,
+          json: async () => ({ success: true, requestId: 'req_new', status: 'queued' })
+        };
+      }
+      if (url.includes('/v1/adult/providers/me/payout/status')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            data: {
+              _id: 'req_123',
+              amount: 1000,
+              amountNaira: 100000,
+              payoutMethod: 'crypto',
+              payoutDetails: { cryptoCurrency: 'USDT', cryptoAddress: '0x123' },
+              status: 'rejected',
+              requestedAt: new Date().toISOString(),
+              rejectedReason: 'Invalid wallet address'
+            }
+          })
+        };
+      }
+      return { ok: true, status: 200, json: async () => ({ success: true, data: [] }) };
+    });
+
+    render(
+      <MemoryRouter>
+        <ProviderPayout />
+      </MemoryRouter>
+    );
+
+    const resubmitBtn = await screen.findByRole('button', { name: /Submit New Request/i });
+    fireEvent.click(resubmitBtn);
+
+    expect(screen.getByRole('button', { name: /Submitting\.\.\./i })).toBeDisabled();
+
+    resolveRequestPromise!({});
+  });
 });
