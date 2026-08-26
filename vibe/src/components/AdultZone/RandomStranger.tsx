@@ -276,7 +276,7 @@ const RandomStranger: React.FC = () => {
               token={matchData.token}
               roomId={matchData.roomId}
               matchId={matchData.matchId}
-              userId={user?.id || user?._id?.toString() || ''}
+              userId={user?.id || ''}
               socket={socket}
               mode={matchData.mode || mode}
               onNext={handleNext}

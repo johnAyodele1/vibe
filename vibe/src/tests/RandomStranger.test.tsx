@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import RandomStranger from '../components/AdultZone/RandomStranger';
 
@@ -30,9 +29,9 @@ describe('RandomStranger Component Tests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.setItem('adultAccessToken', 'mock_token');
-    global.fetch = vi.fn().mockResolvedValue({
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       json: () => Promise.resolve({ success: true, data: { status: 'waiting' } }),
-    });
+    }));
   });
 
   it('renders filter controls with default selections', () => {
@@ -78,7 +77,7 @@ describe('RandomStranger Component Tests', () => {
     fireEvent.click(startBtn);
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(
+      expect(fetch).toHaveBeenCalledWith(
         expect.stringContaining('/v1/adult/random/queue'),
         expect.objectContaining({
           method: 'POST',
