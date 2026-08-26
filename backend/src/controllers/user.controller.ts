@@ -38,13 +38,16 @@ export const blockUser = async (req: IExpressRequest, res: Response): Promise<Re
     const currentUserId = req.user._id as Types.ObjectId;
     if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ success: false, message: 'Invalid user ID' });
     if (id === currentUserId.toString()) return res.status(400).json({ success: false, message: 'Cannot block yourself' });
-    const user = await User.findById(currentUserId);
-    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
     const targetId = new mongoose.Types.ObjectId(id);
-    if (!user.blockedUsers.includes(targetId)) {
-      user.blockedUsers.push(targetId);
-      await user.save();
-    }
+
+    // Optimization (⚡ Bolt): Use atomic $addToSet with findByIdAndUpdate to eliminate document hydration and write-lock overhead.
+    const user = await User.findByIdAndUpdate(
+      currentUserId,
+      { $addToSet: { blockedUsers: targetId } },
+      { new: true }
+    ).select('_id').lean();
+
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
     return res.json({ success: true, message: 'User blocked successfully' });
   } catch (error) {
     console.error('Block user error:', error);

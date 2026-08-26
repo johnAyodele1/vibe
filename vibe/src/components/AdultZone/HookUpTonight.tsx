@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CustomSelect } from './CustomSelect';
 import HookupMap from './HookupMap';
@@ -27,6 +27,72 @@ interface HookupProviderItem {
     city?: { name: string };
   };
 }
+
+// Optimization (⚡ Bolt): Extract and memoize card component to skip DOM diffing and re-renders when parent state changes.
+const HookupProviderCard: React.FC<{
+  provider: HookupProviderItem;
+  onNavigate: (id: string) => void;
+  onMessageClick: (id: string) => void;
+}> = React.memo(({ provider, onNavigate, onMessageClick }) => {
+  return (
+    <div
+      onClick={() => onNavigate(provider.id)}
+      className="relative aspect-[3/4] rounded-2xl overflow-hidden border border-[var(--az-border)] bg-[var(--az-bg-secondary)] group cursor-pointer az-card-hover"
+    >
+      <img
+        src={provider.photoUrl}
+        alt={provider.stageName}
+        className="absolute inset-0 w-full h-full object-cover object-top filter blur-[1px] group-hover:blur-0 transition-all duration-500"
+      />
+
+      {provider.isOnline && (
+        <div className="absolute top-3 left-3 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-black shadow-[0_0_8px_green]" />
+      )}
+
+      <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent p-4 flex flex-col justify-end min-w-0">
+        <div className="flex items-center gap-2 mb-1 min-w-0 max-w-full">
+          <h4
+            className="text-lg font-serif italic text-white truncate flex-1 min-w-0"
+            title={`${provider.stageName}, ${provider.age}`}
+          >
+            {provider.stageName}, {provider.age}
+          </h4>
+          {provider.isVerified && <span className="text-[10px] text-[var(--az-accent-gold)]">⭐</span>}
+        </div>
+        <p className="text-[10px] text-[var(--az-text-secondary)] font-bold uppercase tracking-tighter mb-3">
+          {provider.location?.city?.name || 'Nearby'}
+        </p>
+
+        <div className="flex justify-between items-center mt-4 opacity-0 group-hover:opacity-100 transition-opacity translate-y-4 group-hover:translate-y-0 duration-300">
+          <button
+            type="button"
+            className="w-8 h-8 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center hover:bg-[var(--az-accent-primary)] transition-colors cursor-pointer"
+          >
+            ❤️
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onMessageClick(provider.id);
+            }}
+            className="w-8 h-8 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center hover:bg-[var(--az-accent-rose)] transition-colors cursor-pointer"
+          >
+            💬
+          </button>
+          <button
+            type="button"
+            className="w-8 h-8 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center hover:bg-[var(--az-accent-gold)] transition-colors cursor-pointer"
+          >
+            ⚡
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+HookupProviderCard.displayName = 'HookupProviderCard';
 
 const HookUpTonight: React.FC = () => {
   const navigate = useNavigate();
@@ -191,7 +257,12 @@ const HookUpTonight: React.FC = () => {
     return () => clearTimeout(timer);
   }, [fetchMapProviders]);
 
-  const handleMessageClick = async (providerId: string) => {
+  // Optimization (⚡ Bolt): Stable callbacks for memoized card component to preserve React.memo efficiency across parent re-renders.
+  const handleProviderNavigate = useCallback((providerId: string) => {
+    navigate(`/adult/providers/${providerId}`);
+  }, [navigate]);
+
+  const handleMessageClick = useCallback(async (providerId: string) => {
     if (!localStorage.getItem('adultAccessToken')) {
       window.dispatchEvent(new CustomEvent('open-adult-auth-modal'));
       return;
@@ -214,7 +285,7 @@ const HookUpTonight: React.FC = () => {
     } catch (err) {
       console.error('Failed to initiate conversation:', err);
     }
-  };
+  }, [navigate]);
 
   const handleResetFilters = () => {
     setLocation({});
@@ -222,9 +293,19 @@ const HookUpTonight: React.FC = () => {
     setPage(1);
   };
 
-  const countryOptions = countries?.map((c) => ({ value: c.code || '', label: `${c.flag || '🌍'} ${c.name}`, extra: c })) || [];
-  const stateOptions = states?.map((s) => ({ value: s.code || '', label: s.name, extra: s })) || [];
-  const cityOptions = cities?.map((ct, idx) => ({ value: (ct.name || '') + '_' + idx, label: ct.name, extra: ct })) || [];
+  // Optimization (⚡ Bolt): Memoize select options to avoid re-allocating arrays and objects on every render.
+  const countryOptions = useMemo(
+    () => countries?.map((c) => ({ value: c.code || '', label: `${c.flag || '🌍'} ${c.name}`, extra: c })) || [],
+    [countries]
+  );
+  const stateOptions = useMemo(
+    () => states?.map((s) => ({ value: s.code || '', label: s.name, extra: s })) || [],
+    [states]
+  );
+  const cityOptions = useMemo(
+    () => cities?.map((ct, idx) => ({ value: (ct.name || '') + '_' + idx, label: ct.name, extra: ct })) || [],
+    [cities]
+  );
 
   const renderFilterFields = (isMobileSheet: boolean) => (
     <div className={`${isMobileSheet ? 'space-y-6' : 'flex flex-col md:flex-row md:items-end gap-4 w-full'}`}>
@@ -385,25 +466,12 @@ const HookUpTonight: React.FC = () => {
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-6">
                 {providers.map((p) => (
-                  <div key={p.id} onClick={() => navigate(`/adult/providers/${p.id}`)} className="relative aspect-[3/4] rounded-2xl overflow-hidden border border-[var(--az-border)] bg-[var(--az-bg-secondary)] group cursor-pointer az-card-hover">
-                    <img src={p.photoUrl} alt={p.stageName} className="absolute inset-0 w-full h-full object-cover object-top filter blur-[1px] group-hover:blur-0 transition-all duration-500" />
-
-                    {p.isOnline && <div className="absolute top-3 left-3 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-black shadow-[0_0_8px_green]" />}
-
-                    <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent p-4 flex flex-col justify-end min-w-0">
-                      <div className="flex items-center gap-2 mb-1 min-w-0 max-w-full">
-                        <h4 className="text-lg font-serif italic text-white truncate flex-1 min-w-0" title={`${p.stageName}, ${p.age}`}>{p.stageName}, {p.age}</h4>
-                        {p.isVerified && <span className="text-[10px] text-[var(--az-accent-gold)]">⭐</span>}
-                      </div>
-                      <p className="text-[10px] text-[var(--az-text-secondary)] font-bold uppercase tracking-tighter mb-3">{p.location?.city?.name || 'Nearby'}</p>
-
-                      <div className="flex justify-between items-center mt-4 opacity-0 group-hover:opacity-100 transition-opacity translate-y-4 group-hover:translate-y-0 duration-300">
-                        <button type="button" className="w-8 h-8 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center hover:bg-[var(--az-accent-primary)] transition-colors cursor-pointer">❤️</button>
-                        <button type="button" onClick={(e) => { e.stopPropagation(); handleMessageClick(p.id); }} className="w-8 h-8 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center hover:bg-[var(--az-accent-rose)] transition-colors cursor-pointer">💬</button>
-                        <button type="button" className="w-8 h-8 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center hover:bg-[var(--az-accent-gold)] transition-colors cursor-pointer">⚡</button>
-                      </div>
-                    </div>
-                  </div>
+                  <HookupProviderCard
+                    key={p.id}
+                    provider={p}
+                    onNavigate={handleProviderNavigate}
+                    onMessageClick={handleMessageClick}
+                  />
                 ))}
               </div>
             )}
