@@ -672,10 +672,6 @@ export const getPayoutStatus = async (req: Request, res: Response) => {
     });
 
     if (!activeRequest) {
-      const lastRequest = await PayoutRequest.findOne({ providerId: user._id }).sort({ requestedAt: -1 });
-      if (lastRequest && (lastRequest.status === 'completed' || lastRequest.status === 'rejected')) {
-        return res.json({ success: true, data: lastRequest });
-      }
       return res.json({ success: true, data: null });
     }
 

@@ -76,7 +76,7 @@ describe('ProviderPayout Component', () => {
     await waitFor(() => {
       expect(screen.getByText('💎 1,500')).toBeInTheDocument();
       expect(screen.getByText('₦150,000')).toBeInTheDocument();
-      expect(screen.getByText('Earnings Breakdown')).toBeInTheDocument();
+      expect(screen.getByText('Eligible Earnings Breakdown')).toBeInTheDocument();
     });
   });
 
@@ -97,7 +97,6 @@ describe('ProviderPayout Component', () => {
     mockFetch.mockImplementation(async (input: any, options: any = {}) => {
       const url = typeof input === 'string' ? input : input.url;
       const method = (typeof input === 'object' && input.method) ? input.method : (options?.method || 'GET');
-      console.log('MOCK FETCH CALLED:', method, url);
 
       if (method === 'POST' && url.includes('/v1/adult/providers/me/payout/request')) {
         return {
@@ -158,8 +157,8 @@ describe('ProviderPayout Component', () => {
     fireEvent.click(requestButton);
 
     await waitFor(() => {
-      expect(screen.getByText('Payment Queued')).toBeInTheDocument();
-      expect(screen.getByText('You are #1 in the queue — moving to verification soon.')).toBeInTheDocument();
+      expect(screen.getByText('Payout Queued')).toBeInTheDocument();
+      expect(screen.getByText('You are #1 in the queue — moving to admin verification soon.')).toBeInTheDocument();
     });
   });
 
@@ -186,7 +185,30 @@ describe('ProviderPayout Component', () => {
           })
         };
       }
-      return { ok: true, status: 200, json: async () => ({ success: true, data: [] }) };
+      if (url.includes('/v1/adult/providers/me/payout/eligible')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            eligibleAmount: 0,
+            eligibleNaira: 0,
+            eligibleTransactionIds: [],
+            breakdown: { tips: 0, calls: 0, service_charges: 0, gifts: 0, paid_media: 0, spin_wheel: 0 }
+          })
+        };
+      }
+      if (url.includes('/v1/adult/providers/me/payout/history')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            data: []
+          })
+        };
+      }
+      return { ok: false, status: 404, json: async () => ({ error: 'Not Found' }) };
     });
 
     render(
@@ -196,32 +218,58 @@ describe('ProviderPayout Component', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Admin Verifying Details')).toBeInTheDocument();
-      expect(screen.getByText('Position #3 — Our team is reviewing your payout details.')).toBeInTheDocument();
-      expect(screen.getByText('PayPal: lucia@vibe.com')).toBeInTheDocument();
+      expect(screen.getByText('Admin Verification')).toBeInTheDocument();
+      expect(screen.getByText(/Position #3/i)).toBeInTheDocument();
+      expect(screen.getAllByText(/PayPal: lucia@vibe.com/i)[0]).toBeInTheDocument();
     });
   });
 
-  it('renders completed state with admin reference when status is completed', async () => {
+  it('renders completed state banner & allows repeat payout when previous payout is in history as completed', async () => {
     mockFetch.mockImplementation(async (input: any) => {
       const url = typeof input === 'string' ? input : input.url;
 
+      if (url.includes('/v1/adult/providers/me/payout/eligible')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            eligibleAmount: 2000,
+            eligibleNaira: 200000,
+            eligibleTransactionIds: ['tx_new'],
+            breakdown: { tips: 2000, calls: 0, service_charges: 0, gifts: 0, paid_media: 0, spin_wheel: 0 }
+          })
+        };
+      }
       if (url.includes('/v1/adult/providers/me/payout/status')) {
         return {
           ok: true,
           status: 200,
           json: async () => ({
             success: true,
-            data: {
-              _id: 'req_123',
-              amount: 1000,
-              amountNaira: 100000,
-              payoutMethod: 'bank',
-              payoutDetails: { bankName: 'Access Bank', accountNumber: '9876543210' },
-              status: 'completed',
-              requestedAt: new Date().toISOString(),
-              adminReference: 'TXREF-777'
-            }
+            data: null
+          })
+        };
+      }
+      if (url.includes('/v1/adult/providers/me/payout/history')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            data: [
+              {
+                _id: 'req_123',
+                amount: 1000,
+                amountNaira: 100000,
+                payoutMethod: 'bank',
+                payoutDetails: { bankName: 'Access Bank', accountNumber: '9876543210' },
+                status: 'completed',
+                requestedAt: new Date().toISOString(),
+                completedAt: new Date().toISOString(),
+                adminReference: 'TXREF-777'
+              }
+            ]
           })
         };
       }
@@ -235,12 +283,15 @@ describe('ProviderPayout Component', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Payment Sent! 🎉')).toBeInTheDocument();
-      expect(screen.getByText('Reference: TXREF-777')).toBeInTheDocument();
+      expect(screen.getByText('Payment Sent')).toBeInTheDocument();
+      expect(screen.getByText('Ref:')).toBeInTheDocument();
+      expect(screen.getByText('TXREF-777')).toBeInTheDocument();
+      // Verifies available payout request CTA is still visible for new requests
+      expect(screen.getByRole('button', { name: /Request Payout — 💎 2,000/i })).toBeInTheDocument();
     });
   });
 
-  it('renders rejected state with reason, settings and submit buttons', async () => {
+  it('renders rejected state banner with reason and settings button when previous payout is rejected', async () => {
     mockFetch.mockImplementation(async (input: any) => {
       const url = typeof input === 'string' ? input : input.url;
 
@@ -250,16 +301,29 @@ describe('ProviderPayout Component', () => {
           status: 200,
           json: async () => ({
             success: true,
-            data: {
-              _id: 'req_123',
-              amount: 1000,
-              amountNaira: 100000,
-              payoutMethod: 'crypto',
-              payoutDetails: { cryptoCurrency: 'USDT', cryptoAddress: '0x12345678901234567890' },
-              status: 'rejected',
-              requestedAt: new Date().toISOString(),
-              rejectedReason: 'Invalid wallet address'
-            }
+            data: null
+          })
+        };
+      }
+      if (url.includes('/v1/adult/providers/me/payout/history')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            data: [
+              {
+                _id: 'req_123',
+                amount: 1000,
+                amountNaira: 100000,
+                payoutMethod: 'crypto',
+                payoutDetails: { cryptoCurrency: 'USDT', cryptoAddress: '0x12345678901234567890' },
+                status: 'rejected',
+                requestedAt: new Date().toISOString(),
+                rejectedAt: new Date().toISOString(),
+                rejectedReason: 'Invalid wallet address'
+              }
+            ]
           })
         };
       }
@@ -273,13 +337,13 @@ describe('ProviderPayout Component', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Payout Rejected')).toBeInTheDocument();
+      expect(screen.getByText('Previous Payout Rejected')).toBeInTheDocument();
       expect(screen.getByText('Invalid wallet address')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Submit New Request/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Update Payout Details →/i })).toBeInTheDocument();
     });
   });
 
-  it('resubmitting a rejected request enters a processing state ("Submitting...") and disables duplicate clicks', async () => {
+  it('resubmitting a payout request when eligible enters loading state ("Requesting...") and disables duplicate clicks', async () => {
     let resolveRequestPromise: (value: any) => void;
     const pendingPromise = new Promise((resolve) => {
       resolveRequestPromise = resolve;
@@ -297,22 +361,26 @@ describe('ProviderPayout Component', () => {
           json: async () => ({ success: true, requestId: 'req_new', status: 'queued' })
         };
       }
+      if (url.includes('/v1/adult/providers/me/payout/eligible')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            eligibleAmount: 1000,
+            eligibleNaira: 100000,
+            eligibleTransactionIds: ['tx1'],
+            breakdown: { tips: 1000, calls: 0, service_charges: 0, gifts: 0, paid_media: 0, spin_wheel: 0 }
+          })
+        };
+      }
       if (url.includes('/v1/adult/providers/me/payout/status')) {
         return {
           ok: true,
           status: 200,
           json: async () => ({
             success: true,
-            data: {
-              _id: 'req_123',
-              amount: 1000,
-              amountNaira: 100000,
-              payoutMethod: 'crypto',
-              payoutDetails: { cryptoCurrency: 'USDT', cryptoAddress: '0x123' },
-              status: 'rejected',
-              requestedAt: new Date().toISOString(),
-              rejectedReason: 'Invalid wallet address'
-            }
+            data: null
           })
         };
       }
@@ -325,10 +393,10 @@ describe('ProviderPayout Component', () => {
       </MemoryRouter>
     );
 
-    const resubmitBtn = await screen.findByRole('button', { name: /Submit New Request/i });
-    fireEvent.click(resubmitBtn);
+    const submitBtn = await screen.findByRole('button', { name: /Request Payout — 💎 1,000/i });
+    fireEvent.click(submitBtn);
 
-    expect(screen.getByRole('button', { name: /Submitting\.\.\./i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Requesting\.\.\./i })).toBeDisabled();
 
     resolveRequestPromise!({});
   });
