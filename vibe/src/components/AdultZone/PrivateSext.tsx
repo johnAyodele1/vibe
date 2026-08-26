@@ -1835,7 +1835,6 @@ const PrivateSext: React.FC = () => {
                     ) : m.mediaType === 'service_request' ? (
                       <div data-testid="service-request-message" className="w-72 bg-gradient-to-br from-[#1b0a14] to-[#0d040a] border-2 border-amber-500/50 rounded-2xl p-5 shadow-2xl relative overflow-hidden flex flex-col text-left">
                         <div className="flex items-center gap-2 mb-3 border-b border-white/5 pb-2">
-                          <span className="text-lg">🌙</span>
                           <span className="font-bold text-[10px] uppercase tracking-wider text-amber-400">Activity Service Charge</span>
                         </div>
 
@@ -1910,7 +1909,7 @@ const PrivateSext: React.FC = () => {
                             </div>
                           ) : m.serviceRequest?.status === 'completed' || m.serviceRequest?.status === 'auto_completed' ? (
                             <div className="text-xs text-green-400 font-bold uppercase tracking-widest text-center py-2 bg-green-950/20 border border-green-500/30 rounded-xl">
-                              🌙 Service Completed
+                              Service Completed
                             </div>
                           ) : (
                             <div className="space-y-2 mt-2">
@@ -1974,7 +1973,6 @@ const PrivateSext: React.FC = () => {
                     ) : m.mediaType === 'request_service' ? (
                       <div data-testid="message-service-tonight-request" className="w-64 bg-[#140b13] border-2 border-dashed border-purple-500/40 rounded-xl p-4 flex flex-col gap-3 message-service-tonight-request">
                         <div className="flex items-center gap-2">
-                          <span className="text-xl">🌙</span>
                           <span className="font-bold text-xs tracking-wider text-purple-400 uppercase">Service Request</span>
                         </div>
                         {m.serviceTonightRequest?.note && (
@@ -2314,7 +2312,7 @@ const PrivateSext: React.FC = () => {
                         onClick={() => setShowServiceRequestModal(true)}
                         className="text-[10px] font-bold uppercase tracking-widest text-purple-400 hover:text-purple-500 flex items-center gap-1.5 transition-colors"
                       >
-                        🌙 Request Service
+                        Request Service
                       </button>
                     </div>
                   )}

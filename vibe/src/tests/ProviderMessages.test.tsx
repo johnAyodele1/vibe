@@ -332,7 +332,7 @@ describe('ProviderMessages Frontend Component', () => {
     expect(screen.getByText('Send Activity Request', { selector: 'h3' })).toBeInTheDocument();
 
     // Base rate tonightRate should be pre-filled as 150
-    expect(screen.getByText(/Your tonight rate/)).toBeInTheDocument();
+    expect(screen.getByText(/Your activity rate/)).toBeInTheDocument();
 
     // Add extra charge row
     fireEvent.click(screen.getByTestId('service-request-add-extra'));

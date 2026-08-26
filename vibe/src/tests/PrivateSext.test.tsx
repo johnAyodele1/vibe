@@ -124,10 +124,10 @@ describe('PrivateSext Frontend Component', () => {
 
     // Open tonight service request modal
     await waitFor(() => {
-      expect(screen.getByText('🌙 Request Service')).toBeInTheDocument();
+      expect(screen.getByText('Request Service')).toBeInTheDocument();
     });
 
-    const requestTonightBtn = screen.getByText('🌙 Request Service');
+    const requestTonightBtn = screen.getByText('Request Service');
     fireEvent.click(requestTonightBtn);
 
     expect(screen.getByText('Request an Activity')).toBeInTheDocument();

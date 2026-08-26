@@ -6,14 +6,14 @@ const VIPLounge: React.FC = () => {
       name: 'Gold',
       price: '₦4,999',
       duration: '/mo',
-      features: ['Access to all Live Cams', 'Basic Naughty Rooms', '💎 10 Credits Monthly', 'Standard Support'],
+      features: ['Access to all Live Cams', '💎 10 Credits Monthly', 'Standard Support'],
       color: 'border-yellow-700/30'
     },
     {
       name: 'Platinum',
       price: '₦9,999',
       duration: '/mo',
-      features: ['Priority Cam Access', 'All Premium Rooms', '💎 20 Credits Monthly', 'Private Photo Requests', 'No Ads'],
+      features: ['Priority Cam Access', 'All Premium Rooms', '💎 20 Credits Monthly', 'No Ads'],
       color: 'border-[var(--az-accent-rose)]',
       popular: true
     },
