@@ -279,8 +279,8 @@ const HookUpTonight: React.FC = () => {
       const data = await response.json();
       if (data.conversationId) {
         const isMobile = window.innerWidth < 768;
-        if (isMobile) navigate(`/adult/sext/${data.conversationId}`);
-        else navigate(`/adult/sext?conversation=${data.conversationId}`);
+        if (isMobile) navigate(`/inbox/${data.conversationId}`);
+        else navigate(`/inbox?conversation=${data.conversationId}`);
       }
     } catch (err) {
       console.error('Failed to initiate conversation:', err);
@@ -403,8 +403,8 @@ const HookUpTonight: React.FC = () => {
       <div className="flex flex-col gap-6 mb-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-serif italic text-[var(--az-text-primary)] leading-tight">Hook Up Tonight</h1>
-            <p className="text-sm text-[var(--az-text-secondary)] font-serif italic">Someone desires you right now.</p>
+            <h1 className="text-3xl font-serif italic text-[var(--az-text-primary)] leading-tight">Meet Up Today</h1>
+            <p className="text-sm text-[var(--az-text-secondary)] font-serif italic">Someone would like to connect with you.</p>
           </div>
 
           <div className="flex items-center gap-3 self-end md:self-auto shrink-0">

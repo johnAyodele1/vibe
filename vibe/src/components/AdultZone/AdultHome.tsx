@@ -108,9 +108,9 @@ const AdultHome: React.FC = () => {
       if (data.conversationId) {
         const isMobile = window.innerWidth < 768;
         if (isMobile) {
-          navigate(`/adult/sext/${data.conversationId}`);
+          navigate(`/inbox/${data.conversationId}`);
         } else {
-          navigate(`/adult/sext?conversation=${data.conversationId}`);
+          navigate(`/inbox?conversation=${data.conversationId}`);
         }
       } else {
         toast.error('Could not start conversation. Please try again.');
@@ -227,9 +227,9 @@ const AdultHome: React.FC = () => {
     },
     {
       id: 'rooms',
-      title: 'Naughty Rooms',
+      title: 'Casual Rooms',
       tagline: 'Join themed group chat rooms, no limits',
-      icon: '🔞',
+      icon: '🛋️',
       stats: `🔴 ${formatK(stats.roomsActive)} active`,
       path: '/rooms',
       color: 'from-purple-900/40'
@@ -237,16 +237,16 @@ const AdultHome: React.FC = () => {
     {
       id: 'sext',
       title: 'Private Inbox',
-      tagline: 'One-on-one explicit text & photo exchange',
+      tagline: 'One-on-one private text & photo exchange',
       icon: '💬',
       stats: `🔴 ${formatK(stats.sextChatting)} chatting`,
-      path: '/sext',
+      path: '/inbox',
       color: 'from-pink-900/40'
     },
     {
       id: 'random',
       title: 'Random Stranger',
-      tagline: 'Matched with a random adult, no names needed',
+      tagline: 'Matched with a random user, no names needed',
       icon: '🎲',
       stats: `🔴 ${stats.randomWaiting.toLocaleString()} waiting`,
       path: '/random',
@@ -254,9 +254,9 @@ const AdultHome: React.FC = () => {
     },
     {
       id: 'hookup',
-      title: 'Hook Up Tonight',
-      tagline: 'Find someone nearby for tonight',
-      icon: '🌙',
+      title: 'Meet Up Today',
+      tagline: 'Find someone nearby to connect with',
+      icon: '📍',
       stats: `🔴 ${stats.hookupNearby.toLocaleString()} nearby`,
       path: '/hookup',
       color: 'from-orange-900/40'
@@ -293,11 +293,11 @@ const AdultHome: React.FC = () => {
           </div>
 
           <h1 className="text-5xl md:text-7xl font-serif italic text-[var(--az-text-primary)] mb-6 tracking-tight leading-tight">
-            Enter Your <span className="text-[var(--az-accent-primary)]">Desires</span>
+            Discover Your <span className="text-[var(--az-accent-primary)]">Vibe</span>
           </h1>
 
           <p className="text-lg md:text-xl text-[var(--az-text-secondary)] font-serif italic mb-10 max-w-2xl mx-auto opacity-80">
-            Premium adult experiences, curated for you. Cinematic, intimate, and entirely yours.
+            Premium experiences, curated for you. Cinematic, intimate, and entirely yours.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">

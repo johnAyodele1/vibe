@@ -370,7 +370,7 @@ const PrivateSext: React.FC = () => {
     setMsgPage(1);
     setHasMoreMessages(true);
 
-    const basePath = location.pathname.includes('/adult/sext') ? '/adult/sext' : '/sext';
+    const basePath = location.pathname.includes('/adult/inbox') ? '/adult/inbox' : (location.pathname.includes('/adult/sext') ? '/adult/sext' : (location.pathname.includes('/inbox') ? '/inbox' : '/sext'));
     navigate(`${basePath}?conversation=${conv.conversationId}`, { replace: true });
 
     await markConversationRead(conv.conversationId);
@@ -1835,8 +1835,7 @@ const PrivateSext: React.FC = () => {
                     ) : m.mediaType === 'service_request' ? (
                       <div data-testid="service-request-message" className="w-72 bg-gradient-to-br from-[#1b0a14] to-[#0d040a] border-2 border-amber-500/50 rounded-2xl p-5 shadow-2xl relative overflow-hidden flex flex-col text-left">
                         <div className="flex items-center gap-2 mb-3 border-b border-white/5 pb-2">
-                          <span className="text-lg">🌙</span>
-                          <span className="font-bold text-[10px] uppercase tracking-wider text-amber-400">Tonight Service Charge</span>
+                          <span className="font-bold text-[10px] uppercase tracking-wider text-amber-400">Activity Service Charge</span>
                         </div>
 
                         <div className="space-y-2 text-xs">
@@ -1910,7 +1909,7 @@ const PrivateSext: React.FC = () => {
                             </div>
                           ) : m.serviceRequest?.status === 'completed' || m.serviceRequest?.status === 'auto_completed' ? (
                             <div className="text-xs text-green-400 font-bold uppercase tracking-widest text-center py-2 bg-green-950/20 border border-green-500/30 rounded-xl">
-                              🌙 Service Completed
+                              Service Completed
                             </div>
                           ) : (
                             <div className="space-y-2 mt-2">
@@ -1974,7 +1973,6 @@ const PrivateSext: React.FC = () => {
                     ) : m.mediaType === 'request_service' ? (
                       <div data-testid="message-service-tonight-request" className="w-64 bg-[#140b13] border-2 border-dashed border-purple-500/40 rounded-xl p-4 flex flex-col gap-3 message-service-tonight-request">
                         <div className="flex items-center gap-2">
-                          <span className="text-xl">🌙</span>
                           <span className="font-bold text-xs tracking-wider text-purple-400 uppercase">Service Request</span>
                         </div>
                         {m.serviceTonightRequest?.note && (
@@ -1997,11 +1995,11 @@ const PrivateSext: React.FC = () => {
                           )
                         ) : m.serviceTonightRequest?.status === 'fulfilled' ? (
                           <div className="text-[10px] text-green-400 font-bold tracking-wider uppercase mt-2">
-                            ✓ Tonight Service Request fulfilled
+                            ✓ Activity Request fulfilled
                           </div>
                         ) : (
                           <div className="text-[10px] text-red-400 font-bold tracking-wider uppercase mt-2">
-                            ✗ Tonight Service Request declined
+                            ✗ Activity Request declined
                           </div>
                         )}
                       </div>
@@ -2314,7 +2312,7 @@ const PrivateSext: React.FC = () => {
                         onClick={() => setShowServiceRequestModal(true)}
                         className="text-[10px] font-bold uppercase tracking-widest text-purple-400 hover:text-purple-500 flex items-center gap-1.5 transition-colors"
                       >
-                        🌙 Request Service
+                        Request Service
                       </button>
                     </div>
                   )}
@@ -2458,8 +2456,8 @@ const PrivateSext: React.FC = () => {
             >
               ×
             </button>
-            <h3 className="text-xl font-serif italic text-pink-300 mb-1">Request a Tonight Service</h3>
-            <p className="text-[10px] text-gray-400 uppercase tracking-widest mb-4">Request a personalized service arrangement for tonight.</p>
+            <h3 className="text-xl font-serif italic text-pink-300 mb-1">Request an Activity</h3>
+            <p className="text-[10px] text-gray-400 uppercase tracking-widest mb-4">Request a personalized activity arrangement for the day.</p>
 
             <textarea
               rows={4}
@@ -2475,7 +2473,7 @@ const PrivateSext: React.FC = () => {
               disabled={isSendingServiceRequest}
               className="w-full py-2.5 bg-pink-600 hover:bg-pink-700 text-white font-bold text-xs uppercase tracking-widest rounded-full transition-colors disabled:opacity-50"
             >
-              {isSendingServiceRequest ? 'Sending...' : 'Send Service Request'}
+              {isSendingServiceRequest ? 'Sending...' : 'Send Activity Request'}
             </button>
           </div>
         </div>

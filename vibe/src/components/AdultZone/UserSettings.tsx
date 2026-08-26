@@ -179,7 +179,7 @@ const UserSettings: React.FC = () => {
         {/* 1. Profile Section */}
         <div className="settings-section">
           <h3 className="settings-section__title">Personal Profile</h3>
-          <p className="settings-section__desc">Manage how you appear to others in the Adult Zone.</p>
+          <p className="settings-section__desc">Manage how you appear to others in the Casual Zone.</p>
           <form onSubmit={handleSaveProfile} className="space-y-4">
             <div className="settings-field">
               <label className="settings-label">Username</label>

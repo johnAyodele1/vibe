@@ -329,16 +329,16 @@ describe('ProviderMessages Frontend Component', () => {
 
     // Dialog should open
     expect(screen.getByTestId('service-request-dialog')).toBeInTheDocument();
-    expect(screen.getByText('Send Service Request', { selector: 'h3' })).toBeInTheDocument();
+    expect(screen.getByText('Send Activity Request', { selector: 'h3' })).toBeInTheDocument();
 
     // Base rate tonightRate should be pre-filled as 150
-    expect(screen.getByText(/Your tonight rate/)).toBeInTheDocument();
+    expect(screen.getByText(/Your activity rate/)).toBeInTheDocument();
 
     // Add extra charge row
     fireEvent.click(screen.getByTestId('service-request-add-extra'));
 
     // Fill extra charge description and amount
-    const descInput = screen.getByPlaceholderText('Description (e.g. Hotel, Transport)');
+    const descInput = screen.getByPlaceholderText('Description (e.g. Snacking, Coffee, Dinner, Movies)');
     fireEvent.change(descInput, { target: { value: 'Transportation' } });
 
     const amountInput = screen.getByPlaceholderText('Credits');

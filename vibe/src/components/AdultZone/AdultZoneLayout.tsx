@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { API_BASE_URL, SOCKET_URL } from '../../config';
-import AgeGate from './AgeGate';
 import AdultAuthModal from './AdultAuthModal';
 import LoadingScreen from '../LoadingScreen/LoadingScreen';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
@@ -40,18 +39,6 @@ const NavBadge: React.FC = () => {
 
 const AdultZoneLayoutInner: React.FC = () => {
   const { hideGlobalHeader, hideFooter } = useUIStore();
-  const [isVerified, setIsVerified] = useState(() => {
-    const stored = localStorage.getItem('adultZoneVerified');
-    if (stored) {
-      try {
-        const { verified } = JSON.parse(stored);
-        return !!verified;
-      } catch {
-        return false;
-      }
-    }
-    return false;
-  });
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login');
@@ -127,7 +114,7 @@ const AdultZoneLayoutInner: React.FC = () => {
 
     s.on('sext:new_message', (payload: SocketMessagePayload) => {
       if (payload.message?.receiverId === user.id) {
-        const isViewingChat = window.location.pathname.includes(`/sext/${payload.message.conversationId}`) || window.location.pathname.includes(`/adult/sext/${payload.message.conversationId}`);
+        const isViewingChat = window.location.pathname.includes(`/inbox/${payload.message.conversationId}`) || window.location.pathname.includes(`/adult/inbox/${payload.message.conversationId}`) || window.location.pathname.includes(`/sext/${payload.message.conversationId}`);
         if (!isViewingChat) {
           increment();
           updateBadgeCount(useUnreadStore.getState().totalUnread + 1);
@@ -234,9 +221,6 @@ const AdultZoneLayoutInner: React.FC = () => {
     return <LoadingScreen />;
   }
 
-  if (!isVerified) {
-    return <AgeGate onVerified={() => setIsVerified(true)} />;
-  }
 
   const isProvider = user?.role === 'provider';
 
@@ -248,10 +232,10 @@ const AdultZoneLayoutInner: React.FC = () => {
     { name: 'Settings', path: '/adult/provider/settings' }
   ] : [
     { name: 'Live Cams', path: '/cams' },
-    { name: 'Naughty Rooms', path: '/rooms' },
-    { name: 'Private Inbox', path: '/sext' },
+    { name: 'Casual Rooms', path: '/rooms' },
+    { name: 'Private Inbox', path: '/inbox' },
     { name: 'Random Stranger', path: '/random' },
-    { name: 'Hook Up Tonight', path: '/hookup' },
+    { name: 'Meet Up Today', path: '/hookup' },
   ];
 
   return (
@@ -270,10 +254,10 @@ const AdultZoneLayoutInner: React.FC = () => {
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2 group">
             <div className="w-8 h-8 bg-[var(--az-accent-primary)] rounded flex items-center justify-center text-white font-bold text-lg shadow-[0_0_10px_var(--az-glow)] group-hover:scale-110 transition-transform">
-              V
+              💬
             </div>
             <span className="hidden sm:block font-serif italic text-xl tracking-wide border-l border-[var(--az-border)] pl-2 ml-1">
-              Adult Zone
+              Casual Zone
             </span>
           </Link>
 
@@ -287,7 +271,7 @@ const AdultZoneLayoutInner: React.FC = () => {
                 }`}
               >
                 {link.name}
-                {(link.path === '/sext' || link.path === '/adult/provider/messages') && <NavBadge />}
+                {(link.path === '/inbox' || link.path === '/sext' || link.path === '/adult/provider/messages') && <NavBadge />}
                 {location.pathname === link.path && (
                   <span className="absolute -bottom-[1.1rem] left-0 right-0 h-0.5 bg-[var(--az-accent-primary)] shadow-[0_0_8px_var(--az-glow)]" />
                 )}
@@ -346,8 +330,8 @@ const AdultZoneLayoutInner: React.FC = () => {
         }`}>
           <div className="max-w-7xl mx-auto flex flex-col items-center text-center">
             <p className="text-[10px] text-[var(--az-text-muted)] max-w-2xl mb-6 leading-relaxed">
-              All performers are 18+ years of age. Age verification records are maintained in compliance with applicable law.
-              The "Adult Zone" is a premium, restricted area of the application. Please use responsibly.
+              Casual Zone<br />
+              A space to connect, discover activities, and meet people with shared interests. Please use responsibly.
             </p>
             <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-[10px] text-[var(--az-text-muted)] uppercase tracking-widest font-bold">
               <Link to="#" className="hover:text-[var(--az-text-secondary)]">Terms</Link>
@@ -415,9 +399,9 @@ const AdultZoneLayoutInner: React.FC = () => {
           )) : [
             { icon: '🔴', path: '/', label: 'Home' },
             { icon: '📹', path: '/cams', label: 'Live' },
-            { icon: '💬', path: '/sext', label: 'Inbox' },
+            { icon: '💬', path: '/inbox', label: 'Inbox' },
             { icon: '🎲', path: '/random', label: 'Random' },
-            { icon: '🌙', path: '/hookup', label: 'Hook Up' },
+            { icon: '📍', path: '/hookup', label: 'Meet Up' },
           ].map((item) => (
             <Link
               key={item.path}
@@ -428,7 +412,7 @@ const AdultZoneLayoutInner: React.FC = () => {
             >
               <span className="text-xl relative">
                 {item.icon}
-                {item.path === '/sext' && <NavBadge />}
+                {(item.path === '/inbox' || item.path === '/sext') && <NavBadge />}
               </span>
               <span className={`text-[10px] uppercase tracking-tighter ${location.pathname === item.path ? 'text-[var(--az-accent-primary)] font-bold' : ''}`}>
                 {item.label}

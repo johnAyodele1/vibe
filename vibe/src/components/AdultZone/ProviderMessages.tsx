@@ -969,7 +969,7 @@ const ProviderMessages: React.FC = () => {
       conversationId: selectedConv.conversationId,
       senderId: user?.id || (user as any)?._id || '',
       receiverId: selectedConv.otherUser?.id,
-      content: `🌙 Service request: 💎 ${totalAmount}`,
+      content: `Service request: 💎 ${totalAmount}`,
       mediaType: 'service_request',
       creditCost: 0,
       isUnlocked: true,
@@ -1054,7 +1054,7 @@ const ProviderMessages: React.FC = () => {
           conversationId: data.invoiceMessage.conversationId || selectedConv.conversationId,
           senderId: data.invoiceMessage.senderId,
           receiverId: data.invoiceMessage.receiverId,
-          content: `🌙 Service request: 💎 ${data.invoiceMessage.serviceRequest?.totalAmount}`,
+          content: `Service request: 💎 ${data.invoiceMessage.serviceRequest?.totalAmount}`,
           mediaType: 'service_request',
           serviceRequest: data.invoiceMessage.serviceRequest,
           isUnlocked: true,
@@ -1663,8 +1663,7 @@ const ProviderMessages: React.FC = () => {
                     ) : m.mediaType === 'service_request' ? (
                       <div data-testid="service-request-message" className="w-72 bg-gradient-to-br from-[#1b0a14] to-[#0d040a] border-2 border-amber-500/50 rounded-2xl p-5 shadow-2xl relative overflow-hidden flex flex-col text-left">
                         <div className="flex items-center gap-2 mb-3 border-b border-white/5 pb-2">
-                          <span className="text-lg">🌙</span>
-                          <span className="font-bold text-[10px] uppercase tracking-wider text-amber-400">Tonight Service Charge</span>
+                          <span className="font-bold text-[10px] uppercase tracking-wider text-amber-400">Activity Service Charge</span>
                         </div>
 
                         <div className="space-y-2 text-xs">
@@ -1708,7 +1707,7 @@ const ProviderMessages: React.FC = () => {
                           >
                             {m.serviceRequest?.status === 'pending' && '⏳ Awaiting payment'}
                             {m.serviceRequest?.status === 'paid' && '✅ Payment received'}
-                            {(m.serviceRequest?.status === 'completed' || m.serviceRequest?.status === 'auto_completed') && '🌙 Service completed'}
+                            {(m.serviceRequest?.status === 'completed' || m.serviceRequest?.status === 'auto_completed') && 'Service completed'}
                             {m.serviceRequest?.status === 'reported' && '⚠️ Disputed — Under Admin Review'}
                           </span>
                         </div>
@@ -1779,7 +1778,6 @@ const ProviderMessages: React.FC = () => {
                     ) : m.mediaType === 'request_service' ? (
                       <div data-testid="message-service-tonight-request" className="w-64 bg-[#140b13] border-2 border-dashed border-purple-500/40 rounded-xl p-4 flex flex-col gap-3 message-service-tonight-request">
                         <div className="flex items-center gap-2">
-                          <span className="text-xl">🌙</span>
                           <span className="font-bold text-xs tracking-wider text-purple-400 uppercase">Service Request</span>
                         </div>
                         {m.serviceTonightRequest?.note && (
@@ -2092,7 +2090,6 @@ const ProviderMessages: React.FC = () => {
                       onClick={() => setShowServiceRequestDialog(true)}
                       className="text-[11px] font-bold uppercase tracking-wider text-purple-400 hover:text-purple-500 flex items-center justify-center gap-1 transition-colors whitespace-normal text-center provider-quick-action-btn provider-quick-action-btn--service"
                     >
-                      <span className="btn-icon">🌙</span>
                       SEND SERVICE CHARGE
                     </button>
                   </div>
@@ -2312,10 +2309,10 @@ const ProviderMessages: React.FC = () => {
               ×
             </button>
             <h3 className="text-2xl font-serif italic text-white mb-2" style={{ fontFamily: 'Playfair Display, serif' }}>
-              Send Service Request
+              Send Activity Request
             </h3>
             <p className="text-xs text-[var(--az-text-secondary)] mb-6">
-              Request payment for your Hook Up Tonight arrangement.
+              Request payment for your Activity request.
             </p>
 
             <div className="space-y-4">
@@ -2324,7 +2321,7 @@ const ProviderMessages: React.FC = () => {
                   Base Rate (Tonight Rate)
                 </label>
                 <div className="flex justify-between items-center p-3 bg-black/40 border border-white/5 rounded-xl">
-                  <span className="text-xs text-gray-400">Your tonight rate (from profile):</span>
+                  <span className="text-xs text-gray-400">Your activity rate (from profile):</span>
                   <span className="text-xs font-mono font-bold text-amber-400">💎 {formatAmount(dynTonightRate || tonightRate)} credits (≈ {formatNaira((dynTonightRate || tonightRate) * usePricingStore.getState().diamondNairaRate)})</span>
                 </div>
               </div>
@@ -2352,7 +2349,7 @@ const ProviderMessages: React.FC = () => {
                       <input
                         type="text"
                         maxLength={50}
-                        placeholder="Description (e.g. Hotel, Transport)"
+                        placeholder="Description (e.g. Snacking, Coffee, Dinner, Movies)"
                         value={ext.label}
                         onChange={(e) => {
                           const updated = [...serviceExtras];
@@ -2413,7 +2410,7 @@ const ProviderMessages: React.FC = () => {
                 disabled={isSendingServiceRequest}
                 className="w-full py-3.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-rose-900/20 active:scale-95 disabled:opacity-50"
               >
-                {isSendingServiceRequest ? 'Sending...' : 'Send Service Request'}
+                {isSendingServiceRequest ? 'Sending...' : 'Send Activity Request'}
               </button>
             </div>
           </div>

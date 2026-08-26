@@ -41,12 +41,14 @@ const NaughtyRooms: React.FC = () => {
   // Categories defined in spec
   const categories = [
     '🔥 All',
-    '💋 Casual',
-    '🎭 Roleplay',
-    '👥 Group Fantasy',
-    '🌈 LGBTQ+',
-    '🌶️ Spicy',
-    '⭐ VIP Exclusive'
+    '☕ Coffee',
+    '🎵 Music',
+    '🎬 Movies',
+    '🎮 Games',
+    '🍲 Food',
+    '✈️ Travel',
+    '💬 Chat',
+    '📍 Local Events'
   ];
 
   const handleCreateRoomClick = () => {
@@ -57,7 +59,7 @@ const NaughtyRooms: React.FC = () => {
     }
     let initialCategory = categoryFilter;
     if (initialCategory === '🔥 All') {
-      initialCategory = '💋 Casual';
+      initialCategory = '☕ Coffee';
     }
     setNewRoomCategory(initialCategory);
     setIsCreateRoomModalOpen(true);
@@ -252,7 +254,7 @@ const NaughtyRooms: React.FC = () => {
       {/* Header */}
       <div className="mb-10 text-center md:text-left">
         <h1 className="text-4xl md:text-5xl font-serif italic text-[var(--az-text-primary)] mb-2" style={{ fontFamily: 'Playfair Display, serif' }}>
-          Naughty Rooms
+          Casual Rooms
         </h1>
         <p className="text-sm text-[var(--az-text-secondary)]">
           Find your vibe. Join the conversation.
@@ -397,7 +399,7 @@ const NaughtyRooms: React.FC = () => {
           <div className="bg-[#180a0e] border border-[var(--az-border)] rounded-2xl p-6 w-full max-w-xl max-h-[90vh] overflow-y-auto relative shadow-2xl">
             <div className="flex justify-between items-center pb-3 border-b border-white/10 mb-5">
               <h3 className="text-lg font-serif italic text-white font-bold" style={{ fontFamily: 'Playfair Display, serif' }}>
-                Create a Naughty Room
+                Create a Casual Room
               </h3>
               <button onClick={() => setIsCreateRoomModalOpen(false)} className="text-gray-500 hover:text-white text-base">✕</button>
             </div>

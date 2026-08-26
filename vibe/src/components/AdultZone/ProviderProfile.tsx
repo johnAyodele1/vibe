@@ -388,7 +388,7 @@ const ProviderProfile: React.FC = () => {
                   { id: 'live_cam', name: '📹 Live Webcam shows' },
                   { id: 'private_call', name: '📞 Private Video Calls' },
                   { id: 'sext', name: '💬 Messaging / Inbox' },
-                  { id: 'hookup', name: '🌙 Available for Tonight' }
+                  { id: 'hookup', name: '📍 Available for Activity Requests' }
                 ].map(srv => {
                   const active = services.includes(srv.id);
                   return (
@@ -421,7 +421,7 @@ const ProviderProfile: React.FC = () => {
                 )}
                 {services.includes('hookup') && (
                   <div>
-                    <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">Rate for Tonight Arrangement (💎)</label>
+                    <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">Rate for Activity Request (💎)</label>
                     <input
                       type="number"
                       step="any"
