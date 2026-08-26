@@ -7,6 +7,8 @@ import { toast } from 'sonner';
 const RandomMatchRoom = React.lazy(() => import('./RandomMatchRoom'));
 
 type RandomState = 'idle' | 'queued' | 'matched' | 'ended';
+type GenderPreference = 'girls' | 'guys' | 'anyone';
+type ConnectionMode = 'text' | 'video' | 'both';
 
 interface RandomMatchPayload {
   matchId: string;
@@ -14,16 +16,26 @@ interface RandomMatchPayload {
   token: string;
   roomId: string;
   status?: string;
+  mode?: ConnectionMode;
 }
 
 const RandomStranger: React.FC = () => {
   const { user } = useAdultAuth();
   const token = localStorage.getItem('adultAccessToken') || '';
 
+  const [preference, setPreference] = useState<GenderPreference>('anyone');
+  const [mode, setMode] = useState<ConnectionMode>('both');
   const [state, setState] = useState<RandomState>('idle');
   const [matchData, setMatchData] = useState<RandomMatchPayload | null>(null);
+  const [isPending, setIsPending] = useState<boolean>(false);
 
+  const [socket, setSocket] = useState<Socket | null>(null);
   const socketRef = useRef<Socket | null>(null);
+  const activeMatchIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    activeMatchIdRef.current = matchData?.matchId || null;
+  }, [matchData]);
 
   const getHeaders = useCallback(() => ({
     'Authorization': `Bearer ${token}`,
@@ -31,42 +43,46 @@ const RandomStranger: React.FC = () => {
   }), [token]);
 
   const handleNext = useCallback(async () => {
-    if (matchData) {
-      try {
-        await fetch(`${API_BASE_URL}/v1/adult/random/${matchData.matchId}/next`, {
-          method: 'POST',
-          headers: getHeaders()
-        });
-      } catch (err) {
-        console.error(err);
-      }
-    }
+    if (isPending) return;
+    setIsPending(true);
+
+    const currentMatch = matchData;
     setMatchData(null);
     setState('queued');
-    // Re-queue
+
     try {
-      const res = await fetch(`${API_BASE_URL}/v1/adult/random/queue`, {
-        method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify({ mode: 'video' })
-      });
-      const data = await res.json();
-      if (data.success && data.data && data.data.status === 'matched') {
-        setMatchData(data.data as RandomMatchPayload);
-        setState('matched');
+      if (currentMatch) {
+        await fetch(`${API_BASE_URL}/v1/adult/random/${currentMatch.matchId}/next`, {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({ preference, mode }),
+        });
+      } else {
+        const res = await fetch(`${API_BASE_URL}/v1/adult/random/queue`, {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({ preference, mode }),
+        });
+        const data = await res.json();
+        if (data.success && data.data && data.data.status === 'matched') {
+          setMatchData(data.data as RandomMatchPayload);
+          setState('matched');
+        }
       }
     } catch (err) {
       console.error(err);
+      toast.error('Unable to skip to next stranger.');
       setState('idle');
+    } finally {
+      setIsPending(false);
     }
-  }, [matchData, getHeaders]);
+  }, [matchData, preference, mode, isPending, getHeaders]);
 
   const handleNextRef = useRef(handleNext);
   useEffect(() => {
     handleNextRef.current = handleNext;
   }, [handleNext]);
 
-  // Listen for socket match events - maintain stable socket connection across matches!
   useEffect(() => {
     if (!token) return;
 
@@ -76,16 +92,21 @@ const RandomStranger: React.FC = () => {
 
     s.on('connect', () => {
       console.log('Random Match Socket connected:', s.id);
+      setSocket(s);
     });
 
     s.on('random:match_found', (data: RandomMatchPayload) => {
       console.log('Random Match found:', data);
       setMatchData(data);
       setState('matched');
-      toast.success('Stranger matched! Connecting video...');
+      toast.success('Stranger matched! Establishing session...');
     });
 
-    s.on('random:partner_left', () => {
+    s.on('random:partner_left', (data?: { matchId?: string }) => {
+      if (data?.matchId && activeMatchIdRef.current && activeMatchIdRef.current !== data.matchId) {
+        console.warn('Ignored stale random:partner_left event for match:', data.matchId);
+        return;
+      }
       toast.info('Stranger disconnected. Re-queuing...');
       void handleNextRef.current();
     });
@@ -94,6 +115,7 @@ const RandomStranger: React.FC = () => {
 
     return () => {
       s.disconnect();
+      setSocket(null);
     };
   }, [token]);
 
@@ -102,16 +124,18 @@ const RandomStranger: React.FC = () => {
       toast.error('Authentication required');
       return;
     }
+    if (isPending) return;
+
+    setIsPending(true);
     setState('queued');
     try {
       const res = await fetch(`${API_BASE_URL}/v1/adult/random/queue`, {
         method: 'POST',
         headers: getHeaders(),
-        body: JSON.stringify({ mode: 'video' })
+        body: JSON.stringify({ preference, mode }),
       });
       const data = await res.json();
       if (data.success && data.data && data.data.status === 'matched') {
-        // Matched immediately
         setMatchData(data.data as RandomMatchPayload);
         setState('matched');
       }
@@ -119,31 +143,36 @@ const RandomStranger: React.FC = () => {
       console.error(err);
       toast.error('Failed to join matching queue');
       setState('idle');
+    } finally {
+      setIsPending(false);
     }
   };
 
   const handleEnd = async () => {
-    if (matchData) {
-      try {
-        await fetch(`${API_BASE_URL}/v1/adult/random/${matchData.matchId}/end`, {
+    if (isPending) return;
+    setIsPending(true);
+
+    const currentMatch = matchData;
+    setMatchData(null);
+    setState('idle');
+
+    try {
+      if (currentMatch) {
+        await fetch(`${API_BASE_URL}/v1/adult/random/${currentMatch.matchId}/end`, {
           method: 'POST',
           headers: getHeaders()
         });
-      } catch (err) {
-        console.error(err);
-      }
-    } else {
-      try {
+      } else {
         await fetch(`${API_BASE_URL}/v1/adult/random/queue`, {
           method: 'DELETE',
           headers: getHeaders()
         });
-      } catch (err) {
-        console.error(err);
       }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsPending(false);
     }
-    setMatchData(null);
-    setState('idle');
   };
 
   return (
@@ -160,10 +189,26 @@ const RandomStranger: React.FC = () => {
           <div className="bg-[var(--az-bg-secondary)] p-8 rounded-2xl border border-[var(--az-border)] text-left space-y-6 mb-10 shadow-2xl">
             <div>
               <label className="text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-muted)] mb-3 block">Looking for:</label>
-              <div className="flex gap-2">
-                {['Girls', 'Guys', 'Anyone'].map(opt => (
-                  <button key={opt} className={`flex-grow py-2 rounded-lg text-xs font-bold border transition-all ${opt === 'Anyone' ? 'bg-[var(--az-accent-primary)] border-transparent text-white' : 'bg-[var(--az-bg-tertiary)] border-[var(--az-border)] text-[var(--az-text-secondary)]'}`}>
-                    {opt}
+              <div className="flex gap-2" role="radiogroup" aria-label="Partner preference">
+                {(
+                  [
+                    { label: 'Girls', value: 'girls' },
+                    { label: 'Guys', value: 'guys' },
+                    { label: 'Anyone', value: 'anyone' },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    aria-pressed={preference === opt.value}
+                    onClick={() => setPreference(opt.value)}
+                    className={`flex-grow py-2 rounded-lg text-xs font-bold border transition-all ${
+                      preference === opt.value
+                        ? 'bg-[var(--az-accent-primary)] border-transparent text-white shadow-md'
+                        : 'bg-[var(--az-bg-tertiary)] border-[var(--az-border)] text-[var(--az-text-secondary)] hover:bg-[var(--az-bg-hover)]'
+                    }`}
+                  >
+                    {opt.label}
                   </button>
                 ))}
               </div>
@@ -171,10 +216,26 @@ const RandomStranger: React.FC = () => {
 
             <div>
               <label className="text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-muted)] mb-3 block">Mode:</label>
-              <div className="flex gap-2">
-                {['Text Only', 'Cam', 'Both'].map(opt => (
-                  <button key={opt} className={`flex-grow py-2 rounded-lg text-xs font-bold border transition-all ${opt === 'Both' ? 'bg-[var(--az-accent-primary)] border-transparent text-white' : 'bg-[var(--az-bg-tertiary)] border-[var(--az-border)] text-[var(--az-text-secondary)]'}`}>
-                    {opt}
+              <div className="flex gap-2" role="radiogroup" aria-label="Connection mode">
+                {(
+                  [
+                    { label: 'Text Only', value: 'text' },
+                    { label: 'Cam', value: 'video' },
+                    { label: 'Both', value: 'both' },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    aria-pressed={mode === opt.value}
+                    onClick={() => setMode(opt.value)}
+                    className={`flex-grow py-2 rounded-lg text-xs font-bold border transition-all ${
+                      mode === opt.value
+                        ? 'bg-[var(--az-accent-primary)] border-transparent text-white shadow-md'
+                        : 'bg-[var(--az-bg-tertiary)] border-[var(--az-border)] text-[var(--az-text-secondary)] hover:bg-[var(--az-bg-hover)]'
+                    }`}
+                  >
+                    {opt.label}
                   </button>
                 ))}
               </div>
@@ -183,9 +244,10 @@ const RandomStranger: React.FC = () => {
 
           <button
             onClick={handleStart}
-            className="w-full py-5 bg-[var(--az-accent-primary)] text-white font-bold uppercase tracking-[0.2em] rounded-full shadow-[0_0_25px_var(--az-glow)] hover:scale-105 active:scale-95 transition-all"
+            disabled={isPending}
+            className="w-full py-5 bg-[var(--az-accent-primary)] text-white font-bold uppercase tracking-[0.2em] rounded-full shadow-[0_0_25px_var(--az-glow)] hover:scale-105 active:scale-95 disabled:opacity-50 disabled:scale-100 transition-all"
           >
-            START MATCHING
+            {isPending ? 'JOINING QUEUE...' : 'START MATCHING'}
           </button>
         </div>
       )}
@@ -202,7 +264,8 @@ const RandomStranger: React.FC = () => {
 
           <button
             onClick={handleEnd}
-            className="mt-12 text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-muted)] hover:text-[var(--az-text-secondary)] underline"
+            disabled={isPending}
+            className="mt-12 text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-muted)] hover:text-[var(--az-text-secondary)] underline disabled:opacity-50"
           >
             Cancel and Go Back
           </button>
@@ -211,13 +274,15 @@ const RandomStranger: React.FC = () => {
 
       {state === 'matched' && matchData && (
         <div className="w-full max-w-4xl bg-black rounded-3xl overflow-hidden shadow-2xl border border-[var(--az-border)] relative">
-          <React.Suspense fallback={<div className="flex items-center justify-center h-96 text-pink-500">Loading stream...</div>}>
+          <React.Suspense fallback={<div className="flex items-center justify-center h-96 text-pink-500">Loading room...</div>}>
             <RandomMatchRoom
               appId={matchData.appId}
               token={matchData.token}
               roomId={matchData.roomId}
               matchId={matchData.matchId}
               userId={user?.id || ''}
+              socket={socket}
+              mode={matchData.mode || mode}
               onNext={handleNext}
               onEnd={handleEnd}
             />

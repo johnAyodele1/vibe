@@ -14,6 +14,8 @@ import Redis from 'ioredis';
 import { billCallMinute } from '../controllers/adultSext.controller';
 import { checkActiveCall, endCamSessionAtomic, endCamSessionForCall } from '../services/sessionInvariantService';
 import { sendPushToUser } from '../shared/push';
+import { leaveQueue } from '../services/randomMatch.service';
+import RandomMatch from '../models/RandomMatch';
 
 // Host Socket Registry for Live Broadcast Sessions
 const activeHostSessions = new Map<string, string>(); // sessionId -> socketId
@@ -473,6 +475,37 @@ export const setupAdultSocket = (io: Server) => {
       socket.to(`conv:${data.conversationId}`).emit('sext:stop_typing', {
         userId: socket.data.user._id
       });
+    });
+
+    // Random Stranger Socket Handlers
+    socket.on('random:chat_message', async (data: { roomId: string; content: string }) => {
+      try {
+        if (!data || !data.roomId || !data.content || !data.content.trim()) return;
+        const trimmedContent = data.content.trim();
+        if (trimmedContent.length > 500) return;
+
+        // Verify active match ownership
+        const match = await RandomMatch.findOne({
+          roomId: data.roomId,
+          status: 'matched',
+          $or: [{ userA: userId }, { userB: userId }],
+        }).lean();
+
+        if (!match) {
+          console.warn(`Unauthorized random chat attempt by user ${userId} in room ${data.roomId}`);
+          return;
+        }
+
+        const msg = {
+          id: `rand_msg_${Date.now()}_${userId}`,
+          senderId: userId,
+          content: trimmedContent,
+          timestamp: Date.now(),
+        };
+        adultNamespace.to(`room:${data.roomId}`).emit('random:new_message', msg);
+      } catch (err) {
+        console.error('Error in random:chat_message:', err);
+      }
     });
 
     socket.on('sext:message_delivered', async ({ messageId }) => {
@@ -1036,6 +1069,24 @@ export const setupAdultSocket = (io: Server) => {
         }, graceMs);
         timer.unref?.();
         hostDisconnectTimers.set(hostedSessionId, timer);
+      }
+
+      // Cleanup random queue & notify active random match partner on disconnect
+      try {
+        await leaveQueue(userId);
+        const activeMatch = await RandomMatch.findOne({
+          $or: [{ userA: userId }, { userB: userId }],
+          status: 'matched',
+        });
+        if (activeMatch) {
+          activeMatch.status = 'ended';
+          activeMatch.endedAt = new Date();
+          await activeMatch.save();
+          const partnerId = activeMatch.userA.toString() === userId ? activeMatch.userB.toString() : activeMatch.userA.toString();
+          adultNamespace.to(`user:${partnerId}`).emit('random:partner_left', { matchId: activeMatch._id.toString() });
+        }
+      } catch (err) {
+        console.error('Error during random match disconnect cleanup:', err);
       }
 
       // Remove active connection

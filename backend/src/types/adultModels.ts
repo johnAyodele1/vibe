@@ -22,6 +22,7 @@ export interface IAdultUser extends Document {
   isAdmin?: boolean;
   username: string;
   displayName: string;
+  gender?: string;
   ageVerified: boolean;
   ageVerifiedAt?: Date;
   dateOfBirth: Date;
