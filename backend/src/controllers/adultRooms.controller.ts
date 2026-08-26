@@ -326,8 +326,10 @@ export const getRoomLeaderboard = async (req: Request, res: Response) => {
   try {
     const { roomId } = req.params;
 
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document instantiation and model hydration overhead.
     const memberships = await RoomMembership.find({ roomId })
-      .populate('userId', 'username displayName profilePhoto subscriptionTier role');
+      .populate('userId', 'username displayName profilePhoto subscriptionTier role')
+      .lean();
 
     const leaderboard = memberships
       .map((m) => {
@@ -767,9 +769,11 @@ export const getReplies = async (req: Request, res: Response) => {
       query.createdAt = { $lt: new Date(before as string) };
     }
 
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document instantiation and model hydration overhead.
     const replies = await AdultRoomMessage.find(query)
       .sort({ createdAt: 1 }) // Sorted oldest first for narrative flow
-      .limit(l);
+      .limit(l)
+      .lean();
 
     res.json({ success: true, data: { replies } });
   } catch (err: any) {
@@ -903,7 +907,8 @@ export const reactReply = async (req: Request, res: Response) => {
 export const getActivePolls = async (req: Request, res: Response) => {
   try {
     const { roomId } = req.params;
-    const polls = await AdultRoomPoll.find({ roomId, expiresAt: { $gt: new Date() } });
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document instantiation and model hydration overhead.
+    const polls = await AdultRoomPoll.find({ roomId, expiresAt: { $gt: new Date() } }).lean();
     res.json({ success: true, data: { polls } });
   } catch (err: any) {
     res.status(500).json({ success: false, error: { message: err.message } });
