@@ -325,40 +325,84 @@ describe('Payout Request — Full Integration Suite', () => {
       expect(res.body.data).toBeNull();
     });
 
-    it('allows a new payout request after a previous payout was completed or rejected', async () => {
-      await PayoutRequest.create({
-        providerId,
-        providerName: 'Lucia Rose',
-        amount: 500,
-        amountNaira: 50000,
-        nairaRateSnapshot: 100,
-        status: 'completed',
-        payoutMethod: 'bank',
-        payoutDetails: {},
-        eligibleTransactionIds: [],
-        requestedAt: new Date(Date.now() - 3600000)
-      });
-
-      await CreditTransaction.create({
+    it('executes end-to-end rejection lifecycle: request -> reject -> inPayoutRequest cleared -> status null -> re-request succeeds', async () => {
+      const tx = await CreditTransaction.create({
         userId: providerId,
         type: 'tip_received',
-        amount: 700,
-        usdAmount: 5.25,
-        nairaAmount: 70000,
-        description: 'New tip after payout',
+        amount: 800,
+        usdAmount: 6.0,
+        nairaAmount: 80000,
+        description: 'Tip for payout test',
         status: 'completed',
         eligibleForPayout: true,
         paidOut: false
       });
 
-      const res = await request(app)
+      // 1. Provider requests payout
+      const reqRes = await request(app)
         .post('/api/v1/adult/providers/me/payout/request')
         .set('Authorization', `Bearer ${providerToken}`)
         .expect(201);
 
-      expect(res.body.success).toBe(true);
-      expect(res.body.amount).toBe(700);
-      expect(res.body.status).toBe('queued');
+      const requestId = reqRes.body.requestId;
+
+      // Check transaction frozen
+      const frozenTx = await CreditTransaction.findById(tx._id);
+      expect(frozenTx?.inPayoutRequest?.toString()).toBe(requestId);
+
+      // 2. Admin rejects payout
+      await request(app)
+        .put(`/api/admin/payouts/${requestId}/reject`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ reason: 'Invalid bank account number provided.' })
+        .expect(200);
+
+      // Verify transaction unfrozen
+      const unfrozenTx = await CreditTransaction.findById(tx._id);
+      expect(unfrozenTx?.inPayoutRequest).toBeUndefined();
+
+      // 3. Status returns null for active request
+      const statusRes = await request(app)
+        .get('/api/v1/adult/providers/me/payout/status')
+        .set('Authorization', `Bearer ${providerToken}`)
+        .expect(200);
+
+      expect(statusRes.body.data).toBeNull();
+
+      // 4. Provider re-requests payout successfully
+      const reReqRes = await request(app)
+        .post('/api/v1/adult/providers/me/payout/request')
+        .set('Authorization', `Bearer ${providerToken}`)
+        .expect(201);
+
+      expect(reReqRes.body.success).toBe(true);
+      expect(reReqRes.body.amount).toBe(800);
+      expect(reReqRes.body.status).toBe('queued');
+    });
+
+    it('rejects request if user credits bring finalAmount below 500 diamonds despite eligibleTotal >= 500', async () => {
+      await CreditTransaction.create({
+        userId: providerId,
+        type: 'tip_received',
+        amount: 800,
+        usdAmount: 6.0,
+        nairaAmount: 80000,
+        description: 'Tip',
+        status: 'completed',
+        eligibleForPayout: true,
+        paidOut: false
+      });
+
+      // User credits reduced to 300
+      await AdultUser.findByIdAndUpdate(providerId, { $set: { credits: 300 } });
+
+      const res = await request(app)
+        .post('/api/v1/adult/providers/me/payout/request')
+        .set('Authorization', `Bearer ${providerToken}`)
+        .expect(400);
+
+      expect(res.body.error).toBe('MINIMUM_THRESHOLD_NOT_MET');
+      expect(res.body.message).toContain('below the minimum payout threshold');
     });
 
     it('returns current active request with live queue position', async () => {

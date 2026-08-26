@@ -69,5 +69,14 @@ const payoutRequestSchema = new Schema<IPayoutRequest>({
   adminReference: { type: String },
 });
 
+payoutRequestSchema.index(
+  { providerId: 1 },
+  {
+    name: 'unique_active_payout_per_provider',
+    unique: true,
+    partialFilterExpression: { status: { $in: ['pending', 'queued', 'verifying', 'processing'] } },
+  }
+);
+
 export const PayoutRequest = mongoose.model<IPayoutRequest>('PayoutRequest', payoutRequestSchema);
 export default PayoutRequest;

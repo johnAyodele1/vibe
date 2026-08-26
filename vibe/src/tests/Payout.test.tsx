@@ -295,16 +295,27 @@ describe('ProviderPayout Component', () => {
           status: 200,
           json: async () => ({
             success: true,
-            data: [{
-              _id: 'req_past_rej',
-              amount: 1000,
-              amountNaira: 100000,
-              payoutMethod: 'crypto',
-              payoutDetails: { cryptoCurrency: 'USDT', cryptoAddress: '0x12345678901234567890' },
-              status: 'rejected',
-              requestedAt: new Date().toISOString(),
-              rejectedReason: 'Invalid wallet address'
-            }]
+            data: [
+              {
+                _id: 'req_past_rej',
+                amount: 1000,
+                amountNaira: 100000,
+                payoutMethod: 'crypto',
+                payoutDetails: { cryptoCurrency: 'USDT', cryptoAddress: '0x12345678901234567890' },
+                status: 'rejected',
+                requestedAt: new Date('2026-08-27').toISOString(),
+                rejectedReason: 'Invalid wallet address'
+              },
+              {
+                _id: 'req_past_comp',
+                amount: 1200,
+                amountNaira: 120000,
+                payoutMethod: 'bank',
+                payoutDetails: { bankName: 'Access Bank' },
+                status: 'completed',
+                requestedAt: new Date('2026-08-25').toISOString()
+              }
+            ]
           })
         };
       }
@@ -319,6 +330,7 @@ describe('ProviderPayout Component', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Previous Request Required Revision')).toBeInTheDocument();
+      expect(screen.queryByText('Previous Payout Successfully Transferred')).not.toBeInTheDocument();
       expect(screen.getByRole('button', { name: /Request Payout — 💎 1,000/i })).toBeInTheDocument();
     });
   });

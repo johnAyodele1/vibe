@@ -234,8 +234,9 @@ const ProviderPayout: React.FC = () => {
 
   const activeConfig = activeRequest ? STATUS_CONFIG[activeRequest.status] : null;
   const currentStep = activeConfig ? activeConfig.step : 0;
-  const latestCompletedItem = history.find(h => h.status === 'completed');
-  const latestRejectedItem = history.find(h => h.status === 'rejected');
+  const latestTerminalRequest = history[0];
+  const latestCompletedItem = latestTerminalRequest?.status === 'completed' ? latestTerminalRequest : null;
+  const latestRejectedItem = latestTerminalRequest?.status === 'rejected' ? latestTerminalRequest : null;
 
   return (
     <div className="min-h-screen bg-[#090a0f] text-slate-100 p-4 sm:p-6 md:p-10 font-sans">
