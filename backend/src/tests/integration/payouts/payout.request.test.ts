@@ -7,6 +7,7 @@ import AdultUser from '../../../models/AdultUser';
 import CreditTransaction from '../../../models/CreditTransaction';
 import PayoutRequest from '../../../models/PayoutRequest';
 import AppConfig from '../../../models/AppConfig';
+import { repairPayoutIndex } from '../../../services/payoutIndexMigrationService';
 
 describe('Payout Request — Full Integration Suite', () => {
   let mongoServer: MongoMemoryReplSet;
@@ -103,6 +104,60 @@ describe('Payout Request — Full Integration Suite', () => {
       { userId: 'user123', isAdmin: false },
       process.env.JWT_SECRET || 'fallback_secret'
     );
+  });
+
+  describe('repairPayoutIndex migration service', () => {
+    it('creates partial unique index and auto-resolves legacy duplicate active requests', async () => {
+      const p1 = new mongoose.Types.ObjectId();
+      const id1 = new mongoose.Types.ObjectId();
+      const id2 = new mongoose.Types.ObjectId();
+
+      // Drop index if present to simulate pre-existing unindexed database state
+      const db = mongoose.connection.db;
+      if (db) {
+        await db.collection('payoutrequests').dropIndexes().catch(() => {});
+        // Insert duplicate active payout requests directly into collection
+        await db.collection('payoutrequests').insertMany([
+          {
+            _id: id1,
+            providerId: p1,
+            providerName: 'Test Provider',
+            amount: 500,
+            amountNaira: 50000,
+            nairaRateSnapshot: 100,
+            status: 'queued',
+            payoutMethod: 'bank',
+            payoutDetails: {},
+            eligibleTransactionIds: [],
+            requestedAt: new Date(Date.now() - 10000)
+          },
+          {
+            _id: id2,
+            providerId: p1,
+            providerName: 'Test Provider',
+            amount: 600,
+            amountNaira: 60000,
+            nairaRateSnapshot: 100,
+            status: 'queued',
+            payoutMethod: 'bank',
+            payoutDetails: {},
+            eligibleTransactionIds: [],
+            requestedAt: new Date()
+          }
+        ]);
+      }
+
+      // Run repair migration
+      await repairPayoutIndex();
+
+      // Earliest active request remains queued, duplicate rejected
+      const updatedReq1 = await PayoutRequest.findById(id1);
+      const updatedReq2 = await PayoutRequest.findById(id2);
+
+      expect(updatedReq1?.status).toBe('queued');
+      expect(updatedReq2?.status).toBe('rejected');
+      expect(updatedReq2?.rejectedReason).toContain('System deduplication');
+    });
   });
 
   describe('GET /api/v1/adult/providers/me/payout/eligible', () => {
