@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { API_BASE_URL, SOCKET_URL } from '../../config';
-import AgeGate from './AgeGate';
 import AdultAuthModal from './AdultAuthModal';
 import LoadingScreen from '../LoadingScreen/LoadingScreen';
 import { useAdultAuth } from '../../contexts/AdultAuthContext';
@@ -40,7 +39,6 @@ const NavBadge: React.FC = () => {
 
 const AdultZoneLayoutInner: React.FC = () => {
   const { hideGlobalHeader, hideFooter } = useUIStore();
-  const [isVerified, setIsVerified] = useState(true);
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login');
