@@ -257,7 +257,12 @@ const HookUpTonight: React.FC = () => {
     return () => clearTimeout(timer);
   }, [fetchMapProviders]);
 
-  const handleMessageClick = async (providerId: string) => {
+  // Optimization (⚡ Bolt): Stable callbacks for memoized card component to preserve React.memo efficiency across parent re-renders.
+  const handleProviderNavigate = useCallback((providerId: string) => {
+    navigate(`/adult/providers/${providerId}`);
+  }, [navigate]);
+
+  const handleMessageClick = useCallback(async (providerId: string) => {
     if (!localStorage.getItem('adultAccessToken')) {
       window.dispatchEvent(new CustomEvent('open-adult-auth-modal'));
       return;
@@ -280,7 +285,7 @@ const HookUpTonight: React.FC = () => {
     } catch (err) {
       console.error('Failed to initiate conversation:', err);
     }
-  };
+  }, [navigate]);
 
   const handleResetFilters = () => {
     setLocation({});
@@ -464,7 +469,7 @@ const HookUpTonight: React.FC = () => {
                   <HookupProviderCard
                     key={p.id}
                     provider={p}
-                    onNavigate={(id) => navigate(`/adult/providers/${id}`)}
+                    onNavigate={handleProviderNavigate}
                     onMessageClick={handleMessageClick}
                   />
                 ))}
