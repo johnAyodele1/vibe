@@ -46,7 +46,6 @@ const adultUserSchema = new Schema<IAdultUser, IAdultUserModel>(
     gender: {
       type: String,
       enum: ['male', 'female', 'other'],
-      default: 'female',
     },
     ageVerified: {
       type: Boolean,

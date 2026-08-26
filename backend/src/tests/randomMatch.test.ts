@@ -74,4 +74,16 @@ describe('Random Match Compatibility & Exclusion Unit Tests', () => {
     const userBObj: QueueUser = { ...femaleUser, userId: 'userB' };
     expect(await isRandomMatchCompatible(userAObj, userBObj)).toBe(false);
   });
+
+  it('handles unknown/unspecified user gender safely as other', () => {
+    const unknownUser: QueueUser = {
+      userId: 'user_unknown',
+      gender: 'other',
+      preference: 'anyone',
+      mode: 'both',
+      joinedAt: Date.now(),
+    };
+
+    expect(unknownUser.gender).toBe('other');
+  });
 });

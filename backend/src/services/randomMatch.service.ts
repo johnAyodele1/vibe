@@ -90,7 +90,7 @@ export const isRandomMatchCompatible = async (user1: QueueUser, user2: QueueUser
   if (user2.preference === 'guys' && user1.gender !== 'male') return false;
 
   // 3. Mode Compatibility Matrix
-  // text <-> text, video <-> video, both <-> any
+  // text <-> text, video <-> video, both <-> any mode
   if (user1.mode === 'text' && user2.mode === 'video') return false;
   if (user1.mode === 'video' && user2.mode === 'text') return false;
 
@@ -177,7 +177,7 @@ export const tryMatch = async (requesterId: string): Promise<any> => {
 
   if (redisClient) {
     try {
-      const res = await redisClient.set(lockKey, lockVal, 'PX', 5000, 'NX');
+      const res = await redisClient.set(lockKey, lockVal, 'PX', 15000, 'NX');
       if (res === 'OK') {
         lockAcquired = true;
       } else {
@@ -231,10 +231,6 @@ export const tryMatch = async (requesterId: string): Promise<any> => {
 
     const partner = candidates[0];
 
-    // Remove both participants from queue atomically
-    await leaveQueue(requester.userId);
-    await leaveQueue(partner.userId);
-
     const roomId = `random_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
     const matchId = new mongoose.Types.ObjectId().toString();
 
@@ -252,17 +248,29 @@ export const tryMatch = async (requesterId: string): Promise<any> => {
     const tokenA = generateAgoraToken(appId, appCertificate, roomId, requester.userId, 'publisher', 1800);
     const tokenB = generateAgoraToken(appId, appCertificate, roomId, partner.userId, 'publisher', 1800);
 
-    await RandomMatch.create({
-      _id: matchId,
-      userA: new mongoose.Types.ObjectId(requester.userId),
-      userB: new mongoose.Types.ObjectId(partner.userId),
-      roomId,
-      mode: sessionMode,
-      preferenceA: requester.preference,
-      preferenceB: partner.preference,
-      status: 'matched',
-      startedAt: new Date(),
-    });
+    try {
+      await RandomMatch.create({
+        _id: matchId,
+        userA: new mongoose.Types.ObjectId(requester.userId),
+        userB: new mongoose.Types.ObjectId(partner.userId),
+        roomId,
+        mode: sessionMode,
+        preferenceA: requester.preference,
+        preferenceB: partner.preference,
+        status: 'matched',
+        startedAt: new Date(),
+      });
+    } catch (createErr) {
+      console.error('Failed to create RandomMatch session document:', createErr);
+      // Re-queue both users safely on creation failure
+      await joinQueue(requester.userId, requester.preference, requester.mode);
+      await joinQueue(partner.userId, partner.preference, partner.mode);
+      throw createErr;
+    }
+
+    // Queue removal occurs only AFTER successful RandomMatch creation
+    await leaveQueue(requester.userId);
+    await leaveQueue(partner.userId);
 
     const io = getIO();
     if (io) {
