@@ -102,7 +102,11 @@ const RandomStranger: React.FC = () => {
       toast.success('Stranger matched! Establishing session...');
     });
 
-    s.on('random:partner_left', () => {
+    s.on('random:partner_left', (data?: { matchId?: string }) => {
+      if (data?.matchId && activeMatchIdRef.current && activeMatchIdRef.current !== data.matchId) {
+        console.warn('Ignored stale random:partner_left event for match:', data.matchId);
+        return;
+      }
       toast.info('Stranger disconnected. Re-queuing...');
       void handleNextRef.current();
     });

@@ -33,45 +33,45 @@ describe('Random Match Compatibility & Exclusion Unit Tests', () => {
     joinedAt: Date.now(),
   };
 
-  it('rejects self-matching', () => {
-    expect(isRandomMatchCompatible(maleUser, maleUser)).toBe(false);
+  it('rejects self-matching', async () => {
+    expect(await isRandomMatchCompatible(maleUser, maleUser)).toBe(false);
   });
 
-  it('symmetrically validates compatible gender preferences', () => {
-    expect(isRandomMatchCompatible(maleUser, femaleUser)).toBe(true);
-    expect(isRandomMatchCompatible(femaleUser, maleUser)).toBe(true);
-    expect(isRandomMatchCompatible(maleUser, femaleAnyone)).toBe(true);
+  it('symmetrically validates compatible gender preferences', async () => {
+    expect(await isRandomMatchCompatible(maleUser, femaleUser)).toBe(true);
+    expect(await isRandomMatchCompatible(femaleUser, maleUser)).toBe(true);
+    expect(await isRandomMatchCompatible(maleUser, femaleAnyone)).toBe(true);
   });
 
-  it('symmetrically rejects incompatible gender preferences', () => {
+  it('symmetrically rejects incompatible gender preferences', async () => {
     // maleUser wants girls, maleGuys wants guys
-    expect(isRandomMatchCompatible(maleUser, maleGuys)).toBe(false);
+    expect(await isRandomMatchCompatible(maleUser, maleGuys)).toBe(false);
 
     // femaleUser wants guys, femaleAnyone wants anyone (incompatible because femaleUser wants guys)
-    expect(isRandomMatchCompatible(femaleUser, femaleAnyone)).toBe(false);
+    expect(await isRandomMatchCompatible(femaleUser, femaleAnyone)).toBe(false);
   });
 
-  it('enforces mode compatibility matrix', () => {
+  it('enforces mode compatibility matrix', async () => {
     const textOnlyMale: QueueUser = { ...maleUser, mode: 'text' };
     const videoOnlyFemale: QueueUser = { ...femaleUser, mode: 'video' };
     const bothFemale: QueueUser = { ...femaleUser, mode: 'both' };
 
     // text vs video -> incompatible
-    expect(isRandomMatchCompatible(textOnlyMale, videoOnlyFemale)).toBe(false);
+    expect(await isRandomMatchCompatible(textOnlyMale, videoOnlyFemale)).toBe(false);
 
     // text vs both -> compatible
-    expect(isRandomMatchCompatible(textOnlyMale, bothFemale)).toBe(true);
+    expect(await isRandomMatchCompatible(textOnlyMale, bothFemale)).toBe(true);
   });
 
-  it('enforces short-lived skip exclusions', () => {
-    expect(isExcluded('userA', 'userB')).toBe(false);
+  it('enforces short-lived skip exclusions', async () => {
+    expect(await isExcluded('userA', 'userB')).toBe(false);
 
-    addExclusion('userA', 'userB', 1000);
-    expect(isExcluded('userA', 'userB')).toBe(true);
-    expect(isExcluded('userB', 'userA')).toBe(true);
+    await addExclusion('userA', 'userB', 1000);
+    expect(await isExcluded('userA', 'userB')).toBe(true);
+    expect(await isExcluded('userB', 'userA')).toBe(true);
 
     const userAObj: QueueUser = { ...maleUser, userId: 'userA' };
     const userBObj: QueueUser = { ...femaleUser, userId: 'userB' };
-    expect(isRandomMatchCompatible(userAObj, userBObj)).toBe(false);
+    expect(await isRandomMatchCompatible(userAObj, userBObj)).toBe(false);
   });
 });

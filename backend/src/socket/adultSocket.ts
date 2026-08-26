@@ -481,10 +481,25 @@ export const setupAdultSocket = (io: Server) => {
     socket.on('random:chat_message', async (data: { roomId: string; content: string }) => {
       try {
         if (!data || !data.roomId || !data.content || !data.content.trim()) return;
+        const trimmedContent = data.content.trim();
+        if (trimmedContent.length > 500) return;
+
+        // Verify active match ownership
+        const match = await RandomMatch.findOne({
+          roomId: data.roomId,
+          status: 'matched',
+          $or: [{ userA: userId }, { userB: userId }],
+        }).lean();
+
+        if (!match) {
+          console.warn(`Unauthorized random chat attempt by user ${userId} in room ${data.roomId}`);
+          return;
+        }
+
         const msg = {
           id: `rand_msg_${Date.now()}_${userId}`,
           senderId: userId,
-          content: data.content.trim(),
+          content: trimmedContent,
           timestamp: Date.now(),
         };
         adultNamespace.to(`room:${data.roomId}`).emit('random:new_message', msg);
@@ -1068,7 +1083,7 @@ export const setupAdultSocket = (io: Server) => {
           activeMatch.endedAt = new Date();
           await activeMatch.save();
           const partnerId = activeMatch.userA.toString() === userId ? activeMatch.userB.toString() : activeMatch.userA.toString();
-          adultNamespace.to(`user:${partnerId}`).emit('random:partner_left');
+          adultNamespace.to(`user:${partnerId}`).emit('random:partner_left', { matchId: activeMatch._id.toString() });
         }
       } catch (err) {
         console.error('Error during random match disconnect cleanup:', err);

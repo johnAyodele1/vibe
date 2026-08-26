@@ -32,13 +32,34 @@ const exclusionMap = new Map<string, number>(); // `${userA}_${userB}` -> expire
 const QUEUE_KEY = 'adult:random:queue';
 let isMatchingInProgress = false;
 
-export const addExclusion = (userA: string, userB: string, durationMs: number = 60000) => {
+export const addExclusion = async (userA: string, userB: string, durationMs: number = 60000) => {
+  const ttlSec = Math.ceil(durationMs / 1000);
+  if (redisClient) {
+    try {
+      await redisClient.set(`adult:random:exclude:${userA}:${userB}`, '1', 'EX', ttlSec);
+      await redisClient.set(`adult:random:exclude:${userB}:${userA}`, '1', 'EX', ttlSec);
+      return;
+    } catch (err) {
+      console.warn('Redis exclusion set failed, falling back to memory:', err);
+    }
+  }
   const expiresAt = Date.now() + durationMs;
   exclusionMap.set(`${userA}_${userB}`, expiresAt);
   exclusionMap.set(`${userB}_${userA}`, expiresAt);
 };
 
-export const isExcluded = (userA: string, userB: string): boolean => {
+export const isExcluded = async (userA: string, userB: string): Promise<boolean> => {
+  if (redisClient) {
+    try {
+      const ex1 = await redisClient.get(`adult:random:exclude:${userA}:${userB}`);
+      if (ex1) return true;
+      const ex2 = await redisClient.get(`adult:random:exclude:${userB}:${userA}`);
+      if (ex2) return true;
+      return false;
+    } catch (err) {
+      console.warn('Redis exclusion get failed, falling back to memory:', err);
+    }
+  }
   const now = Date.now();
   const key1 = `${userA}_${userB}`;
   const exp1 = exclusionMap.get(key1);
@@ -55,11 +76,11 @@ export const isExcluded = (userA: string, userB: string): boolean => {
   return false;
 };
 
-export const isRandomMatchCompatible = (user1: QueueUser, user2: QueueUser): boolean => {
+export const isRandomMatchCompatible = async (user1: QueueUser, user2: QueueUser): Promise<boolean> => {
   if (user1.userId === user2.userId) return false;
 
   // 1. Exclusion check
-  if (isExcluded(user1.userId, user2.userId)) return false;
+  if (await isExcluded(user1.userId, user2.userId)) return false;
 
   // 2. Symmetric Gender Preference Check
   if (user1.preference === 'girls' && user2.gender !== 'female') return false;
@@ -107,11 +128,13 @@ export const joinQueue = async (
 
   // Fetch actual user gender from AdultUser database record
   const dbUser = await AdultUser.findById(userId).select('gender providerProfile').lean();
-  let userGender: 'male' | 'female' | 'other' = 'female';
+  let userGender: 'male' | 'female' | 'other' = 'other';
   if (dbUser?.gender === 'male' || dbUser?.providerProfile?.gender === 'male') {
     userGender = 'male';
   } else if (dbUser?.gender === 'female' || dbUser?.providerProfile?.gender === 'female') {
     userGender = 'female';
+  } else if (dbUser?.gender === 'other' || dbUser?.providerProfile?.gender === 'other') {
+    userGender = 'other';
   }
 
   const entry: QueueUser = {
@@ -148,10 +171,29 @@ export const leaveQueue = async (userId: string) => {
 };
 
 export const tryMatch = async (requesterId: string): Promise<any> => {
-  if (isMatchingInProgress) {
-    return { status: 'waiting' };
+  let lockAcquired = false;
+  const lockKey = 'adult:random:lock';
+  const lockVal = `${requesterId}_${Date.now()}`;
+
+  if (redisClient) {
+    try {
+      const res = await redisClient.set(lockKey, lockVal, 'PX', 5000, 'NX');
+      if (res === 'OK') {
+        lockAcquired = true;
+      } else {
+        return { status: 'waiting' };
+      }
+    } catch (err) {
+      console.warn('Redis lock acquire failed, falling back to process lock:', err);
+      if (isMatchingInProgress) return { status: 'waiting' };
+      isMatchingInProgress = true;
+      lockAcquired = true;
+    }
+  } else {
+    if (isMatchingInProgress) return { status: 'waiting' };
+    isMatchingInProgress = true;
+    lockAcquired = true;
   }
-  isMatchingInProgress = true;
 
   try {
     let allWaiting: QueueUser[] = [];
@@ -174,9 +216,13 @@ export const tryMatch = async (requesterId: string): Promise<any> => {
     }
 
     // Filter compatible candidates sorted by longest waiting
-    const candidates = allWaiting
+    const candidatePromises = allWaiting
       .filter((u) => u.userId !== requesterId)
-      .filter((u) => isRandomMatchCompatible(requester, u))
+      .map(async (u) => ((await isRandomMatchCompatible(requester, u)) ? u : null));
+
+    const candidateResults = await Promise.all(candidatePromises);
+    const candidates = candidateResults
+      .filter((u): u is QueueUser => u !== null)
       .sort((a, b) => a.joinedAt - b.joinedAt);
 
     if (candidates.length === 0) {
@@ -249,6 +295,16 @@ export const tryMatch = async (requesterId: string): Promise<any> => {
       mode: sessionMode,
     };
   } finally {
+    if (redisClient && lockAcquired) {
+      try {
+        const currentLockVal = await redisClient.get(lockKey);
+        if (currentLockVal === lockVal) {
+          await redisClient.del(lockKey);
+        }
+      } catch (err) {
+        console.warn('Redis lock release failed:', err);
+      }
+    }
     isMatchingInProgress = false;
   }
 };

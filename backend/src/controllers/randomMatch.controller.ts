@@ -80,7 +80,7 @@ export const endMatchSession = async (req: Request, res: Response) => {
     const partnerId = isUserA ? match.userB.toString() : match.userA.toString();
     const io = getIO();
     if (io) {
-      io.of('/adult').to(`user:${partnerId}`).emit('random:partner_left');
+      io.of('/adult').to(`user:${partnerId}`).emit('random:partner_left', { matchId: match._id.toString() });
     }
 
     return res.json({ success: true, message: 'Match session ended successfully' });
@@ -119,11 +119,11 @@ export const nextStranger = async (req: Request, res: Response) => {
         const partnerId = isUserA ? match.userB.toString() : match.userA.toString();
 
         // Exclude immediate rematch with same partner for 60 seconds
-        addExclusion(userIdStr, partnerId, 60000);
+        await addExclusion(userIdStr, partnerId, 60000);
 
         const io = getIO();
         if (io) {
-          io.of('/adult').to(`user:${partnerId}`).emit('random:partner_left');
+          io.of('/adult').to(`user:${partnerId}`).emit('random:partner_left', { matchId: match._id.toString() });
         }
       }
     }
