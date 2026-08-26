@@ -1,32 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import Lottie from 'lottie-react';
 import { API_BASE_URL } from '../../config';
 import { formatAmount } from '../../lib/pricing';
 
-// Minimal valid Lottie JSON objects defined directly to avoid JSON resolve issues in Vite/TS
-const minimalLottie = {
-  v: "5.5.7",
-  meta: { g: "LottieFilesAE", a: "", k: "", d: "", tc: "" },
-  fr: 29.97,
-  ip: 0,
-  op: 60,
-  w: 100,
-  h: 100,
-  nm: "Minimal",
-  ddd: 0,
-  assets: [],
-  layers: []
-};
-
-const queueAnimation = minimalLottie;
-const verifyingAnimation = minimalLottie;
-const processingAnimation = minimalLottie;
-
 const STATUS_CONFIG: Record<string, any> = {
   queued: {
-    animation: queueAnimation,
     title: 'Payout Queued',
     subtitle: (pos: number) =>
       pos > 20
@@ -36,7 +15,6 @@ const STATUS_CONFIG: Record<string, any> = {
     step: 1,
   },
   verifying: {
-    animation: verifyingAnimation,
     title: 'Admin Verification',
     subtitle: (pos: number) =>
       `Position #${pos} — Our compliance team is verifying your payout details.`,
@@ -44,7 +22,6 @@ const STATUS_CONFIG: Record<string, any> = {
     step: 2,
   },
   processing: {
-    animation: processingAnimation,
     title: 'Processing Payment',
     subtitle: () => 'Your funds are actively being transferred to your payout destination.',
     badgeBg: 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300',
