@@ -302,6 +302,65 @@ describe('Payout Request — Full Integration Suite', () => {
       expect(res.body.data).toBeNull();
     });
 
+    it('returns null when latest payout request is completed or rejected', async () => {
+      await PayoutRequest.create({
+        providerId,
+        providerName: 'Lucia Rose',
+        amount: 500,
+        amountNaira: 50000,
+        nairaRateSnapshot: 100,
+        status: 'completed',
+        payoutMethod: 'bank',
+        payoutDetails: {},
+        eligibleTransactionIds: [],
+        requestedAt: new Date(Date.now() - 3600000)
+      });
+
+      const res = await request(app)
+        .get('/api/v1/adult/providers/me/payout/status')
+        .set('Authorization', `Bearer ${providerToken}`)
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data).toBeNull();
+    });
+
+    it('allows a new payout request after a previous payout was completed or rejected', async () => {
+      await PayoutRequest.create({
+        providerId,
+        providerName: 'Lucia Rose',
+        amount: 500,
+        amountNaira: 50000,
+        nairaRateSnapshot: 100,
+        status: 'completed',
+        payoutMethod: 'bank',
+        payoutDetails: {},
+        eligibleTransactionIds: [],
+        requestedAt: new Date(Date.now() - 3600000)
+      });
+
+      await CreditTransaction.create({
+        userId: providerId,
+        type: 'tip_received',
+        amount: 700,
+        usdAmount: 5.25,
+        nairaAmount: 70000,
+        description: 'New tip after payout',
+        status: 'completed',
+        eligibleForPayout: true,
+        paidOut: false
+      });
+
+      const res = await request(app)
+        .post('/api/v1/adult/providers/me/payout/request')
+        .set('Authorization', `Bearer ${providerToken}`)
+        .expect(201);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.amount).toBe(700);
+      expect(res.body.status).toBe('queued');
+    });
+
     it('returns current active request with live queue position', async () => {
       const req1 = await PayoutRequest.create({
         providerId: new mongoose.Types.ObjectId(),
