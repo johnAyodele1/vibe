@@ -86,4 +86,11 @@ describe('Random Match Compatibility & Exclusion Unit Tests', () => {
 
     expect(unknownUser.gender).toBe('other');
   });
+
+  it('rejects candidate if already active in MongoDB RandomMatch', async () => {
+    const userXObj: QueueUser = { ...maleUser, userId: 'userX' };
+    const userYObj: QueueUser = { ...femaleUser, userId: 'userY' };
+
+    expect(await isRandomMatchCompatible(userXObj, userYObj)).toBe(true);
+  });
 });

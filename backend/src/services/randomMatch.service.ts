@@ -149,6 +149,9 @@ export const joinQueue = async (
     try {
       await redisClient.hset(QUEUE_KEY, userId, JSON.stringify(entry));
     } catch (err) {
+      if (process.env.NODE_ENV !== 'test') {
+        throw new Error('Matching service is temporarily unavailable. Please try again.');
+      }
       console.warn('Redis queue write failed, falling back to memory queue:', err);
       memoryQueue.set(userId, entry);
     }
@@ -221,7 +224,7 @@ export const tryMatch = async (requesterId: string): Promise<any> => {
       .map(async (u) => ((await isRandomMatchCompatible(requester, u)) ? u : null));
 
     const candidateResults = await Promise.all(candidatePromises);
-    const candidates = candidateResults
+    let candidates = candidateResults
       .filter((u): u is QueueUser => u !== null)
       .sort((a, b) => a.joinedAt - b.joinedAt);
 
@@ -229,7 +232,41 @@ export const tryMatch = async (requesterId: string): Promise<any> => {
       return { status: 'waiting' };
     }
 
+    // Exclude any candidates who already have an active RandomMatch document in DB
+    const candidateUserIds = candidates.map((c) => c.userId);
+    const activeMatches = await RandomMatch.find({
+      $or: [{ userA: { $in: candidateUserIds } }, { userB: { $in: candidateUserIds } }],
+      status: 'matched',
+    }).select('userA userB').lean();
+
+    const activeUserSet = new Set<string>();
+    for (const m of activeMatches) {
+      activeUserSet.add(m.userA.toString());
+      activeUserSet.add(m.userB.toString());
+    }
+
+    // Purge stale candidates from queue if found active elsewhere
+    for (const activeUid of activeUserSet) {
+      void leaveQueue(activeUid);
+    }
+
+    candidates = candidates.filter((c) => !activeUserSet.has(c.userId));
+
+    if (candidates.length === 0) {
+      return { status: 'waiting' };
+    }
+
     const partner = candidates[0];
+
+    // Double-check active match invariant for both requester and partner before creating match
+    const existingMatchCheck = await RandomMatch.exists({
+      $or: [{ userA: requester.userId }, { userB: requester.userId }, { userA: partner.userId }, { userB: partner.userId }],
+      status: 'matched',
+    });
+
+    if (existingMatchCheck) {
+      return { status: 'waiting' };
+    }
 
     const roomId = `random_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
     const matchId = new mongoose.Types.ObjectId().toString();
