@@ -24,7 +24,7 @@ vi.mock('react-leaflet', () => ({
   Popup: ({ children }: any) => <div data-testid="popup">{children}</div>,
 }));
 
-describe('Hook Up Tonight — Horizontal Filters and CustomSelect', () => {
+describe('Meet Up Today — Horizontal Filters and CustomSelect', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     localStorage.setItem('adultAccessToken', 'mock_token');
@@ -82,7 +82,7 @@ describe('Hook Up Tonight — Horizontal Filters and CustomSelect', () => {
     vi.stubGlobal('fetch', mockFetch);
   });
 
-  it('renders Hook Up Tonight page without requesting GPS permission', async () => {
+  it('renders Meet Up Today page without requesting GPS permission', async () => {
     render(
       <MemoryRouter>
         <HookUpTonight />
@@ -90,8 +90,8 @@ describe('Hook Up Tonight — Horizontal Filters and CustomSelect', () => {
     );
 
     // Header checks
-    expect(screen.getByText('Hook Up Tonight')).toBeInTheDocument();
-    expect(screen.getByText('Someone desires you right now.')).toBeInTheDocument();
+    expect(screen.getByText('Meet Up Today')).toBeInTheDocument();
+    expect(screen.getByText('Someone would like to connect with you.')).toBeInTheDocument();
   });
 
   it('pre-populates the filters from member profile location on page load', async () => {

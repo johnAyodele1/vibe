@@ -130,10 +130,10 @@ describe('PrivateSext Frontend Component', () => {
     const requestTonightBtn = screen.getByText('🌙 Request Service');
     fireEvent.click(requestTonightBtn);
 
-    expect(screen.getByText('Request a Tonight Service')).toBeInTheDocument();
+    expect(screen.getByText('Request an Activity')).toBeInTheDocument();
 
     // Submit request and expect error overlay to pop up
-    const submitBtn = screen.getByRole('button', { name: 'Send Service Request' });
+    const submitBtn = screen.getByRole('button', { name: 'Send Activity Request' });
     fireEvent.click(submitBtn);
 
     await waitFor(() => {

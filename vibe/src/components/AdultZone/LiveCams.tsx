@@ -53,7 +53,7 @@ const LiveCams: React.FC = () => {
   const { initiateCall, isInitiating, callState } = useAdultCall();
   const token = localStorage.getItem('adultAccessToken') || '';
 
-  const filters = ['All', 'Girls', 'Guys', 'Couples', 'Trans', 'New', 'Top Rated', 'Free', 'HD'];
+  const filters = ['All', 'Girls', 'Guys', 'Couples', 'New', 'Top Rated', 'Free', 'HD'];
   const [sessions, setSessions] = useState<CamSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState('All');

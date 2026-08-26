@@ -33,10 +33,10 @@ const AgeGate: React.FC<AgeGateProps> = ({ onVerified }) => {
         {/* Logo Variant */}
         <div className="flex items-center justify-center mb-6 gap-3">
           <div className="w-10 h-10 bg-[var(--az-accent-primary)] rounded-lg flex items-center justify-center text-white font-bold text-xl shadow-[0_0_15px_var(--az-glow)]">
-            V
+            💬
           </div>
           <h1 className="text-2xl font-serif italic text-[var(--az-text-primary)] tracking-wide">
-            Adult Zone
+            Casual Zone
           </h1>
         </div>
 

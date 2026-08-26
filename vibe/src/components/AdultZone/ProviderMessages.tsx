@@ -1664,7 +1664,7 @@ const ProviderMessages: React.FC = () => {
                       <div data-testid="service-request-message" className="w-72 bg-gradient-to-br from-[#1b0a14] to-[#0d040a] border-2 border-amber-500/50 rounded-2xl p-5 shadow-2xl relative overflow-hidden flex flex-col text-left">
                         <div className="flex items-center gap-2 mb-3 border-b border-white/5 pb-2">
                           <span className="text-lg">🌙</span>
-                          <span className="font-bold text-[10px] uppercase tracking-wider text-amber-400">Tonight Service Charge</span>
+                          <span className="font-bold text-[10px] uppercase tracking-wider text-amber-400">Activity Service Charge</span>
                         </div>
 
                         <div className="space-y-2 text-xs">
@@ -2312,10 +2312,10 @@ const ProviderMessages: React.FC = () => {
               ×
             </button>
             <h3 className="text-2xl font-serif italic text-white mb-2" style={{ fontFamily: 'Playfair Display, serif' }}>
-              Send Service Request
+              Send Activity Request
             </h3>
             <p className="text-xs text-[var(--az-text-secondary)] mb-6">
-              Request payment for your Hook Up Tonight arrangement.
+              Request payment for your Activity request.
             </p>
 
             <div className="space-y-4">
@@ -2352,7 +2352,7 @@ const ProviderMessages: React.FC = () => {
                       <input
                         type="text"
                         maxLength={50}
-                        placeholder="Description (e.g. Hotel, Transport)"
+                        placeholder="Description (e.g. Snacking, Coffee, Dinner, Movies)"
                         value={ext.label}
                         onChange={(e) => {
                           const updated = [...serviceExtras];
@@ -2413,7 +2413,7 @@ const ProviderMessages: React.FC = () => {
                 disabled={isSendingServiceRequest}
                 className="w-full py-3.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-rose-900/20 active:scale-95 disabled:opacity-50"
               >
-                {isSendingServiceRequest ? 'Sending...' : 'Send Service Request'}
+                {isSendingServiceRequest ? 'Sending...' : 'Send Activity Request'}
               </button>
             </div>
           </div>

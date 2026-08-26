@@ -90,7 +90,7 @@ describe('NaughtyRooms Component', () => {
     render(<NaughtyRooms />);
 
     // Check title
-    expect(screen.getByText('Naughty Rooms')).toBeInTheDocument();
+    expect(screen.getByText('Casual Rooms')).toBeInTheDocument();
     expect(screen.getByText('Find your vibe. Join the conversation.')).toBeInTheDocument();
 
     // Wait for mock cards to load
@@ -106,7 +106,7 @@ describe('NaughtyRooms Component', () => {
   it('handles category filter pills click triggers correctly', async () => {
     render(<NaughtyRooms />);
 
-    const spicyPill = screen.getByText('🌶️ Spicy');
+    const spicyPill = screen.getByText('☕ Coffee');
     fireEvent.click(spicyPill);
 
     // Should load cards
@@ -163,7 +163,7 @@ describe('NaughtyRooms Component', () => {
     fireEvent.click(createBtn);
 
     // Expect modal to open
-    expect(screen.getByText('Create a Naughty Room')).toBeInTheDocument();
+    expect(screen.getByText('Create a Casual Room')).toBeInTheDocument();
 
     // Fill in Room Name
     const nameInput = screen.getByPlaceholderText(/e.g. Secret Desires/i);

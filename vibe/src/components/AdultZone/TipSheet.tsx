@@ -249,9 +249,9 @@ export const TipSheet: React.FC = () => {
         closeSheet();
         const isMobile = window.innerWidth < 768;
         if (isMobile) {
-          navigate(`/adult/sext/${data.conversationId}`);
+          navigate(`/inbox/${data.conversationId}`);
         } else {
-          navigate(`/adult/sext?conversation=${data.conversationId}`);
+          navigate(`/inbox?conversation=${data.conversationId}`);
         }
       }
     } catch {

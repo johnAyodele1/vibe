@@ -107,10 +107,14 @@ function App() {
           <Route path="cams" element={<LiveCams />} />
           <Route path="rooms" element={<NaughtyRooms />} />
           <Route path="rooms/:roomId" element={<NaughtyRooms />} />
-          <Route path="sext" element={<PrivateSext />} />
-          <Route path="sext/:conversationId" element={<PrivateSext />} />
-          <Route path="adult/sext" element={<PrivateSext />} />
-          <Route path="adult/sext/:conversationId" element={<PrivateSext />} />
+          <Route path="inbox" element={<PrivateSext />} />
+          <Route path="inbox/:conversationId" element={<PrivateSext />} />
+          <Route path="adult/inbox" element={<PrivateSext />} />
+          <Route path="adult/inbox/:conversationId" element={<PrivateSext />} />
+          <Route path="adult/sext" element={<Navigate to="/inbox" replace />} />
+          <Route path="adult/sext/:conversationId" element={<Navigate to="/inbox" replace />} />
+          <Route path="sext" element={<Navigate to="/inbox" replace />} />
+          <Route path="sext/:conversationId" element={<Navigate to="/inbox" replace />} />
           <Route path="random" element={<RandomStranger />} />
           <Route path="hookup" element={<HookUpTonight />} />
           <Route path="vip" element={<VIPLounge />} />

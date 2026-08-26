@@ -11,7 +11,7 @@ const SERVICE_LABELS: Record<string, { icon: string; label: string; color: strin
   live_cam: { icon: '📹', label: 'Live Webcam Shows', color: '#e8496a' },
   private_call: { icon: '📞', label: 'Private Video Calls', color: '#c9a84c' },
   sext: { icon: '💬', label: 'Private Inbox', color: '#a78bfa' },
-  hookup: { icon: '🌙', label: 'Available Tonight', color: '#c8102e' },
+  hookup: { icon: '📍', label: 'Available for Activity Requests', color: '#c8102e' },
   random: { icon: '🎲', label: 'Random Sessions', color: '#64748b' },
 };
 
@@ -66,7 +66,7 @@ export const PublicProviderProfile: React.FC = () => {
       const data = await response.json();
       if (data.conversationId) {
         const isMobile = window.innerWidth < 768;
-        navigate(isMobile ? `/adult/sext/${data.conversationId}` : `/adult/sext?conversation=${data.conversationId}`);
+        navigate(isMobile ? `/inbox/${data.conversationId}` : `/inbox?conversation=${data.conversationId}`);
       } else { toast.error('Could not start conversation'); setIsStartingConversation(false); }
     } catch { toast.error('Could not start conversation'); setIsStartingConversation(false); }
   };

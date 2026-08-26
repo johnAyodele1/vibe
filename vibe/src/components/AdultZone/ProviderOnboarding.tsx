@@ -791,7 +791,7 @@ const ProviderOnboarding: React.FC = () => {
                 { id: 'live_cam', icon: '📹', title: 'Live Webcam Shows', desc: 'Go live on the open cams feeds and earn tips from spectators.' },
                 { id: 'private_call', icon: '📞', title: 'Private Video Calls', desc: 'Accept direct video calls for an automated per-minute pricing rate.' },
                 { id: 'sext', icon: '💬', title: 'Private Messaging / Inbox', desc: 'Charge for direct messages, exclusive text chats, and locked media payloads.' },
-                { id: 'hookup', icon: '🌙', title: 'Available for Tonight', desc: 'Inform members nearby that you can meet for local agreements.' },
+                { id: 'hookup', icon: '📍', title: 'Available for Activity Requests', desc: 'Let members know you\'re free for activity requests.' },
                 { id: 'random', icon: '🎲', title: 'Random Stranger Sessions', desc: 'Enter matching directories for live dynamic encounters.' }
               ].map(srv => {
                 const isSelected = services.includes(srv.id);
@@ -844,7 +844,7 @@ const ProviderOnboarding: React.FC = () => {
           <div className="space-y-6">
             <div>
               <h2 className="text-3xl font-serif italic text-white mb-2">Set Your Rates</h2>
-              <p className="text-sm text-[var(--az-text-secondary)]">Define what users pay to connect. Earn 75% take-home on all balances.</p>
+              <p className="text-sm text-[var(--az-text-secondary)]">Define what users pay to connect.<br />Weekly Take-Home (85%)</p>
             </div>
 
             <div className="space-y-6">
@@ -882,7 +882,7 @@ const ProviderOnboarding: React.FC = () => {
 
               {services.includes('hookup') && (
                 <div className="p-5 bg-[var(--az-bg-tertiary)] rounded-2xl border border-[var(--az-border)]">
-                  <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">Your Rate for Tonight</label>
+                  <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">Your Rate for Activity</label>
                   <div className="flex items-center gap-3">
                     <span className="text-2xl font-mono text-[var(--az-accent-gold)] font-bold">💎</span>
                     <input
@@ -896,7 +896,7 @@ const ProviderOnboarding: React.FC = () => {
                       }}
                     />
                     <div className="flex flex-col">
-                      <span className="text-xs text-[var(--az-text-muted)]">Fixed premium flat-fee for tonight arrange requests. (Suggested: 300+ diamonds)</span>
+                      <span className="text-xs text-[var(--az-text-muted)]">Flexible premium flat-fee for member activity requests. (Suggested: 300+ diamonds)</span>
                       <span className="text-xs text-[var(--az-accent-gold)] font-bold">
                         ≈ ₦{((pricing.tonightRate || 0) * usePricingStore.getState().diamondNairaRate).toLocaleString('en-NG')}
                       </span>
@@ -972,9 +972,9 @@ const ProviderOnboarding: React.FC = () => {
                   </div>
 
                   <div className="flex justify-between items-center border-t border-[var(--az-border)]/50 pt-4">
-                    <span className="text-xs text-[var(--az-text-secondary)]">Weekly Take-Home (75%)</span>
+                    <span className="text-xs text-[var(--az-text-secondary)]">Weekly Take-Home (85%)</span>
                     <span className="text-2xl font-mono text-green-400 font-bold">
-                      💎 {Math.floor((calcMinutes * pricing.pricePerMinute) * 0.75).toLocaleString()} (≈ ₦{(Math.floor((calcMinutes * pricing.pricePerMinute) * 0.75) * usePricingStore.getState().diamondNairaRate).toLocaleString('en-NG')})
+                      💎 {Math.floor((calcMinutes * pricing.pricePerMinute) * 0.85).toLocaleString()} (≈ ₦{(Math.floor((calcMinutes * pricing.pricePerMinute) * 0.85) * usePricingStore.getState().diamondNairaRate).toLocaleString('en-NG')})
                     </span>
                   </div>
                 </div>
