@@ -19,36 +19,54 @@ export interface QueueUser {
 let redisClient: Redis | null = null;
 if (process.env.NODE_ENV !== 'test' && (process.env.REDIS_URL || process.env.REDIS_HOST)) {
   try {
-    redisClient = new Redis(process.env.REDIS_URL || '', { maxRetriesPerRequest: 1, enableOfflineQueue: false });
+    redisClient = new Redis(process.env.REDIS_URL || '', {
+      maxRetriesPerRequest: 1,
+      enableOfflineQueue: false,
+    });
   } catch (err) {
-    console.warn('Failed to initialize Redis client for matching queue, using memory fallback:', err);
+    console.warn('Failed to initialize Redis client for matching queue:', err);
   }
 }
 
-// In-Memory Fallback Queue store & exclusions
+// In-Memory stores are test-only. Production matching requires Redis so all
+// application instances share the same queue, exclusions, and lock state.
 const memoryQueue = new Map<string, QueueUser>();
 const exclusionMap = new Map<string, number>(); // `${userA}_${userB}` -> expiresAt timestamp
 
 const QUEUE_KEY = 'adult:random:queue';
 let isMatchingInProgress = false;
 
+const ensureRedisForProduction = () => {
+  if (process.env.NODE_ENV !== 'test' && !redisClient) {
+    throw new Error('Matching service is temporarily unavailable. Please try again.');
+  }
+};
+
 export const addExclusion = async (userA: string, userB: string, durationMs: number = 60000) => {
   const ttlSec = Math.ceil(durationMs / 1000);
+  ensureRedisForProduction();
+
   if (redisClient) {
     try {
       await redisClient.set(`adult:random:exclude:${userA}:${userB}`, '1', 'EX', ttlSec);
       await redisClient.set(`adult:random:exclude:${userB}:${userA}`, '1', 'EX', ttlSec);
       return;
     } catch (err) {
+      if (process.env.NODE_ENV !== 'test') {
+        throw new Error('Matching service is temporarily unavailable. Please try again.');
+      }
       console.warn('Redis exclusion set failed, falling back to memory:', err);
     }
   }
+
   const expiresAt = Date.now() + durationMs;
   exclusionMap.set(`${userA}_${userB}`, expiresAt);
   exclusionMap.set(`${userB}_${userA}`, expiresAt);
 };
 
 export const isExcluded = async (userA: string, userB: string): Promise<boolean> => {
+  ensureRedisForProduction();
+
   if (redisClient) {
     try {
       const ex1 = await redisClient.get(`adult:random:exclude:${userA}:${userB}`);
@@ -57,9 +75,13 @@ export const isExcluded = async (userA: string, userB: string): Promise<boolean>
       if (ex2) return true;
       return false;
     } catch (err) {
+      if (process.env.NODE_ENV !== 'test') {
+        throw new Error('Matching service is temporarily unavailable. Please try again.');
+      }
       console.warn('Redis exclusion get failed, falling back to memory:', err);
     }
   }
+
   const now = Date.now();
   const key1 = `${userA}_${userB}`;
   const exp1 = exclusionMap.get(key1);
@@ -67,12 +89,14 @@ export const isExcluded = async (userA: string, userB: string): Promise<boolean>
     if (exp1 > now) return true;
     exclusionMap.delete(key1);
   }
+
   const key2 = `${userB}_${userA}`;
   const exp2 = exclusionMap.get(key2);
   if (exp2) {
     if (exp2 > now) return true;
     exclusionMap.delete(key2);
   }
+
   return false;
 };
 
@@ -158,6 +182,8 @@ export const joinQueue = async (
     joinedAt: Date.now(),
   };
 
+  ensureRedisForProduction();
+
   if (redisClient) {
     try {
       await redisClient.hset(QUEUE_KEY, userId, JSON.stringify(entry));
@@ -187,6 +213,8 @@ export const leaveQueue = async (userId: string) => {
 };
 
 export const tryMatch = async (requesterId: string): Promise<any> => {
+  ensureRedisForProduction();
+
   let lockAcquired = false;
   let lockHeartbeat: NodeJS.Timeout | null = null;
   const lockKey = 'adult:random:lock';
@@ -213,6 +241,9 @@ export const tryMatch = async (requesterId: string): Promise<any> => {
         return { status: 'waiting' };
       }
     } catch (err) {
+      if (process.env.NODE_ENV !== 'test') {
+        throw new Error('Matching service is temporarily unavailable. Please try again.');
+      }
       console.warn('Redis lock acquire failed, falling back to process lock:', err);
       if (isMatchingInProgress) return { status: 'waiting' };
       isMatchingInProgress = true;
@@ -232,7 +263,10 @@ export const tryMatch = async (requesterId: string): Promise<any> => {
         const data = await redisClient.hgetall(QUEUE_KEY);
         allWaiting = Object.values(data).map((str) => JSON.parse(str));
       } catch (err) {
-        console.warn('Redis hgetall failed:', err);
+        if (process.env.NODE_ENV !== 'test') {
+          throw new Error('Matching service is temporarily unavailable. Please try again.');
+        }
+        console.warn('Redis hgetall failed, falling back to memory queue:', err);
         allWaiting = Array.from(memoryQueue.values());
       }
     } else {
