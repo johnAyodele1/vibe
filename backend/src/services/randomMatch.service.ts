@@ -82,14 +82,27 @@ export const isRandomMatchCompatible = async (user1: QueueUser, user2: QueueUser
   // 1. Exclusion check
   if (await isExcluded(user1.userId, user2.userId)) return false;
 
-  // 2. Symmetric Gender Preference Check
+  // 2. Active match check (database authority)
+  const validIds = [user1.userId, user2.userId].filter((id) => mongoose.Types.ObjectId.isValid(id));
+  if (validIds.length > 0) {
+    const hasActiveMatch = await RandomMatch.exists({
+      $or: [
+        { userA: { $in: validIds } },
+        { userB: { $in: validIds } },
+      ],
+      status: 'matched',
+    });
+    if (hasActiveMatch) return false;
+  }
+
+  // 3. Symmetric Gender Preference Check
   if (user1.preference === 'girls' && user2.gender !== 'female') return false;
   if (user1.preference === 'guys' && user2.gender !== 'male') return false;
 
   if (user2.preference === 'girls' && user1.gender !== 'female') return false;
   if (user2.preference === 'guys' && user1.gender !== 'male') return false;
 
-  // 3. Mode Compatibility Matrix
+  // 4. Mode Compatibility Matrix
   // text <-> text, video <-> video, both <-> any mode
   if (user1.mode === 'text' && user2.mode === 'video') return false;
   if (user1.mode === 'video' && user2.mode === 'text') return false;
@@ -175,6 +188,7 @@ export const leaveQueue = async (userId: string) => {
 
 export const tryMatch = async (requesterId: string): Promise<any> => {
   let lockAcquired = false;
+  let lockHeartbeat: NodeJS.Timeout | null = null;
   const lockKey = 'adult:random:lock';
   const lockVal = `${requesterId}_${Date.now()}`;
 
@@ -183,6 +197,18 @@ export const tryMatch = async (requesterId: string): Promise<any> => {
       const res = await redisClient.set(lockKey, lockVal, 'PX', 15000, 'NX');
       if (res === 'OK') {
         lockAcquired = true;
+        // Periodic lock extension every 5 seconds while match processing continues
+        lockHeartbeat = setInterval(async () => {
+          if (!redisClient) return;
+          try {
+            const currentVal = await redisClient.get(lockKey);
+            if (currentVal === lockVal) {
+              await redisClient.pexpire(lockKey, 15000);
+            }
+          } catch (renewErr) {
+            console.warn('Lock heartbeat renewal error:', renewErr);
+          }
+        }, 5000);
       } else {
         return { status: 'waiting' };
       }
@@ -299,9 +325,7 @@ export const tryMatch = async (requesterId: string): Promise<any> => {
       });
     } catch (createErr) {
       console.error('Failed to create RandomMatch session document:', createErr);
-      // Re-queue both users safely on creation failure
-      await joinQueue(requester.userId, requester.preference, requester.mode);
-      await joinQueue(partner.userId, partner.preference, partner.mode);
+      // Leave users in queue untouched on creation failure (do not recursively re-queue)
       throw createErr;
     }
 
@@ -340,6 +364,9 @@ export const tryMatch = async (requesterId: string): Promise<any> => {
       mode: sessionMode,
     };
   } finally {
+    if (lockHeartbeat) {
+      clearInterval(lockHeartbeat);
+    }
     if (redisClient && lockAcquired) {
       try {
         const currentLockVal = await redisClient.get(lockKey);
