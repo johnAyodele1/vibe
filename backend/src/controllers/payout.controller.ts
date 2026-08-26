@@ -105,13 +105,6 @@ export const getEligiblePayout = async (req: Request, res: Response) => {
       breakdown,
     });
   } catch (error: any) {
-      if (error.code === 11000 || error.message?.includes('E11000 duplicate key error')) {
-        return res.status(409).json({
-          success: false,
-          error: 'REQUEST_ALREADY_PENDING',
-          message: 'You already have a payout in progress.',
-        });
-      }
     return res.status(500).json({ success: false, error: error.message });
   }
 };
@@ -674,10 +667,13 @@ export const requestPayout = async (req: Request, res: Response) => {
         dbSession = null;
       }
       if (err.code === 20 || err.message?.includes('Transaction numbers are only allowed')) {
-        request = await runAtomicPayoutCreation();
-      } else {
-        throw err;
+        return res.status(503).json({
+          success: false,
+          error: 'PAYOUT_SERVICE_UNAVAILABLE',
+          message: 'Payout requests are temporarily unavailable.',
+        });
       }
+      throw err;
     } finally {
       if (dbSession) {
         dbSession.endSession();
@@ -704,6 +700,13 @@ export const requestPayout = async (req: Request, res: Response) => {
       status: 'queued',
     });
   } catch (error: any) {
+    if (error.code === 11000 || error.message?.includes('E11000 duplicate key error')) {
+      return res.status(409).json({
+        success: false,
+        error: 'REQUEST_ALREADY_PENDING',
+        message: 'You already have a payout in progress.',
+      });
+    }
     return res.status(500).json({ success: false, error: error.message });
   }
 };
