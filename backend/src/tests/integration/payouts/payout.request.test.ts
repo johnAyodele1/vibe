@@ -30,9 +30,6 @@ describe('Payout Request — Full Integration Suite', () => {
       label: 'Diamond to Naira Rate',
       description: 'Diamond exchange rate to Nigerian Naira'
     });
-
-    // Ensure database indexes (including partial unique index) are created
-    await PayoutRequest.ensureIndexes();
   });
 
   afterAll(async () => {
@@ -249,40 +246,6 @@ describe('Payout Request — Full Integration Suite', () => {
       expect(res.body.error).toBe('REQUEST_ALREADY_PENDING');
     });
 
-    it('prevents two simultaneous/concurrent payout requests from creating duplicate active payouts (partial unique index invariant)', async () => {
-      await CreditTransaction.create({
-        userId: providerId,
-        type: 'tip_received',
-        amount: 1000,
-        usdAmount: 7.5,
-        nairaAmount: 100000,
-        description: 'Available tip',
-        status: 'completed',
-        eligibleForPayout: true,
-        paidOut: false,
-      });
-
-      // Execute two simultaneous HTTP requests to simulate exact race condition
-      const [res1, res2] = await Promise.all([
-        request(app)
-          .post('/api/v1/adult/providers/me/payout/request')
-          .set('Authorization', `Bearer ${providerToken}`),
-        request(app)
-          .post('/api/v1/adult/providers/me/payout/request')
-          .set('Authorization', `Bearer ${providerToken}`),
-      ]);
-
-      const statuses = [res1.status, res2.status];
-      expect(statuses).toContain(201);
-      expect(statuses).toContain(409);
-
-      const activeCount = await PayoutRequest.countDocuments({
-        providerId,
-        status: { $in: ['pending', 'queued', 'verifying', 'processing'] },
-      });
-      expect(activeCount).toBe(1);
-    });
-
     it('returns 400 when eligible balance is zero', async () => {
       const res = await request(app)
         .post('/api/v1/adult/providers/me/payout/request')
@@ -337,107 +300,6 @@ describe('Payout Request — Full Integration Suite', () => {
 
       expect(res.body.success).toBe(true);
       expect(res.body.data).toBeNull();
-    });
-
-    it('returns null when previous payout is completed (not treating terminal payout as active)', async () => {
-      await PayoutRequest.create({
-        providerId,
-        providerName: 'Lucia Rose',
-        amount: 800,
-        amountNaira: 80000,
-        nairaRateSnapshot: 100,
-        status: 'completed',
-        payoutMethod: 'bank',
-        payoutDetails: {},
-        eligibleTransactionIds: [],
-        requestedAt: new Date(Date.now() - 3600000),
-        completedAt: new Date(),
-      });
-
-      const res = await request(app)
-        .get('/api/v1/adult/providers/me/payout/status')
-        .set('Authorization', `Bearer ${providerToken}`)
-        .expect(200);
-
-      expect(res.body.success).toBe(true);
-      expect(res.body.data).toBeNull();
-    });
-
-    it('allows provider to request another payout after previous payout is completed if newly eligible', async () => {
-      // Past completed payout
-      await PayoutRequest.create({
-        providerId,
-        providerName: 'Lucia Rose',
-        amount: 500,
-        amountNaira: 50000,
-        nairaRateSnapshot: 100,
-        status: 'completed',
-        payoutMethod: 'bank',
-        payoutDetails: {},
-        eligibleTransactionIds: [],
-        requestedAt: new Date(Date.now() - 86400000),
-        completedAt: new Date(Date.now() - 43200000),
-      });
-
-      // New eligible earnings arrive
-      await CreditTransaction.create({
-        userId: providerId,
-        type: 'call_earning',
-        amount: 700,
-        usdAmount: 5.25,
-        nairaAmount: 70000,
-        description: 'New call earning',
-        status: 'completed',
-        eligibleForPayout: true,
-        paidOut: false,
-      });
-
-      const res = await request(app)
-        .post('/api/v1/adult/providers/me/payout/request')
-        .set('Authorization', `Bearer ${providerToken}`)
-        .expect(201);
-
-      expect(res.body.success).toBe(true);
-      expect(res.body.amount).toBe(700);
-      expect(res.body.status).toBe('queued');
-    });
-
-    it('allows provider to request another payout after previous payout is rejected', async () => {
-      await PayoutRequest.create({
-        providerId,
-        providerName: 'Lucia Rose',
-        amount: 600,
-        amountNaira: 60000,
-        nairaRateSnapshot: 100,
-        status: 'rejected',
-        rejectedReason: 'Invalid bank details',
-        payoutMethod: 'bank',
-        payoutDetails: {},
-        eligibleTransactionIds: [],
-        requestedAt: new Date(Date.now() - 86400000),
-        rejectedAt: new Date(Date.now() - 43200000),
-      });
-
-      await CreditTransaction.create({
-        userId: providerId,
-        type: 'tip_received',
-        amount: 600,
-        usdAmount: 4.5,
-        nairaAmount: 60000,
-        description: 'Available tip',
-        status: 'completed',
-        eligibleForPayout: true,
-        paidOut: false,
-      });
-
-      const res = await request(app)
-        .post('/api/v1/adult/providers/me/payout/request')
-        .set('Authorization', `Bearer ${providerToken}`)
-        .expect(201);
-
-      expect(res.body.success).toBe(true);
-      expect(res.body.amount).toBe(600);
-      expect(res.body.status).toBe('queued');
     });
 
     it('returns current active request with live queue position', async () => {

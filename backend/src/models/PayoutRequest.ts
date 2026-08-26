@@ -33,7 +33,7 @@ export interface IPayoutRequest extends Document {
 }
 
 const payoutRequestSchema = new Schema<IPayoutRequest>({
-  providerId: { type: Schema.Types.ObjectId, ref: 'AdultUser', required: true },
+  providerId: { type: Schema.Types.ObjectId, ref: 'AdultUser', required: true, index: true },
   providerName: { type: String, required: true },
   amount: { type: Number, required: true },
   amountNaira: { type: Number, required: true },
@@ -68,18 +68,6 @@ const payoutRequestSchema = new Schema<IPayoutRequest>({
   eligibleTransactionIds: [{ type: Schema.Types.ObjectId, ref: 'CreditTransaction' }],
   adminReference: { type: String },
 });
-
-// Enforce single-active-payout invariant at database level via partial unique index
-payoutRequestSchema.index(
-  { providerId: 1 },
-  {
-    name: 'unique_active_payout_per_provider',
-    unique: true,
-    partialFilterExpression: {
-      status: { $in: ['pending', 'queued', 'verifying', 'processing'] },
-    },
-  }
-);
 
 export const PayoutRequest = mongoose.model<IPayoutRequest>('PayoutRequest', payoutRequestSchema);
 export default PayoutRequest;

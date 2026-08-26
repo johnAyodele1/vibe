@@ -1,31 +1,70 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import Lottie from 'lottie-react';
 import { API_BASE_URL } from '../../config';
 import { formatAmount } from '../../lib/pricing';
 
-const STATUS_CONFIG: Record<string, any> = {
+// Minimal valid Lottie JSON objects defined directly to avoid JSON resolve issues in Vite/TS
+const minimalLottie = {
+  v: "5.5.7",
+  meta: { g: "LottieFilesAE", a: "", k: "", d: "", tc: "" },
+  fr: 29.97,
+  ip: 0,
+  op: 60,
+  w: 100,
+  h: 100,
+  nm: "Minimal",
+  ddd: 0,
+  assets: [],
+  layers: []
+};
+
+const queueAnimation = minimalLottie;
+const verifyingAnimation = minimalLottie;
+const processingAnimation = minimalLottie;
+const successAnimation = minimalLottie;
+const rejectedAnimation = minimalLottie;
+
+const STATUS_CONFIG: Record<string, { title: string; subtitle: (pos: number) => string; badgeBg: string; step: number }> = {
   queued: {
-    title: 'Payout Queued',
+    animation: queueAnimation,
+    title: 'Payment Queued',
     subtitle: (pos: number) =>
       pos > 20
-        ? `You are #${pos} in the queue. Your request will be reviewed shortly.`
-        : `You are #${pos} in the queue — moving to admin verification soon.`,
-    badgeBg: 'bg-purple-500/10 border-purple-500/30 text-purple-300',
+        ? `You are #${pos} in the queue. Your payment will be reviewed soon.`
+        : `You are #${pos} in the queue — moving to verification soon.`,
+    color: '#a78bfa',  // purple
     step: 1,
   },
   verifying: {
-    title: 'Admin Verification',
+    animation: verifyingAnimation,
+    title: 'Admin Verifying Details',
     subtitle: (pos: number) =>
-      `Position #${pos} — Our compliance team is verifying your payout details.`,
-    badgeBg: 'bg-amber-500/10 border-amber-500/30 text-amber-300',
+      `Position #${pos} — Our team is reviewing your payout details.`,
+    color: '#c9a84c',  // gold
     step: 2,
   },
   processing: {
+    animation: processingAnimation,
     title: 'Processing Payment',
-    subtitle: () => 'Your funds are actively being transferred to your payout destination.',
-    badgeBg: 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300',
+    subtitle: () => 'Your payment is being sent. This usually takes a few minutes.',
+    color: '#e8496a',  // rose
     step: 3,
+  },
+  completed: {
+    animation: successAnimation,
+    title: 'Payment Sent! 🎉',
+    subtitle: () => 'Your earnings have been transferred to your payout account.',
+    color: '#22c55e',  // green
+    step: 4,
+  },
+  rejected: {
+    animation: rejectedAnimation,
+    title: 'Payout Rejected',
+    subtitle: () => 'See reason below. Please fix the issue and re-apply.',
+    color: '#ef4444',  // red
+    step: 0,
   },
 };
 
@@ -38,12 +77,12 @@ const ProviderPayout: React.FC = () => {
 
   const [eligibleAmount, setEligibleAmount] = useState(0);
   const [eligibleNaira, setEligibleNaira] = useState(0);
-  const [breakdown, setBreakdown] = useState<any>({ tips: 0, calls: 0, service_charges: 0, gifts: 0, paid_media: 0, spin_wheel: 0 });
+  const [breakdown, setBreakdown] = useState<Record<string, number>>({ tips: 0, calls: 0, service_charges: 0, gifts: 0, paid_media: 0, spin_wheel: 0 });
 
-  const [activeRequest, setActiveRequest] = useState<any>(null);
-  const [history, setHistory] = useState<any[]>([]);
+  const [activeRequest, setActiveRequest] = useState<Record<string, unknown> | null>(null);
+  const [history, setHistory] = useState<Record<string, unknown>[]>([]);
 
-  const fetchEligible = async () => {
+  const fetchEligible = React.useCallback(async () => {
     if (!token) return;
     try {
       const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/payout/eligible`, {
@@ -61,9 +100,9 @@ const ProviderPayout: React.FC = () => {
     } catch (err) {
       console.error('Error fetching eligible payout info', err);
     }
-  };
+  }, [token]);
 
-  const fetchStatus = async () => {
+  const fetchStatus = React.useCallback(async () => {
     if (!token) return;
     try {
       const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/payout/status`, {
@@ -79,9 +118,9 @@ const ProviderPayout: React.FC = () => {
     } catch (err) {
       console.error('Error fetching status info', err);
     }
-  };
+  }, [token]);
 
-  const fetchHistory = async () => {
+  const fetchHistory = React.useCallback(async () => {
     if (!token) return;
     try {
       const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/payout/history`, {
@@ -97,13 +136,13 @@ const ProviderPayout: React.FC = () => {
     } catch (err) {
       console.error('Error fetching history', err);
     }
-  };
+  }, [token]);
 
-  const loadAllData = async () => {
+  const loadAllData = React.useCallback(async () => {
     setIsLoading(true);
     await Promise.all([fetchEligible(), fetchStatus(), fetchHistory()]);
     setIsLoading(false);
-  };
+  }, [fetchEligible, fetchStatus, fetchHistory]);
 
   useEffect(() => {
     if (!token) {
@@ -111,8 +150,11 @@ const ProviderPayout: React.FC = () => {
       navigate('/adult');
       return;
     }
-    loadAllData();
-  }, [token]);
+    const timer = setTimeout(() => {
+      void loadAllData();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [token, navigate, loadAllData]);
 
   const handleRequestPayout = async () => {
     if (isSubmitting) return;
@@ -131,7 +173,7 @@ const ProviderPayout: React.FC = () => {
         return;
       }
       if (json.success) {
-        toast.success('Payout request submitted successfully!');
+        toast.success('Payout request successfully queued!');
         await loadAllData();
       } else {
         toast.error(json.message || 'Failed to request payout');
@@ -144,8 +186,7 @@ const ProviderPayout: React.FC = () => {
     }
   };
 
-  const formatPayoutDestination = (reqObj: any) => {
-    if (!reqObj) return 'Configured Method';
+  const formatPayoutDestination = (reqObj: Record<string, unknown> | null) => {
     if (reqObj.payoutMethod === 'bank') {
       const details = reqObj.payoutDetails || {};
       const lastFour = details.accountNumber ? `(****${details.accountNumber.slice(-4)})` : '';
@@ -180,408 +221,258 @@ const ProviderPayout: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#090a0f]">
-        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-amber-400"></div>
+      <div className="flex h-screen items-center justify-center bg-[#0d040e]">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-amber-500"></div>
       </div>
     );
   }
-
-  const latestHistory = history.length > 0 ? history[0] : null;
-  const isLatestCompleted = latestHistory?.status === 'completed';
-  const isLatestRejected = latestHistory?.status === 'rejected';
 
   const activeConfig = activeRequest ? STATUS_CONFIG[activeRequest.status] : null;
   const currentStep = activeConfig ? activeConfig.step : 0;
 
   return (
-    <div className="min-h-screen bg-[#090a0f] text-slate-100 p-4 sm:p-6 md:p-10 font-sans">
-      <div className="max-w-4xl mx-auto space-y-6 sm:space-y-8">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800/80">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white flex items-center gap-2">
-              <span>Payout Headquarters</span>
-              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                Provider Earnings
-              </span>
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-400 mt-1">
-              Manage your withdrawable balances, monitor payout status, and track historical transfers.
-            </p>
-          </div>
-          <button
-            onClick={() => navigate('/adult/provider/profile?tab=payment')}
-            className="self-start sm:self-auto px-4 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-amber-400 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 shadow-sm"
-          >
-            <span>Payout Settings</span>
-            <span>→</span>
-          </button>
-        </div>
+    <div className="min-h-screen bg-[#0d040e] text-gray-100 p-6 md:p-10 font-sans">
+      <div className="max-w-4xl mx-auto">
+        <h1 className="text-3xl md:text-4xl italic font-serif font-bold text-amber-500 mb-8 tracking-wider">
+          Payout Headquarters
+        </h1>
 
-        {/* RECENTLY COMPLETED NOTIFICATION BANNER */}
-        {!activeRequest && isLatestCompleted && (
-          <div className="bg-emerald-950/30 border border-emerald-500/30 rounded-2xl p-4 sm:p-5 flex items-start gap-3.5 shadow-lg">
-            <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-lg flex-shrink-0">
-              ✅
-            </div>
-            <div className="flex-1 min-w-0">
-              <h4 className="text-sm font-bold text-emerald-400 flex items-center gap-2">
-                <span>Payment Sent</span>
-                <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-mono">
-                  {formatDate(latestHistory.completedAt || latestHistory.requestedAt)}
-                </span>
-              </h4>
-              <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                Your previous payout of <strong className="font-mono text-emerald-300">💎 {formatAmount(latestHistory.amount)} (₦{latestHistory.amountNaira?.toLocaleString('en-NG')})</strong> was successfully transferred to your configured payout account.
-              </p>
-              {latestHistory.adminReference && (
-                <p className="text-[11px] font-mono text-slate-400 mt-1.5">
-                  Ref: <span className="text-slate-200">{latestHistory.adminReference}</span>
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* RECENTLY REJECTED NOTIFICATION BANNER */}
-        {!activeRequest && isLatestRejected && (
-          <div className="bg-rose-950/30 border border-rose-500/30 rounded-2xl p-4 sm:p-5 flex items-start gap-3.5 shadow-lg">
-            <div className="w-9 h-9 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center text-lg flex-shrink-0">
-              ⚠️
-            </div>
-            <div className="flex-1 min-w-0">
-              <h4 className="text-sm font-bold text-rose-400 flex items-center gap-2">
-                <span>Previous Payout Rejected</span>
-                <span className="text-[10px] bg-rose-500/20 text-rose-300 px-2 py-0.5 rounded-full font-mono">
-                  {formatDate(latestHistory.rejectedAt || latestHistory.requestedAt)}
-                </span>
-              </h4>
-              <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                Reason: <strong className="text-rose-200">{latestHistory.rejectedReason || 'No specific reason provided.'}</strong>
-              </p>
-              <div className="flex flex-wrap items-center gap-3 mt-3">
-                <button
-                  onClick={() => navigate('/adult/provider/profile?tab=payment')}
-                  className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 rounded-lg text-xs font-semibold transition-all"
-                >
-                  Update Payout Details →
-                </button>
+        {/* 1. STATUS TRACKER / ACTIVE VIEW */}
+        {activeRequest ? (
+          <div className="bg-[#170a16] border border-amber-500/20 rounded-3xl p-8 mb-10 max-w-xl mx-auto shadow-2xl relative overflow-hidden">
+            <div className="flex justify-center mb-6">
+              <div className="w-48 h-48 flex items-center justify-center">
+                {activeConfig && activeConfig.animation && (
+                  <Lottie
+                    animationData={activeConfig.animation}
+                    loop={activeRequest.status !== 'completed' && activeRequest.status !== 'rejected'}
+                    style={{ width: 180, height: 180 }}
+                  />
+                )}
               </div>
             </div>
-          </div>
-        )}
 
-        {/* 1. ACTIVE PAYOUT CARD (IF QUEUED / VERIFYING / PROCESSING) */}
-        {activeRequest && (
-          <div className="bg-gradient-to-b from-[#131722] to-[#0f111a] border border-amber-500/30 rounded-3xl p-5 sm:p-8 shadow-2xl relative overflow-hidden">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-800/80">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-2xl">
-                  ⌛
-                </div>
-                <div>
-                  <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider">Active Payout Progress</span>
-                  <h2 className="text-lg sm:text-xl font-bold text-white">{activeConfig?.title}</h2>
-                </div>
-              </div>
-              <span className={`self-start sm:self-auto text-xs px-3 py-1 rounded-full border font-semibold ${activeConfig?.badgeBg}`}>
-                {activeRequest.status.toUpperCase()}
-              </span>
-            </div>
+            <h2 className="text-2xl font-bold font-serif text-center mb-2" style={{ color: activeConfig?.color || '#fff' }}>
+              {activeConfig?.title}
+            </h2>
 
-            <p className="text-xs sm:text-sm text-slate-300 mt-4 leading-relaxed">
+            <p className="text-sm text-gray-400 text-center mb-8 max-w-sm mx-auto">
               {activeConfig?.subtitle(activeRequest.queuePosition)}
             </p>
 
-            {/* Request Summary details */}
-            <div className="mt-6 bg-[#090a0f]/80 border border-slate-800 rounded-2xl p-4 sm:p-5 text-xs sm:text-sm space-y-2.5">
-              <div className="flex justify-between items-center border-b border-slate-800/80 pb-2">
-                <span className="text-slate-400">Amount Requested</span>
-                <span className="font-bold text-amber-400 font-mono">💎 {formatAmount(activeRequest.amount)}</span>
+            <div className="bg-[#0d040e]/60 border border-gray-800 rounded-2xl p-5 mb-8 text-left text-sm space-y-3">
+              <div className="flex justify-between border-b border-gray-800/80 pb-2">
+                <span className="text-gray-500">Amount</span>
+                <span className="font-semibold text-amber-400 font-mono">💎 {formatAmount(activeRequest.amount)}</span>
               </div>
-              <div className="flex justify-between items-center border-b border-slate-800/80 pb-2">
-                <span className="text-slate-400">Naira Value</span>
-                <span className="font-semibold text-slate-200 font-mono">₦{activeRequest.amountNaira?.toLocaleString('en-NG')}</span>
+              <div className="flex justify-between border-b border-gray-800/80 pb-2">
+                <span className="text-gray-500">Naira Value</span>
+                <span className="font-semibold text-amber-400 font-mono">₦{activeRequest.amountNaira?.toLocaleString('en-NG')}</span>
               </div>
-              <div className="flex justify-between items-start gap-4 border-b border-slate-800/80 pb-2">
-                <span className="text-slate-400 flex-shrink-0">Payout Destination</span>
-                <span className="font-semibold text-slate-200 text-right break-all">{formatPayoutDestination(activeRequest)}</span>
+              <div className="flex justify-between border-b border-gray-800/80 pb-2">
+                <span className="text-gray-500">Payout Destination</span>
+                <span className="font-semibold">{formatPayoutDestination(activeRequest)}</span>
               </div>
-              <div className="flex justify-between items-center pt-0.5">
-                <span className="text-slate-400">Requested Date</span>
-                <span className="font-medium text-slate-300">{formatDate(activeRequest.requestedAt)}</span>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Requested Date</span>
+                <span className="font-semibold">{formatDate(activeRequest.requestedAt)}</span>
               </div>
             </div>
 
             {/* Stepper progress indicator */}
-            <div className="mt-8 pt-4">
-              <div className="hidden sm:flex items-center justify-between relative max-w-md mx-auto">
+            {activeRequest.status !== 'rejected' && (
+              <div className="flex items-center justify-between max-w-sm mx-auto mt-6">
                 {steps.map((step, i) => {
                   const isDone = currentStep > i + 1;
                   const isActive = currentStep === i + 1;
                   const isPending = currentStep < i + 1;
                   return (
                     <React.Fragment key={step.key}>
-                      <div className="flex flex-col items-center relative z-10">
-                        <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
-                          isDone
-                            ? 'bg-emerald-500 text-slate-950 shadow-md'
-                            : isActive
-                            ? 'bg-amber-400 text-slate-950 ring-4 ring-amber-400/20 shadow-lg'
-                            : 'bg-slate-800 border border-slate-700 text-slate-500'
-                        }`}>
+                      <div className="flex flex-col items-center flex-1 relative">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${isDone ? 'bg-green-500 text-white' : isActive ? 'bg-red-600 text-white shadow-[0_0_15px_rgba(200,16,46,0.6)] animate-pulse' : 'bg-[#1b0a14] border border-gray-800 text-gray-500'}`}>
                           {isDone ? '✓' : step.icon}
                         </div>
-                        <span className={`text-[11px] font-medium mt-1.5 ${
-                          isActive ? 'text-amber-400 font-bold' : isPending ? 'text-slate-500' : 'text-emerald-400'
-                        }`}>
+                        <span className={`text-[10px] font-medium mt-1 ${isActive ? 'text-red-500 font-bold' : isPending ? 'text-gray-600' : 'text-green-500'}`}>
                           {step.label}
                         </span>
                       </div>
                       {i < steps.length - 1 && (
-                        <div className={`h-0.5 flex-1 -mt-4 transition-colors ${
-                          isDone ? 'bg-emerald-500' : 'bg-slate-800'
-                        }`} />
+                        <div className={`h-0.5 flex-1 -mt-4 transition-colors ${isDone ? 'bg-green-500' : 'bg-gray-800'}`} />
                       )}
                     </React.Fragment>
                   );
                 })}
               </div>
+            )}
 
-              {/* Compact Vertical Stepper for Mobile */}
-              <div className="sm:hidden space-y-2.5">
-                {steps.map((step, i) => {
-                  const isDone = currentStep > i + 1;
-                  const isActive = currentStep === i + 1;
-                  return (
-                    <div key={step.key} className={`flex items-center gap-3 p-2.5 rounded-xl border ${
-                      isActive
-                        ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
-                        : isDone
-                        ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-400'
-                        : 'bg-slate-900/40 border-slate-800/60 text-slate-500'
-                    }`}>
-                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold ${
-                        isDone ? 'bg-emerald-500 text-slate-950' : isActive ? 'bg-amber-400 text-slate-950' : 'bg-slate-800'
-                      }`}>
-                        {isDone ? '✓' : step.icon}
-                      </div>
-                      <span className="text-xs font-semibold">{step.label}</span>
-                      {isActive && <span className="ml-auto text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-amber-400/20 text-amber-300">In Progress</span>}
-                      {isDone && <span className="ml-auto text-[10px] font-bold text-emerald-400">Completed</span>}
-                    </div>
-                  );
-                })}
+            {/* Rejection Handling */}
+            {activeRequest.status === 'rejected' && (
+              <div className="mt-8 bg-red-950/20 border border-red-500/30 rounded-2xl p-5 text-center">
+                <h4 className="text-red-500 font-bold text-lg mb-2">Rejection Reason:</h4>
+                <p className="text-sm text-gray-300 mb-6">{activeRequest.rejectedReason || 'No reason provided.'}</p>
+                <div className="space-y-3">
+                  <button
+                    onClick={() => {
+                      navigate('/adult/provider/profile?tab=payment');
+                    }}
+                    disabled={isSubmitting}
+                    className="block w-full py-3 bg-[#1b0a14] hover:bg-[#2b1020] border border-gray-800 text-amber-500 font-semibold rounded-xl text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Update Payout Settings →
+                  </button>
+                  <button
+                    onClick={handleRequestPayout}
+                    disabled={isSubmitting}
+                    className="block w-full py-3 bg-amber-500 hover:bg-amber-600 text-[#0d040e] font-bold rounded-xl text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isSubmitting ? 'Submitting...' : 'Submit New Request'}
+                  </button>
+                </div>
               </div>
+            )}
+
+            {/* Completed */}
+            {activeRequest.status === 'completed' && (
+              <div className="mt-6 p-4 bg-green-950/20 border border-green-500/30 rounded-xl text-center">
+                <p className="text-green-400 font-semibold text-sm">✅ Transfer complete. Check your payout account.</p>
+                {activeRequest.adminReference && (
+                  <p className="text-xs text-gray-500 mt-2 font-mono">Reference: {activeRequest.adminReference}</p>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          /* 2. NO REQUEST ACTIVE - ELIGIBLE VIEW */
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="md:col-span-2 space-y-6">
+              <div className="bg-[#170a16] border border-amber-500/20 rounded-3xl p-8 shadow-xl">
+                <div className="text-center md:text-left mb-6">
+                  <span className="text-xs text-gray-400 font-bold uppercase tracking-widest">Available for Payout</span>
+                  <div className="text-4xl md:text-5xl font-extrabold text-amber-400 font-mono mt-1 mb-2">
+                    💎 {formatAmount(eligibleAmount)}
+                  </div>
+                  <div className="text-xl md:text-2xl font-semibold text-gray-300">
+                    ₦{eligibleNaira.toLocaleString('en-NG')}
+                  </div>
+                </div>
+
+                <div className="bg-[#0d040e]/80 border border-gray-800/80 rounded-2xl p-5 mb-8 space-y-3 text-sm">
+                  <p className="font-semibold text-amber-500 mb-2">Earnings available for payout after:</p>
+                  <ul className="space-y-2 text-gray-400 text-xs">
+                    <li className="flex items-center">
+                      <span className="text-green-500 mr-2">✓</span> Service confirmed by the member
+                    </li>
+                    <li className="flex items-center">
+                      <span className="text-green-500 mr-2">✓</span> Or 72 hours after arrangement payment (auto-confirmed)
+                    </li>
+                    <li className="flex items-center">
+                      <span className="text-green-500 mr-2">✓</span> Calls successfully completed and not disputed
+                    </li>
+                  </ul>
+                </div>
+
+                <button
+                  onClick={handleRequestPayout}
+                  disabled={eligibleAmount < 500 || isSubmitting}
+                  className="w-full py-4 bg-amber-500 hover:bg-amber-600 disabled:bg-gray-800 disabled:text-gray-500 text-[#0d040e] font-bold rounded-2xl text-base tracking-wide transition-all shadow-lg"
+                >
+                  {isSubmitting
+                    ? 'Queueing Payout...'
+                    : eligibleAmount < 500
+                    ? 'Minimum Payout Threshold: 💎 500 (₦50,000)'
+                    : `Request Payout — 💎 ${formatAmount(eligibleAmount)}`}
+                </button>
+
+                <p className="text-[11px] text-gray-500 text-center mt-4">
+                  Payouts are processed manually by our team every Friday. Processing typically takes 1–3 business days.
+                </p>
+              </div>
+
+              {/* Breakdown */}
+              <div className="bg-[#170a16] border border-amber-500/20 rounded-3xl p-8 shadow-xl">
+                <h3 className="text-lg font-serif font-bold text-amber-500 mb-6">Earnings Breakdown</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-[#0d040e]/50 p-4 rounded-xl border border-gray-800">
+                    <span className="text-xs text-gray-500 block">Tips & Cams</span>
+                    <span className="font-mono text-sm text-gray-300">💎 {formatAmount(breakdown.tips)}</span>
+                  </div>
+                  <div className="bg-[#0d040e]/50 p-4 rounded-xl border border-gray-800">
+                    <span className="text-xs text-gray-500 block">Calls</span>
+                    <span className="font-mono text-sm text-gray-300">💎 {formatAmount(breakdown.calls)}</span>
+                  </div>
+                  <div className="bg-[#0d040e]/50 p-4 rounded-xl border border-gray-800">
+                    <span className="text-xs text-gray-500 block">Arrangements</span>
+                    <span className="font-mono text-sm text-gray-300">💎 {formatAmount(breakdown.service_charges)}</span>
+                  </div>
+                  <div className="bg-[#0d040e]/50 p-4 rounded-xl border border-gray-800">
+                    <span className="text-xs text-gray-500 block">Gifts</span>
+                    <span className="font-mono text-sm text-gray-300">💎 {formatAmount(breakdown.gifts)}</span>
+                  </div>
+                  <div className="bg-[#0d040e]/50 p-4 rounded-xl border border-gray-800">
+                    <span className="text-xs text-gray-500 block">Premium Media</span>
+                    <span className="font-mono text-sm text-gray-300">💎 {formatAmount(breakdown.paid_media)}</span>
+                  </div>
+                  <div className="bg-[#0d040e]/50 p-4 rounded-xl border border-gray-800">
+                    <span className="text-xs text-gray-500 block">Spin Earnings</span>
+                    <span className="font-mono text-sm text-gray-300">💎 {formatAmount(breakdown.spin_wheel)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Sidebar / Info column */}
+            <div className="bg-[#170a16] border border-amber-500/20 rounded-3xl p-8 h-fit shadow-xl">
+              <h3 className="text-lg font-serif font-bold text-amber-500 mb-4">Payout Account</h3>
+              <p className="text-xs text-gray-400 mb-6 leading-relaxed">
+                Your payments will be sent to the payout coordinates configured during onboarding or settings.
+              </p>
+              <button
+                onClick={() => {
+                  navigate('/adult/provider/profile?tab=payment');
+                }}
+                className="w-full py-3 bg-[#1b0a14] hover:bg-[#2b1020] border border-gray-800 text-amber-500 font-semibold rounded-xl text-xs transition-all"
+              >
+                Manage Payout Settings →
+              </button>
             </div>
           </div>
         )}
 
-        {/* 2. MAIN AVAILABLE FOR PAYOUT & ELIGIBILITY INTERFACE */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
-          <div className="lg:col-span-2 space-y-6">
-            <div className="bg-[#12151e] border border-slate-800/90 rounded-3xl p-6 sm:p-8 shadow-xl relative">
-              <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 mb-6">
-                <div>
-                  <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wider block">Available for Payout</span>
-                  <div className="text-3xl sm:text-5xl font-extrabold text-amber-400 font-mono mt-1 tracking-tight">
-                    💎 {formatAmount(eligibleAmount)}
-                  </div>
-                </div>
-                <div className="sm:text-right">
-                  <span className="text-[11px] text-slate-500 font-medium uppercase tracking-wider block">Estimated Naira Value</span>
-                  <div className="text-lg sm:text-2xl font-bold text-slate-200 font-mono mt-0.5">
-                    ₦{eligibleNaira.toLocaleString('en-NG')}
-                  </div>
-                </div>
-              </div>
-
-              {/* Requirement Checkpoints */}
-              <div className="bg-[#090a0f] border border-slate-800/80 rounded-2xl p-4 sm:p-5 mb-6 space-y-2.5">
-                <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">Payout Availability Rules</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-400">
-                  <div className="flex items-center gap-2">
-                    <span className="text-emerald-400">✓</span>
-                    <span>Arrangements auto-confirm after 72h</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-emerald-400">✓</span>
-                    <span>Completed call & tip earnings</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-emerald-400">✓</span>
-                    <span>No active dispute lock</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-emerald-400">✓</span>
-                    <span>Minimum threshold 💎 500 (₦50,000)</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Button */}
-              {activeRequest ? (
-                <button
-                  disabled
-                  className="w-full py-3.5 sm:py-4 bg-slate-800 text-slate-400 font-bold rounded-2xl text-sm sm:text-base cursor-not-allowed border border-slate-700/50 opacity-90"
-                >
-                  Payout in Progress
-                </button>
-              ) : (
-                <button
-                  onClick={handleRequestPayout}
-                  disabled={eligibleAmount < 500 || isSubmitting}
-                  className="w-full py-3.5 sm:py-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 disabled:from-slate-800 disabled:to-slate-800 disabled:text-slate-500 disabled:border disabled:border-slate-800 text-slate-950 font-bold rounded-2xl text-sm sm:text-base tracking-wide transition-all shadow-lg shadow-amber-500/10 active:scale-[0.99] disabled:shadow-none"
-                >
-                  {isSubmitting
-                    ? 'Requesting...'
-                    : eligibleAmount < 500
-                    ? 'Not Enough Balance (Min 💎 500)'
-                    : `Request Payout — 💎 ${formatAmount(eligibleAmount)}`}
-                </button>
-              )}
-
-              <p className="text-[11px] text-slate-500 text-center mt-3.5">
-                Payout requests are reviewed by our financial team and processed securely.
-              </p>
-            </div>
-
-            {/* Earnings Breakdown */}
-            <div className="bg-[#12151e] border border-slate-800/90 rounded-3xl p-6 sm:p-8 shadow-xl">
-              <h3 className="text-base font-bold text-white mb-5 flex items-center justify-between">
-                <span>Eligible Earnings Breakdown</span>
-                <span className="text-xs font-normal text-slate-400">By Source</span>
-              </h3>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <div className="bg-[#090a0f] p-3.5 rounded-2xl border border-slate-800/80">
-                  <span className="text-[11px] text-slate-400 block mb-1">Tips & Cams</span>
-                  <span className="font-mono text-sm font-semibold text-slate-200">💎 {formatAmount(breakdown.tips)}</span>
-                </div>
-                <div className="bg-[#090a0f] p-3.5 rounded-2xl border border-slate-800/80">
-                  <span className="text-[11px] text-slate-400 block mb-1">Calls</span>
-                  <span className="font-mono text-sm font-semibold text-slate-200">💎 {formatAmount(breakdown.calls)}</span>
-                </div>
-                <div className="bg-[#090a0f] p-3.5 rounded-2xl border border-slate-800/80">
-                  <span className="text-[11px] text-slate-400 block mb-1">Arrangements</span>
-                  <span className="font-mono text-sm font-semibold text-slate-200">💎 {formatAmount(breakdown.service_charges)}</span>
-                </div>
-                <div className="bg-[#090a0f] p-3.5 rounded-2xl border border-slate-800/80">
-                  <span className="text-[11px] text-slate-400 block mb-1">Gifts</span>
-                  <span className="font-mono text-sm font-semibold text-slate-200">💎 {formatAmount(breakdown.gifts)}</span>
-                </div>
-                <div className="bg-[#090a0f] p-3.5 rounded-2xl border border-slate-800/80">
-                  <span className="text-[11px] text-slate-400 block mb-1">Premium Media</span>
-                  <span className="font-mono text-sm font-semibold text-slate-200">💎 {formatAmount(breakdown.paid_media)}</span>
-                </div>
-                <div className="bg-[#090a0f] p-3.5 rounded-2xl border border-slate-800/80">
-                  <span className="text-[11px] text-slate-400 block mb-1">Spin Earnings</span>
-                  <span className="font-mono text-sm font-semibold text-slate-200">💎 {formatAmount(breakdown.spin_wheel)}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Sidebar Info Column */}
-          <div className="bg-[#12151e] border border-slate-800/90 rounded-3xl p-6 sm:p-8 h-fit shadow-xl flex flex-col justify-between gap-6">
-            <div>
-              <h3 className="text-base font-bold text-white mb-2">Payout Destination</h3>
-              <p className="text-xs text-slate-400 leading-relaxed mb-4">
-                Payouts are automatically wired to your registered payment channel.
-              </p>
-              <div className="bg-[#090a0f] p-4 rounded-2xl border border-slate-800/80 text-xs">
-                <span className="text-slate-500 uppercase tracking-wider text-[10px] font-bold block mb-1">Current Method</span>
-                <span className="font-semibold text-slate-200 break-all">
-                  {activeRequest ? formatPayoutDestination(activeRequest) : formatPayoutDestination(latestHistory)}
-                </span>
-              </div>
-            </div>
-
-            <button
-              onClick={() => navigate('/adult/provider/profile?tab=payment')}
-              className="w-full py-3 bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-amber-400 font-semibold rounded-2xl text-xs transition-all shadow-sm flex items-center justify-center gap-1.5"
-            >
-              <span>Manage Payout Settings</span>
-              <span>→</span>
-            </button>
-          </div>
-        </div>
-
-        {/* 3. PAYOUT HISTORY */}
-        <div className="bg-[#12151e] border border-slate-800/90 rounded-3xl p-6 sm:p-8 shadow-xl">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-base sm:text-lg font-bold text-white">Payout History</h3>
-            <span className="text-xs text-slate-400">{history.length} record{history.length !== 1 ? 's' : ''}</span>
-          </div>
-
+        {/* 3. HISTORY TABLE */}
+        <div className="mt-12 bg-[#170a16] border border-amber-500/20 rounded-3xl p-8 shadow-xl">
+          <h3 className="text-xl font-serif font-bold text-amber-500 mb-6">Payout History</h3>
           {history.length > 0 ? (
-            <>
-              {/* Desktop Table View */}
-              <div className="hidden md:block overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-800 text-[11px] text-slate-400 uppercase font-bold tracking-wider">
-                      <th className="py-3 px-4">Date</th>
-                      <th className="py-3 px-4">Amount</th>
-                      <th className="py-3 px-4">Naira Value</th>
-                      <th className="py-3 px-4">Destination</th>
-                      <th className="py-3 px-4 text-center">Status</th>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-gray-800 text-xs text-gray-500 uppercase font-semibold">
+                    <th className="py-3 px-4">Date</th>
+                    <th className="py-3 px-4">Amount</th>
+                    <th className="py-3 px-4">Naira Value</th>
+                    <th className="py-3 px-4">Method</th>
+                    <th className="py-3 px-4 text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="text-sm divide-y divide-gray-800/50">
+                  {history.map((h) => (
+                    <tr key={h._id} className="hover:bg-[#1b0a14]/40 transition-colors">
+                      <td className="py-4 px-4 text-gray-300 font-medium">{formatDate(h.requestedAt)}</td>
+                      <td className="py-4 px-4 font-mono font-semibold text-amber-400">💎 {formatAmount(h.amount)}</td>
+                      <td className="py-4 px-4 font-mono text-gray-300">₦{h.amountNaira?.toLocaleString('en-NG')}</td>
+                      <td className="py-4 px-4 text-gray-400">{formatPayoutDestination(h)}</td>
+                      <td className="py-4 px-4 text-center">
+                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${h.status === 'completed' ? 'bg-green-500/10 text-green-400 border border-green-500/20' : h.status === 'rejected' ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}`}>
+                          {h.status?.toUpperCase()}
+                        </span>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody className="text-xs divide-y divide-slate-800/50">
-                    {history.map((h) => (
-                      <tr key={h._id} className="hover:bg-slate-900/40 transition-colors">
-                        <td className="py-3.5 px-4 text-slate-300 font-medium">{formatDate(h.requestedAt)}</td>
-                        <td className="py-3.5 px-4 font-mono font-bold text-amber-400">💎 {formatAmount(h.amount)}</td>
-                        <td className="py-3.5 px-4 font-mono text-slate-300">₦{h.amountNaira?.toLocaleString('en-NG')}</td>
-                        <td className="py-3.5 px-4 text-slate-300 break-all">{formatPayoutDestination(h)}</td>
-                        <td className="py-3.5 px-4 text-center">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                            h.status === 'completed'
-                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                              : h.status === 'rejected'
-                              ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                              : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                          }`}>
-                            {h.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Mobile Transaction Cards */}
-              <div className="md:hidden space-y-3">
-                {history.map((h) => (
-                  <div key={h._id} className="bg-[#090a0f] border border-slate-800/80 rounded-2xl p-4 space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-slate-400">{formatDate(h.requestedAt)}</span>
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                        h.status === 'completed'
-                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                          : h.status === 'rejected'
-                          ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                          : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                      }`}>
-                        {h.status}
-                      </span>
-                    </div>
-                    <div className="flex items-baseline justify-between pt-1">
-                      <span className="text-lg font-bold text-amber-400 font-mono">💎 {formatAmount(h.amount)}</span>
-                      <span className="text-sm font-semibold text-slate-200 font-mono">₦{h.amountNaira?.toLocaleString('en-NG')}</span>
-                    </div>
-                    <div className="text-xs text-slate-400 pt-1 border-t border-slate-800/60 break-all">
-                      <span className="text-slate-500">Destination: </span>
-                      {formatPayoutDestination(h)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           ) : (
-            <div className="text-center py-8 text-slate-500 text-xs">
-              No previous payout history found.
+            <div className="text-center py-10 text-gray-500 text-sm">
+              No past payout requests found.
             </div>
           )}
         </div>
