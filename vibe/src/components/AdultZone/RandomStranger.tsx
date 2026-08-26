@@ -29,6 +29,7 @@ const RandomStranger: React.FC = () => {
   const [matchData, setMatchData] = useState<RandomMatchPayload | null>(null);
   const [isPending, setIsPending] = useState<boolean>(false);
 
+  const [socket, setSocket] = useState<Socket | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const activeMatchIdRef = useRef<string | null>(null);
 
@@ -91,6 +92,7 @@ const RandomStranger: React.FC = () => {
 
     s.on('connect', () => {
       console.log('Random Match Socket connected:', s.id);
+      setSocket(s);
     });
 
     s.on('random:match_found', (data: RandomMatchPayload) => {
@@ -109,6 +111,7 @@ const RandomStranger: React.FC = () => {
 
     return () => {
       s.disconnect();
+      setSocket(null);
     };
   }, [token]);
 
@@ -274,7 +277,7 @@ const RandomStranger: React.FC = () => {
               roomId={matchData.roomId}
               matchId={matchData.matchId}
               userId={user?.id || user?._id?.toString() || ''}
-              socket={socketRef.current}
+              socket={socket}
               mode={matchData.mode || mode}
               onNext={handleNext}
               onEnd={handleEnd}

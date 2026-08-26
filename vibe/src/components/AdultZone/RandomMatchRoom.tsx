@@ -33,7 +33,6 @@ const RandomMatchRoom: React.FC<RandomMatchRoomProps> = ({
   appId,
   token,
   roomId,
-  matchId,
   userId,
   socket,
   mode = 'both',
