@@ -242,6 +242,55 @@ describe('Adult Zone Backend Production Tests', () => {
 
       expect(res.status).toBe(403);
     });
+
+    it('should reject non-admin users updating provider status with 403', async () => {
+      const resUser = await request(app)
+        .patch(`/api/adult/providers/${providerId}/status`)
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({ status: 'approved' });
+
+      expect(resUser.status).toBe(403);
+
+      const resProvider = await request(app)
+        .patch(`/api/adult/providers/${providerId}/status`)
+        .set('Authorization', `Bearer ${providerToken}`)
+        .send({ status: 'approved' });
+
+      expect(resProvider.status).toBe(403);
+    });
+
+    it('should allow admin users to update provider status', async () => {
+      // Create admin user
+      const adminUser = new AdultUser({
+        email: 'admin@adult.com',
+        passwordHash: 'Password123!@#',
+        username: 'adminuser',
+        displayName: 'Admin User',
+        dateOfBirth: '1980-01-01',
+        role: 'admin',
+        isAdmin: true,
+        country: 'US',
+        emailVerified: true,
+      });
+      await adminUser.save();
+
+      const loginRes = await request(app)
+        .post('/api/adult/auth/login')
+        .send({ email: 'admin@adult.com', password: 'Password123!@#' });
+
+      const adminToken = loginRes.body.data.accessToken;
+
+      const res = await request(app)
+        .patch(`/api/adult/providers/${providerId}/status`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ status: 'approved' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+
+      const updatedProvider = await AdultUser.findById(providerId);
+      expect(updatedProvider?.providerProfile?.verificationStatus).toBe('approved');
+    });
   });
 
   describe('Cloudinary Media Uploads', () => {

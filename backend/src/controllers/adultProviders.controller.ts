@@ -235,6 +235,9 @@ export const applyAsProvider = async (req: Request, res: Response) => {
 };
 
 export const updateProviderStatus = async (req: Request, res: Response) => {
+    if (req.adultUser?.role !== 'admin' && !req.adultUser?.isAdmin) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin access required' } });
+    }
     const { id } = req.params;
     const { status } = req.body; // 'approved' | 'rejected'
 
