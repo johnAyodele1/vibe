@@ -109,9 +109,10 @@ export const getCallStatus = async (req: Request, res: Response) => {
       return res.status(403).json({ success: false, error: 'Unauthorized' });
     }
 
+    // Optimization (⚡ Bolt): Use field projection and .lean() for read-only user lookups in call status check
     const [caller, receiver] = await Promise.all([
-      AdultUser.findById(call.callerId),
-      AdultUser.findById(call.receiverId)
+      AdultUser.findById(call.callerId).select('displayName username profilePhoto providerProfile').lean(),
+      AdultUser.findById(call.receiverId).select('displayName username profilePhoto providerProfile').lean()
     ]);
 
     return res.json({
