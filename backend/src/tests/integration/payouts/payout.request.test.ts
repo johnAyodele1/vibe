@@ -30,6 +30,9 @@ describe('Payout Request — Full Integration Suite', () => {
       label: 'Diamond to Naira Rate',
       description: 'Diamond exchange rate to Nigerian Naira'
     });
+
+    // Ensure database indexes (including partial unique index) are created
+    await PayoutRequest.ensureIndexes();
   });
 
   afterAll(async () => {
@@ -244,6 +247,40 @@ describe('Payout Request — Full Integration Suite', () => {
         .expect(409);
 
       expect(res.body.error).toBe('REQUEST_ALREADY_PENDING');
+    });
+
+    it('prevents two simultaneous/concurrent payout requests from creating duplicate active payouts (partial unique index invariant)', async () => {
+      await CreditTransaction.create({
+        userId: providerId,
+        type: 'tip_received',
+        amount: 1000,
+        usdAmount: 7.5,
+        nairaAmount: 100000,
+        description: 'Available tip',
+        status: 'completed',
+        eligibleForPayout: true,
+        paidOut: false,
+      });
+
+      // Execute two simultaneous HTTP requests to simulate exact race condition
+      const [res1, res2] = await Promise.all([
+        request(app)
+          .post('/api/v1/adult/providers/me/payout/request')
+          .set('Authorization', `Bearer ${providerToken}`),
+        request(app)
+          .post('/api/v1/adult/providers/me/payout/request')
+          .set('Authorization', `Bearer ${providerToken}`),
+      ]);
+
+      const statuses = [res1.status, res2.status];
+      expect(statuses).toContain(201);
+      expect(statuses).toContain(409);
+
+      const activeCount = await PayoutRequest.countDocuments({
+        providerId,
+        status: { $in: ['pending', 'queued', 'verifying', 'processing'] },
+      });
+      expect(activeCount).toBe(1);
     });
 
     it('returns 400 when eligible balance is zero', async () => {

@@ -610,8 +610,9 @@ export const requestPayout = async (req: Request, res: Response) => {
     // 6. Snapshot payout details
     const payoutDetails = buildPayoutDetailsSnapshot(user);
 
-    // 7. Create request
-    const request = await PayoutRequest.create({
+    // 7. Atomic transaction for PayoutRequest creation and transaction freezing
+    const eligibleTxIds = eligibleTxs.map(t => t._id);
+    const requestPayload = {
       providerId: user._id,
       providerName: profile.stageName || user.displayName || user.username,
       amount: finalAmount,
@@ -621,18 +622,56 @@ export const requestPayout = async (req: Request, res: Response) => {
       queuePosition,
       payoutMethod: method,
       payoutDetails,
-      eligibleTransactionIds: eligibleTxs.map(t => t._id),
+      eligibleTransactionIds: eligibleTxIds,
       requestedAt: new Date(),
       queuedAt: new Date(),
-    });
+    };
 
-    // 8. Mark transactions as "in payout" (frozen - cannot be double-paid)
-    await CreditTransaction.updateMany(
-      { _id: { $in: eligibleTxs.map(t => t._id) } },
-      { $set: { inPayoutRequest: request._id } }
-    );
+    const runPayoutCreation = async (session?: mongoose.ClientSession) => {
+      const opts = session ? { session } : {};
+      let createdRequest: any;
 
-    // 9. Notify admin (emit to admin socket room)
+      if (session) {
+        const createdArray = await PayoutRequest.create([requestPayload], { session });
+        createdRequest = createdArray[0];
+      } else {
+        createdRequest = await PayoutRequest.create(requestPayload);
+      }
+
+      await CreditTransaction.updateMany(
+        { _id: { $in: eligibleTxIds } },
+        { $set: { inPayoutRequest: createdRequest._id } },
+        opts
+      );
+
+      return createdRequest;
+    };
+
+    let request: any;
+    let dbSession: mongoose.ClientSession | null = null;
+    try {
+      dbSession = await mongoose.startSession();
+      dbSession.startTransaction();
+      request = await runPayoutCreation(dbSession);
+      await dbSession.commitTransaction();
+    } catch (err: any) {
+      if (dbSession) {
+        await dbSession.abortTransaction().catch(() => {});
+        dbSession.endSession();
+        dbSession = null;
+      }
+      if (err.code === 20 || err.message?.includes('Transaction numbers are only allowed')) {
+        request = await runPayoutCreation();
+      } else {
+        throw err;
+      }
+    } finally {
+      if (dbSession) {
+        dbSession.endSession();
+      }
+    }
+
+    // 8. Notify admin (emit to admin socket room)
     const ns = req.app.get('adultNamespace');
     if (ns) {
       ns.emit('admin:new_payout_request', {
@@ -652,6 +691,14 @@ export const requestPayout = async (req: Request, res: Response) => {
       status: 'queued',
     });
   } catch (error: any) {
+    // Handle Mongo E11000 duplicate key error on active payout partial unique index
+    if (error.code === 11000 || error.message?.includes('E11000')) {
+      return res.status(409).json({
+        success: false,
+        error: 'REQUEST_ALREADY_PENDING',
+        message: 'A payout is already being processed.',
+      });
+    }
     return res.status(500).json({ success: false, error: error.message });
   }
 };
