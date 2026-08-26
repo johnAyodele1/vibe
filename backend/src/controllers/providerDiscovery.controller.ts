@@ -49,6 +49,16 @@ const responseMetricStages: PipelineStage[] = [
             },
           },
         },
+        // Optimization (⚡ Bolt): Project only required fields in the sub-pipeline to minimize BSON serialization footprint.
+        {
+          $project: {
+            receiverId: 1,
+            senderId: 1,
+            repliedAt: 1,
+            replyTimeMinutes: 1,
+            messageType: 1,
+          },
+        },
         { $sort: { repliedAt: -1 } },
         {
           $group: {
@@ -337,6 +347,15 @@ export const getPublicProviderProfileWithResponseStats = async (req: Request, re
   try {
     const rawProviderId = req.params.providerId;
     const providerId = Array.isArray(rawProviderId) ? rawProviderId[0] : rawProviderId;
+
+    // Optimization (⚡ Bolt): Fast path validation to short-circuit invalid ObjectId requests before triggering aggregation.
+    if (!mongoose.Types.ObjectId.isValid(providerId)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_ID', message: 'Invalid provider ID format' },
+      });
+    }
+
     const metrics = await getRecentResponseMetrics(providerId);
 
     if (metrics) {
