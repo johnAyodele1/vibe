@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { API_BASE_URL } from '../../config';
 import LocationSelect from './LocationSelect';
+import ProviderProfilePhotos from './ProviderProfilePhotos';
 import { toast } from 'sonner';
 
 const isValidRate = (value: unknown): value is number =>
@@ -12,7 +13,9 @@ const ProviderProfile: React.FC = () => {
   const [searchParams] = useSearchParams();
   const token = localStorage.getItem('adultAccessToken');
 
-  const initialTab = searchParams.get('tab') === 'payment' ? 'payment' : 'basic';
+  const initialTab = ['basic', 'photos', 'services', 'location', 'schedule', 'payment'].includes(searchParams.get('tab') || '')
+    ? (searchParams.get('tab') as string)
+    : 'basic';
   const [activeTab, setActiveTab] = useState(initialTab);
   const [isLoading, setIsLoading] = useState(true);
   const [savingBasic, setSavingBasic] = useState(false);
@@ -39,17 +42,7 @@ const ProviderProfile: React.FC = () => {
     stageName: '',
   });
 
-  const [photos, setPhotos] = useState<string[]>([
-    "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=600&auto=format&fit=crop"
-  ]);
-  const [videoPreview, setVideoPreview] = useState<string>('');
-
-  // Dummy reads to avoid compiler unused-variable issues
-  useEffect(() => {
-    if (photos.length === 0 || videoPreview.length > 0) {
-      // noop
-    }
-  }, [photos, videoPreview]);
+  const [photos, setPhotos] = useState<string[]>([]);
 
   const [services, setServices] = useState<string[]>(['live_cam', 'private_call']);
   const [pricing, setPricing] = useState({
@@ -78,6 +71,7 @@ const ProviderProfile: React.FC = () => {
       navigate('/');
       return;
     }
+
     const loadProfile = async () => {
       try {
         setIsLoading(true);
@@ -95,9 +89,6 @@ const ProviderProfile: React.FC = () => {
           });
           if (profile.photos && profile.photos.length > 0) {
             setPhotos(profile.photos);
-          }
-          if (profile.videoPreview) {
-            setVideoPreview(profile.videoPreview);
           }
           if (profile.servicesOffered) {
             setServices(profile.servicesOffered);
@@ -117,7 +108,6 @@ const ProviderProfile: React.FC = () => {
           }
         }
 
-        // Fetch payout onboarding step data for payment configuration prefill
         const payoutRes = await fetch(`${API_BASE_URL}/v1/adult/providers/me/onboarding`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -279,7 +269,6 @@ const ProviderProfile: React.FC = () => {
   const handleSaveSchedule = async () => {
     setSavingSchedule(true);
     try {
-      // Validate schedule format first!
       const timeRegex = /^(0?[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$/;
       for (const sch of schedule) {
         if (sch.active) {
@@ -313,22 +302,27 @@ const ProviderProfile: React.FC = () => {
   return (
     <div className="min-h-screen bg-[var(--az-bg-primary)] text-white font-sans az-grain py-24 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto space-y-10">
-
         <div>
           <h1 className="text-4xl font-serif italic text-white tracking-wide">Public Profile Editor</h1>
           <p className="text-xs text-[var(--az-text-secondary)] mt-1">Configure your public-facing performer persona & parameters</p>
         </div>
 
-        {/* Tab Selection */}
         <div className="flex border-b border-[var(--az-border)]/30 gap-6 overflow-x-auto">
-          {['basic', 'services', 'location', 'schedule', 'payment'].map(tab => (
+          {[
+            { id: 'basic', label: 'Basic' },
+            { id: 'photos', label: 'Photos' },
+            { id: 'services', label: 'Services' },
+            { id: 'location', label: 'Location' },
+            { id: 'schedule', label: 'Schedule' },
+            { id: 'payment', label: 'Payment' },
+          ].map(tab => (
             <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              data-testid={`tab-${tab}`}
-              className={`pb-4 text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap ${activeTab === tab ? 'text-[var(--az-accent-rose)] border-b-2 border-[var(--az-accent-rose)]' : 'text-[var(--az-text-secondary)] hover:text-white'}`}
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              data-testid={`tab-${tab.id}`}
+              className={`pb-4 text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap ${activeTab === tab.id ? 'text-[var(--az-accent-rose)] border-b-2 border-[var(--az-accent-rose)]' : 'text-[var(--az-text-secondary)] hover:text-white'}`}
             >
-              {tab}
+              {tab.label}
             </button>
           ))}
         </div>
@@ -378,6 +372,10 @@ const ProviderProfile: React.FC = () => {
                 {savingBasic ? 'Processing...' : 'Save Basic Info'}
               </button>
             </div>
+          )}
+
+          {activeTab === 'photos' && (
+            <ProviderProfilePhotos photos={photos} setPhotos={setPhotos} />
           )}
 
           {activeTab === 'services' && (
@@ -672,7 +670,6 @@ const ProviderProfile: React.FC = () => {
             </div>
           )}
         </div>
-
       </div>
     </div>
   );
