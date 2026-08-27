@@ -788,15 +788,18 @@ export const postReply = async (req: Request, res: Response) => {
     const user = req.adultUser;
     if (!user) return res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
 
-    // Check lock state
-    const thread = await AdultThread.findById(threadId);
+    // Optimization (⚡ Bolt): Fetch thread and room membership concurrently via Promise.all to eliminate database waterfall latency.
+    const [thread, membership] = await Promise.all([
+      AdultThread.findById(threadId),
+      RoomMembership.findOne({ roomId, userId: user._id }),
+    ]);
+
     if (!thread) return res.status(404).json({ success: false, error: { message: 'Thread not found' } });
     if (thread.isLocked) {
       return res.status(403).json({ success: false, error: { code: 'LOCKED', message: 'Thread is locked' } });
     }
 
     // Check mute
-    const membership = await RoomMembership.findOne({ roomId, userId: user._id });
     if (membership?.mutedUntil && membership.mutedUntil > new Date()) {
       return res.status(403).json({
         success: false,

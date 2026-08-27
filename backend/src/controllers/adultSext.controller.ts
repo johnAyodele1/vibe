@@ -35,21 +35,25 @@ export const startConversation = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'Recipient userId/recipientId is required' });
     }
 
-    let recipient = null;
-    try {
-      recipient = await AdultUser.findById(recipientId);
-    } catch {
-      return res.status(404).json({ success: false, error: 'Recipient not found' });
-    }
-
-    if (!recipient) {
-      return res.status(404).json({ success: false, error: 'Recipient not found' });
-    }
-
     const conversationId = [user._id.toString(), recipientId.toString()].sort().join('_');
 
-    // Find or create conversation
-    let conversation = await AdultConversation.findById(conversationId);
+    // Optimization (⚡ Bolt): Fetch recipient and conversation concurrently via Promise.all to eliminate database waterfall latency.
+    const [recipientResult, existingConversation] = await Promise.all([
+      (async () => {
+        try {
+          return await AdultUser.findById(recipientId);
+        } catch {
+          return null;
+        }
+      })(),
+      AdultConversation.findById(conversationId),
+    ]);
+
+    if (!recipientResult) {
+      return res.status(404).json({ success: false, error: 'Recipient not found' });
+    }
+    const recipient = recipientResult;
+    let conversation = existingConversation;
     const isNew = !conversation;
 
     if (!conversation) {
@@ -155,12 +159,16 @@ export const sendGiftRequest = async (req: Request, res: Response) => {
       return res.status(403).json({ success: false, error: 'Only providers can send gift requests' });
     }
 
-    const gift = await AdultGift.findById(giftId);
+    // Optimization (⚡ Bolt): Fetch gift and conversation concurrently via Promise.all to eliminate database waterfall latency.
+    const [gift, conversation] = await Promise.all([
+      AdultGift.findById(giftId),
+      AdultConversation.findById(conversationId),
+    ]);
+
     if (!gift || !gift.isActive) {
       return res.status(404).json({ success: false, error: 'Gift not found' });
     }
 
-    const conversation = await AdultConversation.findById(conversationId);
     if (!conversation) {
       return res.status(404).json({ success: false, error: 'Conversation not found' });
     }
@@ -266,8 +274,17 @@ export const requestService = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'Recipient not found' });
     }
 
+    // Optimization (⚡ Bolt): Fetch recipient and active pending request concurrently via Promise.all to eliminate database waterfall latency.
+    const [recipient, existing] = await Promise.all([
+      AdultUser.findById(otherParticipantId),
+      AdultMessage.findOne({
+        conversationId,
+        messageType: 'request_service',
+        'serviceTonightRequest.status': 'pending'
+      }),
+    ]);
+
     // 1. Recipient must be a provider
-    const recipient = await AdultUser.findById(otherParticipantId);
     if (!recipient || recipient.role !== 'provider') {
       return res.status(400).json({
         success: false,
@@ -277,11 +294,6 @@ export const requestService = async (req: Request, res: Response) => {
     }
 
     // 2. No active request already pending
-    const existing = await AdultMessage.findOne({
-      conversationId,
-      messageType: 'request_service',
-      'serviceTonightRequest.status': 'pending'
-    });
 
     if (existing) {
       return res.status(409).json({

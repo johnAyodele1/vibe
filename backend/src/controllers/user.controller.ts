@@ -93,12 +93,17 @@ export const updateProfile = async (req: IExpressRequest, res: Response): Promis
     if (!req.user) return res.status(401).json({ success: false, message: 'Not authenticated' });
     const allowedFields = ['firstName', 'lastName', 'bio', 'interests', 'location', 'preferences', 'settings', 'gender', 'dateOfBirth'];
     const body = req.body as Record<string, unknown>;
-    const user = await User.findById(req.user._id);
-    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-    allowedFields.forEach(field => { if (body[field] !== undefined) (user as any)[field] = body[field]; });
-    await user.save();
-    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document hydration overhead.
-    const updatedUser = await User.findById(req.user._id).select('-password').lean();
+    const updateObj: Record<string, unknown> = {};
+    allowedFields.forEach(field => { if (body[field] !== undefined) updateObj[field] = body[field]; });
+
+    // Optimization (⚡ Bolt): Use single atomic findByIdAndUpdate with .lean() to eliminate redundant query roundtrips and document hydration.
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user._id,
+      { $set: updateObj },
+      { new: true }
+    ).select('-password').lean();
+
+    if (!updatedUser) return res.status(404).json({ success: false, message: 'User not found' });
     return res.json({ success: true, message: 'Profile updated successfully', data: { user: updatedUser } });
   } catch (error) {
     console.error('Update profile error:', error);
