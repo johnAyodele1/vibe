@@ -455,16 +455,18 @@ const PrivateSext: React.FC = () => {
 
     s.on('connect', () => {
       console.log('Private Sext connected to /adult socket:', s.id);
+      if (activeConvIdRef.current) s.emit('conv:join', { conversationId: activeConvIdRef.current });
     });
 
     s.on('sext:new_message', (payload: { message: Message }) => {
       const myUserId = user?.id || (user as any)?._id;
-      if (selectedConv && payload.message.conversationId === selectedConv.conversationId && payload.message.senderId !== myUserId) {
+      const activeConversationId = activeConvIdRef.current;
+      if (activeConversationId && payload.message.conversationId === activeConversationId && payload.message.senderId !== myUserId) {
         setMessages(prev => {
           if (prev.some(m => m.id === payload.message.id)) return prev;
           return [...prev, payload.message];
         });
-        markConversationRead(selectedConv.conversationId);
+        markConversationRead(activeConversationId);
         s.emit('sext:message_delivered', { messageId: payload.message.id });
       }
       fetchConversations();
@@ -580,7 +582,7 @@ const PrivateSext: React.FC = () => {
     return () => {
       s.disconnect();
     };
-  }, [token, selectedConv?.conversationId]);
+  }, [token]);
 
   useEffect(() => {
     if (!selectedConv) {
@@ -1617,7 +1619,7 @@ const PrivateSext: React.FC = () => {
                       )}
                     </div>
                     <p className={`text-xs truncate ${c.unreadCount > 0 ? 'text-pink-400 font-bold' : 'text-gray-400'}`}>
-                      {c.lastMessage ? c.lastMessage.content : 'No messages yet...'}
+                      {c.lastMessage ? c.lastMessage.content.replace('Requested a tonight service', 'Requested activity service') : 'No messages yet...'}
                     </p>
                   </div>
 
@@ -1840,7 +1842,7 @@ const PrivateSext: React.FC = () => {
 
                         <div className="space-y-2 text-xs">
                           <div className="flex justify-between text-gray-300">
-                            <span>Tonight rate:</span>
+                            <span>Activity rate:</span>
                             <span className="font-mono font-bold text-white">💎 {formatAmount(m.serviceRequest?.baseRate)}</span>
                           </div>
                           {m.serviceRequest?.extras?.map((ext: { label: string; amount: number }, idx: number) => (

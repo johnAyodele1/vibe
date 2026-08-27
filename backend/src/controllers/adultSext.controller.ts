@@ -21,6 +21,14 @@ import { sendPushToUser } from '../shared/push';
 import { sendNewMessageEmail } from '../shared/email/providerEmail';
 import { checkActiveCall, endCamSessionAtomic, endCamSessionForCall } from '../services/sessionInvariantService';
 
+const emitSextMessage = (ns: any, conversationId: string | string[], envelope: { message?: any }) => {
+  const normalizedConversationId = Array.isArray(conversationId) ? conversationId[0] : conversationId;
+  if (!normalizedConversationId) return;
+  ns.to(`conv:${normalizedConversationId}`).emit('sext:new_message', envelope);
+  const receiverId = envelope?.message?.receiverId?.toString();
+  if (receiverId) ns.to(`user:${receiverId}`).emit('sext:new_message', envelope);
+};
+
 // Backwards compatibility startConversation route
 export const startConversation = async (req: Request, res: Response) => {
   try {
@@ -220,7 +228,7 @@ export const sendGiftRequest = async (req: Request, res: Response) => {
 
     const ns = req.app.get('adultNamespace');
     if (ns) {
-      ns.to(`conv:${conversationId}`).emit('sext:new_message', { message: responsePayload });
+      emitSextMessage(ns, conversationId, { message: responsePayload });
     }
 
     // Send push notification for gift request (best-effort, isolated from business response)
@@ -295,7 +303,7 @@ export const requestService = async (req: Request, res: Response) => {
       conversationId,
       senderId: user._id,
       receiverId: otherParticipantId,
-      content: encrypt(`🌙 Requested a tonight service`),
+      content: encrypt(`🌙 Requested activity service`),
       messageType: 'request_service',
       serviceTonightRequest: {
         status: 'pending',
@@ -307,7 +315,7 @@ export const requestService = async (req: Request, res: Response) => {
     await message.save();
 
     conversation.lastMessage = {
-      content: encrypt(`🌙 Requested a tonight service`),
+      content: encrypt(`🌙 Requested activity service`),
       mediaType: 'request_service',
       senderId: user._id,
       sentAt: new Date()
@@ -319,7 +327,7 @@ export const requestService = async (req: Request, res: Response) => {
       conversationId: message.conversationId,
       senderId: message.senderId,
       receiverId: message.receiverId,
-      content: `Requested a tonight service`,
+      content: `Requested activity service`,
       mediaType: 'request_service',
       isUnlocked: true,
       serviceRequest: message.serviceRequest,
@@ -329,7 +337,7 @@ export const requestService = async (req: Request, res: Response) => {
 
     const ns = req.app.get('adultNamespace');
     if (ns) {
-      ns.to(`conv:${conversationId}`).emit('sext:new_message', { message: responsePayload });
+      emitSextMessage(ns, conversationId, { message: responsePayload });
     }
 
     // Send push notification for service tonight request (best-effort)
@@ -461,7 +469,7 @@ export const sendServiceRequest = async (req: Request, res: Response) => {
 
     const ns = req.app.get('adultNamespace');
     if (ns) {
-      ns.to(`conv:${conversationId}`).emit('sext:new_message', { message: responsePayload });
+      emitSextMessage(ns, conversationId, { message: responsePayload });
       ns.to(`user:${receiverIdStr}`).emit('sext:conversation_updated', {
         conversationId,
         lastMessage: responsePayload,
@@ -1881,7 +1889,7 @@ export const sendMessage = async (req: Request, res: Response) => {
         };
 
         if (ns) {
-          ns.to(`conv:${conversationId}`).emit('sext:new_message', { message: autoReplyPayload });
+          emitSextMessage(ns, conversationId, { message: autoReplyPayload });
         }
       }
 
@@ -1925,7 +1933,7 @@ export const sendMessage = async (req: Request, res: Response) => {
         // Soft block: Do NOT send/deliver/notify the recipient. Only emit to the sender's own channel.
         ns.to(`user:${user._id.toString()}`).emit('sext:new_message', { message: responsePayload });
       } else {
-        ns.to(`conv:${conversationId}`).emit('sext:new_message', { message: responsePayload });
+        emitSextMessage(ns, conversationId, { message: responsePayload });
         if (receiverIdStr) {
           const recipientUnread = conversation.unreadCounts.get(receiverIdStr) || 0;
           ns.to(`user:${receiverIdStr}`).emit('sext:conversation_updated', {
@@ -2370,7 +2378,7 @@ export const requestPhoto = async (req: Request, res: Response) => {
 
     const ns = req.app.get('adultNamespace');
     if (ns) {
-      ns.to(`conv:${conversationId}`).emit('sext:new_message', { message: responsePayload });
+      emitSextMessage(ns, conversationId, { message: responsePayload });
     }
 
     return res.status(201).json(responsePayload);
@@ -2431,7 +2439,7 @@ export const fulfillPhotoRequest = async (req: Request, res: Response) => {
         status: 'fulfilled',
         fulfilledMessageId: imageMsg._id
       });
-      ns.to(`conv:${requestMsg.conversationId}`).emit('sext:new_message', {
+      emitSextMessage(ns, requestMsg.conversationId, {
         message: {
           id: imageMsg._id,
           conversationId: imageMsg.conversationId,
@@ -2606,7 +2614,7 @@ export const fulfillServiceTonightRequest = async (req: Request, res: Response) 
         status: 'fulfilled',
         fulfilledMessageId: invoiceMsg._id
       });
-      ns.to(`conv:${requestMsg.conversationId}`).emit('sext:new_message', {
+      emitSextMessage(ns, requestMsg.conversationId, {
         message: {
           id: invoiceMsg._id,
           conversationId: invoiceMsg.conversationId,
@@ -2774,7 +2782,7 @@ export const sendGift = async (req: Request, res: Response) => {
         if (receiver) {
           ns.to(`user:${receiver._id.toString()}`).emit('wallet:updated', { balance: receiver.credits });
         }
-        ns.to(`conv:${conversationId}`).emit('sext:new_message', {
+        emitSextMessage(ns, conversationId, {
           message: {
             id: msg._id,
             conversationId: msg.conversationId,
