@@ -43,6 +43,7 @@ const ProviderProfile: React.FC = () => {
   });
 
   const [photos, setPhotos] = useState<string[]>([]);
+  const [videoPreview, setVideoPreview] = useState('');
 
   const [services, setServices] = useState<string[]>(['live_cam', 'private_call']);
   const [pricing, setPricing] = useState({
@@ -90,6 +91,7 @@ const ProviderProfile: React.FC = () => {
           if (profile.photos && profile.photos.length > 0) {
             setPhotos(profile.photos);
           }
+          setVideoPreview(profile.videoPreview || '');
           if (profile.servicesOffered) {
             setServices(profile.servicesOffered);
           }
@@ -375,7 +377,12 @@ const ProviderProfile: React.FC = () => {
           )}
 
           {activeTab === 'photos' && (
-            <ProviderProfilePhotos photos={photos} setPhotos={setPhotos} />
+            <ProviderProfilePhotos
+              photos={photos}
+              setPhotos={setPhotos}
+              videoPreview={videoPreview}
+              setVideoPreview={setVideoPreview}
+            />
           )}
 
           {activeTab === 'services' && (
@@ -670,6 +677,7 @@ const ProviderProfile: React.FC = () => {
             </div>
           )}
         </div>
+
       </div>
     </div>
   );
