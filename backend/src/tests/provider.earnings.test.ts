@@ -1,6 +1,6 @@
 import request from 'supertest';
 import mongoose from 'mongoose';
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import app from '../app';
 import AdultUser from '../models/AdultUser';
 import CreditTransaction from '../models/CreditTransaction';
@@ -9,7 +9,7 @@ import jwt from 'jsonwebtoken';
 import { calculateProviderBalanceBreakdown } from '../shared/earnings';
 
 describe('Provider Earnings & Payout API', () => {
-  let mongoServer: MongoMemoryServer;
+  let mongoServer: MongoMemoryReplSet;
   let providerToken: string;
   let memberToken: string;
   let providerId: string;
@@ -18,7 +18,9 @@ describe('Provider Earnings & Payout API', () => {
   let activeRequestId: string;
 
   beforeAll(async () => {
-    mongoServer = await MongoMemoryServer.create();
+    mongoServer = await MongoMemoryReplSet.create({
+      replSet: { count: 1, storageEngine: 'wiredTiger' },
+    });
     const mongoUri = mongoServer.getUri();
     await mongoose.connect(mongoUri);
 

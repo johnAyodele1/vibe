@@ -72,11 +72,7 @@ export const repairPayoutIndex = async (): Promise<void> => {
               dbSession.endSession();
               dbSession = null;
             }
-            if (err.code === 20 || err.message?.includes('Transaction numbers are only allowed')) {
-              await runAtomicRejection();
-            } else {
-              throw err;
-            }
+            throw err;
           } finally {
             if (dbSession) {
               dbSession.endSession();
@@ -127,6 +123,7 @@ export const repairPayoutIndex = async (): Promise<void> => {
 
     isMigrationExecuted = true;
   } catch (err: any) {
-    console.error('[PayoutMigration] Index repair encountered non-fatal error:', err.message);
+    console.error('[PayoutMigration] Fatal index repair error:', err.message);
+    throw err;
   }
 };
