@@ -82,10 +82,21 @@ if (process.env.NODE_ENV !== 'test') {
     }
     try {
       const { repairPushSubscriptionIndex } = require('./services/pushIndexMigrationService');
-      const { repairPayoutIndex } = require('./services/payoutIndexMigrationService');
-      await Promise.all([repairPushSubscriptionIndex(), repairPayoutIndex()]);
+      await repairPushSubscriptionIndex();
     } catch (err) {
-      console.error("Error repairing database indexes:", err);
+      console.error("Error repairing PushSubscription indexes:", err);
+    }
+
+    try {
+      const { repairPayoutIndex } = require('./services/payoutIndexMigrationService');
+      await repairPayoutIndex();
+    } catch (err: any) {
+      console.error('[FATAL] Failed to establish required payout database index:', err.message);
+      if (process.env.NODE_ENV === 'production') {
+        process.exit(1);
+      } else {
+        throw err;
+      }
     }
   }).catch(error => console.error('MongoDB connection error:', error));
 }
