@@ -93,18 +93,18 @@ export const updateProfile = async (req: IExpressRequest, res: Response): Promis
     if (!req.user) return res.status(401).json({ success: false, message: 'Not authenticated' });
     const allowedFields = ['firstName', 'lastName', 'bio', 'interests', 'location', 'preferences', 'settings', 'gender', 'dateOfBirth'];
     const body = req.body as Record<string, unknown>;
-    const updateObj: Record<string, unknown> = {};
-    allowedFields.forEach(field => { if (body[field] !== undefined) updateObj[field] = body[field]; });
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    allowedFields.forEach(field => { if (body[field] !== undefined) (user as any)[field] = body[field]; });
 
-    // Optimization (⚡ Bolt): Use single atomic findByIdAndUpdate with .lean() to eliminate redundant query roundtrips and document hydration.
-    const updatedUser = await User.findByIdAndUpdate(
-      req.user._id,
-      { $set: updateObj },
-      { new: true }
-    ).select('-password').lean();
+    // Use document .save() so pre('save') middleware calculates profileCompletion and executes schema validators.
+    await user.save();
 
-    if (!updatedUser) return res.status(404).json({ success: false, message: 'User not found' });
-    return res.json({ success: true, message: 'Profile updated successfully', data: { user: updatedUser } });
+    // Optimization (⚡ Bolt): Convert user to plain object and remove password in memory to eliminate 3rd database query roundtrip.
+    const userObj = user.toObject();
+    delete (userObj as any).password;
+
+    return res.json({ success: true, message: 'Profile updated successfully', data: { user: userObj } });
   } catch (error) {
     console.error('Update profile error:', error);
     return res.status(500).json({ success: false, message: 'Server error' });
