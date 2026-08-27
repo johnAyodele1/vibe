@@ -123,7 +123,7 @@ const AdultAuthModal: React.FC<AdultAuthModalProps> = ({ isOpen, onClose, defaul
                   onClick={() => setRole('provider')}
                   className={`flex-grow py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest border transition-all ${role === 'provider' ? 'bg-[var(--az-accent-gold)] text-black border-transparent shadow-[0_2px_12px_rgba(234,179,8,0.3)]' : 'bg-[var(--az-bg-tertiary)] text-[var(--az-text-secondary)] border-[var(--az-border)]'}`}
                 >
-                  Join as Provider
+                  Earn as Provider
                 </button>
               </div>
 
