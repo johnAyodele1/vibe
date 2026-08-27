@@ -86,6 +86,18 @@ if (process.env.NODE_ENV !== 'test') {
     } catch (err) {
       console.error("Error repairing PushSubscription indexes:", err);
     }
+
+    try {
+      const { repairPayoutIndex } = require('./services/payoutIndexMigrationService');
+      await repairPayoutIndex();
+    } catch (err: any) {
+      console.error('[FATAL] Failed to establish required payout database index:', err.message);
+      if (process.env.NODE_ENV === 'production') {
+        process.exit(1);
+      } else {
+        throw err;
+      }
+    }
   }).catch(error => console.error('MongoDB connection error:', error));
 }
 

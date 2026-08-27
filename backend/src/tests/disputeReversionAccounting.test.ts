@@ -1,6 +1,6 @@
 import request from 'supertest';
 import mongoose from 'mongoose';
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import app from '../app';
 import AdultUser from '../models/AdultUser';
 import AdultMessage from '../models/AdultMessage';
@@ -10,7 +10,7 @@ import CustomerRefund from '../models/CustomerRefund';
 import { calculateProviderBalanceBreakdown } from '../shared/earnings';
 
 describe('Dispute Reversion & Accounting Invariants Test Suite', () => {
-  let mongoServer: MongoMemoryServer;
+  let mongoServer: MongoMemoryReplSet;
   let adminToken: string;
   let providerToken: string;
   let memberToken: string;
@@ -18,7 +18,9 @@ describe('Dispute Reversion & Accounting Invariants Test Suite', () => {
   let memberId: string;
 
   beforeAll(async () => {
-    mongoServer = await MongoMemoryServer.create();
+    mongoServer = await MongoMemoryReplSet.create({
+      replSet: { count: 1, storageEngine: 'wiredTiger' },
+    });
     const mongoUri = mongoServer.getUri();
     await mongoose.connect(mongoUri);
 
