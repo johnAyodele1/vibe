@@ -5,17 +5,68 @@ import { toast } from 'sonner';
 import { syncDeviceRegistration, deregisterDevice } from '../lib/pwa/subscriptionManager';
 
 interface ApiErrorDetail { message?: string; path?: string[] | string; msg?: string; param?: string; }
-interface ApiResponseData { error?: { message?: string; details?: ApiErrorDetail[] }; details?: ApiErrorDetail[]; errors?: ApiErrorDetail[]; message?: string; }
-export function extractErrorMessage(data: ApiResponseData): string {
-  if (!data) return 'An unknown error occurred';
+interface ApiResponseData { error?: string | { message?: string; details?: ApiErrorDetail[] }; details?: ApiErrorDetail[]; errors?: ApiErrorDetail[] | Record<string, unknown>; message?: string; }
+
+const formatFieldName = (path: string[] | string | undefined): string => {
+  if (!path) return '';
+  const value = Array.isArray(path) ? path[path.length - 1] : path;
+  if (!value) return '';
+  return value
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, char => char.toUpperCase());
+};
+
+const formatDetail = (issue: ApiErrorDetail): string => {
+  const message = issue.message || issue.msg;
+  if (!message) return '';
+  const field = formatFieldName(issue.path || issue.param);
+  return field ? `${field}: ${message}` : message;
+};
+
+export function extractErrorMessage(data: ApiResponseData | unknown): string {
+  if (!data || typeof data !== 'object') {
+    return typeof data === 'string' && data.trim() ? data : 'Request failed';
+  }
+
+  const payload = data as ApiResponseData;
   const detailsList: string[] = [];
-  const details = data.error?.details || data.details;
-  if (Array.isArray(details)) details.forEach((issue) => { if (issue.message) { const field = Array.isArray(issue.path) ? issue.path[issue.path.length - 1] : ''; detailsList.push(`${field ? `${field}: ` : ''}${issue.message}`); } });
-  const errors = data.errors;
-  if (Array.isArray(errors)) errors.forEach((err) => { if (err.msg) { const field = err.path || err.param; detailsList.push(`${field ? `${field}: ` : ''}${err.msg}`); } });
-  if (detailsList.length > 0) return detailsList.join('; ');
-  if (data.error?.message) return data.error.message;
-  if (data.message) return data.message;
+
+  if (typeof payload.error === 'string' && payload.error.trim()) {
+    detailsList.push(payload.error.trim());
+  }
+
+  const nestedError = payload.error && typeof payload.error === 'object' ? payload.error : undefined;
+  const details = nestedError?.details || payload.details;
+  if (Array.isArray(details)) {
+    details.forEach(issue => {
+      const formatted = formatDetail(issue);
+      if (formatted) detailsList.push(formatted);
+    });
+  }
+
+  if (Array.isArray(payload.errors)) {
+    payload.errors.forEach(issue => {
+      const formatted = formatDetail(issue);
+      if (formatted) detailsList.push(formatted);
+    });
+  } else if (payload.errors && typeof payload.errors === 'object') {
+    Object.entries(payload.errors).forEach(([field, value]) => {
+      if (typeof value === 'string' && value.trim()) {
+        detailsList.push(`${formatFieldName(field)}: ${value}`);
+      } else if (Array.isArray(value)) {
+        value.forEach(item => {
+          if (typeof item === 'string' && item.trim()) {
+            detailsList.push(`${formatFieldName(field)}: ${item}`);
+          }
+        });
+      }
+    });
+  }
+
+  if (detailsList.length > 0) return [...new Set(detailsList)].join('; ');
+  if (nestedError?.message) return nestedError.message;
+  if (payload.message) return payload.message;
   return 'Request failed';
 }
 
