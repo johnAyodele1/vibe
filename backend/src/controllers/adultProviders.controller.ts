@@ -191,15 +191,16 @@ export const getProviders = async (req: Request, res: Response) => {
   else if (sortBy === 'newest') sort['createdAt'] = -1;
   else if (sortBy === 'popular') sort['providerProfile.viewerCount'] = -1;
 
-  // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document instantiation and model hydration overhead.
-  const providers = await AdultUser.find(query)
-    .select('providerProfile username displayName profilePhoto country createdAt')
-    .sort(sort)
-    .limit(Number(limit))
-    .skip((Number(page) - 1) * Number(limit))
-    .lean();
-
-  const total = await AdultUser.countDocuments(query);
+  // Optimization (⚡ Bolt): Execute data query and count query concurrently via Promise.all.
+  const [providers, total] = await Promise.all([
+    AdultUser.find(query)
+      .select('providerProfile username displayName profilePhoto country createdAt')
+      .sort(sort)
+      .limit(Number(limit))
+      .skip((Number(page) - 1) * Number(limit))
+      .lean(),
+    AdultUser.countDocuments(query),
+  ]);
 
   res.json({ success: true, data: { providers, total, page: Number(page), pages: Math.ceil(total / Number(limit)) } });
 };
