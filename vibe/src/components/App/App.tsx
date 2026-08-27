@@ -33,6 +33,7 @@ import Wallet from "../AdultZone/Wallet";
 import PaymentCallback from "../AdultZone/PaymentCallback";
 import PublicProviderProfile from "../AdultZone/PublicProviderProfile";
 import ProviderOnboarding from "../AdultZone/ProviderOnboarding";
+import ProviderOnboardingGuard from "../AdultZone/ProviderOnboardingGuard";
 import ProviderDashboard from "../AdultZone/ProviderDashboard";
 import ProviderEarnings from "../AdultZone/ProviderEarnings";
 import ProviderMessages from "../AdultZone/ProviderMessages";
@@ -47,6 +48,19 @@ import { useAdultAuth } from "../../contexts/AdultAuthContext";
 import { API_BASE_URL } from "../../config";
 import ScrollToTop from "./ScrollToTop";
 import "../../styles/adultZoneMobileScrollShell.css";
+
+function ProviderHomeRedirect() {
+  const { user, isAuthenticated, loading } = useAdultAuth();
+
+  if (loading) return <LoadingScreen />;
+  if (!isAuthenticated || user?.role !== 'provider') return <AdultHome />;
+
+  return (
+    <ProviderOnboardingGuard>
+      <Navigate to="/adult/provider/dashboard" replace />
+    </ProviderOnboardingGuard>
+  );
+}
 
 function App() {
   const navigate = useNavigate();
@@ -103,7 +117,7 @@ function App() {
       {isAuthenticated && <CallManager />}
       <Routes>
         <Route path="/" element={<AdultZoneLayout />}>
-          <Route index element={adultIsAuthenticated && adultUser?.role === 'provider' ? <Navigate to="/adult/provider/dashboard" replace /> : <AdultHome />} />
+          <Route index element={<ProviderHomeRedirect />} />
           <Route path="cams" element={<LiveCams />} />
           <Route path="rooms" element={<NaughtyRooms />} />
           <Route path="rooms/:roomId" element={<NaughtyRooms />} />
@@ -123,13 +137,13 @@ function App() {
           <Route path="adult/wallet/payment/callback" element={<PaymentCallback />} />
           <Route path="adult/providers/:providerId" element={<PublicProviderProfile />} />
           <Route path="adult/provider/onboarding" element={<ProviderOnboarding />} />
-          <Route path="adult/provider/dashboard" element={<ProviderDashboard />} />
-          <Route path="adult/provider/earnings" element={<ProviderEarnings />} />
-          <Route path="adult/provider/messages" element={<ProviderMessages />} />
-          <Route path="adult/provider/live" element={<ProviderLive />} />
-          <Route path="adult/provider/profile" element={<ProviderProfile />} />
-          <Route path="adult/provider/settings" element={<ProviderSettings />} />
-          <Route path="adult/provider/payout" element={<ProviderPayout />} />
+          <Route path="adult/provider/dashboard" element={<ProviderOnboardingGuard><ProviderDashboard /></ProviderOnboardingGuard>} />
+          <Route path="adult/provider/earnings" element={<ProviderOnboardingGuard><ProviderEarnings /></ProviderOnboardingGuard>} />
+          <Route path="adult/provider/messages" element={<ProviderOnboardingGuard><ProviderMessages /></ProviderOnboardingGuard>} />
+          <Route path="adult/provider/live" element={<ProviderOnboardingGuard><ProviderLive /></ProviderOnboardingGuard>} />
+          <Route path="adult/provider/profile" element={<ProviderOnboardingGuard><ProviderProfile /></ProviderOnboardingGuard>} />
+          <Route path="adult/provider/settings" element={<ProviderOnboardingGuard><ProviderSettings /></ProviderOnboardingGuard>} />
+          <Route path="adult/provider/payout" element={<ProviderOnboardingGuard><ProviderPayout /></ProviderOnboardingGuard>} />
           <Route path="adult/settings" element={<UserSettings />} />
         </Route>
         <Route path="/dating" element={isAuthenticated ? (isProfileComplete() ? <Navigate to="/discovery" replace /> : <Navigate to="/profile" replace />) : <Onboarding />} />
