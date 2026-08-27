@@ -9,84 +9,9 @@ on:
       - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  recover-realtime-controller:
-    name: Recover realtime controller and validate
-    if: github.event_name == 'pull_request' && github.head_ref == 'repair/realtime-controller-recovery'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - name: Restore realtime changes on complete controller
-        shell: python
-        run: |
-          from pathlib import Path
-          import re
-
-          def once(path, old, new, label):
-              p = Path(path); text = p.read_text(); n = text.count(old)
-              if n != 1: raise SystemExit(f'{label}: expected 1 match, got {n}')
-              p.write_text(text.replace(old, new, 1))
-
-          def all_(path, old, new, minimum, label):
-              p = Path(path); text = p.read_text(); n = text.count(old)
-              if n < minimum: raise SystemExit(f'{label}: expected >= {minimum} matches, got {n}')
-              p.write_text(text.replace(old, new))
-
-          p = Path('backend/src/controllers/adultSext.controller.ts')
-          text = p.read_text()
-          if 'const emitSextMessage' not in text:
-              anchor = "import { checkActiveCall, endCamSessionAtomic, endCamSessionForCall } from '../services/sessionInvariantService';\n"
-              helper = """\nconst emitSextMessage = (ns: any, conversationId: string | string[], envelope: { message?: any }) => {\n  const normalizedConversationId = Array.isArray(conversationId) ? conversationId[0] : conversationId;\n  if (!normalizedConversationId) return;\n  ns.to(`conv:${normalizedConversationId}`).emit('sext:new_message', envelope);\n  const receiverId = envelope?.message?.receiverId?.toString();\n  if (receiverId) ns.to(`user:${receiverId}`).emit('sext:new_message', envelope);\n};\n"""
-              if text.count(anchor) != 1: raise SystemExit('controller import anchor mismatch')
-              text = text.replace(anchor, anchor + helper, 1)
-              body_start = text.index(anchor) + len(anchor) + len(helper)
-              prefix, body = text[:body_start], text[body_start:]
-              pattern = re.compile(r"ns\.to\(`conv:\$\{([^}]+)\}`\)\.emit\('sext:new_message', ")
-              body, count = pattern.subn(r"emitSextMessage(ns, \1, ", body)
-              if count < 5: raise SystemExit(f'expected at least 5 realtime emissions, found {count}')
-              p.write_text(prefix + body)
-          all_('backend/src/controllers/adultSext.controller.ts', 'Requested a tonight service', 'Requested activity service', 1, 'controller wording')
-
-          once('vibe/src/components/AdultZone/PrivateSext.tsx', "    s.on('connect', () => {\n      console.log('Private Sext connected to /adult socket:', s.id);\n    });", "    s.on('connect', () => {\n      console.log('Private Sext connected to /adult socket:', s.id);\n      if (activeConvIdRef.current) s.emit('conv:join', { conversationId: activeConvIdRef.current });\n    });", 'PrivateSext connect')
-          once('vibe/src/components/AdultZone/PrivateSext.tsx', '  }, [token, selectedConv?.conversationId]);', '  }, [token]);', 'PrivateSext socket dependency')
-          once('vibe/src/components/AdultZone/ProviderMessages.tsx', "    s.on('connect', () => {\n      console.log('Provider connected to /adult socket:', s.id);\n    });", "    s.on('connect', () => {\n      console.log('Provider connected to /adult socket:', s.id);\n      if (activeConvIdRef.current) s.emit('conv:join', { conversationId: activeConvIdRef.current });\n    });", 'ProviderMessages connect')
-          once('vibe/src/components/AdultZone/ProviderMessages.tsx', '  }, [token, selectedConv?.conversationId]);', '  }, [token]);', 'ProviderMessages socket dependency')
-
-          old_handler = """    s.on('sext:new_message', (payload: { message: Message }) => {\n      const myUserId = user?.id || (user as any)?._id;\n      if (selectedConv && payload.message.conversationId === selectedConv.conversationId && payload.message.senderId !== myUserId) {\n        setMessages(prev => {\n          if (prev.some(m => m.id === payload.message.id)) return prev;\n          return [...prev, payload.message];\n        });\n        markConversationRead(selectedConv.conversationId);\n        s.emit('sext:message_delivered', { messageId: payload.message.id });\n      }\n      fetchConversations();\n    });"""
-          new_handler = """    s.on('sext:new_message', (payload: { message: Message }) => {\n      const myUserId = user?.id || (user as any)?._id;\n      const activeConversationId = activeConvIdRef.current;\n      if (activeConversationId && payload.message.conversationId === activeConversationId && payload.message.senderId !== myUserId) {\n        setMessages(prev => {\n          if (prev.some(m => m.id === payload.message.id)) return prev;\n          return [...prev, payload.message];\n        });\n        markConversationRead(activeConversationId);\n        s.emit('sext:message_delivered', { messageId: payload.message.id });\n      }\n      fetchConversations();\n    });"""
-          once('vibe/src/components/AdultZone/PrivateSext.tsx', old_handler, new_handler, 'PrivateSext message handler')
-          once('vibe/src/components/AdultZone/ProviderMessages.tsx', old_handler, new_handler, 'ProviderMessages message handler')
-          for path in ['vibe/src/components/AdultZone/PrivateSext.tsx', 'vibe/src/components/AdultZone/ProviderMessages.tsx']:
-              all_(path, 'Tonight rate:', 'Activity rate:', 1, f'{path} rate label')
-              once(path, "{c.lastMessage ? c.lastMessage.content : 'No messages yet...'}", "{c.lastMessage ? c.lastMessage.content.replace('Requested a tonight service', 'Requested activity service') : 'No messages yet...'}", f'{path} preview')
-
-      - name: Verify recovered controller and build
-        shell: bash
-        run: |
-          set -euo pipefail
-          git diff --check
-          test "$(git diff --numstat -- backend/src/controllers/adultSext.controller.ts | awk '{print $1}')" -lt 50
-          cd backend
-          npm install --package-lock-only --ignore-scripts
-          npm ci
-          npm run build
-      - name: Commit recovered changes to head branch
-        shell: bash
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add backend/src/controllers/adultSext.controller.ts vibe/src/components/AdultZone/PrivateSext.tsx vibe/src/components/AdultZone/ProviderMessages.tsx
-          git commit -m 'fix: recover realtime controller without deletion [recovered]' || exit 0
-          git push origin HEAD:${{ github.head_ref }}
-
   frontend-build-lint-unit:
     name: Frontend build, lint, and unit tests
     runs-on: ubuntu-latest
@@ -97,6 +22,7 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: package-lock.json
+      # Regenerate the workspace lockfile until the updated lockfile is committed.
       - run: npm install --package-lock-only --ignore-scripts
       - run: npm ci
       - run: npm run build --workspace=vibe
@@ -140,6 +66,7 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: backend/package-lock.json
+      # Backend package.json is ahead of its committed lockfile; regenerate it before npm ci.
       - run: npm install --package-lock-only --ignore-scripts
       - run: npm ci
       - run: npx tsc --noEmit
