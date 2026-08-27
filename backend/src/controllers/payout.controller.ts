@@ -666,13 +666,14 @@ export const getPayoutStatus = async (req: Request, res: Response) => {
       return res.status(403).json({ success: false, error: 'Only providers can view payout status' });
     }
 
+    // Optimization (⚡ Bolt): Append .lean() to read-only queries to eliminate Mongoose document instantiation and model hydration overhead.
     const activeRequest = await PayoutRequest.findOne({
       providerId: user._id,
       status: { $in: ['pending', 'queued', 'verifying', 'processing'] }
-    });
+    }).lean();
 
     if (!activeRequest) {
-      const lastRequest = await PayoutRequest.findOne({ providerId: user._id }).sort({ requestedAt: -1 });
+      const lastRequest = await PayoutRequest.findOne({ providerId: user._id }).sort({ requestedAt: -1 }).lean();
       if (lastRequest && (lastRequest.status === 'completed' || lastRequest.status === 'rejected')) {
         return res.json({ success: true, data: lastRequest });
       }
@@ -691,8 +692,7 @@ export const getPayoutStatus = async (req: Request, res: Response) => {
     const hours = Math.max(1, Math.round(queuePosition * 1.5));
     const estimatedTime = `${hours} hour${hours > 1 ? 's' : ''}`;
 
-    const rawRequest = activeRequest.toObject();
-    (rawRequest as any).estimatedTime = estimatedTime;
+    const rawRequest = { ...activeRequest, estimatedTime };
 
     return res.json({
       success: true,
@@ -716,14 +716,15 @@ export const getPayoutHistory = async (req: Request, res: Response) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
 
-    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document hydration overhead.
-    const history = await PayoutRequest.find({ providerId: user._id })
-      .sort({ requestedAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(limit)
-      .lean();
-
-    const total = await PayoutRequest.countDocuments({ providerId: user._id });
+    // Optimization (⚡ Bolt): Execute data query and count query concurrently via Promise.all.
+    const [history, total] = await Promise.all([
+      PayoutRequest.find({ providerId: user._id })
+        .sort({ requestedAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      PayoutRequest.countDocuments({ providerId: user._id }),
+    ]);
 
     return res.json({
       success: true,

@@ -28,30 +28,39 @@ export const getUserTasks = async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
     }
 
-    // Ensure at least a default daily check-in task exists so things work
-    let checkinTask = await RewardTask.findOne({ type: 'daily_checkin' });
-    if (!checkinTask) {
-      checkinTask = await RewardTask.create({
-        title: 'Daily Check-in',
-        description: 'Come back every day',
-        reward: 10,
-        type: 'daily_checkin',
-        isActive: true,
-        sortOrder: -1,
-      });
-    }
-
     const todayMidnight = getTodayMidnight();
     const tomorrowMidnight = getTomorrowMidnight();
 
     // Optimization (⚡ Bolt): Fetch active tasks and user completions today concurrently via Promise.all.
-    const [tasks, completionsToday] = await Promise.all([
+    let [tasks, completionsToday] = await Promise.all([
       RewardTask.find({ isActive: true }).sort({ sortOrder: 1 }).lean(),
       UserTask.find({
         userId: user._id,
         completedAt: { $gte: todayMidnight }
       }).lean(),
     ]);
+
+    // Check if daily_checkin task exists in active tasks list or in database
+    let checkinTask = tasks.find(t => t.type === 'daily_checkin');
+    if (!checkinTask) {
+      let existingDbTask = await RewardTask.findOne({ type: 'daily_checkin' }).lean();
+      if (!existingDbTask) {
+        const created = await RewardTask.create({
+          title: 'Daily Check-in',
+          description: 'Come back every day',
+          reward: 10,
+          type: 'daily_checkin',
+          isActive: true,
+          sortOrder: -1,
+        });
+        checkinTask = created.toObject();
+      } else {
+        checkinTask = existingDbTask;
+      }
+      if (checkinTask.isActive) {
+        tasks = [checkinTask, ...tasks];
+      }
+    }
 
     const completionMap = new Set(completionsToday.map(c => c.taskId.toString()));
 
