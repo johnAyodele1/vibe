@@ -2,7 +2,7 @@ const API_BASE_URL = self.location.hostname === 'localhost' || self.location.hos
   ? 'http://localhost:5000/api'
   : 'https://zippo-r8hk.onrender.com/api';
 
-const SW_VERSION = 'zippo-v12';
+const SW_VERSION = 'zippo-v13-1.0.0';
 const CACHE_NAME = `${SW_VERSION}-static`;
 const PRECACHE_ASSETS = ['/', '/offline.html', '/manifest.json', '/favicon.svg'];
 
