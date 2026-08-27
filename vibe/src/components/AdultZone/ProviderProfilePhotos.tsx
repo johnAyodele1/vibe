@@ -7,9 +7,11 @@ import { uploadMedia } from '../../lib/media/uploadMedia';
 interface ProviderProfilePhotosProps {
   photos: string[];
   setPhotos: React.Dispatch<React.SetStateAction<string[]>>;
+  videoPreview: string;
+  setVideoPreview: React.Dispatch<React.SetStateAction<string>>;
 }
 
-const ProviderProfilePhotos: React.FC<ProviderProfilePhotosProps> = ({ photos, setPhotos }) => {
+const ProviderProfilePhotos: React.FC<ProviderProfilePhotosProps> = ({ photos, setPhotos, videoPreview, setVideoPreview }) => {
   const token = localStorage.getItem('adultAccessToken');
   const [compressing, setCompressing] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -48,7 +50,36 @@ const ProviderProfilePhotos: React.FC<ProviderProfilePhotosProps> = ({ photos, s
     }
   };
 
-  const handleSavePhotos = async () => {
+  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    if (!file.type.startsWith('video/')) {
+      toast.error('File is not a video');
+      return;
+    }
+
+    const MAX_VIDEO_SIZE = 5 * 1024 * 1024;
+    if (file.size > MAX_VIDEO_SIZE) {
+      toast.error(`Video must be under 5MB. Your file is ${(file.size / 1024 / 1024).toFixed(1)}MB`);
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const result = await uploadMedia(file, 'onboarding_video');
+      setVideoPreview(result.url);
+      toast.success('Video preview uploaded successfully');
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'Video upload failed';
+      toast.error(errMsg);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleSaveMedia = async () => {
     if (photos.length === 0) {
       toast.error('Please upload at least one photo before saving');
       return;
@@ -67,18 +98,18 @@ const ProviderProfilePhotos: React.FC<ProviderProfilePhotosProps> = ({ photos, s
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ photos })
+        body: JSON.stringify({ photos, videoPreview })
       });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.success) {
         const message = typeof data?.error === 'string'
           ? data.error
-          : data?.error?.message || data?.message || 'Failed to update photos';
+          : data?.error?.message || data?.message || 'Failed to update profile media';
         throw new Error(message);
       }
-      toast.success('Profile photos updated successfully');
+      toast.success('Profile media updated successfully');
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update photos');
+      toast.error(err instanceof Error ? err.message : 'Failed to update profile media');
     } finally {
       setSaving(false);
     }
@@ -136,16 +167,51 @@ const ProviderProfilePhotos: React.FC<ProviderProfilePhotosProps> = ({ photos, s
             )}
           </div>
         </div>
+
+        <div>
+          <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-4">Introductory video preview (Up to 1)</label>
+
+          {videoPreview && (
+            <div className="bg-[var(--az-bg-tertiary)] rounded-2xl overflow-hidden border border-[var(--az-border)] relative mb-4">
+              <video src={videoPreview} controls className="w-full max-h-[280px] object-cover" />
+              <button
+                type="button"
+                onClick={() => setVideoPreview('')}
+                disabled={saving || uploading}
+                className="absolute top-2 right-2 px-2.5 py-1 bg-black/60 hover:bg-red-600 text-white rounded text-[10px] uppercase tracking-wider font-bold transition-colors disabled:opacity-50"
+              >
+                Remove
+              </button>
+            </div>
+          )}
+
+          {!videoPreview && (
+            <label className="w-full py-10 bg-[var(--az-bg-tertiary)] border-2 border-dashed border-var(--az-border) hover:border-[var(--az-accent-rose)] rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all">
+              {uploading ? (
+                <>
+                  <div className="w-8 h-8 border-3 border-[var(--az-accent-rose)] border-t-transparent rounded-full animate-spin" />
+                  <span className="text-xs text-[var(--az-text-secondary)] font-bold uppercase mt-3">Uploading Video...</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-3xl">📹</span>
+                  <span className="text-xs text-[var(--az-text-secondary)] font-serif italic mt-2">A short preview video gets up to 3x more profile traffic!</span>
+                </>
+              )}
+              <input type="file" accept="video/*" className="hidden" onChange={handleVideoUpload} disabled={uploading || saving} />
+            </label>
+          )}
+        </div>
       </div>
 
       <div className="pt-2">
         <button
           type="button"
-          onClick={handleSavePhotos}
+          onClick={handleSaveMedia}
           disabled={saving || uploading || compressing || photos.length === 0}
           className="px-8 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 disabled:opacity-50 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-md"
         >
-          {saving ? 'Processing...' : 'Save Photos'}
+          {saving ? 'Processing...' : 'Save Photos & Video'}
         </button>
       </div>
     </div>
