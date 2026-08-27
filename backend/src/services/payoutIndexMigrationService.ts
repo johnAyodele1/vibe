@@ -40,17 +40,47 @@ export const repairPayoutIndex = async (): Promise<void> => {
         // Keep providerActiveRequests[0] (earliest), reject subsequent duplicates
         const duplicatesToReject = providerActiveRequests.slice(1);
         for (const dup of duplicatesToReject) {
-          dup.status = 'rejected';
-          dup.rejectedReason = 'System deduplication: Superceded by earlier active payout request.';
-          dup.rejectedAt = new Date();
-          await dup.save();
+          const runAtomicRejection = async (session?: mongoose.ClientSession) => {
+            const opts = session ? { session } : {};
+            dup.status = 'rejected';
+            dup.rejectedReason = 'System deduplication: Superceded by earlier active payout request.';
+            dup.rejectedAt = new Date();
+            await dup.save(opts);
 
-          // Unfreeze covered transactions
-          if (dup.eligibleTransactionIds && dup.eligibleTransactionIds.length > 0) {
-            await CreditTransaction.updateMany(
-              { _id: { $in: dup.eligibleTransactionIds } },
-              { $unset: { inPayoutRequest: '' } }
-            );
+            // Safely unfreeze only transactions actually tagged as inPayoutRequest for this duplicate ID
+            if (dup.eligibleTransactionIds && dup.eligibleTransactionIds.length > 0) {
+              await CreditTransaction.updateMany(
+                {
+                  _id: { $in: dup.eligibleTransactionIds },
+                  inPayoutRequest: dup._id,
+                },
+                { $unset: { inPayoutRequest: '' } },
+                opts
+              );
+            }
+          };
+
+          let dbSession: mongoose.ClientSession | null = null;
+          try {
+            dbSession = await mongoose.startSession();
+            dbSession.startTransaction();
+            await runAtomicRejection(dbSession);
+            await dbSession.commitTransaction();
+          } catch (err: any) {
+            if (dbSession) {
+              await dbSession.abortTransaction().catch(() => {});
+              dbSession.endSession();
+              dbSession = null;
+            }
+            if (err.code === 20 || err.message?.includes('Transaction numbers are only allowed')) {
+              await runAtomicRejection();
+            } else {
+              throw err;
+            }
+          } finally {
+            if (dbSession) {
+              dbSession.endSession();
+            }
           }
         }
       }

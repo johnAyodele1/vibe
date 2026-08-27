@@ -107,10 +107,38 @@ describe('Payout Request — Full Integration Suite', () => {
   });
 
   describe('repairPayoutIndex migration service', () => {
-    it('creates partial unique index and auto-resolves legacy duplicate active requests', async () => {
+    it('creates partial unique index and auto-resolves legacy duplicate active requests without corrupting transaction ownership', async () => {
       const p1 = new mongoose.Types.ObjectId();
       const id1 = new mongoose.Types.ObjectId();
       const id2 = new mongoose.Types.ObjectId();
+      const txShared = new mongoose.Types.ObjectId();
+      const txDupOnly = new mongoose.Types.ObjectId();
+
+      // Create credit transactions: txShared belongs to kept request id1, txDupOnly belongs to duplicate id2
+      await CreditTransaction.create([
+        {
+          _id: txShared,
+          userId: p1,
+          type: 'tip_received',
+          amount: 500,
+          usdAmount: 3.75,
+          nairaAmount: 50000,
+          description: 'Tip',
+          status: 'completed',
+          inPayoutRequest: id1
+        },
+        {
+          _id: txDupOnly,
+          userId: p1,
+          type: 'tip_received',
+          amount: 600,
+          usdAmount: 4.5,
+          nairaAmount: 60000,
+          description: 'Tip 2',
+          status: 'completed',
+          inPayoutRequest: id2
+        }
+      ]);
 
       // Drop index if present to simulate pre-existing unindexed database state
       const db = mongoose.connection.db;
@@ -128,7 +156,7 @@ describe('Payout Request — Full Integration Suite', () => {
             status: 'queued',
             payoutMethod: 'bank',
             payoutDetails: {},
-            eligibleTransactionIds: [],
+            eligibleTransactionIds: [txShared],
             requestedAt: new Date(Date.now() - 10000)
           },
           {
@@ -141,7 +169,7 @@ describe('Payout Request — Full Integration Suite', () => {
             status: 'queued',
             payoutMethod: 'bank',
             payoutDetails: {},
-            eligibleTransactionIds: [],
+            eligibleTransactionIds: [txShared, txDupOnly], // id2 references txShared as well
             requestedAt: new Date()
           }
         ]);
@@ -157,6 +185,14 @@ describe('Payout Request — Full Integration Suite', () => {
       expect(updatedReq1?.status).toBe('queued');
       expect(updatedReq2?.status).toBe('rejected');
       expect(updatedReq2?.rejectedReason).toContain('System deduplication');
+
+      // Verify txShared remains frozen under kept request id1
+      const updatedTxShared = await CreditTransaction.findById(txShared);
+      expect(updatedTxShared?.inPayoutRequest?.toString()).toBe(id1.toString());
+
+      // Verify txDupOnly owned by duplicate id2 is unfrozen
+      const updatedTxDupOnly = await CreditTransaction.findById(txDupOnly);
+      expect(updatedTxDupOnly?.inPayoutRequest).toBeUndefined();
     });
   });
 
