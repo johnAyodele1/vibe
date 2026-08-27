@@ -64,18 +64,13 @@
       padding-bottom: 0 !important;
     }
 
-    /* Keep the Adult Zone shell at the real viewport height. The safe-area
-       inset belongs to the bottom navigation, not the outer flex shell. This
-       prevents the route's flex-1 scroll region from gaining extra height. */
+    /* iOS standalone can initialize 100dvh to the smaller viewport used by
+       Safari's bottom UI. That value can change after the user drags/scrolls,
+       which makes a normal-flow nav appear too high on first launch.
+       Use the large viewport only for the Adult Zone shell so the existing
+       normal-flow bottom nav starts at the physical bottom immediately. */
     .az-grain {
-      height: 100dvh !important;
-    }
-
-    /* iOS standalone can expose a zero bottom safe-area value in some PWA
-       viewport configurations. Keep a small guaranteed buffer in that case,
-       while using the full system inset whenever WebKit reports one. */
-    .az-grain > [data-testid="bottom-tab-bar"] {
-      padding-bottom: max(env(safe-area-inset-bottom, 0px), 20px) !important;
+      height: 100lvh !important;
     }
   }
 }
