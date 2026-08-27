@@ -1,15 +1,16 @@
 import request from 'supertest';
 import mongoose from 'mongoose';
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import jwt from 'jsonwebtoken';
 import app from '../../../app';
 import AdultUser from '../../../models/AdultUser';
 import CreditTransaction from '../../../models/CreditTransaction';
 import PayoutRequest from '../../../models/PayoutRequest';
 import AppConfig from '../../../models/AppConfig';
+import { repairPayoutIndex } from '../../../services/payoutIndexMigrationService';
 
 describe('Payout Request — Full Integration Suite', () => {
-  let mongoServer: MongoMemoryServer;
+  let mongoServer: MongoMemoryReplSet;
   let providerToken: string;
   let providerId: string;
   let memberToken: string;
@@ -18,7 +19,9 @@ describe('Payout Request — Full Integration Suite', () => {
   let invalidAdminToken: string;
 
   beforeAll(async () => {
-    mongoServer = await MongoMemoryServer.create();
+    mongoServer = await MongoMemoryReplSet.create({
+      replSet: { count: 1, storageEngine: 'wiredTiger' },
+    });
     const mongoUri = mongoServer.getUri();
     await mongoose.connect(mongoUri);
 
@@ -101,6 +104,96 @@ describe('Payout Request — Full Integration Suite', () => {
       { userId: 'user123', isAdmin: false },
       process.env.JWT_SECRET || 'fallback_secret'
     );
+  });
+
+  describe('repairPayoutIndex migration service', () => {
+    it('creates partial unique index and auto-resolves legacy duplicate active requests without corrupting transaction ownership', async () => {
+      const p1 = new mongoose.Types.ObjectId();
+      const id1 = new mongoose.Types.ObjectId();
+      const id2 = new mongoose.Types.ObjectId();
+      const txShared = new mongoose.Types.ObjectId();
+      const txDupOnly = new mongoose.Types.ObjectId();
+
+      // Create credit transactions: txShared belongs to kept request id1, txDupOnly belongs to duplicate id2
+      await CreditTransaction.create([
+        {
+          _id: txShared,
+          userId: p1,
+          type: 'tip_received',
+          amount: 500,
+          usdAmount: 3.75,
+          nairaAmount: 50000,
+          description: 'Tip',
+          status: 'completed',
+          inPayoutRequest: id1
+        },
+        {
+          _id: txDupOnly,
+          userId: p1,
+          type: 'tip_received',
+          amount: 600,
+          usdAmount: 4.5,
+          nairaAmount: 60000,
+          description: 'Tip 2',
+          status: 'completed',
+          inPayoutRequest: id2
+        }
+      ]);
+
+      // Drop index if present to simulate pre-existing unindexed database state
+      const db = mongoose.connection.db;
+      if (db) {
+        await db.collection('payoutrequests').dropIndexes().catch(() => {});
+        // Insert duplicate active payout requests directly into collection
+        await db.collection('payoutrequests').insertMany([
+          {
+            _id: id1,
+            providerId: p1,
+            providerName: 'Test Provider',
+            amount: 500,
+            amountNaira: 50000,
+            nairaRateSnapshot: 100,
+            status: 'queued',
+            payoutMethod: 'bank',
+            payoutDetails: {},
+            eligibleTransactionIds: [txShared],
+            requestedAt: new Date(Date.now() - 10000)
+          },
+          {
+            _id: id2,
+            providerId: p1,
+            providerName: 'Test Provider',
+            amount: 600,
+            amountNaira: 60000,
+            nairaRateSnapshot: 100,
+            status: 'queued',
+            payoutMethod: 'bank',
+            payoutDetails: {},
+            eligibleTransactionIds: [txShared, txDupOnly], // id2 references txShared as well
+            requestedAt: new Date()
+          }
+        ]);
+      }
+
+      // Run repair migration
+      await repairPayoutIndex();
+
+      // Earliest active request remains queued, duplicate rejected
+      const updatedReq1 = await PayoutRequest.findById(id1);
+      const updatedReq2 = await PayoutRequest.findById(id2);
+
+      expect(updatedReq1?.status).toBe('queued');
+      expect(updatedReq2?.status).toBe('rejected');
+      expect(updatedReq2?.rejectedReason).toContain('System deduplication');
+
+      // Verify txShared remains frozen under kept request id1
+      const updatedTxShared = await CreditTransaction.findById(txShared);
+      expect(updatedTxShared?.inPayoutRequest?.toString()).toBe(id1.toString());
+
+      // Verify txDupOnly owned by duplicate id2 is unfrozen
+      const updatedTxDupOnly = await CreditTransaction.findById(txDupOnly);
+      expect(updatedTxDupOnly?.inPayoutRequest).toBeUndefined();
+    });
   });
 
   describe('GET /api/v1/adult/providers/me/payout/eligible', () => {
@@ -300,6 +393,109 @@ describe('Payout Request — Full Integration Suite', () => {
 
       expect(res.body.success).toBe(true);
       expect(res.body.data).toBeNull();
+    });
+
+    it('returns null when latest payout request is completed or rejected', async () => {
+      await PayoutRequest.create({
+        providerId,
+        providerName: 'Lucia Rose',
+        amount: 500,
+        amountNaira: 50000,
+        nairaRateSnapshot: 100,
+        status: 'completed',
+        payoutMethod: 'bank',
+        payoutDetails: {},
+        eligibleTransactionIds: [],
+        requestedAt: new Date(Date.now() - 3600000)
+      });
+
+      const res = await request(app)
+        .get('/api/v1/adult/providers/me/payout/status')
+        .set('Authorization', `Bearer ${providerToken}`)
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data).toBeNull();
+    });
+
+    it('executes end-to-end rejection lifecycle: request -> reject -> inPayoutRequest cleared -> status null -> re-request succeeds', async () => {
+      const tx = await CreditTransaction.create({
+        userId: providerId,
+        type: 'tip_received',
+        amount: 800,
+        usdAmount: 6.0,
+        nairaAmount: 80000,
+        description: 'Tip for payout test',
+        status: 'completed',
+        eligibleForPayout: true,
+        paidOut: false
+      });
+
+      // 1. Provider requests payout
+      const reqRes = await request(app)
+        .post('/api/v1/adult/providers/me/payout/request')
+        .set('Authorization', `Bearer ${providerToken}`)
+        .expect(201);
+
+      const requestId = reqRes.body.requestId;
+
+      // Check transaction frozen
+      const frozenTx = await CreditTransaction.findById(tx._id);
+      expect(frozenTx?.inPayoutRequest?.toString()).toBe(requestId);
+
+      // 2. Admin rejects payout
+      await request(app)
+        .put(`/api/admin/payouts/${requestId}/reject`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ reason: 'Invalid bank account number provided.' })
+        .expect(200);
+
+      // Verify transaction unfrozen
+      const unfrozenTx = await CreditTransaction.findById(tx._id);
+      expect(unfrozenTx?.inPayoutRequest).toBeUndefined();
+
+      // 3. Status returns null for active request
+      const statusRes = await request(app)
+        .get('/api/v1/adult/providers/me/payout/status')
+        .set('Authorization', `Bearer ${providerToken}`)
+        .expect(200);
+
+      expect(statusRes.body.data).toBeNull();
+
+      // 4. Provider re-requests payout successfully
+      const reReqRes = await request(app)
+        .post('/api/v1/adult/providers/me/payout/request')
+        .set('Authorization', `Bearer ${providerToken}`)
+        .expect(201);
+
+      expect(reReqRes.body.success).toBe(true);
+      expect(reReqRes.body.amount).toBe(800);
+      expect(reReqRes.body.status).toBe('queued');
+    });
+
+    it('rejects request if user credits bring finalAmount below 500 diamonds despite eligibleTotal >= 500', async () => {
+      await CreditTransaction.create({
+        userId: providerId,
+        type: 'tip_received',
+        amount: 800,
+        usdAmount: 6.0,
+        nairaAmount: 80000,
+        description: 'Tip',
+        status: 'completed',
+        eligibleForPayout: true,
+        paidOut: false
+      });
+
+      // User credits reduced to 300
+      await AdultUser.findByIdAndUpdate(providerId, { $set: { credits: 300 } });
+
+      const res = await request(app)
+        .post('/api/v1/adult/providers/me/payout/request')
+        .set('Authorization', `Bearer ${providerToken}`)
+        .expect(400);
+
+      expect(res.body.error).toBe('MINIMUM_THRESHOLD_NOT_MET');
+      expect(res.body.message).toContain('below the minimum payout threshold');
     });
 
     it('returns current active request with live queue position', async () => {

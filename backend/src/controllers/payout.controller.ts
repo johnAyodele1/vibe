@@ -599,6 +599,15 @@ export const requestPayout = async (req: Request, res: Response) => {
         message: 'No withdrawable balance remaining in your wallet',
       });
     }
+
+    if (finalAmount < 500) {
+      return res.status(400).json({
+        success: false,
+        error: 'MINIMUM_THRESHOLD_NOT_MET',
+        message: `Withdrawable balance after credit verification is ${finalAmount} diamonds, which is below the minimum payout threshold of 500 diamonds (≈ ₦${(500 * rate).toLocaleString('en-NG')}).`,
+      });
+    }
+
     const amountNaira = finalAmount * rate;
 
     // 5. Get queue position
@@ -610,27 +619,66 @@ export const requestPayout = async (req: Request, res: Response) => {
     // 6. Snapshot payout details
     const payoutDetails = buildPayoutDetailsSnapshot(user);
 
-    // 7. Create request
-    const request = await PayoutRequest.create({
-      providerId: user._id,
-      providerName: profile.stageName || user.displayName || user.username,
-      amount: finalAmount,
-      amountNaira,
-      nairaRateSnapshot: rate,
-      status: 'queued',
-      queuePosition,
-      payoutMethod: method,
-      payoutDetails,
-      eligibleTransactionIds: eligibleTxs.map(t => t._id),
-      requestedAt: new Date(),
-      queuedAt: new Date(),
-    });
+    // 7. Execute atomic creation and transaction freezing in session transaction
+    const runAtomicPayoutCreation = async (session?: mongoose.ClientSession) => {
+      const opts = session ? { session } : {};
 
-    // 8. Mark transactions as "in payout" (frozen - cannot be double-paid)
-    await CreditTransaction.updateMany(
-      { _id: { $in: eligibleTxs.map(t => t._id) } },
-      { $set: { inPayoutRequest: request._id } }
-    );
+      const createData = {
+        providerId: user._id,
+        providerName: profile.stageName || user.displayName || user.username,
+        amount: finalAmount,
+        amountNaira,
+        nairaRateSnapshot: rate,
+        status: 'queued',
+        queuePosition,
+        payoutMethod: method,
+        payoutDetails,
+        eligibleTransactionIds: eligibleTxs.map(t => t._id),
+        requestedAt: new Date(),
+        queuedAt: new Date(),
+      };
+
+      const requestDocs = session
+        ? await PayoutRequest.create([createData], { session })
+        : [await PayoutRequest.create(createData)];
+
+      const request = requestDocs[0];
+
+      await CreditTransaction.updateMany(
+        { _id: { $in: eligibleTxs.map(t => t._id) } },
+        { $set: { inPayoutRequest: request._id } },
+        opts
+      );
+
+      return request;
+    };
+
+    let request: any;
+    let dbSession: mongoose.ClientSession | null = null;
+    try {
+      dbSession = await mongoose.startSession();
+      dbSession.startTransaction();
+      request = await runAtomicPayoutCreation(dbSession);
+      await dbSession.commitTransaction();
+    } catch (err: any) {
+      if (dbSession) {
+        await dbSession.abortTransaction().catch(() => {});
+        dbSession.endSession();
+        dbSession = null;
+      }
+      if (err.code === 20 || err.message?.includes('Transaction numbers are only allowed')) {
+        return res.status(503).json({
+          success: false,
+          error: 'PAYOUT_SERVICE_UNAVAILABLE',
+          message: 'Payout requests are temporarily unavailable.',
+        });
+      }
+      throw err;
+    } finally {
+      if (dbSession) {
+        dbSession.endSession();
+      }
+    }
 
     // 9. Notify admin (emit to admin socket room)
     const ns = req.app.get('adultNamespace');
@@ -652,6 +700,13 @@ export const requestPayout = async (req: Request, res: Response) => {
       status: 'queued',
     });
   } catch (error: any) {
+    if (error.code === 11000 || error.message?.includes('E11000 duplicate key error')) {
+      return res.status(409).json({
+        success: false,
+        error: 'REQUEST_ALREADY_PENDING',
+        message: 'You already have a payout in progress.',
+      });
+    }
     return res.status(500).json({ success: false, error: error.message });
   }
 };
@@ -672,10 +727,6 @@ export const getPayoutStatus = async (req: Request, res: Response) => {
     });
 
     if (!activeRequest) {
-      const lastRequest = await PayoutRequest.findOne({ providerId: user._id }).sort({ requestedAt: -1 });
-      if (lastRequest && (lastRequest.status === 'completed' || lastRequest.status === 'rejected')) {
-        return res.json({ success: true, data: lastRequest });
-      }
       return res.json({ success: true, data: null });
     }
 

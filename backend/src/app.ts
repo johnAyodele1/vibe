@@ -82,9 +82,10 @@ if (process.env.NODE_ENV !== 'test') {
     }
     try {
       const { repairPushSubscriptionIndex } = require('./services/pushIndexMigrationService');
-      await repairPushSubscriptionIndex();
+      const { repairPayoutIndex } = require('./services/payoutIndexMigrationService');
+      await Promise.all([repairPushSubscriptionIndex(), repairPayoutIndex()]);
     } catch (err) {
-      console.error("Error repairing PushSubscription indexes:", err);
+      console.error("Error repairing database indexes:", err);
     }
   }).catch(error => console.error('MongoDB connection error:', error));
 }
