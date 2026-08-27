@@ -1,6 +1,6 @@
 {
   "name": "vibe-backend",
-  "version": "1.0.1",
+  "version": "1.0.0",
   "description": "Backend for Vibe dating app",
   "main": "dist/server.js",
   "scripts": {
