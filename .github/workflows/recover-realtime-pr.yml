@@ -1,0 +1,122 @@
+name: Recover realtime PR changes
+
+on:
+  push:
+    branches: [repair/realtime-controller-recovery]
+
+permissions:
+  contents: write
+
+jobs:
+  recover:
+    if: "${{ !contains(github.event.head_commit.message, '[recovered]') }}"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore realtime changes without replacing controller
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          def once(path, old, new, label):
+              p = Path(path)
+              text = p.read_text()
+              n = text.count(old)
+              if n != 1:
+                  raise SystemExit(f'{label}: expected 1 match, got {n}')
+              p.write_text(text.replace(old, new, 1))
+
+          def all_(path, old, new, minimum, label):
+              p = Path(path)
+              text = p.read_text()
+              n = text.count(old)
+              if n < minimum:
+                  raise SystemExit(f'{label}: expected >= {minimum} matches, got {n}')
+              p.write_text(text.replace(old, new))
+
+          # Backend: restore main's complete controller, then add only the realtime
+          # delivery helper and route all existing sext:new_message emissions through it.
+          p = Path('backend/src/controllers/adultSext.controller.ts')
+          text = p.read_text()
+          anchor = "import { checkActiveCall, endCamSessionAtomic, endCamSessionForCall } from '../services/sessionInvariantService';\n"
+          helper = """\nconst emitSextMessage = (ns: any, conversationId: string | string[], envelope: { message?: any }) => {\n  const normalizedConversationId = Array.isArray(conversationId) ? conversationId[0] : conversationId;\n  if (!normalizedConversationId) return;\n\n  ns.to(`conv:${normalizedConversationId}`).emit('sext:new_message', envelope);\n  const receiverId = envelope?.message?.receiverId?.toString();\n  if (receiverId) {\n    ns.to(`user:${receiverId}`).emit('sext:new_message', envelope);\n  }\n};\n"""
+          if text.count(anchor) != 1:
+              raise SystemExit('controller import anchor mismatch')
+          text = text.replace(anchor, anchor + helper, 1)
+          # Only replace room emissions in the controller body, not the helper itself.
+          body_start = text.index(anchor) + len(anchor) + len(helper)
+          prefix, body = text[:body_start], text[body_start:]
+          pattern = re.compile(r"ns\.to\(`conv:\$\{([^}]+)\}`\)\.emit\('sext:new_message', ")
+          body, count = pattern.subn(r"emitSextMessage(ns, \1, ", body)
+          if count < 5:
+              raise SystemExit(f'controller realtime emission count unexpectedly low: {count}')
+          p.write_text(prefix + body)
+
+          # Backend terminology.
+          all_('backend/src/controllers/adultSext.controller.ts', 'Requested a tonight service', 'Requested activity service', 1, 'controller request wording')
+
+          # Frontend socket lifecycle: keep one socket for the authenticated page and
+          # rejoin the active conversation after reconnects. Use the ref in handlers so
+          # listeners never close over a stale selected conversation.
+          once('vibe/src/components/AdultZone/PrivateSext.tsx',
+               "    s.on('connect', () => {\n      console.log('Private Sext connected to /adult socket:', s.id);\n    });",
+               "    s.on('connect', () => {\n      console.log('Private Sext connected to /adult socket:', s.id);\n      if (activeConvIdRef.current) {\n        s.emit('conv:join', { conversationId: activeConvIdRef.current });\n      }\n    });",
+               'PrivateSext connect')
+          once('vibe/src/components/AdultZone/PrivateSext.tsx',
+               '  }, [token, selectedConv?.conversationId]);',
+               '  }, [token]);',
+               'PrivateSext socket dependency')
+          once('vibe/src/components/AdultZone/ProviderMessages.tsx',
+               "    s.on('connect', () => {\n      console.log('Provider connected to /adult socket:', s.id);\n    });",
+               "    s.on('connect', () => {\n      console.log('Provider connected to /adult socket:', s.id);\n      if (activeConvIdRef.current) {\n        s.emit('conv:join', { conversationId: activeConvIdRef.current });\n      }\n    });",
+               'ProviderMessages connect')
+          once('vibe/src/components/AdultZone/ProviderMessages.tsx',
+               '  }, [token, selectedConv?.conversationId]);',
+               '  }, [token]);',
+               'ProviderMessages socket dependency')
+
+          private_old = """    s.on('sext:new_message', (payload: { message: Message }) => {\n      const myUserId = user?.id || (user as any)?._id;\n      if (selectedConv && payload.message.conversationId === selectedConv.conversationId && payload.message.senderId !== myUserId) {\n        setMessages(prev => {\n          if (prev.some(m => m.id === payload.message.id)) return prev;\n          return [...prev, payload.message];\n        });\n        markConversationRead(selectedConv.conversationId);\n        s.emit('sext:message_delivered', { messageId: payload.message.id });\n      }\n      fetchConversations();\n    });"""
+          private_new = private_old.replace('selectedConv && payload.message.conversationId === selectedConv.conversationId', 'activeConvIdRef.current && payload.message.conversationId === activeConvIdRef.current').replace('markConversationRead(selectedConv.conversationId)', 'markConversationRead(activeConvIdRef.current)')
+          # Avoid the non-null ambiguity by using a local id in the final handler.
+          private_new = private_new.replace('const myUserId = user?.id || (user as any)?._id;\n      const activeConvIdRef.current && payload.message.conversationId === activeConvIdRef.current', 'const myUserId = user?.id || (user as any)?._id;\n      const activeConversationId = activeConvIdRef.current;\n      if (activeConversationId && payload.message.conversationId === activeConversationId && payload.message.senderId !== myUserId)') if False else None
+          # Apply explicit handler replacement.
+          private_new = """    s.on('sext:new_message', (payload: { message: Message }) => {\n      const myUserId = user?.id || (user as any)?._id;\n      const activeConversationId = activeConvIdRef.current;\n      if (activeConversationId && payload.message.conversationId === activeConversationId && payload.message.senderId !== myUserId) {\n        setMessages(prev => {\n          if (prev.some(m => m.id === payload.message.id)) return prev;\n          return [...prev, payload.message];\n        });\n        markConversationRead(activeConversationId);\n        s.emit('sext:message_delivered', { messageId: payload.message.id });\n      }\n      fetchConversations();\n    });"""
+          once('vibe/src/components/AdultZone/PrivateSext.tsx', private_old, private_new, 'PrivateSext new_message handler')
+
+          provider_old = private_old.replace('Private', 'Provider') if False else private_old
+          provider_new = private_new
+          once('vibe/src/components/AdultZone/ProviderMessages.tsx', provider_old, provider_new, 'ProviderMessages new_message handler')
+
+          for path in ['vibe/src/components/AdultZone/PrivateSext.tsx', 'vibe/src/components/AdultZone/ProviderMessages.tsx']:
+              all_(path, 'Tonight rate:', 'Activity rate:', 1, f'{path} rate label')
+              once(path,
+                   "{c.lastMessage ? c.lastMessage.content : 'No messages yet...'}",
+                   "{c.lastMessage ? c.lastMessage.content.replace('Requested a tonight service', 'Requested activity service') : 'No messages yet...'}",
+                   f'{path} conversation preview')
+
+      - name: Verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          test "$(git diff --numstat -- backend/src/controllers/adultSext.controller.ts | awk '{print $1}')" -lt 50
+          grep -q 'conversationId: string | string\[\]' backend/src/controllers/adultSext.controller.ts
+          grep -q 'emitSextMessage' backend/src/controllers/adultSext.controller.ts
+          grep -q 'Activity rate:' vibe/src/components/AdultZone/PrivateSext.tsx
+          grep -q 'Activity rate:' vibe/src/components/AdultZone/ProviderMessages.tsx
+          cd backend
+          npm run build
+
+      - name: Commit recovery and remove workflow
+        shell: bash
+        run: |
+          rm .github/workflows/recover-realtime-pr.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend/src/controllers/adultSext.controller.ts vibe/src/components/AdultZone/PrivateSext.tsx vibe/src/components/AdultZone/ProviderMessages.tsx .github/workflows/recover-realtime-pr.yml
+          git commit -m 'fix: recover realtime PR without controller deletion [recovered]'
+          git push origin HEAD:repair/realtime-controller-recovery
