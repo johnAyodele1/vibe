@@ -147,7 +147,8 @@ export const endStream = async (req: Request, res: Response) => {
 
 export const joinStream = async (req: Request, res: Response) => {
     const { sessionId } = req.params;
-    const session = await CamSession.findById(sessionId);
+    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document instantiation and model hydration overhead.
+    const session = await CamSession.findById(sessionId).lean();
     if (!session || session.status !== 'live') return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Session not live' } });
 
     // Optimization (⚡ Bolt): Execute CamViewer tracking and CamSession count increment concurrently via Promise.all.
@@ -168,7 +169,8 @@ export const getCamViewerToken = async (req: Request, res: Response) => {
   const user = req.adultUser;
   const userId = user ? user._id.toString() : `guest_${Math.floor(Math.random() * 100000)}`;
 
-  const session = await CamSession.findById(sessionId);
+  // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document instantiation and model hydration overhead.
+  const session = await CamSession.findById(sessionId).lean();
   if (!session || session.status !== 'live') {
     return res.status(404).json({ error: 'Stream not found or has ended' });
   }

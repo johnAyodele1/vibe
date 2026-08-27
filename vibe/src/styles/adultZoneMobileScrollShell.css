@@ -63,5 +63,14 @@
       padding-top: env(safe-area-inset-top, 0px) !important;
       padding-bottom: 0 !important;
     }
+
+    /* iOS standalone can initialize 100dvh to the smaller viewport used by
+       Safari's bottom UI. That value can change after the user drags/scrolls,
+       which makes a normal-flow nav appear too high on first launch.
+       Use the large viewport only for the Adult Zone shell so the existing
+       normal-flow bottom nav starts at the physical bottom immediately. */
+    .az-grain {
+      height: 100lvh !important;
+    }
   }
 }

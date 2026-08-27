@@ -45,7 +45,7 @@ export const repairPushSubscriptionIndex = async (): Promise<void> => {
     if (endpointIndex && (!endpointIndex.sparse || !endpointIndex.unique)) {
       console.warn('[PushMigration] Detected endpoint_1 index missing sparse/unique requirements. Dropping and re-creating as unique sparse index...');
       try {
-        await collection.dropIndex(endpointIndex.name);
+        await collection.dropIndex(endpointIndex.name || 'endpoint_1');
       } catch (dropErr: any) {
         console.warn('[PushMigration] Drop legacy index note:', dropErr.message);
       }
@@ -53,7 +53,7 @@ export const repairPushSubscriptionIndex = async (): Promise<void> => {
       try {
         await collection.createIndex(
           { endpoint: 1 },
-          { unique: true, sparse: true, name: 'endpoint_1' }
+          { unique: true, sparse: true }
         );
         console.log('[PushMigration] Successfully re-created endpoint_1 index as unique sparse.');
       } catch (createErr: any) {
@@ -63,7 +63,7 @@ export const repairPushSubscriptionIndex = async (): Promise<void> => {
       try {
         await collection.createIndex(
           { endpoint: 1 },
-          { unique: true, sparse: true, name: 'endpoint_1' }
+          { unique: true, sparse: true }
         );
       } catch (createErr: any) {
         console.warn('[PushMigration] Creating missing endpoint_1 index note:', createErr.message);
