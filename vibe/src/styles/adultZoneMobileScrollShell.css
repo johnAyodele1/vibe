@@ -74,3 +74,14 @@
     }
   }
 }
+
+/* Provider signup CTA wording. The footer markup intentionally remains unchanged
+   structurally; only the visible label is updated. */
+[data-testid="site-footer"] button {
+  font-size: 0 !important;
+}
+
+[data-testid="site-footer"] button::after {
+  content: "Earn as provider";
+  font-size: 10px;
+}
