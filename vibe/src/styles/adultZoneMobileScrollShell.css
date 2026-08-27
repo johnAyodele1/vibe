@@ -64,13 +64,18 @@
       padding-bottom: 0 !important;
     }
 
-    /* iOS standalone can report a dynamic viewport that stops at the bottom
-       safe-area boundary. The Adult Zone shell is normal-flow based, so extend
-       only the shell by that exact safe-area amount. This lets the existing
-       bottom nav's safe-area padding occupy the inset without changing the
-       route content height or reintroducing fixed positioning. */
+    /* Keep the Adult Zone shell at the real viewport height. The safe-area
+       inset belongs to the bottom navigation, not the outer flex shell. This
+       prevents the route's flex-1 scroll region from gaining extra height. */
     .az-grain {
-      height: calc(100dvh + env(safe-area-inset-bottom, 0px)) !important;
+      height: 100dvh !important;
+    }
+
+    /* iOS standalone can expose a zero bottom safe-area value in some PWA
+       viewport configurations. Keep a small guaranteed buffer in that case,
+       while using the full system inset whenever WebKit reports one. */
+    .az-grain > [data-testid="bottom-tab-bar"] {
+      padding-bottom: max(env(safe-area-inset-bottom, 0px), 20px) !important;
     }
   }
 }
