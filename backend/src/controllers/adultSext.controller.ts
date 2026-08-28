@@ -1082,35 +1082,46 @@ export const getConversations = async (req: Request, res: Response) => {
       type: { $ne: 'official_notification' }
     };
 
-    const conversations = await AdultConversation.find(query)
-      .sort({ updatedAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(limit)
-      .lean();
+    const audienceFilter = user.role === 'provider'
+      ? { targetAudience: { $in: ['providers', 'both'] } }
+      : { targetAudience: { $in: ['users', 'both'] } };
+
+    const supportId = `support_${user._id.toString()}`;
+
+    // ⚡ OPTIMIZATION (Bolt): Execute conversation listing, official channels config, official notification queries,
+    // and support conversation lookup concurrently via Promise.all with .lean() to eliminate sequential database roundtrip latency.
+    const [
+      conversations,
+      officialChannelsConfigDoc,
+      latestNotif,
+      totalNotifs,
+      readNotifs,
+      existingSupportConv,
+    ] = await Promise.all([
+      AdultConversation.find(query)
+        .sort({ updatedAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      page === 1 ? AppConfig.findOne({ key: 'official_channels_config' }).lean() : Promise.resolve(null),
+      page === 1 ? OfficialNotification.findOne(audienceFilter).sort({ createdAt: -1 }).lean() : Promise.resolve(null),
+      page === 1 ? OfficialNotification.countDocuments(audienceFilter) : Promise.resolve(0),
+      page === 1 ? OfficialNotificationRead.countDocuments({ userId: user._id }) : Promise.resolve(0),
+      page === 1 ? AdultConversation.findById(supportId) : Promise.resolve(null),
+    ]);
 
     const results = [];
 
-    // Ensure Official Notifications (position 0) and Official Customer Support (position 1) are prepended
-    const officialChannelsConfigDoc = await AppConfig.findOne({ key: 'official_channels_config' });
-    const rawValue = officialChannelsConfigDoc?.value;
-    const officialConfig = (rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue))
-      ? (rawValue as any)
-      : {
-          notifications: { avatarUrl: '/icons/icon-192x192.png', badge: 'official', badgeType: 'blue', enabled: true },
-          support: { avatarUrl: '/icons/icon-192x192.png', badge: 'official', badgeType: 'blue', enabled: true }
-        };
-
     if (page === 1) {
-      // 1. Official Notifications channel (virtual/system channel)
-      const audienceFilter = user.role === 'provider'
-        ? { targetAudience: { $in: ['providers', 'both'] } }
-        : { targetAudience: { $in: ['users', 'both'] } };
+      const rawValue = officialChannelsConfigDoc?.value;
+      const officialConfig = (rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue))
+        ? (rawValue as any)
+        : {
+            notifications: { avatarUrl: '/icons/icon-192x192.png', badge: 'official', badgeType: 'blue', enabled: true },
+            support: { avatarUrl: '/icons/icon-192x192.png', badge: 'official', badgeType: 'blue', enabled: true }
+          };
 
-      const latestNotif = await OfficialNotification.findOne(audienceFilter).sort({ createdAt: -1 });
-      const totalNotifs = await OfficialNotification.countDocuments(audienceFilter);
-      const readNotifs = await OfficialNotificationRead.countDocuments({
-        userId: user._id,
-      });
+      // 1. Official Notifications channel (virtual/system channel)
       const unreadNotifCount = Math.max(0, totalNotifs - readNotifs);
 
       results.push({
@@ -1139,8 +1150,7 @@ export const getConversations = async (req: Request, res: Response) => {
       });
 
       // 2. Official Customer Support channel
-      const supportId = `support_${user._id.toString()}`;
-      let supportConv = await AdultConversation.findById(supportId);
+      let supportConv = existingSupportConv;
       if (!supportConv) {
         supportConv = new AdultConversation({
           _id: supportId,
@@ -1170,6 +1180,12 @@ export const getConversations = async (req: Request, res: Response) => {
         }
       }
 
+      const supportUnread = supportConv.unreadCounts
+        ? (typeof (supportConv.unreadCounts as any).get === 'function'
+            ? (supportConv.unreadCounts as any).get(user._id.toString())
+            : (supportConv.unreadCounts as any)[user._id.toString()]) || 0
+        : 0;
+
       results.push({
         conversationId: supportConv._id,
         isOfficial: true,
@@ -1191,7 +1207,7 @@ export const getConversations = async (req: Request, res: Response) => {
           senderId: supportConv.lastMessage?.senderId,
           sentAt: supportConv.lastMessage?.sentAt || supportConv.createdAt
         },
-        unreadCount: supportConv.unreadCounts.get(user._id.toString()) || 0,
+        unreadCount: supportUnread,
         isMuted: false,
         isBlocked: false,
         supportMetadata: (supportConv as any).supportMetadata
