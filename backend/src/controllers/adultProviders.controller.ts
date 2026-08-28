@@ -14,7 +14,25 @@ if (process.env.REDIS_URL || process.env.REDIS_HOST) {
   } catch (err) {}
 }
 
+export const setRedisClientForTesting = (client: any) => {
+  redisClient = client;
+};
+
+export const resetMemoryProfileViewsForTesting = () => {
+  memoryProfileViews.clear();
+};
+
 const memoryPhotoUnlocks = new Map<string, Set<string>>();
+
+const checkInMemoryViewReservation = (viewKey: string): boolean => {
+  const lastViewed = memoryProfileViews.get(viewKey);
+  const now = Date.now();
+  if (lastViewed && now - lastViewed < 3600000) {
+    return false;
+  }
+  memoryProfileViews.set(viewKey, now);
+  return true;
+};
 
 export const getProviderPublicProfile = async (req: Request, res: Response) => {
   try {
@@ -44,31 +62,25 @@ export const getProviderPublicProfile = async (req: Request, res: Response) => {
     const viewerId = req.adultUser?._id;
     if (viewerId && viewerId.toString() !== providerId) {
       const viewKey = `profile_view:${providerId}:${viewerId.toString()}`;
-      let alreadyNotified = false;
+      let isNewView = false;
 
       if (redisClient) {
         try {
-          alreadyNotified = (await redisClient.exists(viewKey)) === 1;
+          const res = await redisClient.set(viewKey, '1', 'EX', 3600, 'NX');
+          isNewView = res === 'OK';
         } catch (err) {
-          console.error('Redis exists profile_view error:', err);
+          console.error('Redis set NX profile_view error, falling back to memory:', err);
+          isNewView = checkInMemoryViewReservation(viewKey);
         }
       } else {
-        const lastNotified = memoryProfileViews.get(viewKey);
-        if (lastNotified && Date.now() - lastNotified < 3600000) {
-          alreadyNotified = true;
-        }
+        isNewView = checkInMemoryViewReservation(viewKey);
       }
 
-      if (!alreadyNotified) {
-        if (redisClient) {
-          try {
-            await redisClient.setex(viewKey, 3600, '1');
-          } catch (err) {
-            console.error('Redis setex profile_view error:', err);
-          }
-        } else {
-          memoryProfileViews.set(viewKey, Date.now());
-        }
+      if (isNewView) {
+        await AdultUser.updateOne(
+          { _id: providerId },
+          { $inc: { 'providerProfile.profileViews': 1 } }
+        ).catch(err => console.error('Error incrementing provider profile views:', err));
 
         // Send push notification to provider (⚡ Bolt: .lean() for read-only query)
         const viewer = await AdultUser.findById(viewerId).lean();

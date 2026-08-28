@@ -192,7 +192,7 @@ const ProviderDashboard: React.FC = () => {
         {/* Quick Stats Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[
-            { label: 'Profile Views', val: stats.profileViews, sub: '+12% today' },
+            { label: 'Profile Views', val: stats.profileViews, sub: null },
             { label: 'New Messages', val: stats.newMessages, sub: 'unread' },
             { label: 'Active Subs', val: stats.activeSubs, sub: 'this month' },
             { label: 'Avg Rating', val: `★ ${stats.avgRating}`, sub: `${stats.reviewCount} reviews` }
@@ -200,7 +200,7 @@ const ProviderDashboard: React.FC = () => {
             <div key={i} className="bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-2xl p-6 text-center">
               <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">{st.label}</p>
               <p className="text-3xl font-serif text-white mb-1 font-bold">{st.val}</p>
-              <p className="text-[10px] text-[var(--az-text-muted)] font-mono">{st.sub}</p>
+              {st.sub && <p className="text-[10px] text-[var(--az-text-muted)] font-mono">{st.sub}</p>}
             </div>
           ))}
         </div>
