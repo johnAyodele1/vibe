@@ -97,8 +97,9 @@ export const updateProfile = async (req: IExpressRequest, res: Response): Promis
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
     allowedFields.forEach(field => { if (body[field] !== undefined) (user as any)[field] = body[field]; });
     await user.save();
-    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document hydration overhead.
-    const updatedUser = await User.findById(req.user._id).select('-password').lean();
+    // Optimization (⚡ Bolt): Convert saved Mongoose document to plain JS object and delete password in memory, eliminating redundant 2nd database query roundtrip.
+    const updatedUser = user.toObject();
+    delete (updatedUser as any).password;
     return res.json({ success: true, message: 'Profile updated successfully', data: { user: updatedUser } });
   } catch (error) {
     console.error('Update profile error:', error);
