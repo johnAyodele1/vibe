@@ -186,8 +186,8 @@ export const refresh = async (req: Request, res: Response): Promise<Response> =>
         'fallback_secret'
     ) as { userId: string };
 
-    // Check if user exists
-    const user = await User.findById(decoded.userId);
+    // Optimization (⚡ Bolt): Use .select('_id').lean() to avoid document hydration on token refresh.
+    const user = await User.findById(decoded.userId).select('_id').lean();
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -196,7 +196,7 @@ export const refresh = async (req: Request, res: Response): Promise<Response> =>
     }
 
     // Generate new access token
-    const accessToken = generateAccessToken((user._id as Types.ObjectId).toString());
+    const accessToken = generateAccessToken(user._id.toString());
 
     return res.json({
       success: true,
@@ -245,9 +245,11 @@ export const me = async (req: Request, res: Response): Promise<Response> => {
     if (!req.user) {
       return res.status(401).json({ success: false, message: 'Not authenticated' });
     }
+    // Optimization (⚡ Bolt): Append .lean() on read-only user query to avoid Mongoose document hydration.
     const user = await User.findById(req.user._id)
       .select('-password')
-      .populate('matches.user', 'firstName lastName age photos');
+      .populate('matches.user', 'firstName lastName age photos')
+      .lean();
 
     return res.json({
       success: true,
