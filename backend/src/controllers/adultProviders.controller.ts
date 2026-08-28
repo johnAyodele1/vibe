@@ -40,35 +40,36 @@ export const getProviderPublicProfile = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Provider not found' } });
     }
 
-    // Profile view tracking and rate-limited push trigger
+    // Profile view tracking and rate-limited push trigger.
+    // Count a viewer once per hour so refreshes do not inflate the metric.
     const viewerId = req.adultUser?._id;
     if (viewerId && viewerId.toString() !== providerId) {
       const viewKey = `profile_view:${providerId}:${viewerId.toString()}`;
-      let alreadyNotified = false;
+      let shouldRecordView = false;
 
       if (redisClient) {
         try {
-          alreadyNotified = (await redisClient.exists(viewKey)) === 1;
+          // SET NX makes the view reservation atomic across concurrent requests.
+          const result = await redisClient.set(viewKey, '1', 'EX', 3600, 'NX');
+          shouldRecordView = result === 'OK';
         } catch (err) {
-          console.error('Redis exists profile_view error:', err);
+          console.error('Redis profile view tracking error:', err);
         }
       } else {
-        const lastNotified = memoryProfileViews.get(viewKey);
-        if (lastNotified && Date.now() - lastNotified < 3600000) {
-          alreadyNotified = true;
+        const lastViewed = memoryProfileViews.get(viewKey);
+        if (!lastViewed || Date.now() - lastViewed >= 3600000) {
+          memoryProfileViews.set(viewKey, Date.now());
+          shouldRecordView = true;
         }
       }
 
-      if (!alreadyNotified) {
-        if (redisClient) {
-          try {
-            await redisClient.setex(viewKey, 3600, '1');
-          } catch (err) {
-            console.error('Redis setex profile_view error:', err);
-          }
-        } else {
-          memoryProfileViews.set(viewKey, Date.now());
-        }
+      if (shouldRecordView) {
+        // Persist the count on the provider document; the previous implementation
+        // only throttled the notification and never incremented this field.
+        await AdultUser.findByIdAndUpdate(
+          providerId,
+          { $inc: { 'providerProfile.profileViews': 1 } }
+        );
 
         // Send push notification to provider (⚡ Bolt: .lean() for read-only query)
         const viewer = await AdultUser.findById(viewerId).lean();
