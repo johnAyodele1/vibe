@@ -211,12 +211,17 @@ export const getHookupNearbyProviders = async (req: Request, res: Response) => {
       'createdAt': -1
     };
 
-    const providers = await AdultUser.find(baseProviderFilter)
-      .sort(sort)
-      .skip((Number(page) - 1) * Number(limit))
-      .limit(Number(limit));
-
-    const total = await AdultUser.countDocuments(baseProviderFilter);
+    // ⚡ OPTIMIZATION (Bolt): Execute provider query and total count concurrently via Promise.all,
+    // and use .select() with .lean() to eliminate database waterfall latency and Mongoose document instantiation overhead.
+    const [providers, total] = await Promise.all([
+      AdultUser.find(baseProviderFilter)
+        .select('displayName profilePhoto dateOfBirth isVerified providerProfile.stageName providerProfile.location providerProfile.isOnline providerProfile.photos providerProfile.tonightRate')
+        .sort(sort)
+        .skip((Number(page) - 1) * Number(limit))
+        .limit(Number(limit))
+        .lean(),
+      AdultUser.countDocuments(baseProviderFilter)
+    ]);
 
     const formattedProviders = providers.map((p: any) => {
       let age = 18;
