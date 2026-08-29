@@ -186,8 +186,8 @@ export const refresh = async (req: Request, res: Response): Promise<Response> =>
         'fallback_secret'
     ) as { userId: string };
 
-    // Check if user exists
-    const user = await User.findById(decoded.userId);
+    // Optimization (⚡ Bolt): Use .lean() on read-only user query to eliminate Mongoose document instantiation and model hydration overhead.
+    const user = await User.findById(decoded.userId).select('_id').lean();
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -245,9 +245,11 @@ export const me = async (req: Request, res: Response): Promise<Response> => {
     if (!req.user) {
       return res.status(401).json({ success: false, message: 'Not authenticated' });
     }
+    // Optimization (⚡ Bolt): Use .lean() on read-only user profile query to eliminate Mongoose document hydration overhead.
     const user = await User.findById(req.user._id)
       .select('-password')
-      .populate('matches.user', 'firstName lastName age photos');
+      .populate('matches.user', 'firstName lastName age photos')
+      .lean();
 
     return res.json({
       success: true,

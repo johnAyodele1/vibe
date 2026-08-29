@@ -249,17 +249,18 @@ export const markAsRead = async (req: IExpressRequest, res: Response): Promise<R
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
-    await conversation.resetUnreadCount(req.user._id as Types.ObjectId);
-
-    // Also mark messages as read
-    await Message.updateMany(
-      {
-        conversation: conversationId,
-        receiver: req.user._id as Types.ObjectId,
-        isRead: false,
-      },
-      { isRead: true, readAt: new Date() }
-    );
+    // Optimization (⚡ Bolt): Run conversation unread count reset and Message.updateMany concurrently via Promise.all to eliminate database waterfall latency.
+    await Promise.all([
+      conversation.resetUnreadCount(req.user._id as Types.ObjectId),
+      Message.updateMany(
+        {
+          conversation: conversationId,
+          receiver: req.user._id as Types.ObjectId,
+          isRead: false,
+        },
+        { isRead: true, readAt: new Date() }
+      ),
+    ]);
 
     return res.json({ success: true, message: 'Conversation marked as read' });
   } catch (error) {

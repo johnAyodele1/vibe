@@ -16,6 +16,7 @@ export const getReconciledAnalyticsOverview = async (_req: Request, res: Respons
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
+    // Optimization (⚡ Bolt): Combine all-time platform fee summation and source breakdown aggregations into a single $facet query on PlatformEarning to reduce database collection scan roundtrips from 2 to 1.
     const [
       rate,
       totalMembers,
@@ -23,9 +24,8 @@ export const getReconciledAnalyticsOverview = async (_req: Request, res: Respons
       activeToday,
       newToday,
       onlineNow,
-      allTimePlatformFees,
+      platformEarningFacet,
       payouts,
-      sourceBreakdowns,
       camSessionStats,
       totalMessages,
       totalTransactions,
@@ -38,10 +38,19 @@ export const getReconciledAnalyticsOverview = async (_req: Request, res: Respons
       AdultUser.countDocuments({ isOnline: true }),
       PlatformEarning.aggregate([
         {
-          $group: {
-            _id: null,
-            total: { $sum: '$amount' },
-            totalNaira: { $sum: { $ifNull: ['$nairaValue', 0] } },
+          $facet: {
+            totals: [
+              {
+                $group: {
+                  _id: null,
+                  total: { $sum: '$amount' },
+                  totalNaira: { $sum: { $ifNull: ['$nairaValue', 0] } },
+                },
+              },
+            ],
+            sources: [
+              { $group: { _id: '$source', total: { $sum: '$amount' } } },
+            ],
           },
         },
       ]),
@@ -72,9 +81,6 @@ export const getReconciledAnalyticsOverview = async (_req: Request, res: Respons
           },
         },
       ]),
-      PlatformEarning.aggregate([
-        { $group: { _id: '$source', total: { $sum: '$amount' } } },
-      ]),
       (async () => {
         try {
           const [active, total] = await Promise.all([
@@ -90,8 +96,9 @@ export const getReconciledAnalyticsOverview = async (_req: Request, res: Respons
       CreditTransaction.countDocuments(),
     ]);
 
-    const totalPlatformFees = allTimePlatformFees[0]?.total || 0;
-    const totalPlatformNaira = allTimePlatformFees[0]?.totalNaira || 0;
+    const facetResult = platformEarningFacet[0] || { totals: [], sources: [] };
+    const totalPlatformFees = facetResult.totals[0]?.total || 0;
+    const totalPlatformNaira = facetResult.totals[0]?.totalNaira || 0;
     const paidOut = Math.abs(
       payouts[0]?.completed || 0,
     );
@@ -107,7 +114,7 @@ export const getReconciledAnalyticsOverview = async (_req: Request, res: Respons
       spinWheel: 0,
     };
 
-    sourceBreakdowns.forEach(item => {
+    (facetResult.sources || []).forEach((item: { _id: string; total: number }) => {
       const sourceKey = item._id === 'paid_media'
         ? 'paidMedia'
         : item._id === 'spin_wheel'
