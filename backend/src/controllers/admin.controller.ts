@@ -566,7 +566,7 @@ export const getAnalytics = async (req: IExpressRequest, res: Response): Promise
 // @access  Private/Admin
 export const getAllReports = async (req: IExpressRequest, res: Response): Promise<Response> => {
   try {
-    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document hydration overhead.
+    // ⚡ OPTIMIZATION (Bolt): Use .lean() on read-only query to eliminate Mongoose document hydration overhead.
     const reports = await Report.find()
       .populate('reporter', 'firstName lastName email')
       .populate('reported', 'firstName lastName email isBlocked')
@@ -584,7 +584,7 @@ export const getAllReports = async (req: IExpressRequest, res: Response): Promis
 // @access  Private/Admin
 export const getAllUsers = async (req: IExpressRequest, res: Response): Promise<Response> => {
   try {
-    // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document hydration overhead.
+    // ⚡ OPTIMIZATION (Bolt): Use .lean() on read-only query to eliminate Mongoose document hydration overhead.
     const users = await User.find()
       .select('firstName lastName email isBlocked createdAt lastActive')
       .sort({ createdAt: -1 })

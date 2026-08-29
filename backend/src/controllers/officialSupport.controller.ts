@@ -153,6 +153,7 @@ export const adminGetNotifications = async (req: Request, res: Response) => {
     if (!(req as any).user?._id) {
       return res.status(403).json({ success: false, error: 'Admin access required' });
     }
+    // ⚡ OPTIMIZATION (Bolt): Use .lean() on read-only notification query to eliminate Mongoose document instantiation and model hydration overhead.
     const notifications = await OfficialNotification.find().sort({ createdAt: -1 }).limit(100).lean();
     return res.json({ success: true, notifications });
   } catch (error: any) {

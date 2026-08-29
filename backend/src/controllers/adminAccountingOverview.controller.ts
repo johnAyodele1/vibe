@@ -16,6 +16,7 @@ export const getReconciledAnalyticsOverview = async (_req: Request, res: Respons
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
+    // ⚡ OPTIMIZATION (Bolt): Combine all-time platform fee totals and source breakdown aggregations into a single $facet query on PlatformEarning.
     const [
       rate,
       totalMembers,
@@ -23,9 +24,8 @@ export const getReconciledAnalyticsOverview = async (_req: Request, res: Respons
       activeToday,
       newToday,
       onlineNow,
-      allTimePlatformFees,
+      platformEarningStats,
       payouts,
-      sourceBreakdowns,
       camSessionStats,
       totalMessages,
       totalTransactions,
@@ -38,10 +38,19 @@ export const getReconciledAnalyticsOverview = async (_req: Request, res: Respons
       AdultUser.countDocuments({ isOnline: true }),
       PlatformEarning.aggregate([
         {
-          $group: {
-            _id: null,
-            total: { $sum: '$amount' },
-            totalNaira: { $sum: { $ifNull: ['$nairaValue', 0] } },
+          $facet: {
+            totals: [
+              {
+                $group: {
+                  _id: null,
+                  total: { $sum: '$amount' },
+                  totalNaira: { $sum: { $ifNull: ['$nairaValue', 0] } },
+                },
+              },
+            ],
+            sources: [
+              { $group: { _id: '$source', total: { $sum: '$amount' } } },
+            ],
           },
         },
       ]),
@@ -72,9 +81,6 @@ export const getReconciledAnalyticsOverview = async (_req: Request, res: Respons
           },
         },
       ]),
-      PlatformEarning.aggregate([
-        { $group: { _id: '$source', total: { $sum: '$amount' } } },
-      ]),
       (async () => {
         try {
           const [active, total] = await Promise.all([
@@ -89,6 +95,9 @@ export const getReconciledAnalyticsOverview = async (_req: Request, res: Respons
       AdultMessage.countDocuments(),
       CreditTransaction.countDocuments(),
     ]);
+
+    const allTimePlatformFees = platformEarningStats[0]?.totals || [];
+    const sourceBreakdowns = platformEarningStats[0]?.sources || [];
 
     const totalPlatformFees = allTimePlatformFees[0]?.total || 0;
     const totalPlatformNaira = allTimePlatformFees[0]?.totalNaira || 0;
@@ -107,7 +116,7 @@ export const getReconciledAnalyticsOverview = async (_req: Request, res: Respons
       spinWheel: 0,
     };
 
-    sourceBreakdowns.forEach(item => {
+    sourceBreakdowns.forEach((item: { _id: string; total: number }) => {
       const sourceKey = item._id === 'paid_media'
         ? 'paidMedia'
         : item._id === 'spin_wheel'
