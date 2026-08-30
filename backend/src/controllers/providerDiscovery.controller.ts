@@ -356,19 +356,23 @@ export const getPublicProviderProfileWithResponseStats = async (req: Request, re
       });
     }
 
-    const metrics = await getRecentResponseMetrics(providerId);
+    // Optimization (⚡ Bolt): Intercept res.json and start response metrics aggregation concurrently with profile execution.
+    // Attach immediate .catch() to metricsPromise to guarantee error handling and prevent unhandled promise rejections.
+    const metricsPromise = getRecentResponseMetrics(providerId).catch((err) => {
+      console.error('Error fetching response metrics concurrently:', err);
+      return null;
+    });
 
-    if (metrics) {
-      const originalJson = res.json.bind(res);
-      res.json = ((body: any) => {
-        if (body?.success && body?.data) {
-          body.data.recentResponseCount = metrics.recentResponseCount || 0;
-          body.data.recentAverageResponseMinutes = metrics.recentAverageResponseMinutes ?? null;
-          body.data.effectiveResponseMinutes = metrics.effectiveResponseMinutes ?? null;
-        }
-        return originalJson(body);
-      }) as typeof res.json;
-    }
+    const originalJson = res.json.bind(res);
+    res.json = (async (body: any) => {
+      const metrics = await metricsPromise;
+      if (body?.success && body?.data && metrics) {
+        body.data.recentResponseCount = metrics.recentResponseCount || 0;
+        body.data.recentAverageResponseMinutes = metrics.recentAverageResponseMinutes ?? null;
+        body.data.effectiveResponseMinutes = metrics.effectiveResponseMinutes ?? null;
+      }
+      return originalJson(body);
+    }) as typeof res.json;
 
     return getProviderPublicProfile(req, res);
   } catch (error: any) {

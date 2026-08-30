@@ -5,25 +5,73 @@ import { generateAgoraToken } from '../services/agora.service';
 import { checkActiveCamSession, endCamSessionAtomic } from '../services/sessionInvariantService';
 
 export const getCams = async (req: Request, res: Response) => {
-  const { page = 1, limit = 20, status } = req.query;
-  const query: any = { status: status ? status : { $in: ['live', 'pending'] } };
+  const pageNum = Math.max(1, Number(req.query.page) || 1);
+  const limitNum = Math.max(1, Math.min(100, Number(req.query.limit) || 20));
+  const statusParam = req.query.status;
+  const matchStatus = statusParam ? statusParam : { $in: ['live', 'pending'] };
 
-  // Optimization (⚡ Bolt): Use .lean() on read-only query to eliminate Mongoose document instantiation and model hydration overhead.
-  const sessions = await CamSession.find(query)
-    .populate({
-      path: 'providerId',
-      match: {
-        status: 'active',
-        'providerProfile.onboarding.isComplete': true,
-        isVerified: true
+  // Optimization (⚡ Bolt): Perform database-level $lookup, provider verification matching, and $facet pagination.
+  // This eliminates loading all database sessions into Node.js server memory for array .filter() and .slice().
+  const [result] = await CamSession.aggregate([
+    { $match: { status: matchStatus } },
+    {
+      $lookup: {
+        from: 'adultusers',
+        localField: 'providerId',
+        foreignField: '_id',
+        as: 'providerId',
       },
-      select: 'providerProfile username profilePhoto'
-    })
-    .lean();
+    },
+    { $unwind: '$providerId' },
+    {
+      $match: {
+        'providerId.status': 'active',
+        'providerId.providerProfile.onboarding.isComplete': true,
+        'providerId.isVerified': true,
+      },
+    },
+    {
+      $project: {
+        _id: 1,
+        title: 1,
+        tags: 1,
+        sessionType: 1,
+        privateShowRate: 1,
+        resolution: 1,
+        chatEnabled: 1,
+        recordingEnabled: 1,
+        streamKey: 1,
+        streamPlaybackUrl: 1,
+        status: 1,
+        startedAt: 1,
+        totalViewerCount: 1,
+        peakViewerCount: 1,
+        totalTipsReceived: 1,
+        durationSeconds: 1,
+        createdAt: 1,
+        updatedAt: 1,
+        providerId: {
+          _id: '$providerId._id',
+          username: '$providerId.username',
+          profilePhoto: '$providerId.profilePhoto',
+          providerProfile: '$providerId.providerProfile',
+        },
+      },
+    },
+    {
+      $facet: {
+        metadata: [{ $count: 'total' }],
+        sessions: [
+          { $sort: { startedAt: -1, _id: -1 } },
+          { $skip: (pageNum - 1) * limitNum },
+          { $limit: limitNum },
+        ],
+      },
+    },
+  ]);
 
-  const filtered = sessions.filter(s => s.providerId !== null);
-  const total = filtered.length;
-  const paginated = filtered.slice((Number(page) - 1) * Number(limit), Number(page) * Number(limit));
+  const total = result?.metadata?.[0]?.total || 0;
+  const paginated = result?.sessions || [];
 
   const ns = req.app.get('adultNamespace');
 
@@ -50,7 +98,7 @@ export const getCams = async (req: Request, res: Response) => {
         currentViewerCount = 0;
       }
     }
-    // Optimization (⚡ Bolt): session is already an un-hydrated plain object from .lean().
+    // Optimization (⚡ Bolt): session is already an un-hydrated plain object from aggregation.
     return {
       ...session,
       totalViewerCount: currentViewerCount,
@@ -58,7 +106,7 @@ export const getCams = async (req: Request, res: Response) => {
     };
   });
 
-  res.json({ success: true, data: { sessions: mappedSessions, total, page: Number(page), pages: Math.ceil(total / Number(limit)) } });
+  res.json({ success: true, data: { sessions: mappedSessions, total, page: pageNum, pages: Math.ceil(total / limitNum) } });
 };
 
 export const startStream = async (req: Request, res: Response) => {

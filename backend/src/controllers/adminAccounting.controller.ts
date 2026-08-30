@@ -124,7 +124,18 @@ export const getAccountingSummary = async (_req: Request, res: Response): Promis
       // 6. Customer Refunds
       CustomerRefund.aggregate([
         { $match: { status: 'REFUND_COMPLETED' } },
-        { $lookup: { from: 'credittransactions', localField: 'originalTxId', foreignField: '_id', as: 'originalTransaction' } },
+        {
+          $lookup: {
+            from: 'credittransactions',
+            let: { origTxId: '$originalTxId' },
+            pipeline: [
+              { $match: { $expr: { $eq: ['$_id', '$$origTxId'] } } },
+              // Optimization (⚡ Bolt): Project only fields required for Naira calculation to reduce BSON memory transfer.
+              { $project: { _id: 1, amount: 1, nairaAmount: 1 } },
+            ],
+            as: 'originalTransaction',
+          },
+        },
         { $unwind: { path: '$originalTransaction', preserveNullAndEmptyArrays: true } },
         {
           $group: {

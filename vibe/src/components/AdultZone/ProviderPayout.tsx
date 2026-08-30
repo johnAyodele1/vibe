@@ -73,6 +73,83 @@ const STATUS_CONFIG: Record<string, any> = {
   },
 };
 
+// Optimization (⚡ Bolt): Extract helper formatters out of render scope to preserve reference equality.
+const formatPayoutDestination = (reqObj: any) => {
+  if (!reqObj) return 'Configured Method';
+  if (reqObj.payoutMethod === 'bank') {
+    const details = reqObj.payoutDetails || {};
+    const lastFour = details.accountNumber ? `(****${details.accountNumber.slice(-4)})` : '';
+    return `${details.bankName || 'Bank Transfer'} ${lastFour}`.trim();
+  }
+  if (reqObj.payoutMethod === 'paypal') {
+    return `PayPal: ${reqObj.payoutDetails?.paypalEmail || ''}`;
+  }
+  if (reqObj.payoutMethod === 'crypto') {
+    const details = reqObj.payoutDetails || {};
+    const addr = details.cryptoAddress
+      ? `${details.cryptoAddress.slice(0, 6)}...${details.cryptoAddress.slice(-4)}`
+      : '';
+    return `${details.cryptoCurrency || 'Crypto'}${addr ? ` (${addr})` : ''}`;
+  }
+  return reqObj.payoutMethod || 'Configured Method';
+};
+
+const formatDate = (dateStr: string) => {
+  if (!dateStr) return '';
+  return new Date(dateStr).toLocaleDateString('en-NG', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+};
+
+// Optimization (⚡ Bolt): Extract React.memo wrapped list components for desktop table rows & mobile cards.
+const PayoutHistoryRow: React.FC<{ item: any }> = React.memo(({ item }) => (
+  <tr className="hover:bg-slate-900/40 transition-colors">
+    <td className="py-4 px-4 text-slate-300 font-medium whitespace-nowrap">{formatDate(item.requestedAt)}</td>
+    <td className="py-4 px-4 font-mono font-semibold text-amber-400 whitespace-nowrap">💎 {formatAmount(item.amount)}</td>
+    <td className="py-4 px-4 font-mono text-slate-300 whitespace-nowrap">₦{item.amountNaira?.toLocaleString('en-NG')}</td>
+    <td className="py-4 px-4 text-slate-400 max-w-xs truncate">{formatPayoutDestination(item)}</td>
+    <td className="py-4 px-4 text-center whitespace-nowrap">
+      <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${item.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : item.status === 'rejected' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'}`}>
+        {item.status?.toUpperCase()}
+      </span>
+    </td>
+  </tr>
+));
+PayoutHistoryRow.displayName = 'PayoutHistoryRow';
+
+const PayoutHistoryCard: React.FC<{ item: any }> = React.memo(({ item }) => (
+  <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 text-xs space-y-2.5">
+    <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+      <span className="text-slate-400 font-medium">{formatDate(item.requestedAt)}</span>
+      <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border ${item.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : item.status === 'rejected' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'}`}>
+        {item.status?.toUpperCase()}
+      </span>
+    </div>
+    <div className="flex justify-between items-baseline">
+      <span className="text-slate-400">Amount:</span>
+      <div className="text-right">
+        <span className="font-mono font-bold text-amber-400 text-sm block">💎 {formatAmount(item.amount)}</span>
+        <span className="font-mono text-slate-300 block text-[11px]">₦{item.amountNaira?.toLocaleString('en-NG')}</span>
+      </div>
+    </div>
+    <div className="flex justify-between items-baseline pt-1 border-t border-slate-800/60">
+      <span className="text-slate-400">Destination:</span>
+      <span className="text-slate-300 font-medium max-w-[200px] break-all text-right">{formatPayoutDestination(item)}</span>
+    </div>
+    {item.adminReference && (
+      <div className="text-[11px] text-slate-500 font-mono text-right">Ref: {item.adminReference}</div>
+    )}
+    {item.status === 'rejected' && item.rejectedReason && (
+      <div className="text-[11px] text-rose-400 bg-rose-950/20 border border-rose-500/20 p-2 rounded-lg">
+        Reason: {item.rejectedReason}
+      </div>
+    )}
+  </div>
+));
+PayoutHistoryCard.displayName = 'PayoutHistoryCard';
+
 const ProviderPayout: React.FC = () => {
   const navigate = useNavigate();
   const token = localStorage.getItem('adultAccessToken');
@@ -186,35 +263,6 @@ const ProviderPayout: React.FC = () => {
     } finally {
       setIsSending(false);
     }
-  };
-
-  const formatPayoutDestination = (reqObj: any) => {
-    if (!reqObj) return 'Configured Method';
-    if (reqObj.payoutMethod === 'bank') {
-      const details = reqObj.payoutDetails || {};
-      const lastFour = details.accountNumber ? `(****${details.accountNumber.slice(-4)})` : '';
-      return `${details.bankName || 'Bank Transfer'} ${lastFour}`.trim();
-    }
-    if (reqObj.payoutMethod === 'paypal') {
-      return `PayPal: ${reqObj.payoutDetails?.paypalEmail || ''}`;
-    }
-    if (reqObj.payoutMethod === 'crypto') {
-      const details = reqObj.payoutDetails || {};
-      const addr = details.cryptoAddress
-        ? `${details.cryptoAddress.slice(0, 6)}...${details.cryptoAddress.slice(-4)}`
-        : '';
-      return `${details.cryptoCurrency || 'Crypto'}${addr ? ` (${addr})` : ''}`;
-    }
-    return reqObj.payoutMethod || 'Configured Method';
-  };
-
-  const formatDate = (dateStr: string) => {
-    if (!dateStr) return '';
-    return new Date(dateStr).toLocaleDateString('en-NG', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
   };
 
   const steps = [
@@ -539,17 +587,7 @@ const ProviderPayout: React.FC = () => {
                   </thead>
                   <tbody className="text-sm divide-y divide-slate-800/60">
                     {history.map((h) => (
-                      <tr key={h._id} className="hover:bg-slate-900/40 transition-colors">
-                        <td className="py-4 px-4 text-slate-300 font-medium whitespace-nowrap">{formatDate(h.requestedAt)}</td>
-                        <td className="py-4 px-4 font-mono font-semibold text-amber-400 whitespace-nowrap">💎 {formatAmount(h.amount)}</td>
-                        <td className="py-4 px-4 font-mono text-slate-300 whitespace-nowrap">₦{h.amountNaira?.toLocaleString('en-NG')}</td>
-                        <td className="py-4 px-4 text-slate-400 max-w-xs truncate">{formatPayoutDestination(h)}</td>
-                        <td className="py-4 px-4 text-center whitespace-nowrap">
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${h.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : h.status === 'rejected' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'}`}>
-                            {h.status?.toUpperCase()}
-                          </span>
-                        </td>
-                      </tr>
+                      <PayoutHistoryRow key={h._id} item={h} />
                     ))}
                   </tbody>
                 </table>
@@ -558,33 +596,7 @@ const ProviderPayout: React.FC = () => {
               {/* MOBILE CARD VIEW (< 768px) */}
               <div className="md:hidden space-y-3">
                 {history.map((h) => (
-                  <div key={h._id} className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 text-xs space-y-2.5">
-                    <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                      <span className="text-slate-400 font-medium">{formatDate(h.requestedAt)}</span>
-                      <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border ${h.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : h.status === 'rejected' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'}`}>
-                        {h.status?.toUpperCase()}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-baseline">
-                      <span className="text-slate-400">Amount:</span>
-                      <div className="text-right">
-                        <span className="font-mono font-bold text-amber-400 text-sm block">💎 {formatAmount(h.amount)}</span>
-                        <span className="font-mono text-slate-300 block text-[11px]">₦{h.amountNaira?.toLocaleString('en-NG')}</span>
-                      </div>
-                    </div>
-                    <div className="flex justify-between items-baseline pt-1 border-t border-slate-800/60">
-                      <span className="text-slate-400">Destination:</span>
-                      <span className="text-slate-300 font-medium max-w-[200px] break-all text-right">{formatPayoutDestination(h)}</span>
-                    </div>
-                    {h.adminReference && (
-                      <div className="text-[11px] text-slate-500 font-mono text-right">Ref: {h.adminReference}</div>
-                    )}
-                    {h.status === 'rejected' && h.rejectedReason && (
-                      <div className="text-[11px] text-rose-400 bg-rose-950/20 border border-rose-500/20 p-2 rounded-lg">
-                        Reason: {h.rejectedReason}
-                      </div>
-                    )}
-                  </div>
+                  <PayoutHistoryCard key={h._id} item={h} />
                 ))}
               </div>
             </div>

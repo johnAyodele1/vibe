@@ -55,15 +55,23 @@ export const getCities = async (req: Request, res: Response) => {
 
     const countryCode = String(country).toUpperCase();
     const stateCode = String(state).toUpperCase();
+    const queryStr = q ? String(q).toLowerCase().trim() : '';
 
-    let cities = City.getCitiesOfState(countryCode, stateCode).map(c => ({
-      name: c.name,
-      lat: parseFloat(c.latitude || '0'),
-      lng: parseFloat(c.longitude || '0'),
-    })).sort((a, b) => a.name.localeCompare(b.name));
+    // Optimization (⚡ Bolt): Cache base city lists per country and state to avoid re-parsing country-state-city on every request.
+    const cacheKey = `location:cities:${countryCode}:${stateCode}`;
+    let cities: Array<{ name: string; lat: number; lng: number }> | null = await getCache(cacheKey);
 
-    if (q) {
-      const queryStr = String(q).toLowerCase();
+    if (!cities) {
+      cities = City.getCitiesOfState(countryCode, stateCode).map(c => ({
+        name: c.name,
+        lat: parseFloat(c.latitude || '0'),
+        lng: parseFloat(c.longitude || '0'),
+      })).sort((a, b) => a.name.localeCompare(b.name));
+
+      await setCache(cacheKey, 86400, cities);
+    }
+
+    if (queryStr) {
       cities = cities.filter(c => c.name.toLowerCase().startsWith(queryStr));
     }
 
