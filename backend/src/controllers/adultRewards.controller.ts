@@ -125,24 +125,24 @@ export const completeTask = async (req: Request, res: Response) => {
       return res.status(500).json({ success: false, message: 'Failed to update user wallet' });
     }
 
-    // Create UserTask record
-    await UserTask.create({
-      userId: user._id,
-      taskId: task._id,
-      completedAt: new Date(),
-      creditsAwarded: task.reward,
-      resetDate: getTomorrowMidnight(),
-    });
-
-    // Create CreditTransaction
-    await CreditTransaction.create({
-      userId: user._id,
-      type: 'reward',
-      amount: task.reward,
-      usdAmount: 0,
-      description: `Reward: ${task.title}`,
-      status: 'completed',
-    });
+    // Optimization (⚡ Bolt): Create UserTask record and CreditTransaction concurrently via Promise.all to eliminate sequential database roundtrip latency.
+    await Promise.all([
+      UserTask.create({
+        userId: user._id,
+        taskId: task._id,
+        completedAt: new Date(),
+        creditsAwarded: task.reward,
+        resetDate: getTomorrowMidnight(),
+      }),
+      CreditTransaction.create({
+        userId: user._id,
+        type: 'reward',
+        amount: task.reward,
+        usdAmount: 0,
+        description: `Reward: ${task.title}`,
+        status: 'completed',
+      }),
+    ]);
 
     // Emit socket update
     socketService.emitToUser(user._id.toString(), 'wallet:updated', { balance: freshUser.credits });
@@ -202,24 +202,24 @@ export const dailyCheckin = async (req: Request, res: Response) => {
       return res.status(500).json({ success: false, message: 'Failed to update user wallet' });
     }
 
-    // Create UserTask record
-    await UserTask.create({
-      userId: user._id,
-      taskId: task._id,
-      completedAt: new Date(),
-      creditsAwarded: task.reward,
-      resetDate: getTomorrowMidnight(),
-    });
-
-    // Create CreditTransaction
-    await CreditTransaction.create({
-      userId: user._id,
-      type: 'reward',
-      amount: task.reward,
-      usdAmount: 0,
-      description: `Reward: ${task.title}`,
-      status: 'completed',
-    });
+    // Optimization (⚡ Bolt): Create UserTask record and CreditTransaction concurrently via Promise.all to eliminate sequential database roundtrip latency.
+    await Promise.all([
+      UserTask.create({
+        userId: user._id,
+        taskId: task._id,
+        completedAt: new Date(),
+        creditsAwarded: task.reward,
+        resetDate: getTomorrowMidnight(),
+      }),
+      CreditTransaction.create({
+        userId: user._id,
+        type: 'reward',
+        amount: task.reward,
+        usdAmount: 0,
+        description: `Reward: ${task.title}`,
+        status: 'completed',
+      }),
+    ]);
 
     // Emit socket update
     socketService.emitToUser(user._id.toString(), 'wallet:updated', { balance: freshUser.credits });

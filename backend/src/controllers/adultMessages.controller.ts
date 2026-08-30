@@ -26,10 +26,12 @@ export const getMessages = async (req: Request, res: Response) => {
   const { page = 1 } = req.query;
   const senderId = req.adultUser?._id;
 
+  // Optimization (⚡ Bolt): Use .lean() on read-only message history query to eliminate Mongoose document instantiation and model hydration overhead.
   const messages = await AdultMessage.find({ conversationId })
     .sort({ createdAt: -1 })
     .limit(20)
-    .skip((Number(page) - 1) * 20);
+    .skip((Number(page) - 1) * 20)
+    .lean();
 
   const decryptedMessages = messages.map(m => {
     let decryptedContent = '';
@@ -43,7 +45,7 @@ export const getMessages = async (req: Request, res: Response) => {
     const isUnlocked = cost === 0 ||
       !senderId ||
       m.senderId.toString() === senderId.toString() ||
-      m.unlockedBy.some(id => id.toString() === senderId.toString());
+      (m.unlockedBy || []).some(id => id.toString() === senderId.toString());
 
     let finalMediaUrl = m.mediaUrl || '';
     if (isUnlocked && m.cloudinaryPublicId) {
@@ -55,7 +57,7 @@ export const getMessages = async (req: Request, res: Response) => {
     }
 
     return {
-      ...m.toObject(),
+      ...m,
       content: decryptedContent,
       mediaUrl: isUnlocked ? finalMediaUrl : '',
     };
