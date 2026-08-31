@@ -358,11 +358,6 @@ const AdultHome: React.FC = () => {
         </div>
       </section>
 
-      {/* Parties & Clubs Section */}
-      <section className="max-w-7xl mx-auto px-4 pb-12 w-full">
-        <PartiesAndClubs />
-      </section>
-
       {/* For You Row */}
       <section className="px-4 py-20 bg-[var(--az-bg-secondary)]/30 border-t border-[var(--az-border)] overflow-hidden">
         <div className="max-w-7xl mx-auto">
@@ -446,6 +441,11 @@ const AdultHome: React.FC = () => {
             )}
           </div>
         </div>
+      </section>
+
+      {/* Parties & Clubs Section */}
+      <section className="max-w-7xl mx-auto px-4 py-12 w-full border-t border-[var(--az-border)]">
+        <PartiesAndClubs />
       </section>
 
       {/* Dating app cross promotion circular button */}
