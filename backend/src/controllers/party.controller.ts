@@ -377,8 +377,9 @@ export const adminApproveParty = async (req: Request, res: Response) => {
     const adminId = (req as any).adultUser?._id || (req as any).user?._id;
     const { id } = req.params;
 
-    const party = await Party.findByIdAndUpdate(
-      id,
+    // Enforce state transition rule: pending_review -> approved
+    const party = await Party.findOneAndUpdate(
+      { _id: id, status: 'pending_review' },
       {
         $set: {
           status: 'approved',
@@ -391,7 +392,7 @@ export const adminApproveParty = async (req: Request, res: Response) => {
     ).lean();
 
     if (!party) {
-      return res.status(404).json({ success: false, error: 'Party not found' });
+      return res.status(400).json({ success: false, error: 'Party not found or not in pending review status' });
     }
 
     return res.json({ success: true, party, message: 'Party approved and is now live!' });
@@ -407,8 +408,9 @@ export const adminRejectParty = async (req: Request, res: Response) => {
     const { id } = req.params;
     const { reason } = req.body;
 
-    const party = await Party.findByIdAndUpdate(
-      id,
+    // Enforce state transition rule: pending_review -> rejected
+    const party = await Party.findOneAndUpdate(
+      { _id: id, status: 'pending_review' },
       {
         $set: {
           status: 'rejected',
@@ -419,7 +421,7 @@ export const adminRejectParty = async (req: Request, res: Response) => {
     ).lean();
 
     if (!party) {
-      return res.status(404).json({ success: false, error: 'Party not found' });
+      return res.status(400).json({ success: false, error: 'Party not found or not in pending review status' });
     }
 
     return res.json({ success: true, party, message: 'Party rejected' });
@@ -433,9 +435,10 @@ export const adminRejectParty = async (req: Request, res: Response) => {
 export const adminToggleFeatureParty = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const party = await Party.findById(id);
+    // Enforce business invariant: only approved live parties can be featured
+    const party = await Party.findOne({ _id: id, status: 'approved' });
     if (!party) {
-      return res.status(404).json({ success: false, error: 'Party not found' });
+      return res.status(400).json({ success: false, error: 'Party not found or not in approved status' });
     }
 
     party.isFeatured = !party.isFeatured;

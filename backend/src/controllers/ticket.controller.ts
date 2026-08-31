@@ -1,12 +1,13 @@
 import { Request, Response } from 'express';
 import Party from '../models/Party';
 import Ticket from '../models/Ticket';
+import TicketOrder from '../models/TicketOrder';
 import PlatformEarning from '../models/PlatformEarning';
+import AdultUser from '../models/AdultUser';
 import { generateQRCode } from '../shared/qr';
 import { sendEmail } from '../shared/email/brevoClient';
 import { purchaseTicketsSchema } from '../validators/partiesAndClubs.validator';
 import { PaystackService } from '../services/paystack.service';
-import AdultUser from '../models/AdultUser';
 import crypto from 'crypto';
 import mongoose from 'mongoose';
 
@@ -18,6 +19,16 @@ const generateTicketCode = async (): Promise<string> => {
     rand += chars[Math.floor(Math.random() * chars.length)];
   }
   return `ZPP-${rand}`;
+};
+
+// Generate unique order reference: ZPP-ORD-XXXXXX
+const generateOrderReference = (): string => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let rand = '';
+  for (let i = 0; i < 6; i++) {
+    rand += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return `ZPP-ORD-${rand}`;
 };
 
 // GET /api/v1/parties/:partyId/tickets/availability
@@ -60,8 +71,247 @@ export const getTicketAvailability = async (req: Request, res: Response) => {
   }
 };
 
-// POST /api/v1/parties/:partyId/tickets/purchase
-export const purchaseTickets = async (req: Request, res: Response) => {
+/**
+ * Server-Authoritative Ticket Order Fulfillment inside a MongoDB Session Transaction.
+ * Idempotent: If order is already fulfilled, returns existing tickets immediately.
+ */
+export const fulfillTicketOrderInternal = async (orderId: string, providedPaymentRef?: string) => {
+  const order = await TicketOrder.findById(orderId);
+  if (!order) {
+    throw new Error('Ticket order not found');
+  }
+
+  // IDEMPOTENCY PROTECTION: If order is already fulfilled, return existing tickets immediately
+  if (order.status === 'fulfilled') {
+    const existingTickets = await Ticket.find({ paymentRef: order.paymentReference || order.orderReference }).lean();
+    return {
+      order,
+      tickets: existingTickets,
+      isAlreadyFulfilled: true,
+    };
+  }
+
+  const party = await Party.findById(order.partyId);
+  if (!party || party.status !== 'approved') {
+    throw new Error('Party not found or not approved');
+  }
+
+  const tier = party.ticketTiers.find((t) => t.tierId === order.tierId);
+  if (!tier || !tier.isActive) {
+    throw new Error('Ticket tier not found or inactive');
+  }
+
+  const paymentRef = providedPaymentRef || order.paymentReference || order.orderReference;
+
+  // Paystack verification
+  if (order.paymentProvider === 'paystack' && process.env.NODE_ENV !== 'test') {
+    const verifyRes = await PaystackService.verifyTransaction(paymentRef);
+    if (!verifyRes.status || !verifyRes.data || verifyRes.data.status !== 'success') {
+      throw new Error(`Paystack payment verification failed: ${verifyRes.message || 'Payment not successful'}`);
+    }
+    const expectedKobo = order.priceNaira * 100;
+    if (verifyRes.data.amount !== expectedKobo || verifyRes.data.currency?.toUpperCase() !== 'NGN') {
+      throw new Error('Paid transaction amount or currency mismatch');
+    }
+  }
+
+  const singlePrice = tier.price;
+  const singlePlatformFee = Math.floor(singlePrice * party.platformFeeRate);
+  const singleOrganizerNaira = singlePrice - singlePlatformFee;
+  const qty = order.quantity;
+  const requiredDiamonds = Math.ceil(order.priceNaira / 100);
+
+  const createdTickets: any[] = [];
+
+  const executeFulfillmentMutations = async (session?: mongoose.ClientSession) => {
+    const opts = session ? { session, new: true } : { new: true };
+
+    // 1. Mark Order as Fulfilled
+    const updatedOrder = await TicketOrder.findOneAndUpdate(
+      { _id: order._id, status: 'pending' },
+      { $set: { status: 'fulfilled', fulfilledAt: new Date(), paymentReference: paymentRef } },
+      opts
+    );
+
+    if (!updatedOrder) {
+      const existing = await Ticket.find({ paymentRef }).lean();
+      return { order, tickets: existing, isAlreadyFulfilled: true };
+    }
+
+    // 2. Atomic Conditional Inventory Reservation
+    const maxAllowedSold = tier.quantity - qty;
+    const reserveResult = await Party.updateOne(
+      {
+        _id: party._id,
+        ticketTiers: {
+          $elemMatch: {
+            tierId: tier.tierId,
+            sold: { $lte: maxAllowedSold },
+          },
+        },
+      },
+      {
+        $inc: {
+          'ticketTiers.$.sold': qty,
+          totalRevenue: order.priceNaira,
+        },
+      },
+      session ? { session } : {}
+    );
+
+    if (reserveResult.modifiedCount === 0) {
+      throw new Error('Not enough tickets available for this tier');
+    }
+
+    // 3. Wallet Debit (if wallet payment)
+    if (order.paymentProvider === 'wallet') {
+      const updatedUser = await AdultUser.findOneAndUpdate(
+        { _id: order.buyerId, credits: { $gte: requiredDiamonds } },
+        { $inc: { credits: -requiredDiamonds } },
+        opts
+      );
+      if (!updatedUser) {
+        throw new Error(`Insufficient wallet balance. Required: 💎 ${requiredDiamonds}`);
+      }
+    }
+
+    // 4. Generate all tickets
+    for (let i = 0; i < qty; i++) {
+      let created = false;
+      let retries = 0;
+      let ticketDoc = null;
+
+      while (!created && retries < 5) {
+        try {
+          const ticketCode = await generateTicketCode();
+          const qrData = `https://zippo.com.ng/ticket/${ticketCode}`;
+          const qrCodeUrl = await generateQRCode(qrData);
+
+          const docs = await Ticket.create(
+            [
+              {
+                partyId: party._id,
+                tierId: tier.tierId,
+                tierName: tier.name,
+                buyerId: order.buyerId,
+                buyerName: order.buyerName,
+                ticketCode,
+                qrCodeUrl,
+                priceNaira: singlePrice,
+                platformFeeNaira: singlePlatformFee,
+                organizerNaira: singleOrganizerNaira,
+                paymentStatus: 'paid',
+                paymentRef,
+                paidAt: new Date(),
+                entryStatus: 'not_entered',
+                isValid: true,
+              },
+            ],
+            session ? { session } : {}
+          );
+          ticketDoc = docs[0];
+          created = true;
+        } catch (e: any) {
+          if (e.code === 11000) {
+            retries++;
+          } else {
+            throw e;
+          }
+        }
+      }
+
+      if (!ticketDoc) {
+        throw new Error('Unable to generate unique ticket code after maximum retries');
+      }
+      createdTickets.push(ticketDoc);
+    }
+
+    // 5. Record Platform Earning
+    if (createdTickets.length > 0) {
+      await PlatformEarning.create(
+        [
+          {
+            source: 'ticket_sale',
+            amount: order.platformFeeNaira,
+            nairaValue: order.platformFeeNaira,
+            fromUserId: order.buyerId,
+            toProviderId: party.organizerId,
+            referenceId: createdTickets[0]._id,
+            metadata: { partyId: party._id, partyTitle: party.title, quantity: qty, tierName: tier.name },
+          },
+        ],
+        session ? { session } : {}
+      );
+    }
+
+    return { order: updatedOrder, tickets: createdTickets, isAlreadyFulfilled: false };
+  };
+
+  let dbSession: mongoose.ClientSession | null = null;
+  let fulfillmentResult: any = null;
+
+  try {
+    try {
+      dbSession = await mongoose.startSession();
+      dbSession.startTransaction();
+      fulfillmentResult = await executeFulfillmentMutations(dbSession);
+      await dbSession.commitTransaction();
+      dbSession.endSession();
+      dbSession = null;
+    } catch (txErr: any) {
+      if (dbSession) {
+        await dbSession.abortTransaction().catch(() => {});
+        dbSession.endSession();
+        dbSession = null;
+      }
+      if (txErr.code === 20 || txErr.message?.includes('Transaction numbers are only allowed')) {
+        // Fallback for non-replica set environment (e.g. MongoMemoryServer in tests)
+        fulfillmentResult = await executeFulfillmentMutations();
+      } else {
+        throw txErr;
+      }
+    }
+
+    // Email dispatch AFTER transaction commit
+    if (order.buyerId) {
+      const buyerDoc = await AdultUser.findById(order.buyerId).select('email displayName').lean();
+      if (buyerDoc?.email) {
+        void sendEmail({
+          to: buyerDoc.email,
+          toName: buyerDoc.displayName || order.buyerName,
+          subject: `Ticket Confirmation: ${party.title}`,
+          html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #0a0608; color: #ffffff;">
+              <h2 style="color: #c8102e;">🎟 Your Tickets for ${party.title}</h2>
+              <p>Hi ${buyerDoc.displayName || order.buyerName},</p>
+              <p>Thank you for your purchase! Here are your ticket details:</p>
+              <ul>
+                <li><strong>Event:</strong> ${party.title}</li>
+                <li><strong>Venue:</strong> ${party.venueName} (${party.venueAddress})</li>
+                <li><strong>Date & Time:</strong> ${new Date(party.startDate).toLocaleString()}</li>
+                <li><strong>Tier:</strong> ${tier.name}</li>
+                <li><strong>Quantity:</strong> ${qty}</li>
+              </ul>
+              <h3>Your Ticket Codes:</h3>
+              <ul>
+                ${createdTickets.map((t) => `<li><strong>${t.ticketCode}</strong> - <a href="${t.qrCodeUrl}" style="color: #f5b041;">View QR Code</a></li>`).join('')}
+              </ul>
+            </div>
+          `,
+        });
+      }
+    }
+
+    return fulfillmentResult;
+  } catch (err) {
+    // Mark order failed
+    await TicketOrder.findByIdAndUpdate(order._id, { $set: { status: 'failed' } }).catch(() => {});
+    throw err;
+  }
+};
+
+// POST /api/v1/parties/:partyId/tickets/orders
+export const createTicketOrder = async (req: Request, res: Response) => {
   try {
     const partyId = Array.isArray(req.params.partyId) ? req.params.partyId[0] : req.params.partyId;
     const buyerId = (req as any).adultUser?._id || (req as any).user?._id;
@@ -74,13 +324,12 @@ export const purchaseTickets = async (req: Request, res: Response) => {
 
     const parseResult = purchaseTicketsSchema.safeParse(req.body);
     if (!parseResult.success) {
-      return res.status(400).json({ success: false, error: parseResult.error.issues[0]?.message || 'Invalid purchase data' });
+      return res.status(400).json({ success: false, error: parseResult.error.issues[0]?.message || 'Invalid order data' });
     }
 
-    const { tierId, quantity: qty, paymentReference, paymentIntentId, paymentProvider = 'simulated' } = parseResult.data;
-    const effectivePaymentRef = paymentReference || paymentIntentId || `ref_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const { tierId, quantity: qty, paymentProvider = 'paystack' } = parseResult.data;
 
-    // 1. Validate party is approved
+    // 1. Validate party
     const party = await Party.findOne({
       _id: partyId,
       status: 'approved',
@@ -90,13 +339,13 @@ export const purchaseTickets = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: 'Party not found, not approved, or has already ended' });
     }
 
-    // 2. Find tier
+    // 2. Validate tier
     const tier = party.ticketTiers.find((t) => t.tierId === tierId && t.isActive);
     if (!tier) {
       return res.status(404).json({ success: false, error: 'Ticket tier not found or is inactive' });
     }
 
-    // 3. Check per-person limit across all existing paid tickets
+    // 3. Check per-person limit
     const alreadyBought = await Ticket.countDocuments({
       partyId: party._id,
       tierId,
@@ -107,12 +356,10 @@ export const purchaseTickets = async (req: Request, res: Response) => {
       return res.status(409).json({
         success: false,
         error: `Maximum ${tier.perPersonLimit} tickets per person for this tier`,
-        alreadyBought,
-        limit: tier.perPersonLimit,
       });
     }
 
-    // 4. Single-ticket fee rounding consistency
+    // 4. Exact Fee Calculations
     const singlePrice = tier.price;
     const singlePlatformFee = Math.floor(singlePrice * party.platformFeeRate);
     const singleOrganizerNaira = singlePrice - singlePlatformFee;
@@ -121,183 +368,65 @@ export const purchaseTickets = async (req: Request, res: Response) => {
     const platformFeeNaira = singlePlatformFee * qty;
     const organizerNaira = singleOrganizerNaira * qty;
 
-    // 5. ATOMIC CONDITIONAL INVENTORY RESERVATION
-    // Reserves inventory FIRST before charging payment
-    const maxAllowedSold = tier.quantity - qty;
-    const reserveResult = await Party.updateOne(
-      {
-        _id: party._id,
-        ticketTiers: {
-          $elemMatch: {
-            tierId,
-            sold: { $lte: maxAllowedSold },
-          },
+    const orderReference = generateOrderReference();
+    const paymentReference = `paystack_tkt_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+
+    // Create pending TicketOrder
+    const order = await TicketOrder.create({
+      orderReference,
+      partyId: party._id,
+      tierId: tier.tierId,
+      tierName: tier.name,
+      buyerId,
+      buyerName,
+      quantity: qty,
+      priceNaira,
+      platformFeeNaira,
+      organizerNaira,
+      paymentProvider: paymentProvider as 'paystack' | 'wallet' | 'simulated',
+      paymentReference,
+      status: 'pending',
+    });
+
+    if (paymentProvider === 'paystack' && process.env.NODE_ENV !== 'test') {
+      const defaultFrontendUrl = process.env.FRONTEND_URL || `${req.protocol}://${req.get('host')}`;
+      const callbackUrl = `${defaultFrontendUrl}/me/tickets`;
+
+      const paystackRes = await PaystackService.initializeTransaction({
+        email: buyerEmail || `${buyerId}@zippo.app`,
+        amountKobo: priceNaira * 100,
+        reference: paymentReference,
+        callbackUrl,
+        metadata: {
+          orderId: order._id.toString(),
+          partyId: party._id.toString(),
+          tierId: tier.tierId,
+          buyerId: buyerId.toString(),
         },
-      },
-      {
-        $inc: {
-          'ticketTiers.$.sold': qty,
-          totalRevenue: priceNaira,
-        },
-      }
-    );
+      });
 
-    if (reserveResult.modifiedCount === 0) {
-      return res.status(409).json({
-        success: false,
-        error: 'Not enough tickets available for this tier',
+      if (!paystackRes.status || !paystackRes.data?.authorization_url) {
+        order.status = 'failed';
+        await order.save();
+        return res.status(500).json({ success: false, error: paystackRes.message || 'Failed to initialize Paystack checkout' });
+      }
+
+      return res.status(201).json({
+        success: true,
+        orderId: order._id,
+        orderReference: order.orderReference,
+        paymentReference,
+        authorizationUrl: paystackRes.data.authorization_url,
       });
     }
 
-    let walletDeductedDiamonds = 0;
-
-    // Server-Side Payment Provider Verification & Deduction
-    try {
-      if (paymentProvider === 'paystack' && process.env.NODE_ENV !== 'test') {
-        const verifyRes = await PaystackService.verifyTransaction(effectivePaymentRef);
-        if (!verifyRes.status || !verifyRes.data || verifyRes.data.status !== 'success') {
-          throw new Error('Payment verification failed with Paystack provider');
-        }
-        const expectedKobo = priceNaira * 100;
-        if (verifyRes.data.amount !== expectedKobo) {
-          throw new Error('Paid transaction amount does not match ticket cost');
-        }
-      } else if (paymentProvider === 'wallet') {
-        // Deduct wallet balance atomically
-        const rate = 100; // 100 Naira per diamond
-        const requiredDiamonds = Math.ceil(priceNaira / rate);
-        const updatedUser = await AdultUser.findOneAndUpdate(
-          { _id: buyerId, credits: { $gte: requiredDiamonds } },
-          { $inc: { credits: -requiredDiamonds } },
-          { new: true }
-        );
-        if (!updatedUser) {
-          throw new Error(`Insufficient wallet balance. Required: 💎 ${requiredDiamonds}`);
-        }
-        walletDeductedDiamonds = requiredDiamonds;
-      } else if (process.env.NODE_ENV !== 'test') {
-        throw new Error('Simulated payment is disabled in production. Please select Wallet or Paystack.');
-      }
-    } catch (paymentErr: any) {
-      // Revert inventory reservation if payment verification/deduction fails
-      await Party.updateOne(
-        { _id: party._id, 'ticketTiers.tierId': tierId },
-        {
-          $inc: {
-            'ticketTiers.$.sold': -qty,
-            totalRevenue: -priceNaira,
-          },
-        }
-      );
-      return res.status(402).json({
-        success: false,
-        error: paymentErr.message || 'Payment processing failed',
-      });
-    }
-
-    // 6. Generate individual tickets & record platform earning with compensation rollback on error
-    const tickets = [];
-    try {
-      for (let i = 0; i < qty; i++) {
-        let created = false;
-        let ticketDoc = null;
-        let retries = 0;
-
-        while (!created && retries < 5) {
-          try {
-            const ticketCode = await generateTicketCode();
-            const qrData = `https://zippo.com.ng/ticket/${ticketCode}`;
-            const qrCodeUrl = await generateQRCode(qrData);
-
-            ticketDoc = await Ticket.create({
-              partyId: party._id,
-              tierId: tier.tierId,
-              tierName: tier.name,
-              buyerId,
-              buyerName,
-              ticketCode,
-              qrCodeUrl,
-              priceNaira: singlePrice,
-              platformFeeNaira: singlePlatformFee,
-              organizerNaira: singleOrganizerNaira,
-              paymentStatus: 'paid',
-              paymentRef: effectivePaymentRef,
-              paidAt: new Date(),
-              entryStatus: 'not_entered',
-              isValid: true,
-            });
-            created = true;
-          } catch (e: any) {
-            if (e.code === 11000) {
-              retries++;
-            } else {
-              throw e;
-            }
-          }
-        }
-        if (ticketDoc) tickets.push(ticketDoc);
-      }
-
-      // 7. Record platform earning
-      if (tickets.length > 0) {
-        await PlatformEarning.create({
-          source: 'ticket_sale',
-          amount: platformFeeNaira,
-          nairaValue: platformFeeNaira,
-          fromUserId: buyerId,
-          toProviderId: party.organizerId,
-          referenceId: tickets[0]._id,
-          metadata: { partyId: party._id, partyTitle: party.title, quantity: qty, tierName: tier.name },
-        });
-      }
-    } catch (createErr) {
-      // Rollback reserved inventory and refund wallet credits on ticket creation failure
-      await Party.updateOne(
-        { _id: party._id, 'ticketTiers.tierId': tierId },
-        {
-          $inc: {
-            'ticketTiers.$.sold': -qty,
-            totalRevenue: -priceNaira,
-          },
-        }
-      );
-      if (walletDeductedDiamonds > 0) {
-        await AdultUser.findByIdAndUpdate(buyerId, { $inc: { credits: walletDeductedDiamonds } });
-      }
-      throw createErr;
-    }
-
-    // 8. Send confirmation email AFTER transaction completion
-    if (buyerEmail) {
-      void sendEmail({
-        to: buyerEmail,
-        toName: buyerName,
-        subject: `Ticket Confirmation: ${party.title}`,
-        html: `
-          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #0a0608; color: #ffffff;">
-            <h2 style="color: #c8102e;">🎟 Your Tickets for ${party.title}</h2>
-            <p>Hi ${buyerName},</p>
-            <p>Thank you for your purchase! Here are your ticket details:</p>
-            <ul>
-              <li><strong>Event:</strong> ${party.title}</li>
-              <li><strong>Venue:</strong> ${party.venueName} (${party.venueAddress})</li>
-              <li><strong>Date & Time:</strong> ${new Date(party.startDate).toLocaleString()}</li>
-              <li><strong>Tier:</strong> ${tier.name}</li>
-              <li><strong>Quantity:</strong> ${qty}</li>
-            </ul>
-            <h3>Your Ticket Codes:</h3>
-            <ul>
-              ${tickets.map((t) => `<li><strong>${t.ticketCode}</strong> - <a href="${t.qrCodeUrl}" style="color: #f5b041;">View QR Code</a></li>`).join('')}
-            </ul>
-            <p style="margin-top: 20px; font-size: 12px; color: #888;">Present your QR code at the venue door for check-in.</p>
-          </div>
-        `,
-      });
-    }
+    // For wallet or test environment, fulfill immediately inside MongoDB transaction
+    const fulfillment = await fulfillTicketOrderInternal(order._id.toString(), paymentReference);
 
     return res.status(201).json({
       success: true,
-      tickets: tickets.map((t) => ({
+      orderReference: order.orderReference,
+      tickets: fulfillment.tickets.map((t: any) => ({
         ticketCode: t.ticketCode,
         qrCodeUrl: t.qrCodeUrl,
         tierName: t.tierName,
@@ -311,9 +440,39 @@ export const purchaseTickets = async (req: Request, res: Response) => {
       },
     });
   } catch (err: any) {
-    console.error('Error purchasing tickets:', err);
-    return res.status(500).json({ success: false, error: err.message || 'Failed to purchase tickets' });
+    console.error('Error creating ticket order:', err);
+    return res.status(500).json({ success: false, error: err.message || 'Failed to create ticket order' });
   }
+};
+
+// POST /api/v1/parties/orders/:orderId/verify
+export const verifyTicketOrder = async (req: Request, res: Response) => {
+  try {
+    const orderId = Array.isArray(req.params.orderId) ? req.params.orderId[0] : req.params.orderId;
+    const { paymentReference } = req.body;
+
+    const fulfillment = await fulfillTicketOrderInternal(orderId, paymentReference);
+
+    return res.json({
+      success: true,
+      orderReference: fulfillment.order.orderReference,
+      status: fulfillment.order.status,
+      tickets: fulfillment.tickets.map((t: any) => ({
+        ticketCode: t.ticketCode,
+        qrCodeUrl: t.qrCodeUrl,
+        tierName: t.tierName,
+        entryStatus: t.entryStatus,
+      })),
+    });
+  } catch (err: any) {
+    console.error('Error verifying ticket order:', err);
+    return res.status(400).json({ success: false, error: err.message || 'Order verification failed' });
+  }
+};
+
+// POST /api/v1/parties/:partyId/tickets/purchase (Legacy alias route wrapping order creation)
+export const purchaseTickets = async (req: Request, res: Response) => {
+  return createTicketOrder(req, res);
 };
 
 // GET /api/v1/me/tickets
@@ -351,7 +510,7 @@ export const getTicketByCode = async (req: Request, res: Response) => {
 
     const ticket = await Ticket.findOne({
       ticketCode: cleanTicketCode,
-      buyerId: userId, // Enforce buyer ownership
+      buyerId: userId,
     })
       .populate('partyId', 'title coverImage startDate endDate venueName venueAddress status location')
       .lean();
@@ -519,7 +678,6 @@ export const performCheckinScan = async (req: Request, res: Response) => {
     };
 
     // 2. RACE-SAFE ATOMIC CONDITIONAL STATE TRANSITION
-    // Matches exact expected starting status in the database query
     const updatedTicket = await Ticket.findOneAndUpdate(
       {
         _id: ticket._id,
@@ -535,7 +693,6 @@ export const performCheckinScan = async (req: Request, res: Response) => {
     ).lean();
 
     if (!updatedTicket) {
-      // Concurrency collision or state mismatch
       const currentTicketState = await Ticket.findById(ticket._id).lean();
       const stateMessages: Record<string, string> = {
         inside: 'This person is already inside',

@@ -12,8 +12,8 @@ const generateSlug = (name: string): string => {
     .replace(/-+/g, '-');
 };
 
-// Check if a club is open tonight in Africa/Lagos timezone considering openTime & closeTime (overnight schedules included)
-export const isClubOpenTonight = (
+// Check if a club is currently open in Africa/Lagos timezone considering openTime & closeTime (overnight schedules included)
+export const isClubOpenNow = (
   clubHours: Array<{ day: number; isOpen: boolean; openTime?: string; closeTime?: string }>
 ): boolean => {
   if (!clubHours || !Array.isArray(clubHours)) return false;
@@ -60,6 +60,8 @@ export const isClubOpenTonight = (
   return false;
 };
 
+export const isClubOpenTonight = isClubOpenNow;
+
 // GET /api/v1/clubs
 export const getClubs = async (req: Request, res: Response) => {
   try {
@@ -93,7 +95,8 @@ export const getClubs = async (req: Request, res: Response) => {
     const total = resultClubs.length;
     const paginatedClubs = resultClubs.slice(skip, skip + limitNum).map((club) => ({
       ...club,
-      isOpenTonight: isClubOpenTonight(club.operatingHours),
+      isOpenNow: isClubOpenNow(club.operatingHours),
+      isOpenTonight: isClubOpenNow(club.operatingHours),
     }));
 
     return res.json({
@@ -144,7 +147,8 @@ export const getClubById = async (req: Request, res: Response) => {
       success: true,
       club: {
         ...club,
-        isOpenTonight: isClubOpenTonight(club.operatingHours),
+        isOpenNow: isClubOpenNow(club.operatingHours),
+        isOpenTonight: isClubOpenNow(club.operatingHours),
       },
     });
   } catch (err: any) {
@@ -307,8 +311,9 @@ export const adminApproveClub = async (req: Request, res: Response) => {
     const adminId = (req as any).adultUser?._id || (req as any).user?._id;
     const { clubId } = req.params;
 
-    const club = await Club.findByIdAndUpdate(
-      clubId,
+    // Enforce state transition rule: pending -> active
+    const club = await Club.findOneAndUpdate(
+      { _id: clubId, status: 'pending' },
       {
         $set: {
           status: 'active',
@@ -321,7 +326,7 @@ export const adminApproveClub = async (req: Request, res: Response) => {
     ).lean();
 
     if (!club) {
-      return res.status(404).json({ success: false, error: 'Club not found' });
+      return res.status(400).json({ success: false, error: 'Club not found or not in pending status' });
     }
 
     return res.json({ success: true, club, message: 'Club approved successfully' });
@@ -337,8 +342,9 @@ export const adminRejectClub = async (req: Request, res: Response) => {
     const { clubId } = req.params;
     const { reason } = req.body;
 
-    const club = await Club.findByIdAndUpdate(
-      clubId,
+    // Enforce state transition rule: pending -> rejected
+    const club = await Club.findOneAndUpdate(
+      { _id: clubId, status: 'pending' },
       {
         $set: {
           status: 'rejected',
@@ -349,7 +355,7 @@ export const adminRejectClub = async (req: Request, res: Response) => {
     ).lean();
 
     if (!club) {
-      return res.status(404).json({ success: false, error: 'Club not found' });
+      return res.status(400).json({ success: false, error: 'Club not found or not in pending status' });
     }
 
     return res.json({ success: true, club, message: 'Club rejected' });
@@ -364,8 +370,9 @@ export const adminSuspendClub = async (req: Request, res: Response) => {
   try {
     const { clubId } = req.params;
 
-    const club = await Club.findByIdAndUpdate(
-      clubId,
+    // Enforce state transition rule: active -> suspended
+    const club = await Club.findOneAndUpdate(
+      { _id: clubId, status: 'active' },
       {
         $set: {
           status: 'suspended',
@@ -375,7 +382,7 @@ export const adminSuspendClub = async (req: Request, res: Response) => {
     ).lean();
 
     if (!club) {
-      return res.status(404).json({ success: false, error: 'Club not found' });
+      return res.status(400).json({ success: false, error: 'Club not found or not in active status' });
     }
 
     return res.json({ success: true, club, message: 'Club suspended' });

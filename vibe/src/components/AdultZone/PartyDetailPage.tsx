@@ -82,7 +82,7 @@ export const PartyDetailPage: React.FC = () => {
 
     try {
       const token = localStorage.getItem('adultAccessToken') || localStorage.getItem('token');
-      const res = await fetch(`${API_BASE_URL}/parties/${party._id}/tickets/purchase`, {
+      const res = await fetch(`${API_BASE_URL}/parties/${party._id}/tickets/orders`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -92,13 +92,15 @@ export const PartyDetailPage: React.FC = () => {
           tierId: selectedTier.tierId,
           quantity,
           paymentProvider,
-          paymentReference: `ref_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-          paymentIntentId: `intent_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         }),
       });
 
       const data = await res.json();
       if (data.success) {
+        if (data.authorizationUrl) {
+          window.location.assign(data.authorizationUrl);
+          return;
+        }
         toast.success(`Purchased ${quantity} ticket(s) successfully!`);
         setSelectedTier(null);
         navigate('/me/tickets');

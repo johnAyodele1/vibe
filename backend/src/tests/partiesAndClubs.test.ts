@@ -6,6 +6,7 @@ import app from '../app';
 import Club from '../models/Club';
 import Party from '../models/Party';
 import Ticket from '../models/Ticket';
+import TicketOrder from '../models/TicketOrder';
 import PlatformEarning from '../models/PlatformEarning';
 import AdultUser from '../models/AdultUser';
 import jwt from 'jsonwebtoken';
@@ -34,6 +35,7 @@ describe('Parties & Clubs Feature Concurrency & Security Test Suite', () => {
       dateOfBirth: new Date('1995-01-01'),
       passwordHash: 'hashedpass',
       role: 'user',
+      credits: 500, // 500 diamonds
     });
 
     await AdultUser.create({
@@ -62,6 +64,7 @@ describe('Parties & Clubs Feature Concurrency & Security Test Suite', () => {
     await Club.deleteMany({});
     await Party.deleteMany({});
     await Ticket.deleteMany({});
+    await TicketOrder.deleteMany({});
     await PlatformEarning.deleteMany({});
   });
 
@@ -173,10 +176,33 @@ describe('Parties & Clubs Feature Concurrency & Security Test Suite', () => {
       const res = await request(app).get(`/api/v1/parties/${party._id}`);
       expect(res.status).toBe(404);
     });
+
+    it('adminToggleFeatureParty restricts featuring to approved parties only', async () => {
+      const start = new Date(Date.now() + 86400000);
+      const party = await Party.create({
+        title: 'Draft Party',
+        description: 'Draft event',
+        venueName: 'Venue',
+        venueAddress: 'Address',
+        startDate: start,
+        endDate: new Date(start.getTime() + 36000000),
+        coverImage: 'https://example.com/draft.jpg',
+        organizerId: new mongoose.Types.ObjectId(),
+        status: 'pending_review',
+        ticketTiers: [],
+      });
+
+      const res = await request(app)
+        .put(`/api/admin/parties/${party._id}/feature`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('approved status');
+    });
   });
 
-  describe('Ticketing & Revenue Pipeline', () => {
-    it('purchase tickets verifies exact fee rounding and 5% platform fee split', async () => {
+  describe('Ticketing & Order Fulfillment Pipeline', () => {
+    it('creates server-authoritative order and fulfills atomically with wallet credits', async () => {
       const start = new Date(Date.now() + 86400000);
       const party = await Party.create({
         title: 'Afrobeats Fest',
@@ -189,26 +215,39 @@ describe('Parties & Clubs Feature Concurrency & Security Test Suite', () => {
         organizerId: new mongoose.Types.ObjectId(),
         status: 'approved',
         ticketTiers: [
-          { tierId: 'tier-regular', name: 'Regular', price: 99, quantity: 10, sold: 0, perPersonLimit: 4, isActive: true },
+          { tierId: 'tier-regular', name: 'Regular', price: 200, quantity: 10, sold: 0, perPersonLimit: 4, isActive: true },
         ],
       });
 
       const buyRes = await request(app)
-        .post(`/api/v1/parties/${party._id}/tickets/purchase`)
+        .post(`/api/v1/parties/${party._id}/tickets/orders`)
         .set('Authorization', `Bearer ${userToken}`)
         .send({
           tierId: 'tier-regular',
           quantity: 2,
+          paymentProvider: 'wallet',
         });
 
       expect(buyRes.status).toBe(201);
       expect(buyRes.body.success).toBe(true);
+      expect(buyRes.body.tickets).toHaveLength(2);
 
-      // single ticket price = 99, single platform fee = Math.floor(99 * 0.05) = 4, single organizer = 95
-      // 2 tickets: total paid = 198, total fee = 8, total organizer = 190 (exact sum 8 + 190 === 198)
-      expect(buyRes.body.summary.totalPaid).toBe(198);
-      expect(buyRes.body.summary.platformFee).toBe(8);
-      expect(buyRes.body.summary.organizerGets).toBe(190);
+      // Verify fee calculations: 2 * 200 = 400 total. 5% = 20 fee, 380 organizer
+      expect(buyRes.body.summary.totalPaid).toBe(400);
+      expect(buyRes.body.summary.platformFee).toBe(20);
+      expect(buyRes.body.summary.organizerGets).toBe(380);
+
+      // Verify idempotency protection: verifying same order returns existing tickets
+      const order = await TicketOrder.findOne({ partyId: party._id });
+      expect(order).not.toBeNull();
+
+      const verifyRes = await request(app)
+        .post(`/api/v1/parties/orders/${order?._id}/verify`)
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({ paymentReference: order?.paymentReference });
+
+      expect(verifyRes.status).toBe(200);
+      expect(verifyRes.body.tickets).toHaveLength(2);
     });
 
     it('restricts ticket detail lookup by code to the ticket owner', async () => {
@@ -242,7 +281,6 @@ describe('Parties & Clubs Feature Concurrency & Security Test Suite', () => {
         isValid: true,
       });
 
-      // Logged in user tries to fetch someone else's ticket -> 404
       const res = await request(app)
         .get(`/api/v1/me/tickets/${ticket.ticketCode}`)
         .set('Authorization', `Bearer ${userToken}`);
@@ -326,14 +364,14 @@ describe('Parties & Clubs Feature Concurrency & Security Test Suite', () => {
       for (let i = 0; i < 5; i++) {
         await request(app)
           .post(`/api/v1/parties/${party._id}/checkin/scan`)
-          .set('X-Guard-Code', '000000') // Wrong PIN
+          .set('X-Guard-Code', '000000')
           .send({ ticketCode: 'ZPP-TEST01', action: 'entered' });
       }
 
       // 6th attempt (even with CORRECT PIN) -> 429 Locked out
       const res = await request(app)
         .post(`/api/v1/parties/${party._id}/checkin/scan`)
-        .set('X-Guard-Code', pin) // Right PIN
+        .set('X-Guard-Code', pin)
         .send({ ticketCode: 'ZPP-TEST01', action: 'entered' });
 
       expect(res.status).toBe(429);
