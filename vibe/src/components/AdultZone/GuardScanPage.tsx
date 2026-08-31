@@ -115,7 +115,7 @@ export const GuardScanPage: React.FC = () => {
 
             <button
               type="submit"
-              className="w-full py-3 bg.green-600 bg-green-600 hover:bg-green-700 text-white font-bold text-xs uppercase rounded-xl transition-colors"
+              className="w-full py-3 bg-green-600 hover:bg-green-700 text-white font-bold text-xs uppercase rounded-xl transition-colors"
             >
               Start Security Scanner
             </button>

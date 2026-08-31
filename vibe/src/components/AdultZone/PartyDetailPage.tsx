@@ -45,6 +45,7 @@ export const PartyDetailPage: React.FC = () => {
   // Purchase Bottom Sheet state
   const [selectedTier, setSelectedTier] = useState<TicketTier | null>(null);
   const [quantity, setQuantity] = useState(1);
+  const [paymentProvider, setPaymentProvider] = useState<'wallet' | 'paystack'>('wallet');
   const [purchasing, setPurchasing] = useState(false);
 
   useEffect(() => {
@@ -90,7 +91,9 @@ export const PartyDetailPage: React.FC = () => {
         body: JSON.stringify({
           tierId: selectedTier.tierId,
           quantity,
-          paymentIntentId: `intent_sim_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          paymentProvider,
+          paymentReference: `ref_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          paymentIntentId: `intent_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         }),
       });
 
@@ -279,6 +282,35 @@ export const PartyDetailPage: React.FC = () => {
                 <span className="font-mono text-[var(--az-accent-gold)] text-lg">
                   ₦{(selectedTier.price * quantity).toLocaleString()}
                 </span>
+              </div>
+
+              {/* Payment Method Selector */}
+              <div className="pt-2 border-t border-white/10 space-y-2">
+                <span className="text-neutral-400 block font-bold">Select Payment Method:</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentProvider('wallet')}
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition-colors ${
+                      paymentProvider === 'wallet'
+                        ? 'bg-[var(--az-accent-rose)] border-[var(--az-accent-rose)] text-white'
+                        : 'bg-neutral-900 border-neutral-800 text-neutral-400'
+                    }`}
+                  >
+                    💎 Wallet Credits
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentProvider('paystack')}
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition-colors ${
+                      paymentProvider === 'paystack'
+                        ? 'bg-[var(--az-accent-rose)] border-[var(--az-accent-rose)] text-white'
+                        : 'bg-neutral-900 border-neutral-800 text-neutral-400'
+                    }`}
+                  >
+                    💳 Paystack
+                  </button>
+                </div>
               </div>
             </div>
 

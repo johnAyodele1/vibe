@@ -12,15 +12,52 @@ const generateSlug = (name: string): string => {
     .replace(/-+/g, '-');
 };
 
-// Check if a club is open today in Africa/Lagos timezone
-export const isClubOpenTonight = (clubHours: Array<{ day: number; isOpen: boolean; openTime?: string; closeTime?: string }>): boolean => {
+// Check if a club is open tonight in Africa/Lagos timezone considering openTime & closeTime (overnight schedules included)
+export const isClubOpenTonight = (
+  clubHours: Array<{ day: number; isOpen: boolean; openTime?: string; closeTime?: string }>
+): boolean => {
   if (!clubHours || !Array.isArray(clubHours)) return false;
-  const now = new Date();
-  const lagosNow = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Lagos' }));
-  const dayOfWeek = lagosNow.getDay(); // 0 = Sun, 6 = Sat
 
-  const todayHours = clubHours.find((h) => h.day === dayOfWeek);
-  return Boolean(todayHours && todayHours.isOpen);
+  const now = new Date();
+  const lagosTimeString = now.toLocaleString('en-US', { timeZone: 'Africa/Lagos' });
+  const lagosNow = new Date(lagosTimeString);
+
+  const currentDay = lagosNow.getDay(); // 0 = Sun, 6 = Sat
+  const currentMinutes = lagosNow.getHours() * 60 + lagosNow.getMinutes();
+
+  const parseTime = (timeStr?: string, defaultMins = 0): number => {
+    if (!timeStr) return defaultMins;
+    const parts = timeStr.split(':');
+    if (parts.length < 2) return defaultMins;
+    return (parseInt(parts[0], 10) || 0) * 60 + (parseInt(parts[1], 10) || 0);
+  };
+
+  // 1. Check schedule for current day
+  const todayHours = clubHours.find((h) => h.day === currentDay);
+  if (todayHours && todayHours.isOpen) {
+    const openMins = parseTime(todayHours.openTime, 22 * 60);
+    const closeMins = parseTime(todayHours.closeTime, 4 * 60);
+
+    if (openMins < closeMins) {
+      if (currentMinutes >= openMins && currentMinutes <= closeMins) return true;
+    } else {
+      if (currentMinutes >= openMins) return true;
+    }
+  }
+
+  // 2. Check schedule for previous day (overnight hours spanning past midnight)
+  const prevDay = (currentDay + 6) % 7;
+  const prevHours = clubHours.find((h) => h.day === prevDay);
+  if (prevHours && prevHours.isOpen) {
+    const openMins = parseTime(prevHours.openTime, 22 * 60);
+    const closeMins = parseTime(prevHours.closeTime, 4 * 60);
+
+    if (openMins > closeMins && currentMinutes <= closeMins) {
+      return true;
+    }
+  }
+
+  return false;
 };
 
 // GET /api/v1/clubs
@@ -79,6 +116,9 @@ export const getClubs = async (req: Request, res: Response) => {
 export const getClubById = async (req: Request, res: Response) => {
   try {
     const { clubId } = req.params;
+    const userId = (req as any).adultUser?._id || (req as any).user?._id;
+    const isAdmin = (req as any).adultUser?.isAdmin || (req as any).user?.isAdmin;
+
     let club;
 
     if (typeof clubId === 'string' && mongoose.Types.ObjectId.isValid(clubId)) {
@@ -90,6 +130,11 @@ export const getClubById = async (req: Request, res: Response) => {
 
     if (!club) {
       return res.status(404).json({ success: false, error: 'Club not found' });
+    }
+
+    // Enforce public visibility constraint
+    if (club.status !== 'active' && !isAdmin && club.ownerId?.toString() !== userId?.toString()) {
+      return res.status(404).json({ success: false, error: 'Club not found or not active' });
     }
 
     // Increment view count asynchronously

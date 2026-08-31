@@ -82,6 +82,9 @@ export const getParties = async (req: Request, res: Response) => {
 export const getPartyById = async (req: Request, res: Response) => {
   try {
     const { partyId } = req.params;
+    const userId = (req as any).adultUser?._id || (req as any).user?._id;
+    const isAdmin = (req as any).adultUser?.isAdmin || (req as any).user?.isAdmin;
+
     if (typeof partyId !== 'string' || !mongoose.Types.ObjectId.isValid(partyId)) {
       return res.status(400).json({ success: false, error: 'Invalid party ID' });
     }
@@ -89,6 +92,11 @@ export const getPartyById = async (req: Request, res: Response) => {
     const party = await Party.findById(partyId).lean();
     if (!party) {
       return res.status(404).json({ success: false, error: 'Party not found' });
+    }
+
+    // Enforce public visibility constraint
+    if (party.status !== 'approved' && !isAdmin && party.organizerId?.toString() !== userId?.toString()) {
+      return res.status(404).json({ success: false, error: 'Party not found or not approved' });
     }
 
     // Increment view count asynchronously

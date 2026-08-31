@@ -4,40 +4,40 @@ import Ticket from '../models/Ticket';
 import PlatformEarning from '../models/PlatformEarning';
 import { generateQRCode } from '../shared/qr';
 import { sendEmail } from '../shared/email/brevoClient';
+import { purchaseTicketsSchema } from '../validators/partiesAndClubs.validator';
+import { PaystackService } from '../services/paystack.service';
+import AdultUser from '../models/AdultUser';
 import crypto from 'crypto';
 import mongoose from 'mongoose';
 
 // Generate unique ticket code: ZPP-XXXXXX
 const generateTicketCode = async (): Promise<string> => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let isUnique = false;
-  let code = '';
-
-  while (!isUnique) {
-    let rand = '';
-    for (let i = 0; i < 6; i++) {
-      rand += chars[Math.floor(Math.random() * chars.length)];
-    }
-    code = `ZPP-${rand}`;
-    const exists = await Ticket.exists({ ticketCode: code });
-    if (!exists) {
-      isUnique = true;
-    }
+  let rand = '';
+  for (let i = 0; i < 6; i++) {
+    rand += chars[Math.floor(Math.random() * chars.length)];
   }
-  return code;
+  return `ZPP-${rand}`;
 };
 
 // GET /api/v1/parties/:partyId/tickets/availability
 export const getTicketAvailability = async (req: Request, res: Response) => {
   try {
     const { partyId } = req.params;
+    const userId = (req as any).adultUser?._id || (req as any).user?._id;
+    const isAdmin = (req as any).adultUser?.isAdmin || (req as any).user?.isAdmin;
+
     if (typeof partyId !== 'string' || !mongoose.Types.ObjectId.isValid(partyId)) {
       return res.status(400).json({ success: false, error: 'Invalid party ID' });
     }
 
-    const party = await Party.findById(partyId).select('ticketTiers status startDate').lean();
+    const party = await Party.findById(partyId).select('ticketTiers status startDate organizerId').lean();
     if (!party) {
       return res.status(404).json({ success: false, error: 'Party not found' });
+    }
+
+    if (party.status !== 'approved' && !isAdmin && party.organizerId?.toString() !== userId?.toString()) {
+      return res.status(404).json({ success: false, error: 'Party not found or not approved' });
     }
 
     const tiers = party.ticketTiers.map((tier) => ({
@@ -63,8 +63,7 @@ export const getTicketAvailability = async (req: Request, res: Response) => {
 // POST /api/v1/parties/:partyId/tickets/purchase
 export const purchaseTickets = async (req: Request, res: Response) => {
   try {
-    const { partyId } = req.params;
-    const { tierId, quantity, paymentIntentId } = req.body;
+    const partyId = Array.isArray(req.params.partyId) ? req.params.partyId[0] : req.params.partyId;
     const buyerId = (req as any).adultUser?._id || (req as any).user?._id;
     const buyerName = (req as any).adultUser?.displayName || (req as any).user?.displayName || (req as any).user?.firstName || 'Guest Buyer';
     const buyerEmail = (req as any).adultUser?.email || (req as any).user?.email;
@@ -73,10 +72,13 @@ export const purchaseTickets = async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: 'Unauthorized' });
     }
 
-    const qty = parseInt(quantity, 10);
-    if (isNaN(qty) || qty < 1 || qty > 10) {
-      return res.status(400).json({ success: false, error: 'Quantity must be between 1 and 10' });
+    const parseResult = purchaseTicketsSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({ success: false, error: parseResult.error.issues[0]?.message || 'Invalid purchase data' });
     }
+
+    const { tierId, quantity: qty, paymentReference, paymentIntentId, paymentProvider = 'simulated' } = parseResult.data;
+    const effectivePaymentRef = paymentReference || paymentIntentId || `ref_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
     // 1. Validate party is approved
     const party = await Party.findOne({
@@ -94,17 +96,7 @@ export const purchaseTickets = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: 'Ticket tier not found or is inactive' });
     }
 
-    // 3. Check remaining
-    const remaining = tier.quantity - tier.sold;
-    if (qty > remaining) {
-      return res.status(409).json({
-        success: false,
-        error: 'Not enough tickets available',
-        remaining: Math.max(0, remaining),
-      });
-    }
-
-    // 4. Check per-person limit
+    // 3. Check per-person limit across all existing paid tickets
     const alreadyBought = await Ticket.countDocuments({
       partyId: party._id,
       tierId,
@@ -120,45 +112,28 @@ export const purchaseTickets = async (req: Request, res: Response) => {
       });
     }
 
-    // 5. Calculate fees (5% platform fee floored)
-    const priceNaira = tier.price * qty;
-    const platformFeeNaira = Math.floor(priceNaira * party.platformFeeRate);
-    const organizerNaira = priceNaira - platformFeeNaira;
+    // 4. Single-ticket fee rounding consistency
+    const singlePrice = tier.price;
+    const singlePlatformFee = Math.floor(singlePrice * party.platformFeeRate);
+    const singleOrganizerNaira = singlePrice - singlePlatformFee;
 
-    // 6. Generate individual tickets
-    const tickets = [];
-    for (let i = 0; i < qty; i++) {
-      const ticketCode = await generateTicketCode();
-      const qrData = `https://zippo.com.ng/ticket/${ticketCode}`;
-      const qrCodeUrl = await generateQRCode(qrData);
+    const priceNaira = singlePrice * qty;
+    const platformFeeNaira = singlePlatformFee * qty;
+    const organizerNaira = singleOrganizerNaira * qty;
 
-      const singlePrice = tier.price;
-      const singlePlatformFee = Math.floor(singlePrice * party.platformFeeRate);
-      const singleOrganizerNaira = singlePrice - singlePlatformFee;
-
-      const ticket = await Ticket.create({
-        partyId: party._id,
-        tierId: tier.tierId,
-        tierName: tier.name,
-        buyerId,
-        buyerName,
-        ticketCode,
-        qrCodeUrl,
-        priceNaira: singlePrice,
-        platformFeeNaira: singlePlatformFee,
-        organizerNaira: singleOrganizerNaira,
-        paymentStatus: 'paid',
-        paymentRef: paymentIntentId || `ref_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        paidAt: new Date(),
-        entryStatus: 'not_entered',
-        isValid: true,
-      });
-      tickets.push(ticket);
-    }
-
-    // 7. Update tier sold count and total party revenue atomically
-    await Party.updateOne(
-      { _id: party._id, 'ticketTiers.tierId': tierId },
+    // 5. ATOMIC CONDITIONAL INVENTORY RESERVATION
+    // Reserves inventory FIRST before charging payment
+    const maxAllowedSold = tier.quantity - qty;
+    const reserveResult = await Party.updateOne(
+      {
+        _id: party._id,
+        ticketTiers: {
+          $elemMatch: {
+            tierId,
+            sold: { $lte: maxAllowedSold },
+          },
+        },
+      },
       {
         $inc: {
           'ticketTiers.$.sold': qty,
@@ -167,18 +142,132 @@ export const purchaseTickets = async (req: Request, res: Response) => {
       }
     );
 
-    // 8. Record platform earning
-    await PlatformEarning.create({
-      source: 'ticket_sale',
-      amount: platformFeeNaira,
-      nairaValue: platformFeeNaira,
-      fromUserId: buyerId,
-      toProviderId: party.organizerId,
-      referenceId: tickets[0]._id,
-      metadata: { partyId: party._id, partyTitle: party.title, quantity: qty, tierName: tier.name },
-    });
+    if (reserveResult.modifiedCount === 0) {
+      return res.status(409).json({
+        success: false,
+        error: 'Not enough tickets available for this tier',
+      });
+    }
 
-    // 9. Send confirmation email if email available
+    let walletDeductedDiamonds = 0;
+
+    // Server-Side Payment Provider Verification & Deduction
+    try {
+      if (paymentProvider === 'paystack' && process.env.NODE_ENV !== 'test') {
+        const verifyRes = await PaystackService.verifyTransaction(effectivePaymentRef);
+        if (!verifyRes.status || !verifyRes.data || verifyRes.data.status !== 'success') {
+          throw new Error('Payment verification failed with Paystack provider');
+        }
+        const expectedKobo = priceNaira * 100;
+        if (verifyRes.data.amount !== expectedKobo) {
+          throw new Error('Paid transaction amount does not match ticket cost');
+        }
+      } else if (paymentProvider === 'wallet') {
+        // Deduct wallet balance atomically
+        const rate = 100; // 100 Naira per diamond
+        const requiredDiamonds = Math.ceil(priceNaira / rate);
+        const updatedUser = await AdultUser.findOneAndUpdate(
+          { _id: buyerId, credits: { $gte: requiredDiamonds } },
+          { $inc: { credits: -requiredDiamonds } },
+          { new: true }
+        );
+        if (!updatedUser) {
+          throw new Error(`Insufficient wallet balance. Required: 💎 ${requiredDiamonds}`);
+        }
+        walletDeductedDiamonds = requiredDiamonds;
+      } else if (process.env.NODE_ENV !== 'test') {
+        throw new Error('Simulated payment is disabled in production. Please select Wallet or Paystack.');
+      }
+    } catch (paymentErr: any) {
+      // Revert inventory reservation if payment verification/deduction fails
+      await Party.updateOne(
+        { _id: party._id, 'ticketTiers.tierId': tierId },
+        {
+          $inc: {
+            'ticketTiers.$.sold': -qty,
+            totalRevenue: -priceNaira,
+          },
+        }
+      );
+      return res.status(402).json({
+        success: false,
+        error: paymentErr.message || 'Payment processing failed',
+      });
+    }
+
+    // 6. Generate individual tickets & record platform earning with compensation rollback on error
+    const tickets = [];
+    try {
+      for (let i = 0; i < qty; i++) {
+        let created = false;
+        let ticketDoc = null;
+        let retries = 0;
+
+        while (!created && retries < 5) {
+          try {
+            const ticketCode = await generateTicketCode();
+            const qrData = `https://zippo.com.ng/ticket/${ticketCode}`;
+            const qrCodeUrl = await generateQRCode(qrData);
+
+            ticketDoc = await Ticket.create({
+              partyId: party._id,
+              tierId: tier.tierId,
+              tierName: tier.name,
+              buyerId,
+              buyerName,
+              ticketCode,
+              qrCodeUrl,
+              priceNaira: singlePrice,
+              platformFeeNaira: singlePlatformFee,
+              organizerNaira: singleOrganizerNaira,
+              paymentStatus: 'paid',
+              paymentRef: effectivePaymentRef,
+              paidAt: new Date(),
+              entryStatus: 'not_entered',
+              isValid: true,
+            });
+            created = true;
+          } catch (e: any) {
+            if (e.code === 11000) {
+              retries++;
+            } else {
+              throw e;
+            }
+          }
+        }
+        if (ticketDoc) tickets.push(ticketDoc);
+      }
+
+      // 7. Record platform earning
+      if (tickets.length > 0) {
+        await PlatformEarning.create({
+          source: 'ticket_sale',
+          amount: platformFeeNaira,
+          nairaValue: platformFeeNaira,
+          fromUserId: buyerId,
+          toProviderId: party.organizerId,
+          referenceId: tickets[0]._id,
+          metadata: { partyId: party._id, partyTitle: party.title, quantity: qty, tierName: tier.name },
+        });
+      }
+    } catch (createErr) {
+      // Rollback reserved inventory and refund wallet credits on ticket creation failure
+      await Party.updateOne(
+        { _id: party._id, 'ticketTiers.tierId': tierId },
+        {
+          $inc: {
+            'ticketTiers.$.sold': -qty,
+            totalRevenue: -priceNaira,
+          },
+        }
+      );
+      if (walletDeductedDiamonds > 0) {
+        await AdultUser.findByIdAndUpdate(buyerId, { $inc: { credits: walletDeductedDiamonds } });
+      }
+      throw createErr;
+    }
+
+    // 8. Send confirmation email AFTER transaction completion
     if (buyerEmail) {
       void sendEmail({
         to: buyerEmail,
@@ -251,12 +340,24 @@ export const getMyTickets = async (req: Request, res: Response) => {
 export const getTicketByCode = async (req: Request, res: Response) => {
   try {
     const { ticketCode } = req.params;
-    const ticket = await Ticket.findOne({ ticketCode })
+    const userId = (req as any).adultUser?._id || (req as any).user?._id;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
+    const rawCode = Array.isArray(ticketCode) ? ticketCode[0] : ticketCode;
+    const cleanTicketCode = typeof rawCode === 'string' ? rawCode.toUpperCase().trim() : '';
+
+    const ticket = await Ticket.findOne({
+      ticketCode: cleanTicketCode,
+      buyerId: userId, // Enforce buyer ownership
+    })
       .populate('partyId', 'title coverImage startDate endDate venueName venueAddress status location')
       .lean();
 
     if (!ticket) {
-      return res.status(404).json({ success: false, error: 'Ticket not found' });
+      return res.status(404).json({ success: false, error: 'Ticket not found or access denied' });
     }
 
     return res.json({ success: true, ticket });
@@ -266,25 +367,47 @@ export const getTicketByCode = async (req: Request, res: Response) => {
   }
 };
 
-// Helper to authenticate guard or organizer
+// Guard PIN Rate Limiting / Lockout Tracker
+const guardFailedAttempts = new Map<string, { count: number; lockedUntil: number }>();
+
+// Helper to authenticate guard or organizer with constant-time hash check and rate limiting
 const authenticateGuardOrOrganizer = async (req: Request, partyId: string) => {
+  const clientIp = req.ip || req.socket.remoteAddress || 'unknown_ip';
+  const lockKey = `${clientIp}:${partyId}`;
+  const now = Date.now();
+
+  const record = guardFailedAttempts.get(lockKey);
+  if (record && record.lockedUntil > now) {
+    return { authorized: false, party: null, isOrganizer: false, lockedOut: true };
+  }
+
   const party = await Party.findById(partyId).lean();
-  if (!party) return { authorized: false, party: null, isOrganizer: false };
+  if (!party) return { authorized: false, party: null, isOrganizer: false, lockedOut: false };
 
   const guardCode = req.headers['x-guard-code'] as string;
   if (guardCode && party.guardAccessCodeHash) {
     const hash = crypto.createHash('sha256').update(guardCode.trim()).digest('hex');
-    if (hash === party.guardAccessCodeHash) {
-      return { authorized: true, party, isOrganizer: false };
+
+    const expectedBuf = Buffer.from(party.guardAccessCodeHash, 'hex');
+    const actualBuf = Buffer.from(hash, 'hex');
+
+    if (expectedBuf.length === actualBuf.length && crypto.timingSafeEqual(expectedBuf, actualBuf)) {
+      guardFailedAttempts.delete(lockKey);
+      return { authorized: true, party, isOrganizer: false, lockedOut: false };
+    } else {
+      // Record failed attempt
+      const attempts = (record?.count || 0) + 1;
+      const lockedUntil = attempts >= 5 ? now + 15 * 60 * 1000 : 0; // Lockout for 15 mins after 5 failures
+      guardFailedAttempts.set(lockKey, { count: attempts, lockedUntil });
     }
   }
 
   const userId = (req as any).adultUser?._id || (req as any).user?._id;
   if (userId && party.organizerId.toString() === userId.toString()) {
-    return { authorized: true, party, isOrganizer: true };
+    return { authorized: true, party, isOrganizer: true, lockedOut: false };
   }
 
-  return { authorized: false, party, isOrganizer: false };
+  return { authorized: false, party, isOrganizer: false, lockedOut: false };
 };
 
 // GET /api/v1/parties/:partyId/checkin/scan?code=ZPP-A8F3K2
@@ -337,7 +460,10 @@ export const performCheckinScan = async (req: Request, res: Response) => {
     const partyId = Array.isArray(req.params.partyId) ? req.params.partyId[0] : req.params.partyId;
     const { ticketCode, action } = req.body;
 
-    const { authorized, party } = await authenticateGuardOrOrganizer(req, partyId);
+    const { authorized, party, lockedOut } = await authenticateGuardOrOrganizer(req, partyId);
+    if (lockedOut) {
+      return res.status(429).json({ success: false, error: 'Too many failed PIN attempts. Locked out for 15 minutes.' });
+    }
     if (!authorized || !party) {
       return res.status(403).json({ success: false, error: 'Invalid guard code' });
     }
@@ -346,8 +472,11 @@ export const performCheckinScan = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'ticketCode and action are required' });
     }
 
+    const cleanCode = ticketCode.toUpperCase().trim();
+
+    // 1. Initial lookup
     const ticket = await Ticket.findOne({
-      ticketCode: ticketCode.toUpperCase().trim(),
+      ticketCode: cleanCode,
       partyId: party._id,
     });
 
@@ -370,31 +499,16 @@ export const performCheckinScan = async (req: Request, res: Response) => {
       });
     }
 
-    // Strict Anti-Scam State Machine Verification
-    const validActions: Record<string, string[]> = {
-      not_entered: ['entered'],
-      inside: ['exited'],
-      outside: ['re_entered'],
-    };
+    // Expected starting status for each action
+    const expectedStartingStatus =
+      action === 'entered' ? 'not_entered' : action === 'exited' ? 'inside' : action === 're_entered' ? 'outside' : null;
 
-    if (!validActions[ticket.entryStatus]?.includes(action)) {
-      const stateMessages: Record<string, string> = {
-        inside: 'This person is already inside',
-        outside: 'This person has left — use "re_entered" to re-admit',
-        not_entered: 'This ticket has not been used to enter yet',
-      };
-      return res.status(409).json({
-        success: false,
-        error: `Invalid action for current status: ${ticket.entryStatus}`,
-        code: 'INVALID_ACTION',
-        currentStatus: ticket.entryStatus,
-        display: `⚠️ ${stateMessages[ticket.entryStatus] || 'Invalid state transition'}`,
-        allowedActions: validActions[ticket.entryStatus],
-      });
+    if (!expectedStartingStatus) {
+      return res.status(400).json({ success: false, error: 'Invalid check-in action' });
     }
 
-    const newStatus: 'inside' | 'outside' | 'not_entered' =
-      action === 'entered' ? 'inside' : action === 'exited' ? 'outside' : action === 're_entered' ? 'inside' : ticket.entryStatus;
+    const newStatus = action === 'exited' ? 'outside' : 'inside';
+    const isEntryAction = action === 'entered' || action === 're_entered';
 
     const logEntry = {
       action,
@@ -404,9 +518,14 @@ export const performCheckinScan = async (req: Request, res: Response) => {
       method: 'qr_scan' as const,
     };
 
-    const isEntryAction = action === 'entered' || action === 're_entered';
-    const updatedTicket = await Ticket.findByIdAndUpdate(
-      ticket._id,
+    // 2. RACE-SAFE ATOMIC CONDITIONAL STATE TRANSITION
+    // Matches exact expected starting status in the database query
+    const updatedTicket = await Ticket.findOneAndUpdate(
+      {
+        _id: ticket._id,
+        partyId: party._id,
+        entryStatus: expectedStartingStatus,
+      },
       {
         $set: { entryStatus: newStatus, updatedAt: new Date() },
         $push: { entryLog: logEntry },
@@ -414,6 +533,24 @@ export const performCheckinScan = async (req: Request, res: Response) => {
       },
       { new: true }
     ).lean();
+
+    if (!updatedTicket) {
+      // Concurrency collision or state mismatch
+      const currentTicketState = await Ticket.findById(ticket._id).lean();
+      const stateMessages: Record<string, string> = {
+        inside: 'This person is already inside',
+        outside: 'This person has left — use "re_entered" to re-admit',
+        not_entered: 'This ticket has not been used to enter yet',
+      };
+      const currStatus = currentTicketState?.entryStatus || ticket.entryStatus;
+      return res.status(409).json({
+        success: false,
+        error: `Invalid action for current status: ${currStatus}`,
+        code: 'INVALID_ACTION',
+        currentStatus: currStatus,
+        display: `⚠️ ${stateMessages[currStatus] || 'Invalid state transition'}`,
+      });
+    }
 
     const actionMessages: Record<string, string> = {
       entered: '✅ Admitted',
@@ -429,7 +566,7 @@ export const performCheckinScan = async (req: Request, res: Response) => {
       tierName: ticket.tierName,
       buyerName: ticket.buyerName,
       entryStatus: newStatus,
-      entryCount: updatedTicket?.entryCount || ticket.entryCount + (isEntryAction ? 1 : 0),
+      entryCount: updatedTicket.entryCount,
       timestamp: logEntry.timestamp,
     });
   } catch (err: any) {

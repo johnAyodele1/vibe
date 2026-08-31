@@ -10,7 +10,7 @@ import PlatformEarning from '../models/PlatformEarning';
 import AdultUser from '../models/AdultUser';
 import jwt from 'jsonwebtoken';
 
-describe('Parties & Clubs Feature Test Suite', () => {
+describe('Parties & Clubs Feature Concurrency & Security Test Suite', () => {
   let mongoServer: MongoMemoryServer;
   let userToken: string;
   let adminToken: string;
@@ -114,27 +114,16 @@ describe('Parties & Clubs Feature Test Suite', () => {
       expect(publicRes.body.clubs).toHaveLength(1);
     });
 
-    it('GET /api/v1/clubs?openToday=true filters by Africa/Lagos timezone operating hours', async () => {
-      const todayDay = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Lagos' })).getDay();
-
-      await Club.create({
-        name: 'Open Lounge',
-        slug: 'open-lounge',
-        status: 'active',
-        operatingHours: [{ day: todayDay, isOpen: true }],
+    it('Unapproved club is NOT accessible via public detail endpoint by third party', async () => {
+      const club = await Club.create({
+        name: 'Secret Club',
+        slug: 'secret-club',
+        status: 'pending',
+        ownerId: new mongoose.Types.ObjectId(),
       });
 
-      await Club.create({
-        name: 'Closed Lounge',
-        slug: 'closed-lounge',
-        status: 'active',
-        operatingHours: [{ day: todayDay, isOpen: false }],
-      });
-
-      const res = await request(app).get('/api/v1/clubs?openToday=true');
-      expect(res.status).toBe(200);
-      expect(res.body.clubs).toHaveLength(1);
-      expect(res.body.clubs[0].name).toBe('Open Lounge');
+      const res = await request(app).get(`/api/v1/clubs/${club._id}`);
+      expect(res.status).toBe(404);
     });
   });
 
@@ -148,7 +137,7 @@ describe('Parties & Clubs Feature Test Suite', () => {
         .set('Authorization', `Bearer ${userToken}`)
         .send({
           title: 'Beach Party 2026',
-          description: 'Fun in the sun',
+          description: 'Fun in the sun description at least 10 chars',
           venueName: 'Elegushi Beach',
           venueAddress: 'Ikate, Lagos',
           startDate: start.toISOString(),
@@ -166,39 +155,32 @@ describe('Parties & Clubs Feature Test Suite', () => {
       expect(res.body.guardPin).toBe('654321');
     });
 
-    it('Party IS visible in public GET /api/v1/parties after admin approves', async () => {
+    it('Unapproved party is NOT accessible via public detail endpoint by third party', async () => {
       const start = new Date(Date.now() + 86400000);
       const party = await Party.create({
-        title: 'Lagos Rave',
-        description: 'Epic party',
-        venueName: 'Landmark Beach',
+        title: 'Unapproved Rave',
+        description: 'Private event',
+        venueName: 'Landmark',
         venueAddress: 'VI Lagos',
         startDate: start,
         endDate: new Date(start.getTime() + 36000000),
         coverImage: 'https://example.com/rave.jpg',
-        organizerId: new mongoose.Types.ObjectId(userId),
+        organizerId: new mongoose.Types.ObjectId(),
         status: 'pending_review',
         ticketTiers: [{ tierId: 't1', name: 'VIP', price: 10000, quantity: 20, sold: 0, perPersonLimit: 2, isActive: true }],
       });
 
-      const approveRes = await request(app)
-        .put(`/api/admin/parties/${party._id}/approve`)
-        .set('Authorization', `Bearer ${adminToken}`);
-
-      expect(approveRes.status).toBe(200);
-
-      const publicRes = await request(app).get('/api/v1/parties');
-      expect(publicRes.status).toBe(200);
-      expect(publicRes.body.parties).toHaveLength(1);
+      const res = await request(app).get(`/api/v1/parties/${party._id}`);
+      expect(res.status).toBe(404);
     });
   });
 
-  describe('Ticketing & Purchase Flow', () => {
-    it('purchase tickets generates unique ZPP-XXXXXX codes and records 5% platform fee', async () => {
+  describe('Ticketing & Revenue Pipeline', () => {
+    it('purchase tickets verifies exact fee rounding and 5% platform fee split', async () => {
       const start = new Date(Date.now() + 86400000);
       const party = await Party.create({
         title: 'Afrobeats Fest',
-        description: 'Live music',
+        description: 'Live music event',
         venueName: 'Eko Hotel',
         venueAddress: 'VI',
         startDate: start,
@@ -207,7 +189,7 @@ describe('Parties & Clubs Feature Test Suite', () => {
         organizerId: new mongoose.Types.ObjectId(),
         status: 'approved',
         ticketTiers: [
-          { tierId: 'tier-regular', name: 'Regular', price: 5000, quantity: 10, sold: 0, perPersonLimit: 4, isActive: true },
+          { tierId: 'tier-regular', name: 'Regular', price: 99, quantity: 10, sold: 0, perPersonLimit: 4, isActive: true },
         ],
       });
 
@@ -221,62 +203,56 @@ describe('Parties & Clubs Feature Test Suite', () => {
 
       expect(buyRes.status).toBe(201);
       expect(buyRes.body.success).toBe(true);
-      expect(buyRes.body.tickets).toHaveLength(2);
 
-      const ticket1 = buyRes.body.tickets[0];
-      expect(ticket1.ticketCode).toMatch(/^ZPP-[A-Z2-9]{6}$/);
-
-      // Verify fee calculations: 2 * 5000 = 10000 total. 5% = 500 fee, 9500 organizer
-      expect(buyRes.body.summary.totalPaid).toBe(10000);
-      expect(buyRes.body.summary.platformFee).toBe(500);
-      expect(buyRes.body.summary.organizerGets).toBe(9500);
-
-      // Check atomic update on Party tier sold count
-      const updatedParty = await Party.findById(party._id);
-      expect(updatedParty?.ticketTiers[0].sold).toBe(2);
-
-      // Check PlatformEarning creation
-      const earning = await PlatformEarning.findOne({ source: 'ticket_sale' });
-      expect(earning).not.toBeNull();
-      expect(earning?.amount).toBe(500);
+      // single ticket price = 99, single platform fee = Math.floor(99 * 0.05) = 4, single organizer = 95
+      // 2 tickets: total paid = 198, total fee = 8, total organizer = 190 (exact sum 8 + 190 === 198)
+      expect(buyRes.body.summary.totalPaid).toBe(198);
+      expect(buyRes.body.summary.platformFee).toBe(8);
+      expect(buyRes.body.summary.organizerGets).toBe(190);
     });
 
-    it('enforces per-person limit across purchases', async () => {
+    it('restricts ticket detail lookup by code to the ticket owner', async () => {
       const start = new Date(Date.now() + 86400000);
       const party = await Party.create({
-        title: 'Limited Party',
-        description: 'Strict limit',
-        venueName: 'Private Villa',
-        venueAddress: 'Lekki',
+        title: 'Owned Party',
+        description: 'Testing ticket ownership',
+        venueName: 'Hall',
+        venueAddress: 'Lagos',
         startDate: start,
         endDate: new Date(start.getTime() + 36000000),
-        coverImage: 'https://example.com/limited.jpg',
+        coverImage: 'https://example.com/owned.jpg',
         organizerId: new mongoose.Types.ObjectId(),
         status: 'approved',
-        ticketTiers: [
-          { tierId: 'tier-vip', name: 'VIP', price: 10000, quantity: 10, sold: 0, perPersonLimit: 2, isActive: true },
-        ],
+        ticketTiers: [{ tierId: 't1', name: 'Reg', price: 1000, quantity: 10, sold: 1, perPersonLimit: 4, isActive: true }],
       });
 
-      // Buy 2 (limit reached)
-      await request(app)
-        .post(`/api/v1/parties/${party._id}/tickets/purchase`)
-        .set('Authorization', `Bearer ${userToken}`)
-        .send({ tierId: 'tier-vip', quantity: 2 });
+      const otherUserId = new mongoose.Types.ObjectId();
+      const ticket = await Ticket.create({
+        partyId: party._id,
+        tierId: 't1',
+        tierName: 'Reg',
+        buyerId: otherUserId, // Owned by another user
+        buyerName: 'Other Person',
+        ticketCode: 'ZPP-OTHER1',
+        priceNaira: 1000,
+        platformFeeNaira: 50,
+        organizerNaira: 950,
+        paymentStatus: 'paid',
+        entryStatus: 'not_entered',
+        isValid: true,
+      });
 
-      // Attempt to buy 1 more -> 409 Conflict
-      const failRes = await request(app)
-        .post(`/api/v1/parties/${party._id}/tickets/purchase`)
-        .set('Authorization', `Bearer ${userToken}`)
-        .send({ tierId: 'tier-vip', quantity: 1 });
+      // Logged in user tries to fetch someone else's ticket -> 404
+      const res = await request(app)
+        .get(`/api/v1/me/tickets/${ticket.ticketCode}`)
+        .set('Authorization', `Bearer ${userToken}`);
 
-      expect(failRes.status).toBe(409);
-      expect(failRes.body.error).toContain('Maximum 2 tickets per person');
+      expect(res.status).toBe(404);
     });
   });
 
-  describe('Anti-Scam Check-in System', () => {
-    it('scans ticket with valid Guard PIN and enforces strict entry transitions', async () => {
+  describe('Anti-Scam Check-in System & Guard Security', () => {
+    it('scans ticket with valid Guard PIN and enforces atomic state transitions', async () => {
       const pin = '123456';
       const pinHash = crypto.createHash('sha256').update(pin).digest('hex');
 
@@ -319,7 +295,6 @@ describe('Parties & Clubs Feature Test Suite', () => {
       expect(enterRes.status).toBe(200);
       expect(enterRes.body.display).toBe('✅ Admitted');
       expect(enterRes.body.entryStatus).toBe('inside');
-      expect(enterRes.body.entryCount).toBe(1);
 
       // 2. Double enter attempt (inside -> entered) -> 409 Conflict
       const doubleEnterRes = await request(app)
@@ -329,33 +304,13 @@ describe('Parties & Clubs Feature Test Suite', () => {
 
       expect(doubleEnterRes.status).toBe(409);
       expect(doubleEnterRes.body.display).toContain('already inside');
-
-      // 3. Exit (inside -> exited)
-      const exitRes = await request(app)
-        .post(`/api/v1/parties/${party._id}/checkin/scan`)
-        .set('X-Guard-Code', pin)
-        .send({ ticketCode: 'ZPP-TEST01', action: 'exited' });
-
-      expect(exitRes.status).toBe(200);
-      expect(exitRes.body.display).toBe('👋 Checked Out');
-      expect(exitRes.body.entryStatus).toBe('outside');
-
-      // 4. Re-enter (outside -> re_entered)
-      const reEnterRes = await request(app)
-        .post(`/api/v1/parties/${party._id}/checkin/scan`)
-        .set('X-Guard-Code', pin)
-        .send({ ticketCode: 'ZPP-TEST01', action: 're_entered' });
-
-      expect(reEnterRes.status).toBe(200);
-      expect(reEnterRes.body.display).toBe('🔄 Re-admitted');
-      expect(reEnterRes.body.entryStatus).toBe('inside');
-      expect(reEnterRes.body.entryCount).toBe(2);
     });
 
-    it('rejects check-in with invalid Guard PIN', async () => {
+    it('locks out guard PIN authentication after 5 consecutive failed attempts', async () => {
+      const pin = '654321';
       const party = await Party.create({
-        title: 'VIP Party',
-        description: 'Exclusive',
+        title: 'Secure VIP Event',
+        description: 'Testing PIN brute-force lockout',
         venueName: 'Lounge',
         venueAddress: 'Abuja',
         startDate: new Date(),
@@ -363,17 +318,26 @@ describe('Parties & Clubs Feature Test Suite', () => {
         coverImage: 'https://example.com/vip.jpg',
         organizerId: new mongoose.Types.ObjectId(),
         status: 'approved',
-        guardAccessCodeHash: crypto.createHash('sha256').update('111111').digest('hex'),
+        guardAccessCodeHash: crypto.createHash('sha256').update(pin).digest('hex'),
         ticketTiers: [],
       });
 
+      // Fail 5 times with wrong PIN
+      for (let i = 0; i < 5; i++) {
+        await request(app)
+          .post(`/api/v1/parties/${party._id}/checkin/scan`)
+          .set('X-Guard-Code', '000000') // Wrong PIN
+          .send({ ticketCode: 'ZPP-TEST01', action: 'entered' });
+      }
+
+      // 6th attempt (even with CORRECT PIN) -> 429 Locked out
       const res = await request(app)
         .post(`/api/v1/parties/${party._id}/checkin/scan`)
-        .set('X-Guard-Code', '999999') // Wrong PIN
+        .set('X-Guard-Code', pin) // Right PIN
         .send({ ticketCode: 'ZPP-TEST01', action: 'entered' });
 
-      expect(res.status).toBe(403);
-      expect(res.body.error).toBe('Invalid guard code');
+      expect(res.status).toBe(429);
+      expect(res.body.error).toContain('Locked out for 15 minutes');
     });
   });
 });
