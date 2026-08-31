@@ -4,7 +4,7 @@ const PlatformEarningSchema = new Schema(
   {
     source: {
       type: String,
-      enum: ['tip', 'gift', 'call', 'service', 'paid_media', 'spin_wheel'],
+      enum: ['tip', 'gift', 'call', 'service', 'paid_media', 'spin_wheel', 'ticket_sale'],
       required: true,
     },
     amount: {
@@ -24,6 +24,9 @@ const PlatformEarningSchema = new Schema(
     },
     referenceId: {
       type: Schema.Types.ObjectId,
+    },
+    metadata: {
+      type: Schema.Types.Mixed,
     },
     createdAt: {
       type: Date,

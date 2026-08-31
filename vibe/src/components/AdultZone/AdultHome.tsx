@@ -5,6 +5,7 @@ import { useTipSheetStore } from './useTipSheetStore';
 import { toast } from 'sonner';
 import { DatingCrossPromo } from './DatingCrossPromo';
 import { RewardsButton } from './RewardsButton';
+import { PartiesAndClubs } from './PartiesAndClubs';
 import { getResponseBadge } from './responseTime';
 import { io } from 'socket.io-client';
 
@@ -262,13 +263,13 @@ const AdultHome: React.FC = () => {
       color: 'from-orange-900/40'
     },
     {
-      id: 'vip',
-      title: 'VIP Lounge',
-      tagline: 'Premium members only — exclusive content',
-      icon: '⭐',
-      stats: '🔴 Elite access',
-      path: '/vip',
-      color: 'from-yellow-900/40'
+      id: 'parties-clubs',
+      title: 'Parties & Clubs',
+      tagline: 'Discover nightlife, book party tickets & venues',
+      icon: '🎟️',
+      stats: '🔴 Live events',
+      path: '/parties',
+      color: 'from-amber-900/40'
     }
   ];
 
@@ -318,7 +319,7 @@ const AdultHome: React.FC = () => {
       </section>
 
       {/* Service Cards Grid */}
-      <section ref={serviceCardsRef} className="max-w-7xl mx-auto px-4 pt-4 pb-16 md:pt-6 md:pb-20 w-full">
+      <section ref={serviceCardsRef} className="max-w-7xl mx-auto px-4 pt-4 pb-8 md:pt-6 w-full">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {serviceCards.map((card) => (
             <Link
@@ -355,6 +356,11 @@ const AdultHome: React.FC = () => {
             </Link>
           ))}
         </div>
+      </section>
+
+      {/* Parties & Clubs Section */}
+      <section className="max-w-7xl mx-auto px-4 pb-12 w-full">
+        <PartiesAndClubs />
       </section>
 
       {/* For You Row */}

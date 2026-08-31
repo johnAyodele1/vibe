@@ -17,6 +17,9 @@ import { getUserTasks, completeTask, dailyCheckin } from '../controllers/adultRe
 import { getProviderWheel, updateProviderWheel, spinProviderWheel, getProviderWheelStats } from '../controllers/adultWheel.controller';
 import { getZegoToken } from '../controllers/zego.controller';
 import { joinMatchQueue, leaveMatchQueue, endMatchSession, nextStranger } from '../controllers/randomMatch.controller';
+import { getClubs, getClubById, createClub, updateClub } from '../controllers/club.controller';
+import { getParties, getPartyById, createParty, updateParty, cancelParty } from '../controllers/party.controller';
+import { getTicketAvailability, purchaseTickets, getMyTickets, getTicketByCode, scanCheckinQuery, performCheckinScan, getCheckinDashboard } from '../controllers/ticket.controller';
 import { trackDailyActive } from '../middleware/trackDailyActive';
 import { validateProviderPricing } from '../middleware/providerPricingValidation';
 
@@ -160,5 +163,27 @@ router.post('/adult/rooms/:roomId/polls/:pollId/vote', verifyAdultJWT, votePoll)
 router.post('/adult/rooms/:roomId/report', verifyAdultJWT, reportRoom);
 router.post('/adult/rooms/:roomId/members/:userId/mute', verifyAdultJWT, muteUser);
 router.delete('/adult/rooms/:roomId/members/:userId', verifyAdultJWT, kickUser);
+
+// ── CLUBS ───────────────────────────────────────────────────
+router.get('/clubs', getClubs);
+router.get('/clubs/:clubId', getClubById);
+router.post('/clubs', verifyAdultJWT, createClub);
+router.put('/clubs/:clubId', verifyAdultJWT, updateClub);
+
+// ── PARTIES ─────────────────────────────────────────────────
+router.get('/parties', getParties);
+router.get('/parties/:partyId', getPartyById);
+router.post('/parties', verifyAdultJWT, createParty);
+router.put('/parties/:partyId', verifyAdultJWT, updateParty);
+router.delete('/parties/:partyId', verifyAdultJWT, cancelParty);
+
+// ── TICKETS & CHECK-IN ──────────────────────────────────────
+router.get('/parties/:partyId/tickets/availability', getTicketAvailability);
+router.post('/parties/:partyId/tickets/purchase', verifyAdultJWT, purchaseTickets);
+router.get('/me/tickets', verifyAdultJWT, getMyTickets);
+router.get('/me/tickets/:ticketCode', verifyAdultJWT, getTicketByCode);
+router.get('/parties/:partyId/checkin/scan', optionalAdultJWT, scanCheckinQuery);
+router.post('/parties/:partyId/checkin/scan', optionalAdultJWT, performCheckinScan);
+router.get('/parties/:partyId/checkin/dashboard', optionalAdultJWT, getCheckinDashboard);
 
 export default router;
