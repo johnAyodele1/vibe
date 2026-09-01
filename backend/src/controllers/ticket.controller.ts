@@ -355,14 +355,28 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
 
     return fulfillmentResult;
   } catch (err: any) {
-    // Mark order as refund_pending if payment was already verified via Paystack
-    const failedStatus = (order.paymentProvider === 'paystack') ? 'refund_pending' : 'failed';
+    // Attempt automatic Paystack refund dispatch if payment was verified via Paystack
+    let finalStatus: 'refunded' | 'refund_pending' | 'failed' = 'failed';
+
+    if (order.paymentProvider === 'paystack') {
+      try {
+        const refundRes = await PaystackService.refundTransaction(paymentRef, order.priceNaira * 100);
+        if (refundRes?.status) {
+          finalStatus = 'refunded';
+        } else {
+          finalStatus = 'refund_pending';
+        }
+      } catch {
+        finalStatus = 'refund_pending';
+      }
+    }
+
     await TicketOrder.findByIdAndUpdate(order._id, {
-      $set: { status: failedStatus, updatedAt: new Date() },
+      $set: { status: finalStatus, updatedAt: new Date() },
     }).catch(() => {});
 
     if (order.paymentProvider === 'paystack') {
-      console.warn(`[Paystack Refund Reconciliation Needed] Order ${order._id} (${order.orderReference}) failed fulfillment after Paystack charge. Status set to refund_pending. Reason: ${err.message}`);
+      console.warn(`[Paystack Refund Reconciliation] Order ${order._id} (${order.orderReference}) status: ${finalStatus}. Reason: ${err.message}`);
     }
 
     throw err;
@@ -600,8 +614,11 @@ export const handlePaystackTicketWebhook = async (req: Request, res: Response) =
       const reference = data?.reference;
       if (reference) {
         const order = await TicketOrder.findOne({ paymentReference: reference });
-        if (order && order.status === 'pending') {
-          await fulfillTicketOrderInternal(order._id.toString());
+        if (order) {
+          // Terminal no-op for already processed / refund_pending / refunded orders
+          if (order.status === 'pending') {
+            await fulfillTicketOrderInternal(order._id.toString());
+          }
         }
       }
     }

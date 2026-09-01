@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import Club from '../models/Club';
+import { createClubSchema } from '../validators/partiesAndClubs.validator';
 import mongoose from 'mongoose';
 
 // Utility to generate a URL-friendly slug
@@ -165,6 +166,14 @@ export const createClub = async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: 'Unauthorized' });
     }
 
+    const parseResult = createClubSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({
+        success: false,
+        error: parseResult.error.issues[0]?.message || 'Invalid club data',
+      });
+    }
+
     const {
       name,
       description,
@@ -180,11 +189,7 @@ export const createClub = async (req: Request, res: Response) => {
       entryFee,
       genres,
       vibes,
-    } = req.body;
-
-    if (!name || name.trim().length === 0) {
-      return res.status(400).json({ success: false, error: 'Club name is required' });
-    }
+    } = parseResult.data;
 
     let baseSlug = generateSlug(name);
     let slug = baseSlug;

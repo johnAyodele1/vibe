@@ -67,6 +67,7 @@ export const createPartySchema = z.object({
     perPersonLimit: z.number().int().positive().default(4),
     isActive: z.boolean().default(true),
   })).min(1, 'At least one ticket tier is required').max(5),
+  organizerName: z.string().optional(),
   organizerPhone: z.string().optional(),
   guardAccessCode: z.string().regex(/^\d{6}$/, 'Guard access PIN must be exactly 6 digits').optional(),
   genres: z.array(z.string()).optional(),
@@ -78,7 +79,7 @@ export const purchaseTicketsSchema = z.object({
   quantity: z.number().int().min(1, 'Quantity must be at least 1').max(10, 'Quantity cannot exceed 10'),
   paymentReference: z.string().min(3).optional(),
   paymentIntentId: z.string().optional(),
-  paymentProvider: z.enum(['paystack', 'stripe', 'wallet', 'simulated']).optional().default('paystack'),
+  paymentProvider: z.enum(['paystack', 'wallet', 'simulated']).optional().default('paystack'),
 });
 
 export const checkinScanSchema = z.object({

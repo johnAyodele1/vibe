@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import Party, { ITicketTier } from '../models/Party';
+import { createPartySchema } from '../validators/partiesAndClubs.validator';
 import crypto from 'crypto';
 import mongoose from 'mongoose';
 
@@ -130,13 +131,21 @@ export const createParty = async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: 'Unauthorized' });
     }
 
+    const parseResult = createPartySchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({
+        success: false,
+        error: parseResult.error.issues[0]?.message || 'Invalid party data',
+      });
+    }
+
     const {
       title,
       description,
       tagline,
       coverImage,
       gallery,
-      organizerName,
+      organizerName: reqOrganizerName,
       organizerPhone,
       venueName,
       venueAddress,
@@ -148,23 +157,12 @@ export const createParty = async (req: Request, res: Response) => {
       guardAccessCode,
       genres,
       vibes,
-    } = req.body;
-
-    if (!title || !description || !coverImage || !venueName || !venueAddress || !startDate || !endDate) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing required fields: title, description, coverImage, venueName, venueAddress, startDate, endDate are required',
-      });
-    }
+    } = parseResult.data;
 
     const start = new Date(startDate);
     const end = new Date(endDate);
-    if (isNaN(start.getTime()) || isNaN(end.getTime()) || start >= end) {
-      return res.status(400).json({ success: false, error: 'Invalid start or end date' });
-    }
-
-    if (!Array.isArray(ticketTiers) || ticketTiers.length === 0) {
-      return res.status(400).json({ success: false, error: 'At least one ticket tier is required' });
+    if (start >= end) {
+      return res.status(400).json({ success: false, error: 'Start date must be before end date' });
     }
 
     const processedTiers: ITicketTier[] = ticketTiers.map((t: any, index: number) => ({
@@ -191,7 +189,7 @@ export const createParty = async (req: Request, res: Response) => {
       coverImage,
       gallery: gallery || [],
       organizerId: userId,
-      organizerName: organizerName || userName || 'Organizer',
+      organizerName: reqOrganizerName || userName || 'Organizer',
       organizerPhone: organizerPhone || '',
       venueName: venueName.trim(),
       venueAddress: venueAddress.trim(),
@@ -266,6 +264,9 @@ export const updateParty = async (req: Request, res: Response) => {
     if (location) party.location = location;
     if (startDate) party.startDate = new Date(startDate);
     if (endDate) party.endDate = new Date(endDate);
+    if (party.startDate >= party.endDate) {
+      return res.status(400).json({ success: false, error: 'Start date must be before end date' });
+    }
     if (timezone) party.timezone = timezone;
     if (genres) party.genres = genres.map((g: string) => g.toLowerCase());
     if (vibes) party.vibes = vibes.map((v: string) => v.toLowerCase());
@@ -275,16 +276,34 @@ export const updateParty = async (req: Request, res: Response) => {
     }
 
     if (Array.isArray(ticketTiers) && ticketTiers.length > 0) {
-      party.ticketTiers = ticketTiers.map((t: any, index: number) => ({
-        tierId: t.tierId || `tier-${Date.now()}-${index}`,
-        name: t.name,
-        description: t.description,
-        price: Math.max(0, parseFloat(t.price) || 0),
-        quantity: Math.max(1, parseInt(t.quantity, 10) || 1),
-        sold: t.sold || 0,
-        perPersonLimit: Math.max(1, parseInt(t.perPersonLimit, 10) || 4),
-        isActive: t.isActive !== false,
-      }));
+      const existingTierMap = new Map(party.ticketTiers.map((tier) => [tier.tierId, tier]));
+
+      for (const t of ticketTiers) {
+        const existing = t.tierId ? existingTierMap.get(t.tierId) : undefined;
+        const newQty = Math.max(1, parseInt(t.quantity, 10) || 1);
+        const currentSold = existing ? existing.sold : 0;
+        if (newQty < currentSold) {
+          return res.status(400).json({
+            success: false,
+            error: `Cannot reduce tier quantity below tickets already sold (${currentSold}) for tier "${t.name || existing?.name}"`,
+          });
+        }
+      }
+
+      party.ticketTiers = ticketTiers.map((t: any, index: number) => {
+        const existing = t.tierId ? existingTierMap.get(t.tierId) : undefined;
+        const currentSold = existing ? existing.sold : 0;
+        return {
+          tierId: t.tierId || `tier-${Date.now()}-${index}`,
+          name: t.name || existing?.name || 'General Admission',
+          description: t.description ?? existing?.description ?? '',
+          price: Math.max(0, parseFloat(t.price) || 0),
+          quantity: Math.max(1, parseInt(t.quantity, 10) || 1),
+          sold: currentSold,
+          perPersonLimit: Math.max(1, parseInt(t.perPersonLimit, 10) || 4),
+          isActive: t.isActive !== false,
+        };
+      });
     }
 
     await party.save();
