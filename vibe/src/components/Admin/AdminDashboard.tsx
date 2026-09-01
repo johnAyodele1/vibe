@@ -120,6 +120,12 @@ const AdminDashboard: React.FC = () => {
       <header className={styles.dashboardHeader}>
         <h1>Admin Dashboard</h1>
         <div className="flex items-center gap-4">
+          <Link to="/admin/clubs" style={{ marginRight: '8px', display: 'inline-block', backgroundColor: '#059669', color: 'white', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', textDecoration: 'none' }}>
+            🏢 Clubs
+          </Link>
+          <Link to="/admin/parties" style={{ marginRight: '8px', display: 'inline-block', backgroundColor: '#d97706', color: 'white', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', textDecoration: 'none' }}>
+            🎟 Parties
+          </Link>
           <Link to="/admin/official-channels" style={{ marginRight: '8px', display: 'inline-block', backgroundColor: '#2563eb', color: 'white', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', textDecoration: 'none' }}>
             🔵 Official Channels
           </Link>
