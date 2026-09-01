@@ -4,6 +4,7 @@ import Ticket from '../models/Ticket';
 import TicketOrder from '../models/TicketOrder';
 import PlatformEarning from '../models/PlatformEarning';
 import AdultUser from '../models/AdultUser';
+import { getDiamondNairaRate } from '../shared/pricing';
 import CreditTransaction from '../models/CreditTransaction';
 import { generateQRCode } from '../shared/qr';
 import { sendEmail } from '../shared/email/brevoClient';
@@ -140,7 +141,10 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
   const singlePlatformFee = Math.floor(singlePrice * party.platformFeeRate);
   const singleOrganizerNaira = singlePrice - singlePlatformFee;
   const qty = order.quantity;
-  const requiredDiamonds = Math.ceil(order.priceNaira / 100);
+
+  const diamondRate = await getDiamondNairaRate();
+  const requiredDiamonds = Math.ceil(order.priceNaira / diamondRate);
+  const estimatedUsdVal = parseFloat((order.priceNaira / 1500).toFixed(2));
 
   const createdTickets: any[] = [];
 
@@ -210,7 +214,7 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
             userId: order.buyerId,
             type: 'ticket_purchase',
             amount: -requiredDiamonds,
-            usdAmount: parseFloat((requiredDiamonds * 0.0075).toFixed(2)),
+            usdAmount: estimatedUsdVal,
             nairaAmount: -order.priceNaira,
             description: `Ticket Purchase - ${order.quantity} ticket(s) for ${party.title}`,
             relatedUserId: party.organizerId,
@@ -356,6 +360,11 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
     await TicketOrder.findByIdAndUpdate(order._id, {
       $set: { status: failedStatus, updatedAt: new Date() },
     }).catch(() => {});
+
+    if (order.paymentProvider === 'paystack') {
+      console.warn(`[Paystack Refund Reconciliation Needed] Order ${order._id} (${order.orderReference}) failed fulfillment after Paystack charge. Status set to refund_pending. Reason: ${err.message}`);
+    }
+
     throw err;
   }
 };
@@ -425,13 +434,14 @@ export const createTicketOrder = async (req: Request, res: Response) => {
     const platformFeeNaira = singlePlatformFee * qty;
     const organizerNaira = singleOrganizerNaira * qty;
 
-    // IDEMPOTENT ORDER REUSE: Reuse pending order for same buyer, party, tier, quantity if created within 15 mins
+    // IDEMPOTENT ORDER REUSE: Reuse pending order for same buyer, party, tier, quantity, and paymentProvider if created within 15 mins
     const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000);
     let order = await TicketOrder.findOne({
       buyerId,
       partyId: party._id,
       tierId: tier.tierId,
       quantity: qty,
+      paymentProvider: paymentProvider as any,
       status: 'pending',
       createdAt: { $gte: fifteenMinsAgo },
     });
@@ -541,6 +551,17 @@ export const verifyTicketOrder = async (req: Request, res: Response) => {
     // STRICT OWNER AUTHORIZATION CHECK
     if (order.buyerId.toString() !== userId.toString()) {
       return res.status(403).json({ success: false, error: 'Forbidden: You do not own this ticket order' });
+    }
+
+    // Customer email verification match for Paystack orders
+    if (order.paymentProvider === 'paystack' && order.paymentReference && process.env.NODE_ENV !== 'test') {
+      const verifyRes = await PaystackService.verifyTransaction(order.paymentReference);
+      if (verifyRes?.data?.customer?.email) {
+        const buyerDoc = await AdultUser.findById(userId).select('email').lean();
+        if (buyerDoc?.email && verifyRes.data.customer.email.toLowerCase() !== buyerDoc.email.toLowerCase()) {
+          return res.status(403).json({ success: false, error: 'Payment customer identity does not match authenticated user' });
+        }
+      }
     }
 
     const fulfillment = await fulfillTicketOrderInternal(order._id.toString());
