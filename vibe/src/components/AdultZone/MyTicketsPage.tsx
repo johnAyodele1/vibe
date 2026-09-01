@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { API_BASE_URL } from '../../config';
+import { toast } from 'sonner';
 
 interface TicketItem {
   _id: string;
@@ -24,6 +25,7 @@ interface TicketItem {
 
 export const MyTicketsPage: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [tickets, setTickets] = useState<TicketItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
@@ -36,6 +38,34 @@ export const MyTicketsPage: React.FC = () => {
         setLoading(false);
         return;
       }
+
+      // Check if returning from Paystack payment callback
+      const payRef = searchParams.get('reference') || searchParams.get('trxref');
+      if (payRef) {
+        toast.loading('Verifying Paystack ticket payment...', { id: 'verify-tkt' });
+        try {
+          const verifyRes = await fetch(`${API_BASE_URL}/parties/orders/${payRef}/verify`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ paymentReference: payRef }),
+          });
+          const verifyData = await verifyRes.json();
+          if (verifyData.success) {
+            toast.success('Ticket payment verified and issued!', { id: 'verify-tkt' });
+          } else {
+            toast.error(verifyData.error || 'Payment verification pending', { id: 'verify-tkt' });
+          }
+        } catch {
+          toast.dismiss('verify-tkt');
+        } finally {
+          // Clear query params from URL
+          setSearchParams({});
+        }
+      }
+
       try {
         const res = await fetch(`${API_BASE_URL}/me/tickets`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -51,7 +81,7 @@ export const MyTicketsPage: React.FC = () => {
       }
     };
     fetchTickets();
-  }, []);
+  }, [searchParams, setSearchParams]);
 
   const now = new Date();
   const upcomingTickets = tickets.filter((t) => !t.partyId?.startDate || new Date(t.partyId.startDate) >= now);

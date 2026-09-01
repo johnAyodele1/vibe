@@ -19,7 +19,7 @@ import { getZegoToken } from '../controllers/zego.controller';
 import { joinMatchQueue, leaveMatchQueue, endMatchSession, nextStranger } from '../controllers/randomMatch.controller';
 import { getClubs, getClubById, createClub, updateClub } from '../controllers/club.controller';
 import { getParties, getPartyById, createParty, updateParty, cancelParty } from '../controllers/party.controller';
-import { getTicketAvailability, purchaseTickets, createTicketOrder, verifyTicketOrder, getMyTickets, getTicketByCode, scanCheckinQuery, performCheckinScan, getCheckinDashboard } from '../controllers/ticket.controller';
+import { getTicketAvailability, purchaseTickets, createTicketOrder, verifyTicketOrder, handlePaystackTicketWebhook, getMyTickets, getTicketByCode, scanCheckinQuery, performCheckinScan, getCheckinDashboard } from '../controllers/ticket.controller';
 import { trackDailyActive } from '../middleware/trackDailyActive';
 import { validateProviderPricing } from '../middleware/providerPricingValidation';
 
@@ -181,6 +181,7 @@ router.delete('/parties/:partyId', verifyAdultJWT, cancelParty);
 router.get('/parties/:partyId/tickets/availability', getTicketAvailability);
 router.post('/parties/:partyId/tickets/orders', verifyAdultJWT, createTicketOrder);
 router.post('/parties/orders/:orderId/verify', verifyAdultJWT, verifyTicketOrder);
+router.post('/parties/orders/paystack-webhook', handlePaystackTicketWebhook);
 router.post('/parties/:partyId/tickets/purchase', verifyAdultJWT, purchaseTickets);
 router.get('/me/tickets', verifyAdultJWT, getMyTickets);
 router.get('/me/tickets/:ticketCode', verifyAdultJWT, getTicketByCode);

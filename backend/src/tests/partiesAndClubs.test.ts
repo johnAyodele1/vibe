@@ -1,6 +1,6 @@
 import request from 'supertest';
 import mongoose from 'mongoose';
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import crypto from 'crypto';
 import app from '../app';
 import Club from '../models/Club';
@@ -12,14 +12,17 @@ import AdultUser from '../models/AdultUser';
 import jwt from 'jsonwebtoken';
 
 describe('Parties & Clubs Feature Concurrency & Security Test Suite', () => {
-  let mongoServer: MongoMemoryServer;
+  let mongoServer: MongoMemoryReplSet;
   let userToken: string;
   let adminToken: string;
   let userId: string;
   let adminId: string;
 
   beforeAll(async () => {
-    mongoServer = await MongoMemoryServer.create();
+    mongoServer = await MongoMemoryReplSet.create({
+      replSet: { count: 1 },
+      binary: { version: '7.0.14' },
+    });
     const uri = mongoServer.getUri();
     await mongoose.connect(uri);
 
@@ -248,6 +251,87 @@ describe('Parties & Clubs Feature Concurrency & Security Test Suite', () => {
 
       expect(verifyRes.status).toBe(200);
       expect(verifyRes.body.tickets).toHaveLength(2);
+    });
+
+    it('prevents unauthorized user from verifying another user order', async () => {
+      const start = new Date(Date.now() + 86400000);
+      const party = await Party.create({
+        title: 'Private Party',
+        description: 'Testing order ownership',
+        venueName: 'Hall',
+        venueAddress: 'Lagos',
+        startDate: start,
+        endDate: new Date(start.getTime() + 36000000),
+        coverImage: 'https://example.com/private.jpg',
+        organizerId: new mongoose.Types.ObjectId(),
+        status: 'approved',
+        ticketTiers: [{ tierId: 't1', name: 'Reg', price: 1000, quantity: 10, sold: 0, perPersonLimit: 4, isActive: true }],
+      });
+
+      const victimId = new mongoose.Types.ObjectId();
+      const victimOrder = await TicketOrder.create({
+        orderReference: 'ZPP-ORD-VICTIM1',
+        partyId: party._id,
+        tierId: 't1',
+        buyerId: victimId, // Victim is buyer
+        buyerName: 'Victim User',
+        quantity: 1,
+        priceNaira: 1000,
+        platformFeeNaira: 50,
+        organizerNaira: 950,
+        paymentProvider: 'paystack',
+        paymentReference: 'paystack_ref_victim1',
+        status: 'pending',
+      });
+
+      // Attacker attempts to verify victim's order -> 403 Forbidden
+      const res = await request(app)
+        .post(`/api/v1/parties/orders/${victimOrder._id}/verify`)
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({ paymentReference: 'paystack_ref_victim1' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toContain('Forbidden');
+    });
+
+    it('rejects fulfillment of expired ticket orders', async () => {
+      const start = new Date(Date.now() + 86400000);
+      const party = await Party.create({
+        title: 'Expired Order Party',
+        description: 'Testing expiration',
+        venueName: 'Hall',
+        venueAddress: 'Lagos',
+        startDate: start,
+        endDate: new Date(start.getTime() + 36000000),
+        coverImage: 'https://example.com/expired.jpg',
+        organizerId: new mongoose.Types.ObjectId(),
+        status: 'approved',
+        ticketTiers: [{ tierId: 't1', name: 'Reg', price: 1000, quantity: 10, sold: 0, perPersonLimit: 4, isActive: true }],
+      });
+
+      const expiredOrder = await TicketOrder.create({
+        orderReference: 'ZPP-ORD-EXP1',
+        partyId: party._id,
+        tierId: 't1',
+        buyerId: new mongoose.Types.ObjectId(userId),
+        buyerName: 'Test User',
+        quantity: 1,
+        priceNaira: 1000,
+        platformFeeNaira: 50,
+        organizerNaira: 950,
+        paymentProvider: 'wallet',
+        paymentReference: 'ref_exp1',
+        status: 'pending',
+        expiresAt: new Date(Date.now() - 1000), // Expired 1 second ago
+      });
+
+      const res = await request(app)
+        .post(`/api/v1/parties/orders/${expiredOrder._id}/verify`)
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({ paymentReference: 'ref_exp1' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('expired');
     });
 
     it('restricts ticket detail lookup by code to the ticket owner', async () => {

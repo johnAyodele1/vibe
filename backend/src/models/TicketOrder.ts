@@ -13,7 +13,9 @@ export interface ITicketOrder extends Document {
   organizerNaira: number;
   paymentProvider: 'paystack' | 'wallet' | 'simulated';
   paymentReference?: string;
+  providerReference?: string;
   status: 'pending' | 'fulfilled' | 'failed';
+  expiresAt: Date;
   fulfilledAt?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -37,10 +39,15 @@ const TicketOrderSchema = new Schema<ITicketOrder>(
       default: 'paystack',
     },
     paymentReference: { type: String, unique: true, sparse: true },
+    providerReference: { type: String },
     status: {
       type: String,
       enum: ['pending', 'fulfilled', 'failed'],
       default: 'pending',
+    },
+    expiresAt: {
+      type: Date,
+      default: () => new Date(Date.now() + 30 * 60 * 1000), // 30 mins expiration
     },
     fulfilledAt: { type: Date },
   },
@@ -52,6 +59,7 @@ const TicketOrderSchema = new Schema<ITicketOrder>(
 
 TicketOrderSchema.index({ buyerId: 1, createdAt: -1 });
 TicketOrderSchema.index({ partyId: 1, status: 1 });
+TicketOrderSchema.index({ paymentProvider: 1, providerReference: 1 });
 
 export const TicketOrder = mongoose.model<ITicketOrder>('TicketOrder', TicketOrderSchema);
 export default TicketOrder;

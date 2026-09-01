@@ -4,6 +4,7 @@ import Ticket from '../models/Ticket';
 import TicketOrder from '../models/TicketOrder';
 import PlatformEarning from '../models/PlatformEarning';
 import AdultUser from '../models/AdultUser';
+import CreditTransaction from '../models/CreditTransaction';
 import { generateQRCode } from '../shared/qr';
 import { sendEmail } from '../shared/email/brevoClient';
 import { purchaseTicketsSchema } from '../validators/partiesAndClubs.validator';
@@ -91,6 +92,12 @@ export const fulfillTicketOrderInternal = async (orderId: string, providedPaymen
     };
   }
 
+  // ORDER EXPIRATION CHECK
+  if (order.expiresAt && new Date(order.expiresAt) < new Date() && order.status === 'pending') {
+    await TicketOrder.findByIdAndUpdate(order._id, { $set: { status: 'failed' } });
+    throw new Error('Ticket order has expired');
+  }
+
   const party = await Party.findById(order.partyId);
   if (!party || party.status !== 'approved') {
     throw new Error('Party not found or not approved');
@@ -138,6 +145,15 @@ export const fulfillTicketOrderInternal = async (orderId: string, providedPaymen
       return { order, tickets: existing, isAlreadyFulfilled: true };
     }
 
+    // 1b. TRANSACTIONAL PER-PERSON LIMIT VERIFICATION
+    const existingPaidCount = await Ticket.countDocuments(
+      { partyId: party._id, tierId: tier.tierId, buyerId: order.buyerId, paymentStatus: 'paid' },
+      session ? { session } : {}
+    );
+    if (existingPaidCount + qty > tier.perPersonLimit) {
+      throw new Error(`Maximum ${tier.perPersonLimit} tickets per person for this tier`);
+    }
+
     // 2. Atomic Conditional Inventory Reservation
     const maxAllowedSold = tier.quantity - qty;
     const reserveResult = await Party.updateOne(
@@ -163,7 +179,7 @@ export const fulfillTicketOrderInternal = async (orderId: string, providedPaymen
       throw new Error('Not enough tickets available for this tier');
     }
 
-    // 3. Wallet Debit (if wallet payment)
+    // 3. Wallet Debit and CreditTransaction Audit Record (if wallet payment)
     if (order.paymentProvider === 'wallet') {
       const updatedUser = await AdultUser.findOneAndUpdate(
         { _id: order.buyerId, credits: { $gte: requiredDiamonds } },
@@ -173,6 +189,23 @@ export const fulfillTicketOrderInternal = async (orderId: string, providedPaymen
       if (!updatedUser) {
         throw new Error(`Insufficient wallet balance. Required: 💎 ${requiredDiamonds}`);
       }
+
+      await CreditTransaction.create(
+        [
+          {
+            userId: order.buyerId,
+            type: 'ticket_purchase',
+            amount: -requiredDiamonds,
+            usdAmount: parseFloat((requiredDiamonds * 0.0075).toFixed(2)),
+            nairaAmount: -order.priceNaira,
+            description: `Ticket Purchase - ${order.quantity} ticket(s) for ${party.title}`,
+            relatedUserId: party.organizerId,
+            status: 'completed',
+            metadata: { orderId: order._id, partyId: party._id, tierId: order.tierId },
+          },
+        ],
+        session ? { session } : {}
+      );
     }
 
     // 4. Generate all tickets
@@ -448,10 +481,33 @@ export const createTicketOrder = async (req: Request, res: Response) => {
 // POST /api/v1/parties/orders/:orderId/verify
 export const verifyTicketOrder = async (req: Request, res: Response) => {
   try {
-    const orderId = Array.isArray(req.params.orderId) ? req.params.orderId[0] : req.params.orderId;
+    const orderId = Array.isArray(req.params.orderId) ? req.params.orderId[0] : req.params.partyId || req.params.orderId;
+    const userId = (req as any).adultUser?._id || (req as any).user?._id;
     const { paymentReference } = req.body;
 
-    const fulfillment = await fulfillTicketOrderInternal(orderId, paymentReference);
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
+    let order = null;
+    if (typeof orderId === 'string' && mongoose.Types.ObjectId.isValid(orderId)) {
+      order = await TicketOrder.findById(orderId);
+    }
+    if (!order) {
+      order = await TicketOrder.findOne({
+        $or: [{ paymentReference: orderId }, { orderReference: orderId }],
+      });
+    }
+    if (!order) {
+      return res.status(404).json({ success: false, error: 'Ticket order not found' });
+    }
+
+    // STRICT OWNER AUTHORIZATION CHECK (Blocker 2)
+    if (order.buyerId.toString() !== userId.toString()) {
+      return res.status(403).json({ success: false, error: 'Forbidden: You do not own this ticket order' });
+    }
+
+    const fulfillment = await fulfillTicketOrderInternal(order._id.toString(), paymentReference);
 
     return res.json({
       success: true,
@@ -467,6 +523,36 @@ export const verifyTicketOrder = async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error('Error verifying ticket order:', err);
     return res.status(400).json({ success: false, error: err.message || 'Order verification failed' });
+  }
+};
+
+// POST /api/v1/parties/orders/paystack-webhook
+export const handlePaystackTicketWebhook = async (req: Request, res: Response) => {
+  try {
+    const signature = (req.headers['x-paystack-signature'] as string) || '';
+    const rawBody = (req as any).rawBody || JSON.stringify(req.body);
+
+    const isValid = PaystackService.verifyWebhookSignature(rawBody, signature);
+    if (!isValid && process.env.NODE_ENV !== 'test') {
+      return res.status(400).json({ success: false, error: 'Invalid webhook signature' });
+    }
+
+    const payload = req.body;
+    if (payload?.event === 'charge.success') {
+      const data = payload.data;
+      const reference = data?.reference;
+      if (reference) {
+        const order = await TicketOrder.findOne({ paymentReference: reference });
+        if (order && order.status === 'pending') {
+          await fulfillTicketOrderInternal(order._id.toString(), reference);
+        }
+      }
+    }
+
+    return res.status(200).json({ status: 'success' });
+  } catch (err: any) {
+    console.error('Paystack ticket webhook error:', err);
+    return res.status(500).json({ success: false, error: err.message || 'Webhook processing error' });
   }
 };
 
