@@ -76,9 +76,9 @@ export const createPartySchema = z.object({
 export const purchaseTicketsSchema = z.object({
   tierId: z.string().min(1, 'tierId is required'),
   quantity: z.number().int().min(1, 'Quantity must be at least 1').max(10, 'Quantity cannot exceed 10'),
-  paymentReference: z.string().min(3, 'paymentReference or paymentIntentId required').optional(),
+  paymentReference: z.string().min(3).optional(),
   paymentIntentId: z.string().optional(),
-  paymentProvider: z.enum(['paystack', 'stripe', 'wallet', 'simulated']).optional().default('simulated'),
+  paymentProvider: z.enum(['paystack', 'stripe', 'wallet', 'simulated']).optional().default('paystack'),
 });
 
 export const checkinScanSchema = z.object({

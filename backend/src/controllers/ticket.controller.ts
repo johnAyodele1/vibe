@@ -76,10 +76,15 @@ export const getTicketAvailability = async (req: Request, res: Response) => {
  * Server-Authoritative Ticket Order Fulfillment inside a MongoDB Session Transaction.
  * Idempotent: If order is already fulfilled, returns existing tickets immediately.
  */
-export const fulfillTicketOrderInternal = async (orderId: string, providedPaymentRef?: string) => {
+export const fulfillTicketOrderInternal = async (orderId: string) => {
   const order = await TicketOrder.findById(orderId);
   if (!order) {
     throw new Error('Ticket order not found');
+  }
+
+  // REJECT SIMULATED PAYMENTS IN NON-TEST ENVIRONMENTS
+  if (order.paymentProvider === 'simulated' && process.env.NODE_ENV !== 'test') {
+    throw new Error('Simulated payments are strictly forbidden in production');
   }
 
   // IDEMPOTENCY PROTECTION: If order is already fulfilled, return existing tickets immediately
@@ -108,11 +113,20 @@ export const fulfillTicketOrderInternal = async (orderId: string, providedPaymen
     throw new Error('Ticket tier not found or inactive');
   }
 
-  const paymentRef = providedPaymentRef || order.paymentReference || order.orderReference;
+  const paymentRef = order.paymentReference || order.orderReference;
+
+  // PREVENT REPLAY ATTACKS: Ensure paymentRef has not already been used for another fulfilled order/tickets
+  const reusedTicket = await Ticket.exists({ paymentRef, partyId: { $ne: party._id } });
+  if (reusedTicket) {
+    throw new Error('Payment reference has already been consumed by another transaction');
+  }
 
   // Paystack verification
   if (order.paymentProvider === 'paystack' && process.env.NODE_ENV !== 'test') {
-    const verifyRes = await PaystackService.verifyTransaction(paymentRef);
+    if (!order.paymentReference) {
+      throw new Error('Paystack order missing server-generated payment reference');
+    }
+    const verifyRes = await PaystackService.verifyTransaction(order.paymentReference);
     if (!verifyRes.status || !verifyRes.data || verifyRes.data.status !== 'success') {
       throw new Error(`Paystack payment verification failed: ${verifyRes.message || 'Payment not successful'}`);
     }
@@ -208,7 +222,7 @@ export const fulfillTicketOrderInternal = async (orderId: string, providedPaymen
       );
     }
 
-    // 4. Generate all tickets
+    // 4. Generate all tickets with pre-generated QR codes
     for (let i = 0; i < qty; i++) {
       let created = false;
       let retries = 0;
@@ -336,9 +350,12 @@ export const fulfillTicketOrderInternal = async (orderId: string, providedPaymen
     }
 
     return fulfillmentResult;
-  } catch (err) {
-    // Mark order failed
-    await TicketOrder.findByIdAndUpdate(order._id, { $set: { status: 'failed' } }).catch(() => {});
+  } catch (err: any) {
+    // Mark order as refund_pending if payment was already verified via Paystack
+    const failedStatus = (order.paymentProvider === 'paystack') ? 'refund_pending' : 'failed';
+    await TicketOrder.findByIdAndUpdate(order._id, {
+      $set: { status: failedStatus, updatedAt: new Date() },
+    }).catch(() => {});
     throw err;
   }
 };
@@ -361,6 +378,13 @@ export const createTicketOrder = async (req: Request, res: Response) => {
     }
 
     const { tierId, quantity: qty, paymentProvider = 'paystack' } = parseResult.data;
+
+    if (paymentProvider === 'simulated' && process.env.NODE_ENV !== 'test') {
+      return res.status(400).json({
+        success: false,
+        error: 'Simulated payment is disabled in production. Please select Wallet or Paystack.',
+      });
+    }
 
     // 1. Validate party
     const party = await Party.findOne({
@@ -401,25 +425,38 @@ export const createTicketOrder = async (req: Request, res: Response) => {
     const platformFeeNaira = singlePlatformFee * qty;
     const organizerNaira = singleOrganizerNaira * qty;
 
-    const orderReference = generateOrderReference();
-    const paymentReference = `paystack_tkt_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-
-    // Create pending TicketOrder
-    const order = await TicketOrder.create({
-      orderReference,
+    // IDEMPOTENT ORDER REUSE: Reuse pending order for same buyer, party, tier, quantity if created within 15 mins
+    const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000);
+    let order = await TicketOrder.findOne({
+      buyerId,
       partyId: party._id,
       tierId: tier.tierId,
-      tierName: tier.name,
-      buyerId,
-      buyerName,
       quantity: qty,
-      priceNaira,
-      platformFeeNaira,
-      organizerNaira,
-      paymentProvider: paymentProvider as 'paystack' | 'wallet' | 'simulated',
-      paymentReference,
       status: 'pending',
+      createdAt: { $gte: fifteenMinsAgo },
     });
+
+    const orderReference = order?.orderReference || generateOrderReference();
+    const paymentReference = order?.paymentReference || `paystack_tkt_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+
+    if (!order) {
+      order = await TicketOrder.create({
+        orderReference,
+        partyId: party._id,
+        tierId: tier.tierId,
+        tierName: tier.name,
+        buyerId,
+        buyerName,
+        quantity: qty,
+        priceNaira,
+        platformFeeNaira,
+        organizerNaira,
+        paymentProvider: paymentProvider as 'paystack' | 'wallet' | 'simulated',
+        paymentReference,
+        providerReference: paymentReference,
+        status: 'pending',
+      });
+    }
 
     if (paymentProvider === 'paystack' && process.env.NODE_ENV !== 'test') {
       const defaultFrontendUrl = process.env.FRONTEND_URL || `${req.protocol}://${req.get('host')}`;
@@ -454,7 +491,7 @@ export const createTicketOrder = async (req: Request, res: Response) => {
     }
 
     // For wallet or test environment, fulfill immediately inside MongoDB transaction
-    const fulfillment = await fulfillTicketOrderInternal(order._id.toString(), paymentReference);
+    const fulfillment = await fulfillTicketOrderInternal(order._id.toString());
 
     return res.status(201).json({
       success: true,
@@ -481,33 +518,32 @@ export const createTicketOrder = async (req: Request, res: Response) => {
 // POST /api/v1/parties/orders/:orderId/verify
 export const verifyTicketOrder = async (req: Request, res: Response) => {
   try {
-    const orderId = Array.isArray(req.params.orderId) ? req.params.orderId[0] : req.params.partyId || req.params.orderId;
+    const rawOrderId = Array.isArray(req.params.orderId) ? req.params.orderId[0] : req.params.partyId || req.params.orderId;
     const userId = (req as any).adultUser?._id || (req as any).user?._id;
-    const { paymentReference } = req.body;
 
     if (!userId) {
       return res.status(401).json({ success: false, error: 'Unauthorized' });
     }
 
     let order = null;
-    if (typeof orderId === 'string' && mongoose.Types.ObjectId.isValid(orderId)) {
-      order = await TicketOrder.findById(orderId);
+    if (typeof rawOrderId === 'string' && mongoose.Types.ObjectId.isValid(rawOrderId)) {
+      order = await TicketOrder.findById(rawOrderId);
     }
     if (!order) {
       order = await TicketOrder.findOne({
-        $or: [{ paymentReference: orderId }, { orderReference: orderId }],
+        $or: [{ paymentReference: rawOrderId }, { orderReference: rawOrderId }],
       });
     }
     if (!order) {
       return res.status(404).json({ success: false, error: 'Ticket order not found' });
     }
 
-    // STRICT OWNER AUTHORIZATION CHECK (Blocker 2)
+    // STRICT OWNER AUTHORIZATION CHECK
     if (order.buyerId.toString() !== userId.toString()) {
       return res.status(403).json({ success: false, error: 'Forbidden: You do not own this ticket order' });
     }
 
-    const fulfillment = await fulfillTicketOrderInternal(order._id.toString(), paymentReference);
+    const fulfillment = await fulfillTicketOrderInternal(order._id.toString());
 
     return res.json({
       success: true,
@@ -544,7 +580,7 @@ export const handlePaystackTicketWebhook = async (req: Request, res: Response) =
       if (reference) {
         const order = await TicketOrder.findOne({ paymentReference: reference });
         if (order && order.status === 'pending') {
-          await fulfillTicketOrderInternal(order._id.toString(), reference);
+          await fulfillTicketOrderInternal(order._id.toString());
         }
       }
     }
