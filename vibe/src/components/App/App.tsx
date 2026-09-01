@@ -20,6 +20,8 @@ import AdminAnalyticsWithAccounting from "../Admin/AdminAnalyticsWithAccounting"
 import AdminPayoutsPage from "../Admin/AdminPayoutsPage";
 import AdminErrorsPage from "../Admin/AdminErrorsPage";
 import AdminOfficialChannels from "../Admin/AdminOfficialChannels";
+import AdminClubsPage from "../Admin/AdminClubsPage";
+import AdminPartiesPage from "../Admin/AdminPartiesPage";
 import LoadingScreen from "../LoadingScreen/LoadingScreen";
 import AdultZoneLayout from "../AdultZone/AdultZoneLayout";
 import AdultHome from "../AdultZone/AdultHome";
@@ -42,6 +44,13 @@ import ProviderProfile from "../AdultZone/ProviderProfile";
 import ProviderSettings from "../AdultZone/ProviderSettings";
 import ProviderPayout from "../AdultZone/ProviderPayout";
 import UserSettings from "../AdultZone/UserSettings";
+import ClubsPage from "../AdultZone/ClubsPage";
+import ClubDetailPage from "../AdultZone/ClubDetailPage";
+import PartiesPage from "../AdultZone/PartiesPage";
+import PartyDetailPage from "../AdultZone/PartyDetailPage";
+import CreatePartyPage from "../AdultZone/CreatePartyPage";
+import MyTicketsPage from "../AdultZone/MyTicketsPage";
+import GuardScanPage from "../AdultZone/GuardScanPage";
 import NotificationPrompt from "../pwa/NotificationPrompt";
 import { useAuth } from "../../contexts/AuthContext";
 import { useAdultAuth } from "../../contexts/AdultAuthContext";
@@ -145,8 +154,17 @@ function App() {
           <Route path="adult/provider/settings" element={<ProviderOnboardingGuard><ProviderSettings /></ProviderOnboardingGuard>} />
           <Route path="adult/provider/payout" element={<ProviderOnboardingGuard><ProviderPayout /></ProviderOnboardingGuard>} />
           <Route path="adult/settings" element={<UserSettings />} />
+          <Route path="clubs" element={<ClubsPage />} />
+          <Route path="clubs/:clubId" element={<ClubDetailPage />} />
+          <Route path="parties" element={<PartiesPage />} />
+          <Route path="parties/create" element={<CreatePartyPage />} />
+          <Route path="parties/:partyId" element={<PartyDetailPage />} />
+          <Route path="me/tickets" element={<MyTicketsPage />} />
+          <Route path="guard" element={<GuardScanPage />} />
         </Route>
         <Route path="/dating" element={isAuthenticated ? (isProfileComplete() ? <Navigate to="/discovery" replace /> : <Navigate to="/profile" replace />) : <Onboarding />} />
+        <Route path="/admin/clubs" element={isAdminAuthenticated ? <AdminClubsPage /> : <Navigate to="/admin/login" replace />} />
+        <Route path="/admin/parties" element={isAdminAuthenticated ? <AdminPartiesPage /> : <Navigate to="/admin/login" replace />} />
         <Route path="/admin/official-channels" element={isAdminAuthenticated ? <AdminOfficialChannels /> : <Navigate to="/admin/login" replace />} />
         <Route path="/admin/errors" element={isAdminAuthenticated ? <AdminErrorsPage /> : <Navigate to="/admin/login" replace />} />
         <Route path="/admin/payouts" element={isAdminAuthenticated ? <AdminPayoutsPage /> : <Navigate to="/admin/login" replace />} />
