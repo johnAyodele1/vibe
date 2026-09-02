@@ -43,6 +43,8 @@ import {
   resolveError,
   clearResolvedErrors
 } from '../controllers/adminErrors.controller';
+import { adminGetClubs, adminApproveClub, adminRejectClub, adminSuspendClub } from '../controllers/club.controller';
+import { adminGetParties, adminGetPartyDetail, adminApproveParty, adminRejectParty, adminToggleFeatureParty } from '../controllers/party.controller';
 import {
   adminCreateNotification,
   adminGetNotifications,
@@ -111,5 +113,18 @@ router.get('/errors', listErrors);
 router.get('/errors/:errorId', getError);
 router.put('/errors/:errorId/resolve', resolveError);
 router.delete('/errors/resolved', clearResolvedErrors);
+
+// Admin Clubs Management
+router.get('/clubs', adminGetClubs);
+router.put('/clubs/:clubId/approve', adminApproveClub);
+router.put('/clubs/:clubId/reject', adminRejectClub);
+router.put('/clubs/:clubId/suspend', adminSuspendClub);
+
+// Admin Parties Management
+router.get('/parties', adminGetParties);
+router.get('/parties/:id', adminGetPartyDetail);
+router.put('/parties/:id/approve', adminApproveParty);
+router.put('/parties/:id/reject', adminRejectParty);
+router.put('/parties/:id/feature', adminToggleFeatureParty);
 
 export default router;

@@ -3,6 +3,8 @@ import CreditTransaction from '../models/CreditTransaction';
 import PayoutRequest from '../models/PayoutRequest';
 import CustomerRefund from '../models/CustomerRefund';
 import PlatformEarning from '../models/PlatformEarning';
+import Ticket from '../models/Ticket';
+import Party from '../models/Party';
 import { PROVIDER_EARNING_TYPES, REVERT_TYPES } from '../shared/earnings';
 import { getDiamondNairaRate } from '../shared/pricing';
 
@@ -14,7 +16,7 @@ export const getAccountingSummary = async (_req: Request, res: Response): Promis
   try {
     const rate = await getDiamondNairaRate();
 
-    const [platformFees, platformSpendAndExpected, payoutRequests, providerEarnings, reversions, refunds, purchases] = await Promise.all([
+    const [platformFees, platformSpendAndExpected, payoutRequests, providerEarnings, reversions, refunds, purchases, ticketRevenueAggregate, topPartiesAggregate] = await Promise.all([
       // 1. Platform Earning ledger
       PlatformEarning.aggregate([
         {
@@ -167,6 +169,53 @@ export const getAccountingSummary = async (_req: Request, res: Response): Promis
           },
         },
       ]),
+
+      // 8. Ticket Revenue Pipeline (5% platform fee)
+      Ticket.aggregate([
+        { $match: { paymentStatus: 'paid', isValid: true } },
+        {
+          $group: {
+            _id: null,
+            grossTicketSales: { $sum: '$priceNaira' },
+            platformFees: { $sum: '$platformFeeNaira' },
+            organizerPayouts: { $sum: '$organizerNaira' },
+            totalTicketsCount: { $sum: 1 },
+          },
+        },
+      ]),
+
+      // 9. Top Parties by Ticket Revenue
+      Ticket.aggregate([
+        { $match: { paymentStatus: 'paid', isValid: true } },
+        {
+          $group: {
+            _id: '$partyId',
+            grossSales: { $sum: '$priceNaira' },
+            platformFee: { $sum: '$platformFeeNaira' },
+            ticketCount: { $sum: 1 },
+          },
+        },
+        { $sort: { grossSales: -1 } },
+        { $limit: 5 },
+        {
+          $lookup: {
+            from: 'parties',
+            localField: '_id',
+            foreignField: '_id',
+            as: 'party',
+          },
+        },
+        { $unwind: { path: '$party', preserveNullAndEmptyArrays: true } },
+        {
+          $project: {
+            partyId: '$_id',
+            title: { $ifNull: ['$party.title', 'Unknown Party'] },
+            grossSales: 1,
+            platformFee: 1,
+            ticketCount: 1,
+          },
+        },
+      ]),
     ]);
 
     const feeData = platformFees[0] || { gross: 0, grossNaira: 0, reverted: 0, revertedNaira: 0, net: 0, netNaira: 0 };
@@ -176,6 +225,8 @@ export const getAccountingSummary = async (_req: Request, res: Response): Promis
     const reversalData = reversions[0] || { total: 0, totalNaira: 0 };
     const refundData = refunds[0] || { customerRefunded: 0, customerRefundedNaira: 0, providerReverted: 0, providerRevertedNaira: 0, platformFeeReverted: 0, count: 0 };
     const purchaseData = purchases[0] || { credits: 0, naira: 0, count: 0 };
+    const ticketData = ticketRevenueAggregate[0] || { grossTicketSales: 0, platformFees: 0, organizerPayouts: 0, totalTicketsCount: 0 };
+    const topParties = topPartiesAggregate || [];
 
     // Money Spent on Platform
     const totalMoneySpentOnPlatform = spendData.totalMoneySpentOnPlatform || 0;
@@ -255,6 +306,15 @@ export const getAccountingSummary = async (_req: Request, res: Response): Promis
         platformFeeReverted: revertedPlatformFees,
         platformFeeRevertedNaira: revertedPlatformFeesNaira,
         refundCount: refundData.count || 0,
+
+        // Ticket Sales & Revenue Pipeline
+        ticketSales: {
+          grossTicketSales: ticketData.grossTicketSales || 0,
+          platformFees: ticketData.platformFees || 0,
+          organizerPayouts: ticketData.organizerPayouts || 0,
+          totalTicketsCount: ticketData.totalTicketsCount || 0,
+          topParties,
+        },
       },
     });
   } catch (error: any) {
