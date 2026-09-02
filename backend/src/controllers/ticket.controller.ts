@@ -118,9 +118,16 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
     throw new Error('Ticket order has expired');
   }
 
-  // ATOMIC CLAIM: Transition from 'pending' -> 'processing'
+  // ATOMIC CLAIM: Transition from 'pending' -> 'processing' (or reclaim stale 'processing' > 2 mins old)
+  const twoMinsAgo = new Date(Date.now() - 2 * 60 * 1000);
   const claimedOrder = await TicketOrder.findOneAndUpdate(
-    { _id: orderId, status: 'pending' },
+    {
+      _id: orderId,
+      $or: [
+        { status: 'pending' },
+        { status: 'processing', updatedAt: { $lte: twoMinsAgo } },
+      ],
+    },
     { $set: { status: 'processing', updatedAt: new Date() } },
     { new: true }
   );
@@ -141,7 +148,7 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
   const party = await Party.findById(claimedOrder.partyId);
   if (!party || party.status !== 'approved') {
     await TicketOrder.findByIdAndUpdate(claimedOrder._id, { $set: { status: 'failed' } });
-    throw new Error('Party not found or not approved');
+    throw new Error(party?.status === 'cancelled' ? 'Party has been cancelled' : 'Party not found or not approved');
   }
 
   const tier = party.ticketTiers.find((t) => t.tierId === claimedOrder.tierId);
@@ -479,7 +486,7 @@ export const createTicketOrder = async (req: Request, res: Response) => {
 
     if (!order) {
       const newOrderRef = generateOrderReference();
-      const newPaystackRef = `paystack_tkt_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      const newPaystackRef = paymentProvider === 'paystack' ? `paystack_tkt_${Date.now()}_${Math.random().toString(36).substring(2, 8)}` : undefined;
       const providerRef = paymentProvider === 'paystack' ? newPaystackRef : newOrderRef;
 
       try {
@@ -620,7 +627,14 @@ export const verifyTicketOrder = async (req: Request, res: Response) => {
 export const handlePaystackTicketWebhook = async (req: Request, res: Response) => {
   try {
     const signature = (req.headers['x-paystack-signature'] as string) || '';
-    const rawBody = (req as any).rawBody || JSON.stringify(req.body);
+    const rawBodyBuffer = (req as any).rawBody;
+
+    // Fail closed in production if rawBody is missing
+    if (!rawBodyBuffer && process.env.NODE_ENV !== 'test') {
+      return res.status(400).json({ success: false, error: 'Raw request body unavailable for webhook signature verification' });
+    }
+
+    const rawBody = rawBodyBuffer ? (Buffer.isBuffer(rawBodyBuffer) ? rawBodyBuffer.toString('utf-8') : String(rawBodyBuffer)) : JSON.stringify(req.body);
 
     const isValid = PaystackService.verifyWebhookSignature(rawBody, signature);
     if (!isValid && process.env.NODE_ENV !== 'test') {
@@ -634,11 +648,12 @@ export const handlePaystackTicketWebhook = async (req: Request, res: Response) =
       if (reference) {
         const order = await TicketOrder.findOne({ paymentReference: reference });
         if (order) {
-          // Terminal no-op for already processing / fulfilled / refunded orders -> return 200 immediately
-          if (order.status === 'fulfilled' || order.status === 'processing') {
+          // Terminal no-op for active processing / fulfilled / refunded orders -> return 200 immediately
+          const twoMinsAgo = new Date(Date.now() - 2 * 60 * 1000);
+          if (order.status === 'fulfilled' || (order.status === 'processing' && order.updatedAt > twoMinsAgo)) {
             return res.status(200).json({ status: 'success', message: 'Order already processed or processing' });
           }
-          if (order.status === 'pending') {
+          if (order.status === 'pending' || (order.status === 'processing' && order.updatedAt <= twoMinsAgo)) {
             await fulfillTicketOrderInternal(order._id.toString());
           }
         }
@@ -848,13 +863,13 @@ export const performCheckinScan = async (req: Request, res: Response) => {
       });
     }
 
-    if (!ticket.isValid || ticket.paymentStatus !== 'paid') {
+    if (!ticket.isValid || ticket.paymentStatus !== 'paid' || party.status === 'cancelled') {
       return res.status(400).json({
         success: false,
         error: 'Ticket is not valid',
         code: 'TICKET_INVALID',
         display: '❌ Invalid Ticket',
-        reason: ticket.invalidReason || 'Ticket cancelled or refunded',
+        reason: party.status === 'cancelled' ? 'Party cancelled by organizer' : ticket.invalidReason || 'Ticket cancelled or refunded',
       });
     }
 

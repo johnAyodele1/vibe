@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import Party, { ITicketTier } from '../models/Party';
+import Ticket from '../models/Ticket';
+import TicketOrder from '../models/TicketOrder';
 import { createPartySchema } from '../validators/partiesAndClubs.validator';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
@@ -165,6 +167,15 @@ export const createParty = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'Start date must be before end date' });
     }
 
+    const tierNameSet = new Set<string>();
+    for (const t of ticketTiers) {
+      const nameKey = (t.name || '').trim().toLowerCase();
+      if (tierNameSet.has(nameKey)) {
+        return res.status(400).json({ success: false, error: `Duplicate ticket tier name "${t.name}"` });
+      }
+      tierNameSet.add(nameKey);
+    }
+
     const processedTiers: ITicketTier[] = ticketTiers.map((t: any, index: number) => ({
       tierId: t.tierId || `tier-${Date.now()}-${index}-${Math.random().toString(36).substring(2, 7)}`,
       name: t.name || 'General Admission',
@@ -277,6 +288,7 @@ export const updateParty = async (req: Request, res: Response) => {
 
     if (Array.isArray(ticketTiers) && ticketTiers.length > 0) {
       const existingTierMap = new Map(party.ticketTiers.map((tier) => [tier.tierId, tier]));
+      const updatedSubmittedTierIds = new Set(ticketTiers.map((t) => t.tierId).filter(Boolean));
 
       for (const t of ticketTiers) {
         const existing = t.tierId ? existingTierMap.get(t.tierId) : undefined;
@@ -290,7 +302,7 @@ export const updateParty = async (req: Request, res: Response) => {
         }
       }
 
-      party.ticketTiers = ticketTiers.map((t: any, index: number) => {
+      const newTiersList: ITicketTier[] = ticketTiers.map((t: any, index: number) => {
         const existing = t.tierId ? existingTierMap.get(t.tierId) : undefined;
         const currentSold = existing ? existing.sold : 0;
         return {
@@ -304,6 +316,18 @@ export const updateParty = async (req: Request, res: Response) => {
           isActive: t.isActive !== false,
         };
       });
+
+      // Preserve existing tiers with sold > 0 if omitted from update payload (marking them inactive)
+      for (const [existingId, existingTier] of existingTierMap.entries()) {
+        if (existingTier.sold > 0 && !updatedSubmittedTierIds.has(existingId)) {
+          newTiersList.push({
+            ...existingTier,
+            isActive: false, // Mark inactive so no new tickets can be bought, but tier inventory contract remains
+          });
+        }
+      }
+
+      party.ticketTiers = newTiersList;
     }
 
     await party.save();
@@ -334,7 +358,19 @@ export const cancelParty = async (req: Request, res: Response) => {
     party.status = 'cancelled';
     await party.save();
 
-    return res.json({ success: true, party, message: 'Party cancelled successfully' });
+    // 1. Invalidate all issued tickets for this cancelled party
+    await Ticket.updateMany(
+      { partyId: party._id },
+      { $set: { isValid: false, invalidReason: 'Party cancelled by organizer' } }
+    );
+
+    // 2. Mark any pending or processing ticket orders for this party as failed
+    await TicketOrder.updateMany(
+      { partyId: party._id, status: { $in: ['pending', 'processing'] } },
+      { $set: { status: 'failed', updatedAt: new Date() } }
+    );
+
+    return res.json({ success: true, party, message: 'Party cancelled and tickets invalidated successfully' });
   } catch (err: any) {
     console.error('Error cancelling party:', err);
     return res.status(500).json({ success: false, error: err.message || 'Failed to cancel party' });

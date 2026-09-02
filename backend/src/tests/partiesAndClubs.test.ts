@@ -475,6 +475,49 @@ describe('Parties & Clubs Feature Concurrency & Security Test Suite', () => {
       expect(doubleEnterRes.body.display).toContain('already inside');
     });
 
+    it('invalidates tickets and rejects check-in scans when party is cancelled', async () => {
+      const start = new Date(Date.now() + 86400000);
+      const party = await Party.create({
+        title: 'Cancelled Fest',
+        description: 'Testing cancellation flow',
+        venueName: 'Park',
+        venueAddress: 'Lagos',
+        startDate: start,
+        endDate: new Date(start.getTime() + 36000000),
+        coverImage: 'https://example.com/fest.jpg',
+        organizerId: new mongoose.Types.ObjectId(userId),
+        status: 'approved',
+        ticketTiers: [{ tierId: 't1', name: 'Reg', price: 1000, quantity: 10, sold: 1, perPersonLimit: 4, isActive: true }],
+      });
+
+      const ticket = await Ticket.create({
+        partyId: party._id,
+        tierId: 't1',
+        tierName: 'Reg',
+        buyerId: new mongoose.Types.ObjectId(userId),
+        buyerName: 'Buyer',
+        ticketCode: 'ZPP-CANCEL1',
+        priceNaira: 1000,
+        platformFeeNaira: 50,
+        organizerNaira: 950,
+        paymentStatus: 'paid',
+        entryStatus: 'not_entered',
+        isValid: true,
+      });
+
+      // Cancel party via organizer DELETE endpoint
+      const cancelRes = await request(app)
+        .delete(`/api/v1/parties/${party._id}`)
+        .set('Authorization', `Bearer ${userToken}`);
+
+      expect(cancelRes.status).toBe(200);
+
+      // Verify ticket document was marked invalid in DB
+      const updatedTicket = await Ticket.findById(ticket._id).lean();
+      expect(updatedTicket?.isValid).toBe(false);
+      expect(updatedTicket?.invalidReason).toBe('Party cancelled by organizer');
+    });
+
     it('locks out guard PIN authentication after 5 consecutive failed attempts', async () => {
       const pin = '654321';
       const party = await Party.create({
