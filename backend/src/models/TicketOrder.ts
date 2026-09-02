@@ -2,6 +2,7 @@ import mongoose, { Schema, Document } from 'mongoose';
 
 export interface ITicketOrder extends Document {
   orderReference: string;
+  idempotencyKey?: string;
   partyId: mongoose.Types.ObjectId;
   tierId: string;
   tierName?: string;
@@ -24,6 +25,7 @@ export interface ITicketOrder extends Document {
 const TicketOrderSchema = new Schema<ITicketOrder>(
   {
     orderReference: { type: String, unique: true, required: true },
+    idempotencyKey: { type: String, unique: true, sparse: true },
     partyId: { type: Schema.Types.ObjectId, required: true, ref: 'Party' },
     tierId: { type: String, required: true },
     tierName: { type: String },

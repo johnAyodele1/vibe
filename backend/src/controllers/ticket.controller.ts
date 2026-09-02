@@ -8,8 +8,10 @@ import { getDiamondNairaRate } from '../shared/pricing';
 import CreditTransaction from '../models/CreditTransaction';
 import { generateQRCode } from '../shared/qr';
 import { sendEmail } from '../shared/email/brevoClient';
-import { purchaseTicketsSchema } from '../validators/partiesAndClubs.validator';
+import { getCache, setCache, deleteCache } from '../config/redisFallback';
+import { purchaseTicketsSchema, checkinScanSchema } from '../validators/partiesAndClubs.validator';
 import { PaystackService } from '../services/paystack.service';
+import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import mongoose from 'mongoose';
 
@@ -122,18 +124,25 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
     throw new Error('Payment reference has already been consumed by another transaction');
   }
 
+  let paymentVerified = false;
+
   // Paystack verification
-  if (order.paymentProvider === 'paystack' && process.env.NODE_ENV !== 'test') {
-    if (!order.paymentReference) {
-      throw new Error('Paystack order missing server-generated payment reference');
-    }
-    const verifyRes = await PaystackService.verifyTransaction(order.paymentReference);
-    if (!verifyRes.status || !verifyRes.data || verifyRes.data.status !== 'success') {
-      throw new Error(`Paystack payment verification failed: ${verifyRes.message || 'Payment not successful'}`);
-    }
-    const expectedKobo = order.priceNaira * 100;
-    if (verifyRes.data.amount !== expectedKobo || verifyRes.data.currency?.toUpperCase() !== 'NGN') {
-      throw new Error('Paid transaction amount or currency mismatch');
+  if (order.paymentProvider === 'paystack') {
+    if (process.env.NODE_ENV !== 'test') {
+      if (!order.paymentReference) {
+        throw new Error('Paystack order missing server-generated payment reference');
+      }
+      const verifyRes = await PaystackService.verifyTransaction(order.paymentReference);
+      if (!verifyRes.status || !verifyRes.data || verifyRes.data.status !== 'success') {
+        throw new Error(`Paystack payment verification failed: ${verifyRes.message || 'Payment not successful'}`);
+      }
+      const expectedKobo = order.priceNaira * 100;
+      if (verifyRes.data.amount !== expectedKobo || verifyRes.data.currency?.toUpperCase() !== 'NGN') {
+        throw new Error('Paid transaction amount or currency mismatch');
+      }
+      paymentVerified = true;
+    } else {
+      paymentVerified = true;
     }
   }
 
@@ -159,6 +168,11 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
     );
 
     if (!updatedOrder) {
+      const latestOrder = await TicketOrder.findById(order._id).lean();
+      if (latestOrder?.status === 'fulfilled') {
+        const existing = await Ticket.find({ paymentRef: latestOrder.paymentReference || latestOrder.orderReference }).lean();
+        return { order: latestOrder, tickets: existing, isAlreadyFulfilled: true };
+      }
       const existing = await Ticket.find({ paymentRef }).lean();
       return { order, tickets: existing, isAlreadyFulfilled: true };
     }
@@ -226,56 +240,34 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
       );
     }
 
-    // 4. Generate all tickets with pre-generated QR codes
+    // 4. Pre-generate ticket codes and real scannable 2D QR Code SVG Data URLs outside transaction network I/O
+    const ticketsToCreate = [];
     for (let i = 0; i < qty; i++) {
-      let created = false;
-      let retries = 0;
-      let ticketDoc = null;
+      const ticketCode = await generateTicketCode();
+      const qrData = `https://zippo.com.ng/ticket/${ticketCode}`;
+      const realQrUrl = await generateQRCode(qrData);
 
-      while (!created && retries < 5) {
-        try {
-          const ticketCode = await generateTicketCode();
-          const qrData = `https://zippo.com.ng/ticket/${ticketCode}`;
-          const qrCodeUrl = await generateQRCode(qrData);
-
-          const docs = await Ticket.create(
-            [
-              {
-                partyId: party._id,
-                tierId: tier.tierId,
-                tierName: tier.name,
-                buyerId: order.buyerId,
-                buyerName: order.buyerName,
-                ticketCode,
-                qrCodeUrl,
-                priceNaira: singlePrice,
-                platformFeeNaira: singlePlatformFee,
-                organizerNaira: singleOrganizerNaira,
-                paymentStatus: 'paid',
-                paymentRef,
-                paidAt: new Date(),
-                entryStatus: 'not_entered',
-                isValid: true,
-              },
-            ],
-            session ? { session } : {}
-          );
-          ticketDoc = docs[0];
-          created = true;
-        } catch (e: any) {
-          if (e.code === 11000) {
-            retries++;
-          } else {
-            throw e;
-          }
-        }
-      }
-
-      if (!ticketDoc) {
-        throw new Error('Unable to generate unique ticket code after maximum retries');
-      }
-      createdTickets.push(ticketDoc);
+      ticketsToCreate.push({
+        partyId: party._id,
+        tierId: tier.tierId,
+        tierName: tier.name,
+        buyerId: order.buyerId,
+        buyerName: order.buyerName,
+        ticketCode,
+        qrCodeUrl: realQrUrl,
+        priceNaira: singlePrice,
+        platformFeeNaira: singlePlatformFee,
+        organizerNaira: singleOrganizerNaira,
+        paymentStatus: 'paid',
+        paymentRef,
+        paidAt: new Date(),
+        entryStatus: 'not_entered',
+        isValid: true,
+      });
     }
+
+    const docs = await Ticket.create(ticketsToCreate, session ? { session } : {});
+    createdTickets.push(...docs);
 
     // 5. Record Platform Earning
     if (createdTickets.length > 0) {
@@ -302,25 +294,17 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
   let fulfillmentResult: any = null;
 
   try {
+    dbSession = await mongoose.startSession();
+    dbSession.startTransaction();
     try {
-      dbSession = await mongoose.startSession();
-      dbSession.startTransaction();
       fulfillmentResult = await executeFulfillmentMutations(dbSession);
       await dbSession.commitTransaction();
+    } catch (innerErr) {
+      await dbSession.abortTransaction().catch(() => {});
+      throw innerErr;
+    } finally {
       dbSession.endSession();
       dbSession = null;
-    } catch (txErr: any) {
-      if (dbSession) {
-        await dbSession.abortTransaction().catch(() => {});
-        dbSession.endSession();
-        dbSession = null;
-      }
-      if (txErr.code === 20 || txErr.message?.includes('Transaction numbers are only allowed')) {
-        // Fallback for non-replica set environment (e.g. MongoMemoryServer in tests)
-        fulfillmentResult = await executeFulfillmentMutations();
-      } else {
-        throw txErr;
-      }
     }
 
     // Email dispatch AFTER transaction commit
@@ -355,10 +339,22 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
 
     return fulfillmentResult;
   } catch (err: any) {
-    // Attempt automatic Paystack refund dispatch if payment was verified via Paystack
+    // Safely check if order was fulfilled concurrently by another thread/process before marking as failed or refunding
+    const checkOrder = await TicketOrder.findById(orderId).lean();
+    const existingTickets = await Ticket.find({ paymentRef: order.paymentReference || order.orderReference }).lean();
+
+    if (checkOrder?.status === 'fulfilled' || existingTickets.length > 0) {
+      return {
+        order: checkOrder || order,
+        tickets: existingTickets,
+        isAlreadyFulfilled: true,
+      };
+    }
+
+    // Attempt automatic Paystack refund dispatch ONLY if payment was confirmed captured
     let finalStatus: 'refunded' | 'refund_pending' | 'failed' = 'failed';
 
-    if (order.paymentProvider === 'paystack') {
+    if (order.paymentProvider === 'paystack' && paymentVerified) {
       try {
         const refundRes = await PaystackService.refundTransaction(paymentRef, order.priceNaira * 100);
         if (refundRes?.status) {
@@ -400,7 +396,10 @@ export const createTicketOrder = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: parseResult.error.issues[0]?.message || 'Invalid order data' });
     }
 
-    const { tierId, quantity: qty, paymentProvider = 'paystack' } = parseResult.data;
+    const { tierId, quantity: qty, idempotencyKey: rawIdempotencyKey, paymentProvider = 'paystack' } = parseResult.data;
+    const idempotencyKey = rawIdempotencyKey
+      ? `${buyerId}_${partyId}_${tierId}_${rawIdempotencyKey}`
+      : undefined;
 
     if (paymentProvider === 'simulated' && process.env.NODE_ENV !== 'test') {
       return res.status(400).json({
@@ -448,39 +447,59 @@ export const createTicketOrder = async (req: Request, res: Response) => {
     const platformFeeNaira = singlePlatformFee * qty;
     const organizerNaira = singleOrganizerNaira * qty;
 
-    // IDEMPOTENT ORDER REUSE: Reuse pending order for same buyer, party, tier, quantity, and paymentProvider if created within 15 mins
-    const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000);
-    let order = await TicketOrder.findOne({
-      buyerId,
-      partyId: party._id,
-      tierId: tier.tierId,
-      quantity: qty,
-      paymentProvider: paymentProvider as any,
-      status: 'pending',
-      createdAt: { $gte: fifteenMinsAgo },
-    });
-
-    const orderReference = order?.orderReference || generateOrderReference();
-    const paymentReference = order?.paymentReference || `paystack_tkt_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    // IDEMPOTENT ORDER REUSE: Check for existing order by idempotencyKey or matching pending order
+    let order = null;
+    if (idempotencyKey) {
+      order = await TicketOrder.findOne({ idempotencyKey });
+    }
 
     if (!order) {
-      order = await TicketOrder.create({
-        orderReference,
+      const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000);
+      order = await TicketOrder.findOne({
+        buyerId,
         partyId: party._id,
         tierId: tier.tierId,
-        tierName: tier.name,
-        buyerId,
-        buyerName,
         quantity: qty,
-        priceNaira,
-        platformFeeNaira,
-        organizerNaira,
-        paymentProvider: paymentProvider as 'paystack' | 'wallet' | 'simulated',
-        paymentReference,
-        providerReference: paymentReference,
+        paymentProvider: paymentProvider as any,
         status: 'pending',
+        createdAt: { $gte: fifteenMinsAgo },
       });
     }
+
+    if (!order) {
+      const newOrderRef = generateOrderReference();
+      const newPaystackRef = `paystack_tkt_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      const providerRef = paymentProvider === 'paystack' ? newPaystackRef : newOrderRef;
+
+      try {
+        order = await TicketOrder.create({
+          orderReference: newOrderRef,
+          idempotencyKey,
+          partyId: party._id,
+          tierId: tier.tierId,
+          tierName: tier.name,
+          buyerId,
+          buyerName,
+          quantity: qty,
+          priceNaira,
+          platformFeeNaira,
+          organizerNaira,
+          paymentProvider: paymentProvider as 'paystack' | 'wallet' | 'simulated',
+          paymentReference: newPaystackRef,
+          providerReference: providerRef,
+          status: 'pending',
+        });
+      } catch (err: any) {
+        // Handle E11000 race condition on idempotencyKey
+        if (err.code === 11000 && idempotencyKey) {
+          order = await TicketOrder.findOne({ idempotencyKey });
+        }
+        if (!order) throw err;
+      }
+    }
+
+    const orderReference = order.orderReference;
+    const paymentReference = order.paymentReference || `paystack_tkt_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
     if (paymentProvider === 'paystack' && process.env.NODE_ENV !== 'test') {
       const defaultFrontendUrl = process.env.FRONTEND_URL || `${req.protocol}://${req.get('host')}`;
@@ -565,17 +584,6 @@ export const verifyTicketOrder = async (req: Request, res: Response) => {
     // STRICT OWNER AUTHORIZATION CHECK
     if (order.buyerId.toString() !== userId.toString()) {
       return res.status(403).json({ success: false, error: 'Forbidden: You do not own this ticket order' });
-    }
-
-    // Customer email verification match for Paystack orders
-    if (order.paymentProvider === 'paystack' && order.paymentReference && process.env.NODE_ENV !== 'test') {
-      const verifyRes = await PaystackService.verifyTransaction(order.paymentReference);
-      if (verifyRes?.data?.customer?.email) {
-        const buyerDoc = await AdultUser.findById(userId).select('email').lean();
-        if (buyerDoc?.email && verifyRes.data.customer.email.toLowerCase() !== buyerDoc.email.toLowerCase()) {
-          return res.status(403).json({ success: false, error: 'Payment customer identity does not match authenticated user' });
-        }
-      }
     }
 
     const fulfillment = await fulfillTicketOrderInternal(order._id.toString());
@@ -692,10 +700,14 @@ const guardFailedAttempts = new Map<string, { count: number; lockedUntil: number
 // Helper to authenticate guard or organizer with constant-time hash check and rate limiting
 const authenticateGuardOrOrganizer = async (req: Request, partyId: string) => {
   const clientIp = req.ip || req.socket.remoteAddress || 'unknown_ip';
-  const lockKey = `${clientIp}:${partyId}`;
+  const lockKey = `guard_lock:${clientIp}:${partyId}`;
   const now = Date.now();
 
-  const record = guardFailedAttempts.get(lockKey);
+  // Try Redis first, fall back to memory
+  const cachedRecord = await getCache(lockKey);
+  const memoryRecord = guardFailedAttempts.get(lockKey);
+  const record = cachedRecord || memoryRecord;
+
   if (record && record.lockedUntil > now) {
     return { authorized: false, party: null, isOrganizer: false, lockedOut: true };
   }
@@ -705,19 +717,28 @@ const authenticateGuardOrOrganizer = async (req: Request, partyId: string) => {
 
   const guardCode = req.headers['x-guard-code'] as string;
   if (guardCode && party.guardAccessCodeHash) {
-    const hash = crypto.createHash('sha256').update(guardCode.trim()).digest('hex');
+    let pinValid = false;
+    // Support legacy sha256 or bcrypt
+    if (party.guardAccessCodeHash.startsWith('$2a$') || party.guardAccessCodeHash.startsWith('$2b$')) {
+      pinValid = await bcrypt.compare(guardCode.trim(), party.guardAccessCodeHash);
+    } else {
+      const hash = crypto.createHash('sha256').update(guardCode.trim()).digest('hex');
+      const expectedBuf = Buffer.from(party.guardAccessCodeHash, 'hex');
+      const actualBuf = Buffer.from(hash, 'hex');
+      pinValid = expectedBuf.length === actualBuf.length && crypto.timingSafeEqual(expectedBuf, actualBuf);
+    }
 
-    const expectedBuf = Buffer.from(party.guardAccessCodeHash, 'hex');
-    const actualBuf = Buffer.from(hash, 'hex');
-
-    if (expectedBuf.length === actualBuf.length && crypto.timingSafeEqual(expectedBuf, actualBuf)) {
+    if (pinValid) {
       guardFailedAttempts.delete(lockKey);
+      await deleteCache(lockKey);
       return { authorized: true, party, isOrganizer: false, lockedOut: false };
     } else {
       // Record failed attempt
       const attempts = (record?.count || 0) + 1;
       const lockedUntil = attempts >= 5 ? now + 15 * 60 * 1000 : 0; // Lockout for 15 mins after 5 failures
-      guardFailedAttempts.set(lockKey, { count: attempts, lockedUntil });
+      const updatedRecord = { count: attempts, lockedUntil };
+      guardFailedAttempts.set(lockKey, updatedRecord);
+      await setCache(lockKey, 15 * 60, updatedRecord);
     }
   }
 
@@ -776,8 +797,17 @@ export const scanCheckinQuery = async (req: Request, res: Response) => {
 // POST /api/v1/parties/:partyId/checkin/scan
 export const performCheckinScan = async (req: Request, res: Response) => {
   try {
+    // 1. Zod schema validation first to avoid executing auth/DB operations on malformed payloads
+    const parseResult = checkinScanSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({
+        success: false,
+        error: parseResult.error.issues[0]?.message || 'Invalid check-in request data',
+      });
+    }
+
     const partyId = Array.isArray(req.params.partyId) ? req.params.partyId[0] : req.params.partyId;
-    const { ticketCode, action } = req.body;
+    const { ticketCode, action } = parseResult.data;
 
     const { authorized, party, lockedOut } = await authenticateGuardOrOrganizer(req, partyId);
     if (lockedOut) {
@@ -785,10 +815,6 @@ export const performCheckinScan = async (req: Request, res: Response) => {
     }
     if (!authorized || !party) {
       return res.status(403).json({ success: false, error: 'Invalid guard code' });
-    }
-
-    if (!ticketCode || !action) {
-      return res.status(400).json({ success: false, error: 'ticketCode and action are required' });
     }
 
     const cleanCode = ticketCode.toUpperCase().trim();

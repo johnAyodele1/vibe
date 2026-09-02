@@ -61,7 +61,24 @@ export const isClubOpenNow = (
   return false;
 };
 
-export const isClubOpenTonight = isClubOpenNow;
+// Check if a club is scheduled to open today (or currently open overnight) in Africa/Lagos timezone
+export const isClubOpenTonight = (
+  clubHours: Array<{ day: number; isOpen: boolean; openTime?: string; closeTime?: string }>
+): boolean => {
+  if (!clubHours || !Array.isArray(clubHours)) return false;
+
+  const now = new Date();
+  const lagosTimeString = now.toLocaleString('en-US', { timeZone: 'Africa/Lagos' });
+  const lagosNow = new Date(lagosTimeString);
+  const currentDay = lagosNow.getDay(); // 0 = Sun, 6 = Sat
+
+  // Check if scheduled to be open on current day
+  const todayHours = clubHours.find((h) => h.day === currentDay);
+  if (todayHours && todayHours.isOpen) return true;
+
+  // Also return true if currently open from previous day's overnight schedule
+  return isClubOpenNow(clubHours);
+};
 
 // GET /api/v1/clubs
 export const getClubs = async (req: Request, res: Response) => {
@@ -86,23 +103,30 @@ export const getClubs = async (req: Request, res: Response) => {
       filter.genres = { $in: [(genre as string).toLowerCase()] };
     }
 
-    const clubs = await Club.find(filter).sort({ createdAt: -1 }).lean();
-
-    let resultClubs = clubs;
     if (openToday === 'true') {
-      resultClubs = clubs.filter((c) => isClubOpenTonight(c.operatingHours));
+      const lagosNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Lagos' }));
+      const currentDay = lagosNow.getDay();
+      const prevDay = (currentDay + 6) % 7;
+      filter.$or = [
+        { operatingHours: { $elemMatch: { day: currentDay, isOpen: true } } },
+        { operatingHours: { $elemMatch: { day: prevDay, isOpen: true } } },
+      ];
     }
 
-    const total = resultClubs.length;
-    const paginatedClubs = resultClubs.slice(skip, skip + limitNum).map((club) => ({
+    const [clubs, total] = await Promise.all([
+      Club.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean(),
+      Club.countDocuments(filter),
+    ]);
+
+    const formattedClubs = clubs.map((club) => ({
       ...club,
       isOpenNow: isClubOpenNow(club.operatingHours),
-      isOpenTonight: isClubOpenNow(club.operatingHours),
+      isOpenTonight: isClubOpenTonight(club.operatingHours),
     }));
 
     return res.json({
       success: true,
-      clubs: paginatedClubs,
+      clubs: formattedClubs,
       pagination: {
         page: pageNum,
         limit: limitNum,
@@ -198,25 +222,53 @@ export const createClub = async (req: Request, res: Response) => {
       slug = `${baseSlug}-${counter++}`;
     }
 
-    const club = await Club.create({
-      name: name.trim(),
-      slug,
-      description,
-      tagline,
-      coverImage,
-      logoImage,
-      gallery: gallery || [],
-      location: location || {},
-      website,
-      instagram,
-      phone,
-      operatingHours: operatingHours || [],
-      entryFee: entryFee || { hasEntryFee: false },
-      genres: Array.isArray(genres) ? genres.map((g: string) => g.toLowerCase()) : [],
-      vibes: Array.isArray(vibes) ? vibes.map((v: string) => v.toLowerCase()) : [],
-      ownerId: userId,
-      status: 'pending',
-    });
+    let club;
+    try {
+      club = await Club.create({
+        name: name.trim(),
+        slug,
+        description,
+        tagline,
+        coverImage,
+        logoImage,
+        gallery: gallery || [],
+        location: location || {},
+        website,
+        instagram,
+        phone,
+        operatingHours: operatingHours || [],
+        entryFee: entryFee || { hasEntryFee: false },
+        genres: Array.isArray(genres) ? genres.map((g: string) => g.toLowerCase()) : [],
+        vibes: Array.isArray(vibes) ? vibes.map((v: string) => v.toLowerCase()) : [],
+        ownerId: userId,
+        status: 'pending',
+      });
+    } catch (createErr: any) {
+      if (createErr.code === 11000) {
+        slug = `${slug}-${Math.random().toString(36).substring(2, 6)}`;
+        club = await Club.create({
+          name: name.trim(),
+          slug,
+          description,
+          tagline,
+          coverImage,
+          logoImage,
+          gallery: gallery || [],
+          location: location || {},
+          website,
+          instagram,
+          phone,
+          operatingHours: operatingHours || [],
+          entryFee: entryFee || { hasEntryFee: false },
+          genres: Array.isArray(genres) ? genres.map((g: string) => g.toLowerCase()) : [],
+          vibes: Array.isArray(vibes) ? vibes.map((v: string) => v.toLowerCase()) : [],
+          ownerId: userId,
+          status: 'pending',
+        });
+      } else {
+        throw createErr;
+      }
+    }
 
     return res.status(201).json({
       success: true,
@@ -245,8 +297,19 @@ export const updateClub = async (req: Request, res: Response) => {
       return res.status(403).json({ success: false, error: 'Forbidden: You are not the owner of this club' });
     }
 
+    if (req.body.name && req.body.name.trim() !== club.name) {
+      const newName = req.body.name.trim();
+      let baseSlug = generateSlug(newName);
+      let newSlug = baseSlug;
+      let counter = 1;
+      while (await Club.exists({ slug: newSlug, _id: { $ne: club._id } })) {
+        newSlug = `${baseSlug}-${counter++}`;
+      }
+      club.name = newName;
+      club.slug = newSlug;
+    }
+
     const allowedUpdates = [
-      'name',
       'description',
       'tagline',
       'coverImage',

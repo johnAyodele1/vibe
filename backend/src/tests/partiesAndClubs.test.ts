@@ -253,6 +253,52 @@ describe('Parties & Clubs Feature Concurrency & Security Test Suite', () => {
       expect(verifyRes.body.tickets).toHaveLength(2);
     });
 
+    it('handles concurrent order verification calls cleanly without duplicate tickets or errors', async () => {
+      const start = new Date(Date.now() + 86400000);
+      const party = await Party.create({
+        title: 'Concurrent Race Party',
+        description: 'Testing parallel order verification',
+        venueName: 'Arena',
+        venueAddress: 'Abuja',
+        startDate: start,
+        endDate: new Date(start.getTime() + 36000000),
+        coverImage: 'https://example.com/arena.jpg',
+        organizerId: new mongoose.Types.ObjectId(),
+        status: 'approved',
+        ticketTiers: [{ tierId: 't1', name: 'Reg', price: 100, quantity: 10, sold: 0, perPersonLimit: 4, isActive: true }],
+      });
+
+      const order = await TicketOrder.create({
+        orderReference: 'ZPP-ORD-CONCUR1',
+        partyId: party._id,
+        tierId: 't1',
+        buyerId: new mongoose.Types.ObjectId(userId),
+        buyerName: 'Test User',
+        quantity: 1,
+        priceNaira: 100,
+        platformFeeNaira: 5,
+        organizerNaira: 95,
+        paymentProvider: 'wallet',
+        paymentReference: 'ref_concur1',
+        status: 'pending',
+      });
+
+      // Fire 3 simultaneous verify requests
+      const [res1, res2, res3] = await Promise.all([
+        request(app).post(`/api/v1/parties/orders/${order._id}/verify`).set('Authorization', `Bearer ${userToken}`).send({ paymentReference: 'ref_concur1' }),
+        request(app).post(`/api/v1/parties/orders/${order._id}/verify`).set('Authorization', `Bearer ${userToken}`).send({ paymentReference: 'ref_concur1' }),
+        request(app).post(`/api/v1/parties/orders/${order._id}/verify`).set('Authorization', `Bearer ${userToken}`).send({ paymentReference: 'ref_concur1' }),
+      ]);
+
+      expect(res1.status).toBe(200);
+      expect(res2.status).toBe(200);
+      expect(res3.status).toBe(200);
+
+      // Verify that exactly 1 ticket was created in DB
+      const createdTickets = await Ticket.find({ paymentRef: 'ref_concur1' });
+      expect(createdTickets).toHaveLength(1);
+    });
+
     it('prevents unauthorized user from verifying another user order', async () => {
       const start = new Date(Date.now() + 86400000);
       const party = await Party.create({
@@ -376,7 +422,8 @@ describe('Parties & Clubs Feature Concurrency & Security Test Suite', () => {
   describe('Anti-Scam Check-in System & Guard Security', () => {
     it('scans ticket with valid Guard PIN and enforces atomic state transitions', async () => {
       const pin = '123456';
-      const pinHash = crypto.createHash('sha256').update(pin).digest('hex');
+      const bcrypt = await import('bcryptjs');
+      const pinHash = await bcrypt.hash(pin, 10);
 
       const start = new Date(Date.now() + 86400000);
       const party = await Party.create({

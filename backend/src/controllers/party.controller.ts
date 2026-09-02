@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import Party, { ITicketTier } from '../models/Party';
 import { createPartySchema } from '../validators/partiesAndClubs.validator';
-import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
 
 // Generate 6-digit random PIN if needed
@@ -9,8 +9,8 @@ const generateGuardPin = (): string => {
   return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
-const hashGuardPin = (pin: string): string => {
-  return crypto.createHash('sha256').update(pin).digest('hex');
+const hashGuardPin = async (pin: string): Promise<string> => {
+  return bcrypt.hash(pin, 10);
 };
 
 // GET /api/v1/parties
@@ -180,7 +180,7 @@ export const createParty = async (req: Request, res: Response) => {
       ? String(guardAccessCode).trim()
       : generateGuardPin();
 
-    const guardAccessCodeHash = hashGuardPin(rawPin);
+    const guardAccessCodeHash = await hashGuardPin(rawPin);
 
     const party = await Party.create({
       title: title.trim(),
@@ -272,7 +272,7 @@ export const updateParty = async (req: Request, res: Response) => {
     if (vibes) party.vibes = vibes.map((v: string) => v.toLowerCase());
 
     if (guardAccessCode && String(guardAccessCode).trim().length === 6) {
-      party.guardAccessCodeHash = hashGuardPin(String(guardAccessCode).trim());
+      party.guardAccessCodeHash = await hashGuardPin(String(guardAccessCode).trim());
     }
 
     if (Array.isArray(ticketTiers) && ticketTiers.length > 0) {
