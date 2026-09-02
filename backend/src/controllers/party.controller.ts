@@ -2,6 +2,10 @@ import { Request, Response } from 'express';
 import Party, { ITicketTier } from '../models/Party';
 import Ticket from '../models/Ticket';
 import TicketOrder from '../models/TicketOrder';
+import AdultUser from '../models/AdultUser';
+import CreditTransaction from '../models/CreditTransaction';
+import { getDiamondNairaRate } from '../shared/pricing';
+import { PaystackService } from '../services/paystack.service';
 import { createPartySchema } from '../validators/partiesAndClubs.validator';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
@@ -364,13 +368,59 @@ export const cancelParty = async (req: Request, res: Response) => {
       { $set: { isValid: false, invalidReason: 'Party cancelled by organizer' } }
     );
 
-    // 2. Mark any pending or processing ticket orders for this party as failed
+    // 2. Process automatic refunds for fulfilled ticket orders
+    const fulfilledOrders = await TicketOrder.find({ partyId: party._id, status: 'fulfilled' }).lean();
+    const diamondRate = await getDiamondNairaRate();
+
+    for (const order of fulfilledOrders) {
+      if (order.paymentProvider === 'wallet') {
+        const requiredDiamonds = Math.ceil(order.priceNaira / diamondRate);
+        const estimatedUsdVal = parseFloat((order.priceNaira / 1500).toFixed(2));
+
+        // Credit user wallet back
+        await AdultUser.findByIdAndUpdate(order.buyerId, { $inc: { credits: requiredDiamonds } });
+
+        // Record CreditTransaction refund
+        await CreditTransaction.create({
+          userId: order.buyerId,
+          type: 'refund',
+          amount: requiredDiamonds,
+          usdAmount: estimatedUsdVal,
+          nairaAmount: order.priceNaira,
+          description: `Refund - Party '${party.title}' cancelled by organizer`,
+          relatedUserId: party.organizerId,
+          status: 'completed',
+          metadata: { orderId: order._id, partyId: party._id },
+        });
+
+        await TicketOrder.findByIdAndUpdate(order._id, { $set: { status: 'refunded', updatedAt: new Date() } });
+      } else if (order.paymentProvider === 'paystack' && order.paymentReference) {
+        let finalStatus: 'refunded' | 'refund_pending' = 'refund_pending';
+        let refundRef: string | undefined = undefined;
+
+        try {
+          const refundRes = await PaystackService.refundTransaction(order.paymentReference, order.priceNaira * 100);
+          if (refundRes?.status) {
+            finalStatus = 'refunded';
+            refundRef = String(refundRes?.data?.id || order.paymentReference);
+          }
+        } catch (err: any) {
+          console.warn(`[Paystack Refund Error] Cancellation refund failed for order ${order._id}:`, err?.message);
+        }
+
+        await TicketOrder.findByIdAndUpdate(order._id, {
+          $set: { status: finalStatus, refundReference: refundRef, updatedAt: new Date() },
+        });
+      }
+    }
+
+    // 3. Mark any pending or processing ticket orders for this party as failed
     await TicketOrder.updateMany(
       { partyId: party._id, status: { $in: ['pending', 'processing'] } },
       { $set: { status: 'failed', updatedAt: new Date() } }
     );
 
-    return res.json({ success: true, party, message: 'Party cancelled and tickets invalidated successfully' });
+    return res.json({ success: true, party, message: 'Party cancelled and tickets refunded/invalidated successfully' });
   } catch (err: any) {
     console.error('Error cancelling party:', err);
     return res.status(500).json({ success: false, error: err.message || 'Failed to cancel party' });

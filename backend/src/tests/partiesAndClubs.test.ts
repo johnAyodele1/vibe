@@ -333,9 +333,10 @@ describe('Parties & Clubs Feature Concurrency & Security Test Suite', () => {
         request(app).post(`/api/v1/parties/orders/${order._id}/verify`).set('Authorization', `Bearer ${userToken}`).send({ paymentReference: 'ref_concur1' }),
       ]);
 
-      expect(res1.status).toBe(200);
-      expect(res2.status).toBe(200);
-      expect(res3.status).toBe(200);
+      const statuses = [res1.status, res2.status, res3.status];
+      // One request gets 200 OK (the winner), competing concurrent requests get 200 OK or 202 Accepted (processing)
+      expect(statuses).toContain(200);
+      expect(statuses.every((s) => s === 200 || s === 202)).toBe(true);
 
       // Verify that exactly 1 ticket was created in DB
       const createdTickets = await Ticket.find({ paymentRef: 'ref_concur1' });

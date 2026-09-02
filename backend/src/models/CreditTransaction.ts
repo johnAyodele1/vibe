@@ -127,6 +127,16 @@ creditTransactionSchema.index(
 );
 
 creditTransactionSchema.index(
+  { 'metadata.orderId': 1, userId: 1, type: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      'metadata.orderId': { $exists: true },
+    },
+  }
+);
+
+creditTransactionSchema.index(
   { 'metadata.callId': 1, userId: 1, type: 1 },
   {
     unique: true,

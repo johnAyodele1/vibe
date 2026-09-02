@@ -118,9 +118,96 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
     throw new Error('Ticket order has expired');
   }
 
-  // FENCING TOKEN & LEASE EXPIRY GENERATION
+  const party = await Party.findById(initialOrder.partyId);
+  if (!party || party.status !== 'approved') {
+    await TicketOrder.findByIdAndUpdate(initialOrder._id, { $set: { status: 'failed' } });
+    throw new Error(party?.status === 'cancelled' ? 'Party has been cancelled' : 'Party not found or not approved');
+  }
+
+  const tier = party.ticketTiers.find((t) => t.tierId === initialOrder.tierId);
+  if (!tier || !tier.isActive) {
+    await TicketOrder.findByIdAndUpdate(initialOrder._id, { $set: { status: 'failed' } });
+    throw new Error('Ticket tier not found or inactive');
+  }
+
+  // PREVENT REPLAY ATTACKS: Ensure paymentReference has not already been fulfilled by a different order
+  if (paymentRef) {
+    const replayOrder = await TicketOrder.exists({
+      paymentReference: paymentRef,
+      _id: { $ne: initialOrder._id },
+      status: 'fulfilled',
+    });
+    if (replayOrder) {
+      await TicketOrder.findByIdAndUpdate(initialOrder._id, { $set: { status: 'failed' } });
+      throw new Error('Payment reference has already been consumed by another order');
+    }
+  }
+
+  let paymentVerified = false;
+
+  // Paystack verification BEFORE claiming lease token
+  if (initialOrder.paymentProvider === 'paystack') {
+    if (process.env.NODE_ENV !== 'test') {
+      if (!initialOrder.paymentReference) {
+        await TicketOrder.findByIdAndUpdate(initialOrder._id, { $set: { status: 'failed' } });
+        throw new Error('Paystack order missing server-generated payment reference');
+      }
+      const verifyRes = await PaystackService.verifyTransaction(initialOrder.paymentReference);
+      if (!verifyRes.status || !verifyRes.data || verifyRes.data.status !== 'success') {
+        await TicketOrder.findByIdAndUpdate(initialOrder._id, { $set: { status: 'failed' } });
+        throw new Error(`Paystack payment verification failed: ${verifyRes.message || 'Payment not successful'}`);
+      }
+      const expectedKobo = initialOrder.priceNaira * 100;
+      if (verifyRes.data.amount !== expectedKobo || verifyRes.data.currency?.toUpperCase() !== 'NGN') {
+        await TicketOrder.findByIdAndUpdate(initialOrder._id, { $set: { status: 'failed' } });
+        throw new Error('Paid transaction amount or currency mismatch');
+      }
+      paymentVerified = true;
+    } else {
+      paymentVerified = true;
+    }
+  }
+
+  const singlePrice = tier.price;
+  const singlePlatformFee = Math.floor(singlePrice * party.platformFeeRate);
+  const singleOrganizerNaira = singlePrice - singlePlatformFee;
+  const qty = initialOrder.quantity;
+
+  const diamondRate = await getDiamondNairaRate();
+  const requiredDiamonds = Math.ceil(initialOrder.priceNaira / diamondRate);
+  const estimatedUsdVal = parseFloat((initialOrder.priceNaira / 1500).toFixed(2));
+
+  // 1. PRE-GENERATE ALL TICKETS & 2D SCANNABLE QR CODES OUTSIDE MONGO TRANSACTION NETWORK I/O
+  const preparedTickets: any[] = [];
+  for (let i = 0; i < qty; i++) {
+    const ticketCode = await generateTicketCode();
+    const qrData = `https://zippo.com.ng/ticket/${ticketCode}`;
+    const realQrUrl = await generateQRCode(qrData);
+
+    preparedTickets.push({
+      orderId: initialOrder._id,
+      ticketIndex: i,
+      partyId: party._id,
+      tierId: tier.tierId,
+      tierName: tier.name,
+      buyerId: initialOrder.buyerId,
+      buyerName: initialOrder.buyerName,
+      ticketCode,
+      qrCodeUrl: realQrUrl,
+      priceNaira: singlePrice,
+      platformFeeNaira: singlePlatformFee,
+      organizerNaira: singleOrganizerNaira,
+      paymentStatus: 'paid',
+      paymentRef,
+      paidAt: new Date(),
+      entryStatus: 'not_entered',
+      isValid: true,
+    });
+  }
+
+  // FENCING TOKEN & 5-MINUTE LEASE EXPIRY GENERATION
   const myFulfillmentToken = `ft_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-  const myLeaseExpiresAt = new Date(Date.now() + 60000); // 60s lease window
+  const myLeaseExpiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5-min lease window
 
   // ATOMIC CLAIM WITH FENCING LEASE TOKEN
   const twoMinsAgo = new Date(Date.now() - 2 * 60 * 1000);
@@ -155,87 +242,6 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
       return { order: current, tickets: existingTickets, isProcessing: true };
     }
     throw new Error(`Ticket order status is already ${current?.status || 'updated'}`);
-  }
-
-  const party = await Party.findById(claimedOrder.partyId);
-  if (!party || party.status !== 'approved') {
-    await TicketOrder.findByIdAndUpdate(claimedOrder._id, { $set: { status: 'failed' } });
-    throw new Error(party?.status === 'cancelled' ? 'Party has been cancelled' : 'Party not found or not approved');
-  }
-
-  const tier = party.ticketTiers.find((t) => t.tierId === claimedOrder.tierId);
-  if (!tier || !tier.isActive) {
-    await TicketOrder.findByIdAndUpdate(claimedOrder._id, { $set: { status: 'failed' } });
-    throw new Error('Ticket tier not found or inactive');
-  }
-
-  // PREVENT REPLAY ATTACKS: Ensure paymentRef has not already been used for another party
-  const reusedTicket = await Ticket.exists({ paymentRef, partyId: { $ne: party._id } });
-  if (reusedTicket) {
-    await TicketOrder.findByIdAndUpdate(claimedOrder._id, { $set: { status: 'failed' } });
-    throw new Error('Payment reference has already been consumed by another transaction');
-  }
-
-  let paymentVerified = false;
-
-  // Paystack verification
-  if (claimedOrder.paymentProvider === 'paystack') {
-    if (process.env.NODE_ENV !== 'test') {
-      if (!claimedOrder.paymentReference) {
-        await TicketOrder.findByIdAndUpdate(claimedOrder._id, { $set: { status: 'failed' } });
-        throw new Error('Paystack order missing server-generated payment reference');
-      }
-      const verifyRes = await PaystackService.verifyTransaction(claimedOrder.paymentReference);
-      if (!verifyRes.status || !verifyRes.data || verifyRes.data.status !== 'success') {
-        await TicketOrder.findByIdAndUpdate(claimedOrder._id, { $set: { status: 'failed' } });
-        throw new Error(`Paystack payment verification failed: ${verifyRes.message || 'Payment not successful'}`);
-      }
-      const expectedKobo = claimedOrder.priceNaira * 100;
-      if (verifyRes.data.amount !== expectedKobo || verifyRes.data.currency?.toUpperCase() !== 'NGN') {
-        await TicketOrder.findByIdAndUpdate(claimedOrder._id, { $set: { status: 'failed' } });
-        throw new Error('Paid transaction amount or currency mismatch');
-      }
-      paymentVerified = true;
-    } else {
-      paymentVerified = true;
-    }
-  }
-
-  const singlePrice = tier.price;
-  const singlePlatformFee = Math.floor(singlePrice * party.platformFeeRate);
-  const singleOrganizerNaira = singlePrice - singlePlatformFee;
-  const qty = claimedOrder.quantity;
-
-  const diamondRate = await getDiamondNairaRate();
-  const requiredDiamonds = Math.ceil(claimedOrder.priceNaira / diamondRate);
-  const estimatedUsdVal = parseFloat((claimedOrder.priceNaira / 1500).toFixed(2));
-
-  // 1. PRE-GENERATE ALL TICKETS & 2D SCANNABLE QR CODES OUTSIDE MONGO TRANSACTION NETWORK I/O
-  const preparedTickets: any[] = [];
-  for (let i = 0; i < qty; i++) {
-    const ticketCode = await generateTicketCode();
-    const qrData = `https://zippo.com.ng/ticket/${ticketCode}`;
-    const realQrUrl = await generateQRCode(qrData);
-
-    preparedTickets.push({
-      orderId: claimedOrder._id,
-      ticketIndex: i,
-      partyId: party._id,
-      tierId: tier.tierId,
-      tierName: tier.name,
-      buyerId: claimedOrder.buyerId,
-      buyerName: claimedOrder.buyerName,
-      ticketCode,
-      qrCodeUrl: realQrUrl,
-      priceNaira: singlePrice,
-      platformFeeNaira: singlePlatformFee,
-      organizerNaira: singleOrganizerNaira,
-      paymentStatus: 'paid',
-      paymentRef,
-      paidAt: new Date(),
-      entryStatus: 'not_entered',
-      isValid: true,
-    });
   }
 
   const createdTickets: any[] = [];
@@ -512,6 +518,38 @@ export const createTicketOrder = async (req: Request, res: Response) => {
             error: 'Idempotency key was already used for a request with different purchase parameters',
           });
         }
+
+        // Return stored terminal/pending checkout response directly without re-initializing Paystack
+        if (order.status === 'fulfilled') {
+          const existingTickets = await Ticket.find({ orderId: order._id }).lean();
+          return res.status(200).json({
+            success: true,
+            orderReference: order.orderReference,
+            status: order.status,
+            tickets: existingTickets.map((t) => ({
+              ticketCode: t.ticketCode,
+              qrCodeUrl: t.qrCodeUrl,
+              tierName: t.tierName,
+              entryStatus: t.entryStatus,
+            })),
+            summary: {
+              quantity: order.quantity,
+              totalPaid: order.priceNaira,
+              platformFee: order.platformFeeNaira,
+              organizerGets: order.organizerNaira,
+            },
+          });
+        }
+
+        if (order.status === 'pending' && paymentProvider === 'paystack') {
+          return res.status(200).json({
+            success: true,
+            orderId: order._id,
+            orderReference: order.orderReference,
+            paymentReference: order.paymentReference,
+            message: 'Checkout already initialized for this order',
+          });
+        }
       }
     }
 
@@ -637,11 +675,21 @@ export const verifyTicketOrder = async (req: Request, res: Response) => {
 
     const fulfillment = await fulfillTicketOrderInternal(order._id.toString());
 
+    if (fulfillment.isProcessing || fulfillment.order?.status === 'processing') {
+      return res.status(202).json({
+        success: true,
+        orderReference: fulfillment.order.orderReference,
+        status: 'processing',
+        message: 'Order fulfillment is currently in progress',
+        tickets: [],
+      });
+    }
+
     return res.json({
       success: true,
       orderReference: fulfillment.order.orderReference,
       status: fulfillment.order.status,
-      tickets: fulfillment.tickets.map((t: any) => ({
+      tickets: (fulfillment.tickets || []).map((t: any) => ({
         ticketCode: t.ticketCode,
         qrCodeUrl: t.qrCodeUrl,
         tierName: t.tierName,
