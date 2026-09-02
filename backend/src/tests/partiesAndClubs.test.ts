@@ -205,6 +205,49 @@ describe('Parties & Clubs Feature Concurrency & Security Test Suite', () => {
   });
 
   describe('Ticketing & Order Fulfillment Pipeline', () => {
+    it('rejects idempotency key reuse when purchase parameters differ (409 Conflict)', async () => {
+      const start = new Date(Date.now() + 86400000);
+      const party = await Party.create({
+        title: 'Fingerprint Party',
+        description: 'Testing idempotency fingerprinting',
+        venueName: 'Hall',
+        venueAddress: 'Lagos',
+        startDate: start,
+        endDate: new Date(start.getTime() + 36000000),
+        coverImage: 'https://example.com/fp.jpg',
+        organizerId: new mongoose.Types.ObjectId(),
+        status: 'approved',
+        ticketTiers: [{ tierId: 't1', name: 'Reg', price: 1000, quantity: 10, sold: 0, perPersonLimit: 4, isActive: true }],
+      });
+
+      // 1st request with idempotencyKey
+      const res1 = await request(app)
+        .post(`/api/v1/parties/${party._id}/tickets/orders`)
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({
+          tierId: 't1',
+          quantity: 1,
+          paymentProvider: 'wallet',
+          idempotencyKey: 'key123',
+        });
+
+      expect(res1.status).toBe(201);
+
+      // 2nd request with SAME idempotencyKey but DIFFERENT quantity (2 instead of 1) -> 409 Conflict
+      const res2 = await request(app)
+        .post(`/api/v1/parties/${party._id}/tickets/orders`)
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({
+          tierId: 't1',
+          quantity: 2, // Changed parameter
+          paymentProvider: 'wallet',
+          idempotencyKey: 'key123',
+        });
+
+      expect(res2.status).toBe(409);
+      expect(res2.body.error).toContain('Idempotency key was already used for a request with different purchase parameters');
+    });
+
     it('creates server-authoritative order and fulfills atomically with wallet credits', async () => {
       const start = new Date(Date.now() + 86400000);
       const party = await Party.create({

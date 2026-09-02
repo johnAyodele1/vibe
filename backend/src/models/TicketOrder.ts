@@ -17,6 +17,8 @@ export interface ITicketOrder extends Document {
   providerReference?: string;
   status: 'pending' | 'processing' | 'fulfilled' | 'failed' | 'refund_pending' | 'refunded';
   refundReference?: string;
+  fulfillmentToken?: string;
+  fulfillmentLeaseExpiresAt?: Date;
   expiresAt: Date;
   fulfilledAt?: Date;
   createdAt: Date;
@@ -49,6 +51,8 @@ const TicketOrderSchema = new Schema<ITicketOrder>(
       default: 'pending',
     },
     refundReference: { type: String },
+    fulfillmentToken: { type: String },
+    fulfillmentLeaseExpiresAt: { type: Date },
     expiresAt: {
       type: Date,
       default: () => new Date(Date.now() + 30 * 60 * 1000), // 30 mins expiration

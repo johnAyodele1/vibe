@@ -9,6 +9,8 @@ export interface IEntryLog {
 }
 
 export interface ITicket extends Document {
+  orderId?: mongoose.Types.ObjectId;
+  ticketIndex?: number;
   partyId: mongoose.Types.ObjectId;
   tierId: string;
   tierName?: string;
@@ -34,6 +36,8 @@ export interface ITicket extends Document {
 
 const TicketSchema = new Schema<ITicket>(
   {
+    orderId: { type: Schema.Types.ObjectId, ref: 'TicketOrder' },
+    ticketIndex: { type: Number },
     partyId: { type: Schema.Types.ObjectId, required: true, ref: 'Party' },
     tierId: { type: String, required: true },
     tierName: { type: String },
@@ -83,6 +87,7 @@ const TicketSchema = new Schema<ITicket>(
 TicketSchema.index({ partyId: 1, entryStatus: 1 });
 TicketSchema.index({ buyerId: 1, createdAt: -1 });
 TicketSchema.index({ ticketCode: 1 });
+TicketSchema.index({ orderId: 1, ticketIndex: 1 }, { unique: true, sparse: true });
 
 export const Ticket = mongoose.model<ITicket>('Ticket', TicketSchema);
 export default Ticket;

@@ -118,17 +118,29 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
     throw new Error('Ticket order has expired');
   }
 
-  // ATOMIC CLAIM: Transition from 'pending' -> 'processing' (or reclaim stale 'processing' > 2 mins old)
+  // FENCING TOKEN & LEASE EXPIRY GENERATION
+  const myFulfillmentToken = `ft_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  const myLeaseExpiresAt = new Date(Date.now() + 60000); // 60s lease window
+
+  // ATOMIC CLAIM WITH FENCING LEASE TOKEN
   const twoMinsAgo = new Date(Date.now() - 2 * 60 * 1000);
   const claimedOrder = await TicketOrder.findOneAndUpdate(
     {
       _id: orderId,
       $or: [
         { status: 'pending' },
+        { status: 'processing', fulfillmentLeaseExpiresAt: { $lte: new Date() } },
         { status: 'processing', updatedAt: { $lte: twoMinsAgo } },
       ],
     },
-    { $set: { status: 'processing', updatedAt: new Date() } },
+    {
+      $set: {
+        status: 'processing',
+        fulfillmentToken: myFulfillmentToken,
+        fulfillmentLeaseExpiresAt: myLeaseExpiresAt,
+        updatedAt: new Date(),
+      },
+    },
     { new: true }
   );
 
@@ -206,6 +218,8 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
     const realQrUrl = await generateQRCode(qrData);
 
     preparedTickets.push({
+      orderId: claimedOrder._id,
+      ticketIndex: i,
       partyId: party._id,
       tierId: tier.tierId,
       tierName: tier.name,
@@ -229,9 +243,9 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
   const executeFulfillmentMutations = async (session?: mongoose.ClientSession) => {
     const opts = session ? { session, new: true } : { new: true };
 
-    // Mark Order as Fulfilled
+    // Mark Order as Fulfilled (verifying fencing token lease ownership)
     const updatedOrder = await TicketOrder.findOneAndUpdate(
-      { _id: claimedOrder._id, status: 'processing' },
+      { _id: claimedOrder._id, status: 'processing', fulfillmentToken: myFulfillmentToken },
       { $set: { status: 'fulfilled', fulfilledAt: new Date(), paymentReference: paymentRef } },
       opts
     );
@@ -250,11 +264,12 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
       throw new Error(`Maximum ${tier.perPersonLimit} tickets per person for this tier`);
     }
 
-    // Atomic Conditional Inventory Reservation
+    // Atomic Conditional Inventory Reservation (verifying party is still 'approved')
     const maxAllowedSold = tier.quantity - qty;
     const reserveResult = await Party.updateOne(
       {
         _id: party._id,
+        status: 'approved',
         ticketTiers: {
           $elemMatch: {
             tierId: tier.tierId,
@@ -272,7 +287,7 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
     );
 
     if (reserveResult.modifiedCount === 0) {
-      throw new Error('Not enough tickets available for this tier');
+      throw new Error('Not enough tickets available for this tier or party was cancelled');
     }
 
     // Wallet Debit (if wallet order)
@@ -482,6 +497,22 @@ export const createTicketOrder = async (req: Request, res: Response) => {
     let order = null;
     if (idempotencyKey) {
       order = await TicketOrder.findOne({ idempotencyKey });
+      if (order) {
+        // Request Fingerprint Verification: Ensure purchase parameters match existing order
+        const isMatchingFingerprint =
+          order.partyId.toString() === party._id.toString() &&
+          order.tierId === tier.tierId &&
+          order.quantity === qty &&
+          order.paymentProvider === paymentProvider &&
+          order.priceNaira === priceNaira;
+
+        if (!isMatchingFingerprint) {
+          return res.status(409).json({
+            success: false,
+            error: 'Idempotency key was already used for a request with different purchase parameters',
+          });
+        }
+      }
     }
 
     if (!order) {
