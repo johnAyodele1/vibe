@@ -80,64 +80,100 @@ export const getTicketAvailability = async (req: Request, res: Response) => {
  * Idempotent: If order is already fulfilled, returns existing tickets immediately.
  */
 export const fulfillTicketOrderInternal = async (orderId: string) => {
-  const order = await TicketOrder.findById(orderId);
-  if (!order) {
+  const initialOrder = await TicketOrder.findById(orderId);
+  if (!initialOrder) {
     throw new Error('Ticket order not found');
   }
 
   // REJECT SIMULATED PAYMENTS IN NON-TEST ENVIRONMENTS
-  if (order.paymentProvider === 'simulated' && process.env.NODE_ENV !== 'test') {
+  if (initialOrder.paymentProvider === 'simulated' && process.env.NODE_ENV !== 'test') {
     throw new Error('Simulated payments are strictly forbidden in production');
   }
 
-  // IDEMPOTENCY PROTECTION: If order is already fulfilled, return existing tickets immediately
-  if (order.status === 'fulfilled') {
-    const existingTickets = await Ticket.find({ paymentRef: order.paymentReference || order.orderReference }).lean();
-    return {
-      order,
-      tickets: existingTickets,
-      isAlreadyFulfilled: true,
-    };
+  const paymentRef = initialOrder.paymentReference || initialOrder.orderReference;
+
+  // IDEMPOTENCY PROTECTION: If order is already fulfilled or processing by another thread
+  if (initialOrder.status === 'fulfilled') {
+    const existingTickets = await Ticket.find({ paymentRef }).lean();
+    return { order: initialOrder, tickets: existingTickets, isAlreadyFulfilled: true };
+  }
+
+  if (initialOrder.status === 'processing') {
+    // Wait briefly for winning thread to commit, or return existing tickets if completed
+    let attempts = 0;
+    while (attempts < 5) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const current = await TicketOrder.findById(orderId).lean();
+      if (current?.status === 'fulfilled') {
+        const existingTickets = await Ticket.find({ paymentRef }).lean();
+        return { order: current, tickets: existingTickets, isAlreadyFulfilled: true };
+      }
+      attempts++;
+    }
   }
 
   // ORDER EXPIRATION CHECK
-  if (order.expiresAt && new Date(order.expiresAt) < new Date() && order.status === 'pending') {
-    await TicketOrder.findByIdAndUpdate(order._id, { $set: { status: 'failed' } });
+  if (initialOrder.expiresAt && new Date(initialOrder.expiresAt) < new Date() && initialOrder.status === 'pending') {
+    await TicketOrder.findByIdAndUpdate(initialOrder._id, { $set: { status: 'failed' } });
     throw new Error('Ticket order has expired');
   }
 
-  const party = await Party.findById(order.partyId);
+  // ATOMIC CLAIM: Transition from 'pending' -> 'processing'
+  const claimedOrder = await TicketOrder.findOneAndUpdate(
+    { _id: orderId, status: 'pending' },
+    { $set: { status: 'processing', updatedAt: new Date() } },
+    { new: true }
+  );
+
+  if (!claimedOrder) {
+    // Competitor claimed or fulfilled the order in parallel
+    const current = await TicketOrder.findById(orderId).lean();
+    const existingTickets = await Ticket.find({ paymentRef }).lean();
+    if (current?.status === 'fulfilled' || existingTickets.length > 0) {
+      return { order: current || initialOrder, tickets: existingTickets, isAlreadyFulfilled: true };
+    }
+    if (current?.status === 'processing') {
+      return { order: current, tickets: existingTickets, isProcessing: true };
+    }
+    throw new Error(`Ticket order status is already ${current?.status || 'updated'}`);
+  }
+
+  const party = await Party.findById(claimedOrder.partyId);
   if (!party || party.status !== 'approved') {
+    await TicketOrder.findByIdAndUpdate(claimedOrder._id, { $set: { status: 'failed' } });
     throw new Error('Party not found or not approved');
   }
 
-  const tier = party.ticketTiers.find((t) => t.tierId === order.tierId);
+  const tier = party.ticketTiers.find((t) => t.tierId === claimedOrder.tierId);
   if (!tier || !tier.isActive) {
+    await TicketOrder.findByIdAndUpdate(claimedOrder._id, { $set: { status: 'failed' } });
     throw new Error('Ticket tier not found or inactive');
   }
 
-  const paymentRef = order.paymentReference || order.orderReference;
-
-  // PREVENT REPLAY ATTACKS: Ensure paymentRef has not already been used for another fulfilled order/tickets
+  // PREVENT REPLAY ATTACKS: Ensure paymentRef has not already been used for another party
   const reusedTicket = await Ticket.exists({ paymentRef, partyId: { $ne: party._id } });
   if (reusedTicket) {
+    await TicketOrder.findByIdAndUpdate(claimedOrder._id, { $set: { status: 'failed' } });
     throw new Error('Payment reference has already been consumed by another transaction');
   }
 
   let paymentVerified = false;
 
   // Paystack verification
-  if (order.paymentProvider === 'paystack') {
+  if (claimedOrder.paymentProvider === 'paystack') {
     if (process.env.NODE_ENV !== 'test') {
-      if (!order.paymentReference) {
+      if (!claimedOrder.paymentReference) {
+        await TicketOrder.findByIdAndUpdate(claimedOrder._id, { $set: { status: 'failed' } });
         throw new Error('Paystack order missing server-generated payment reference');
       }
-      const verifyRes = await PaystackService.verifyTransaction(order.paymentReference);
+      const verifyRes = await PaystackService.verifyTransaction(claimedOrder.paymentReference);
       if (!verifyRes.status || !verifyRes.data || verifyRes.data.status !== 'success') {
+        await TicketOrder.findByIdAndUpdate(claimedOrder._id, { $set: { status: 'failed' } });
         throw new Error(`Paystack payment verification failed: ${verifyRes.message || 'Payment not successful'}`);
       }
-      const expectedKobo = order.priceNaira * 100;
+      const expectedKobo = claimedOrder.priceNaira * 100;
       if (verifyRes.data.amount !== expectedKobo || verifyRes.data.currency?.toUpperCase() !== 'NGN') {
+        await TicketOrder.findByIdAndUpdate(claimedOrder._id, { $set: { status: 'failed' } });
         throw new Error('Paid transaction amount or currency mismatch');
       }
       paymentVerified = true;
@@ -149,44 +185,65 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
   const singlePrice = tier.price;
   const singlePlatformFee = Math.floor(singlePrice * party.platformFeeRate);
   const singleOrganizerNaira = singlePrice - singlePlatformFee;
-  const qty = order.quantity;
+  const qty = claimedOrder.quantity;
 
   const diamondRate = await getDiamondNairaRate();
-  const requiredDiamonds = Math.ceil(order.priceNaira / diamondRate);
-  const estimatedUsdVal = parseFloat((order.priceNaira / 1500).toFixed(2));
+  const requiredDiamonds = Math.ceil(claimedOrder.priceNaira / diamondRate);
+  const estimatedUsdVal = parseFloat((claimedOrder.priceNaira / 1500).toFixed(2));
+
+  // 1. PRE-GENERATE ALL TICKETS & 2D SCANNABLE QR CODES OUTSIDE MONGO TRANSACTION NETWORK I/O
+  const preparedTickets: any[] = [];
+  for (let i = 0; i < qty; i++) {
+    const ticketCode = await generateTicketCode();
+    const qrData = `https://zippo.com.ng/ticket/${ticketCode}`;
+    const realQrUrl = await generateQRCode(qrData);
+
+    preparedTickets.push({
+      partyId: party._id,
+      tierId: tier.tierId,
+      tierName: tier.name,
+      buyerId: claimedOrder.buyerId,
+      buyerName: claimedOrder.buyerName,
+      ticketCode,
+      qrCodeUrl: realQrUrl,
+      priceNaira: singlePrice,
+      platformFeeNaira: singlePlatformFee,
+      organizerNaira: singleOrganizerNaira,
+      paymentStatus: 'paid',
+      paymentRef,
+      paidAt: new Date(),
+      entryStatus: 'not_entered',
+      isValid: true,
+    });
+  }
 
   const createdTickets: any[] = [];
 
   const executeFulfillmentMutations = async (session?: mongoose.ClientSession) => {
     const opts = session ? { session, new: true } : { new: true };
 
-    // 1. Mark Order as Fulfilled
+    // Mark Order as Fulfilled
     const updatedOrder = await TicketOrder.findOneAndUpdate(
-      { _id: order._id, status: 'pending' },
+      { _id: claimedOrder._id, status: 'processing' },
       { $set: { status: 'fulfilled', fulfilledAt: new Date(), paymentReference: paymentRef } },
       opts
     );
 
     if (!updatedOrder) {
-      const latestOrder = await TicketOrder.findById(order._id).lean();
-      if (latestOrder?.status === 'fulfilled') {
-        const existing = await Ticket.find({ paymentRef: latestOrder.paymentReference || latestOrder.orderReference }).lean();
-        return { order: latestOrder, tickets: existing, isAlreadyFulfilled: true };
-      }
       const existing = await Ticket.find({ paymentRef }).lean();
-      return { order, tickets: existing, isAlreadyFulfilled: true };
+      return { order: claimedOrder, tickets: existing, isAlreadyFulfilled: true };
     }
 
-    // 1b. TRANSACTIONAL PER-PERSON LIMIT VERIFICATION
+    // Transactional Per-Person Limit
     const existingPaidCount = await Ticket.countDocuments(
-      { partyId: party._id, tierId: tier.tierId, buyerId: order.buyerId, paymentStatus: 'paid' },
+      { partyId: party._id, tierId: tier.tierId, buyerId: claimedOrder.buyerId, paymentStatus: 'paid' },
       session ? { session } : {}
     );
     if (existingPaidCount + qty > tier.perPersonLimit) {
       throw new Error(`Maximum ${tier.perPersonLimit} tickets per person for this tier`);
     }
 
-    // 2. Atomic Conditional Inventory Reservation
+    // Atomic Conditional Inventory Reservation
     const maxAllowedSold = tier.quantity - qty;
     const reserveResult = await Party.updateOne(
       {
@@ -201,7 +258,7 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
       {
         $inc: {
           'ticketTiers.$.sold': qty,
-          totalRevenue: order.priceNaira,
+          totalRevenue: claimedOrder.priceNaira,
         },
       },
       session ? { session } : {}
@@ -211,10 +268,10 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
       throw new Error('Not enough tickets available for this tier');
     }
 
-    // 3. Wallet Debit and CreditTransaction Audit Record (if wallet payment)
-    if (order.paymentProvider === 'wallet') {
+    // Wallet Debit (if wallet order)
+    if (claimedOrder.paymentProvider === 'wallet') {
       const updatedUser = await AdultUser.findOneAndUpdate(
-        { _id: order.buyerId, credits: { $gte: requiredDiamonds } },
+        { _id: claimedOrder.buyerId, credits: { $gte: requiredDiamonds } },
         { $inc: { credits: -requiredDiamonds } },
         opts
       );
@@ -225,59 +282,34 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
       await CreditTransaction.create(
         [
           {
-            userId: order.buyerId,
+            userId: claimedOrder.buyerId,
             type: 'ticket_purchase',
             amount: -requiredDiamonds,
             usdAmount: estimatedUsdVal,
-            nairaAmount: -order.priceNaira,
-            description: `Ticket Purchase - ${order.quantity} ticket(s) for ${party.title}`,
+            nairaAmount: -claimedOrder.priceNaira,
+            description: `Ticket Purchase - ${claimedOrder.quantity} ticket(s) for ${party.title}`,
             relatedUserId: party.organizerId,
             status: 'completed',
-            metadata: { orderId: order._id, partyId: party._id, tierId: order.tierId },
+            metadata: { orderId: claimedOrder._id, partyId: party._id, tierId: claimedOrder.tierId },
           },
         ],
         session ? { session } : {}
       );
     }
 
-    // 4. Pre-generate ticket codes and real scannable 2D QR Code SVG Data URLs outside transaction network I/O
-    const ticketsToCreate = [];
-    for (let i = 0; i < qty; i++) {
-      const ticketCode = await generateTicketCode();
-      const qrData = `https://zippo.com.ng/ticket/${ticketCode}`;
-      const realQrUrl = await generateQRCode(qrData);
-
-      ticketsToCreate.push({
-        partyId: party._id,
-        tierId: tier.tierId,
-        tierName: tier.name,
-        buyerId: order.buyerId,
-        buyerName: order.buyerName,
-        ticketCode,
-        qrCodeUrl: realQrUrl,
-        priceNaira: singlePrice,
-        platformFeeNaira: singlePlatformFee,
-        organizerNaira: singleOrganizerNaira,
-        paymentStatus: 'paid',
-        paymentRef,
-        paidAt: new Date(),
-        entryStatus: 'not_entered',
-        isValid: true,
-      });
-    }
-
-    const docs = await Ticket.create(ticketsToCreate, session ? { session } : {});
+    // Insert Pre-Generated Tickets
+    const docs = await Ticket.create(preparedTickets, session ? { session } : {});
     createdTickets.push(...docs);
 
-    // 5. Record Platform Earning
+    // Record Platform Earning
     if (createdTickets.length > 0) {
       await PlatformEarning.create(
         [
           {
             source: 'ticket_sale',
-            amount: order.platformFeeNaira,
-            nairaValue: order.platformFeeNaira,
-            fromUserId: order.buyerId,
+            amount: claimedOrder.platformFeeNaira,
+            nairaValue: claimedOrder.platformFeeNaira,
+            fromUserId: claimedOrder.buyerId,
             toProviderId: party.organizerId,
             referenceId: createdTickets[0]._id,
             metadata: { partyId: party._id, partyTitle: party.title, quantity: qty, tierName: tier.name },
@@ -308,17 +340,17 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
     }
 
     // Email dispatch AFTER transaction commit
-    if (order.buyerId) {
-      const buyerDoc = await AdultUser.findById(order.buyerId).select('email displayName').lean();
+    if (claimedOrder.buyerId) {
+      const buyerDoc = await AdultUser.findById(claimedOrder.buyerId).select('email displayName').lean();
       if (buyerDoc?.email) {
         void sendEmail({
           to: buyerDoc.email,
-          toName: buyerDoc.displayName || order.buyerName,
+          toName: buyerDoc.displayName || claimedOrder.buyerName,
           subject: `Ticket Confirmation: ${party.title}`,
           html: `
             <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #0a0608; color: #ffffff;">
               <h2 style="color: #c8102e;">🎟 Your Tickets for ${party.title}</h2>
-              <p>Hi ${buyerDoc.displayName || order.buyerName},</p>
+              <p>Hi ${buyerDoc.displayName || claimedOrder.buyerName},</p>
               <p>Thank you for your purchase! Here are your ticket details:</p>
               <ul>
                 <li><strong>Event:</strong> ${party.title}</li>
@@ -339,26 +371,16 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
 
     return fulfillmentResult;
   } catch (err: any) {
-    // Safely check if order was fulfilled concurrently by another thread/process before marking as failed or refunding
-    const checkOrder = await TicketOrder.findById(orderId).lean();
-    const existingTickets = await Ticket.find({ paymentRef: order.paymentReference || order.orderReference }).lean();
-
-    if (checkOrder?.status === 'fulfilled' || existingTickets.length > 0) {
-      return {
-        order: checkOrder || order,
-        tickets: existingTickets,
-        isAlreadyFulfilled: true,
-      };
-    }
-
-    // Attempt automatic Paystack refund dispatch ONLY if payment was confirmed captured
+    // Attempt automatic Paystack refund dispatch ONLY if payment was confirmed captured AND this invocation held the processing claim
     let finalStatus: 'refunded' | 'refund_pending' | 'failed' = 'failed';
+    let refundRef: string | undefined = undefined;
 
-    if (order.paymentProvider === 'paystack' && paymentVerified) {
+    if (claimedOrder.paymentProvider === 'paystack' && paymentVerified) {
       try {
-        const refundRes = await PaystackService.refundTransaction(paymentRef, order.priceNaira * 100);
+        const refundRes = await PaystackService.refundTransaction(paymentRef, claimedOrder.priceNaira * 100);
         if (refundRes?.status) {
           finalStatus = 'refunded';
+          refundRef = String(refundRes?.data?.id || paymentRef);
         } else {
           finalStatus = 'refund_pending';
         }
@@ -367,12 +389,12 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
       }
     }
 
-    await TicketOrder.findByIdAndUpdate(order._id, {
-      $set: { status: finalStatus, updatedAt: new Date() },
+    await TicketOrder.findByIdAndUpdate(claimedOrder._id, {
+      $set: { status: finalStatus, refundReference: refundRef, updatedAt: new Date() },
     }).catch(() => {});
 
-    if (order.paymentProvider === 'paystack') {
-      console.warn(`[Paystack Refund Reconciliation] Order ${order._id} (${order.orderReference}) status: ${finalStatus}. Reason: ${err.message}`);
+    if (claimedOrder.paymentProvider === 'paystack') {
+      console.warn(`[Paystack Refund Reconciliation] Order ${claimedOrder._id} (${claimedOrder.orderReference}) status: ${finalStatus}. Reason: ${err.message}`);
     }
 
     throw err;
@@ -447,23 +469,12 @@ export const createTicketOrder = async (req: Request, res: Response) => {
     const platformFeeNaira = singlePlatformFee * qty;
     const organizerNaira = singleOrganizerNaira * qty;
 
-    // IDEMPOTENT ORDER REUSE: Check for existing order by idempotencyKey or matching pending order
+    // STRICT IDEMPOTENCY KEY CONTRACT:
+    // If idempotencyKey is supplied, reuse matching order or create new one.
+    // If no idempotencyKey is supplied, always generate a brand-new TicketOrder.
     let order = null;
     if (idempotencyKey) {
       order = await TicketOrder.findOne({ idempotencyKey });
-    }
-
-    if (!order) {
-      const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000);
-      order = await TicketOrder.findOne({
-        buyerId,
-        partyId: party._id,
-        tierId: tier.tierId,
-        quantity: qty,
-        paymentProvider: paymentProvider as any,
-        status: 'pending',
-        createdAt: { $gte: fifteenMinsAgo },
-      });
     }
 
     if (!order) {
@@ -623,7 +634,10 @@ export const handlePaystackTicketWebhook = async (req: Request, res: Response) =
       if (reference) {
         const order = await TicketOrder.findOne({ paymentReference: reference });
         if (order) {
-          // Terminal no-op for already processed / refund_pending / refunded orders
+          // Terminal no-op for already processing / fulfilled / refunded orders -> return 200 immediately
+          if (order.status === 'fulfilled' || order.status === 'processing') {
+            return res.status(200).json({ status: 'success', message: 'Order already processed or processing' });
+          }
           if (order.status === 'pending') {
             await fulfillTicketOrderInternal(order._id.toString());
           }

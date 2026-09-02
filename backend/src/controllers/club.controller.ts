@@ -173,7 +173,7 @@ export const getClubById = async (req: Request, res: Response) => {
       club: {
         ...club,
         isOpenNow: isClubOpenNow(club.operatingHours),
-        isOpenTonight: isClubOpenNow(club.operatingHours),
+        isOpenTonight: isClubOpenTonight(club.operatingHours),
       },
     });
   } catch (err: any) {

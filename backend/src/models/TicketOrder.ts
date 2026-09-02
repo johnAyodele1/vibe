@@ -15,7 +15,8 @@ export interface ITicketOrder extends Document {
   paymentProvider: 'paystack' | 'wallet' | 'simulated';
   paymentReference?: string;
   providerReference?: string;
-  status: 'pending' | 'fulfilled' | 'failed' | 'refund_pending' | 'refunded';
+  status: 'pending' | 'processing' | 'fulfilled' | 'failed' | 'refund_pending' | 'refunded';
+  refundReference?: string;
   expiresAt: Date;
   fulfilledAt?: Date;
   createdAt: Date;
@@ -44,9 +45,10 @@ const TicketOrderSchema = new Schema<ITicketOrder>(
     providerReference: { type: String },
     status: {
       type: String,
-      enum: ['pending', 'fulfilled', 'failed', 'refund_pending', 'refunded'],
+      enum: ['pending', 'processing', 'fulfilled', 'failed', 'refund_pending', 'refunded'],
       default: 'pending',
     },
+    refundReference: { type: String },
     expiresAt: {
       type: Date,
       default: () => new Date(Date.now() + 30 * 60 * 1000), // 30 mins expiration
