@@ -589,6 +589,16 @@ export const reconcilePendingTicketRefunds = async (): Promise<number> => {
               { $set: { status: 'reverted', eligibleForPayout: false, updatedAt: new Date() } }
             ).catch(() => {});
 
+            await Party.updateOne(
+              { _id: claimedOrder.partyId, 'ticketTiers.tierId': claimedOrder.tierId },
+              {
+                $inc: {
+                  totalRevenue: -claimedOrder.priceNaira,
+                  'ticketTiers.$.sold': -claimedOrder.quantity,
+                },
+              }
+            ).catch(() => {});
+
             if (claimedOrder.platformFeeNaira > 0) {
               await PlatformEarning.create({
                 source: 'ticket_refund',

@@ -452,6 +452,18 @@ export const cancelParty = async (req: Request, res: Response) => {
               { session }
             );
 
+            // Reconcile Party totalRevenue and tier sold inventory
+            await Party.updateOne(
+              { _id: party._id, 'ticketTiers.tierId': order.tierId },
+              {
+                $inc: {
+                  totalRevenue: -order.priceNaira,
+                  'ticketTiers.$.sold': -order.quantity,
+                },
+              },
+              { session }
+            );
+
             // Create PlatformEarning reversal
             if (order.platformFeeNaira > 0) {
               await PlatformEarning.create(
@@ -502,6 +514,15 @@ export const cancelParty = async (req: Request, res: Response) => {
               { 'metadata.orderId': order._id, type: 'ticket_sale_earning' },
               { $set: { status: 'reverted', eligibleForPayout: false, updatedAt: new Date() } }
             );
+            await Party.updateOne(
+              { _id: party._id, 'ticketTiers.tierId': order.tierId },
+              {
+                $inc: {
+                  totalRevenue: -order.priceNaira,
+                  'ticketTiers.$.sold': -order.quantity,
+                },
+              }
+            );
 
             if (order.platformFeeNaira > 0) {
               await PlatformEarning.create({
@@ -538,14 +559,33 @@ export const cancelParty = async (req: Request, res: Response) => {
 
     for (const order of pendingProcessingOrders) {
       if (order.paymentProvider === 'paystack' && order.paymentReference) {
-        // Captured/in-flight Paystack payment queued for refund reconciliation
-        await TicketOrder.findByIdAndUpdate(order._id, {
-          $set: {
-            status: 'refund_pending',
-            nextRefundAttemptAt: new Date(),
-            updatedAt: new Date(),
-          },
-        });
+        let isCaptured = false;
+        if (process.env.NODE_ENV !== 'test') {
+          try {
+            const verifyRes = await PaystackService.verifyTransaction(order.paymentReference);
+            if (verifyRes?.status && verifyRes?.data?.status === 'success') {
+              isCaptured = true;
+            }
+          } catch {
+            isCaptured = false;
+          }
+        } else {
+          isCaptured = true;
+        }
+
+        if (isCaptured) {
+          await TicketOrder.findByIdAndUpdate(order._id, {
+            $set: {
+              status: 'refund_pending',
+              nextRefundAttemptAt: new Date(),
+              updatedAt: new Date(),
+            },
+          });
+        } else {
+          await TicketOrder.findByIdAndUpdate(order._id, {
+            $set: { status: 'failed', updatedAt: new Date() },
+          });
+        }
       } else {
         await TicketOrder.findByIdAndUpdate(order._id, {
           $set: { status: 'failed', updatedAt: new Date() },

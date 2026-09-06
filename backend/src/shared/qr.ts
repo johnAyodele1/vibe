@@ -68,20 +68,34 @@ const encodeQRMatrix = (text: string): boolean[][] => {
   // Convert string to bytes
   const textBytes = Array.from(Buffer.from(text, 'utf-8'));
 
-  // Version 1-M capacity: 16 data bytes. Version 2-M capacity: 28 data bytes. Version 3-M: 44 bytes.
-  let version = 1;
-  let numDataBytes = 16;
-  let numECBytes = 10;
+  // QR Version capacities for Medium Error Correction (M)
+  const versionSpecs: Record<number, { numDataBytes: number; numECBytes: number; alignPos: number[] }> = {
+    1:  { numDataBytes: 16,  numECBytes: 10,  alignPos: [] },
+    2:  { numDataBytes: 28,  numECBytes: 16,  alignPos: [6, 18] },
+    3:  { numDataBytes: 44,  numECBytes: 26,  alignPos: [6, 22] },
+    4:  { numDataBytes: 64,  numECBytes: 36,  alignPos: [6, 26] },
+    5:  { numDataBytes: 88,  numECBytes: 48,  alignPos: [6, 30] },
+    6:  { numDataBytes: 112, numECBytes: 64,  alignPos: [6, 34] },
+    7:  { numDataBytes: 130, numECBytes: 72,  alignPos: [6, 22, 38] },
+    8:  { numDataBytes: 156, numECBytes: 88,  alignPos: [6, 24, 42] },
+    9:  { numDataBytes: 192, numECBytes: 110, alignPos: [6, 26, 46] },
+    10: { numDataBytes: 224, numECBytes: 130, alignPos: [6, 28, 50] },
+  };
 
-  if (textBytes.length > 14 && textBytes.length <= 26) {
-    version = 2;
-    numDataBytes = 28;
-    numECBytes = 16;
-  } else if (textBytes.length > 26) {
-    version = 3;
-    numDataBytes = 44;
-    numECBytes = 26;
+  let version = 1;
+  while (version < 10) {
+    const charCountBits = version >= 10 ? 16 : 8;
+    const headerBytes = Math.ceil((4 + charCountBits) / 8);
+    if (textBytes.length <= versionSpecs[version].numDataBytes - headerBytes - 1) {
+      break;
+    }
+    version++;
   }
+
+  const spec = versionSpecs[version] || versionSpecs[10];
+  const numDataBytes = spec.numDataBytes;
+  const numECBytes = spec.numECBytes;
+  const alignPos = spec.alignPos;
 
   const size = 17 + version * 4;
   const matrix: (boolean | null)[][] = Array.from({ length: size }, () => new Array(size).fill(null));
@@ -110,13 +124,22 @@ const encodeQRMatrix = (text: string): boolean[][] => {
   placeFinder(size - 7, 0);
 
   // Alignment patterns for Version 2+
-  if (version >= 2) {
-    const alignPos = version === 2 ? 18 : 22;
-    for (let r = -2; r <= 2; r++) {
-      for (let c = -2; c <= 2; c++) {
-        const isBorder = Math.abs(r) === 2 || Math.abs(c) === 2;
-        const isCenter = r === 0 && c === 0;
-        matrix[alignPos + r][alignPos + c] = isBorder || isCenter;
+  if (alignPos.length > 0) {
+    for (const rCenter of alignPos) {
+      for (const cCenter of alignPos) {
+        // Skip alignment patterns that overlap with finder patterns
+        const isOverlapTopLeft = rCenter < 9 && cCenter < 9;
+        const isOverlapTopRight = rCenter < 9 && cCenter > size - 9;
+        const isOverlapBottomLeft = rCenter > size - 9 && cCenter < 9;
+        if (isOverlapTopLeft || isOverlapTopRight || isOverlapBottomLeft) continue;
+
+        for (let r = -2; r <= 2; r++) {
+          for (let c = -2; c <= 2; c++) {
+            const isBorder = Math.abs(r) === 2 || Math.abs(c) === 2;
+            const isCenter = r === 0 && c === 0;
+            matrix[rCenter + r][cCenter + c] = isBorder || isCenter;
+          }
+        }
       }
     }
   }
@@ -147,7 +170,8 @@ const encodeQRMatrix = (text: string): boolean[][] => {
   };
 
   pushBits(0b0100, 4); // Byte mode
-  pushBits(textBytes.length, 8); // Character count
+  const charCountBits = version >= 10 ? 16 : 8;
+  pushBits(textBytes.length, charCountBits); // Character count
   for (const b of textBytes) {
     pushBits(b, 8);
   }

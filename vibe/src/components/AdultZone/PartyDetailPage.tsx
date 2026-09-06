@@ -240,6 +240,16 @@ export const PartyDetailPage: React.FC = () => {
                   <span>Hosted by <strong>{party.organizerName}</strong></span>
                 </div>
               )}
+
+              <div className="pt-3 border-t border-white/10">
+                <button
+                  onClick={() => navigate('/wallet')}
+                  className="w-full py-2 bg-neutral-800 hover:bg-neutral-700 text-white text-[11px] font-bold uppercase rounded-xl transition-colors flex items-center justify-center gap-2"
+                >
+                  <span>💎</span>
+                  <span>Manage Earnings & Payouts</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

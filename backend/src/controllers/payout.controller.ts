@@ -36,8 +36,8 @@ const buildPayoutDetailsSnapshot = (user: any) => {
 export const getEligiblePayout = async (req: Request, res: Response) => {
   try {
     const user = req.adultUser;
-    if (!user || user.role !== 'provider') {
-      return res.status(403).json({ success: false, error: 'Only providers can check eligible payouts' });
+    if (!user) {
+      return res.status(403).json({ success: false, error: 'Unauthorized: Authentication required' });
     }
 
     // Optimization (⚡ Bolt): Execute independent queries for eligible transactions, disputed transactions,
@@ -517,8 +517,8 @@ export const markRefundCompleted = async (req: Request, res: Response) => {
 export const requestPayout = async (req: Request, res: Response) => {
   try {
     const user = req.adultUser;
-    if (!user || user.role !== 'provider') {
-      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Only providers can request payout' } });
+    if (!user) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Authentication required' } });
     }
 
     const profile: any = user.providerProfile || {};
@@ -717,8 +717,8 @@ export const requestPayout = async (req: Request, res: Response) => {
 export const getPayoutStatus = async (req: Request, res: Response) => {
   try {
     const user = req.adultUser;
-    if (!user || user.role !== 'provider') {
-      return res.status(403).json({ success: false, error: 'Only providers can view payout status' });
+    if (!user) {
+      return res.status(403).json({ success: false, error: 'Authentication required' });
     }
 
     // Optimization (⚡ Bolt): Append .lean() to read-only queries to eliminate Mongoose document instantiation and model hydration overhead.
@@ -760,8 +760,8 @@ export const getPayoutStatus = async (req: Request, res: Response) => {
 export const getPayoutHistory = async (req: Request, res: Response) => {
   try {
     const user = req.adultUser;
-    if (!user || user.role !== 'provider') {
-      return res.status(403).json({ success: false, error: 'Only providers can view history' });
+    if (!user) {
+      return res.status(403).json({ success: false, error: 'Authentication required' });
     }
 
     const page = parseInt(req.query.page as string) || 1;
