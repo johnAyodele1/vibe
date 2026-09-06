@@ -19,8 +19,8 @@ export const AdvertisementCard: React.FC<AdvertisementCardProps> = ({
   const [displayRemaining, setDisplayRemaining] = useState<number>(ad.displayDurationSeconds);
   const [isCloseEnabled, setIsCloseEnabled] = useState<boolean>(ad.closeAfterSeconds <= 0);
 
-  const expiresAtRef = useRef<number>(Date.now() + ad.displayDurationSeconds * 1000);
-  const closeAfterRef = useRef<number>(Date.now() + ad.closeAfterSeconds * 1000);
+  const expiresAtRef = useRef<number>(0);
+  const closeAfterRef = useRef<number>(0);
 
   useEffect(() => {
     expiresAtRef.current = Date.now() + ad.displayDurationSeconds * 1000;
