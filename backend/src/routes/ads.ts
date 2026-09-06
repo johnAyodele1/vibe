@@ -23,31 +23,35 @@ export const authenticateUserOrAdultUser = async (
       return res.status(401).json({ success: false, message: 'Access token required' });
     }
 
-    // 1. Try standard dating zone JWT secret
-    try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret') as { userId: string };
-      let user = await User.findById(decoded.userId).select('-password');
-      if (!user) {
-        user = (await AdultUser.findById(decoded.userId).select('-passwordHash')) as any;
+    // 1. Try standard dating zone JWT secret if configured
+    if (process.env.JWT_SECRET) {
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET) as { userId: string };
+        let user = await User.findById(decoded.userId).select('-password');
+        if (!user) {
+          user = (await AdultUser.findById(decoded.userId).select('-passwordHash')) as any;
+        }
+        if (user) {
+          req.user = user;
+          return next();
+        }
+      } catch {
+        // Ignore and proceed to try Adult Zone token
       }
-      if (user) {
-        req.user = user;
-        return next();
-      }
-    } catch {
-      // Ignore and proceed to try Adult Zone token
     }
 
-    // 2. Try Adult Zone JWT secret
-    try {
-      const decoded = jwt.verify(token, process.env.ADULT_JWT_SECRET || 'adult_secret') as { sub: string };
-      const adultUser = await AdultUser.findById(decoded.sub).select('-passwordHash');
-      if (adultUser && adultUser.isActive && !adultUser.isBanned) {
-        req.adultUser = adultUser;
-        return next();
+    // 2. Try Adult Zone JWT secret if configured
+    if (process.env.ADULT_JWT_SECRET) {
+      try {
+        const decoded = jwt.verify(token, process.env.ADULT_JWT_SECRET) as { sub: string };
+        const adultUser = await AdultUser.findById(decoded.sub).select('-passwordHash');
+        if (adultUser && adultUser.isActive && !adultUser.isBanned) {
+          req.adultUser = adultUser;
+          return next();
+        }
+      } catch {
+        // Ignore
       }
-    } catch {
-      // Ignore
     }
 
     return res.status(401).json({ success: false, message: 'Invalid or expired token' });

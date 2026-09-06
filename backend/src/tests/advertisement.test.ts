@@ -65,8 +65,15 @@ describe('In-Chat Advertisement System Tests', () => {
       ageVerified: true,
     });
 
-    // Generate JWT tokens using Adult JWT secret
-    const adultSecret = process.env.ADULT_JWT_SECRET || 'adult_secret';
+    // Ensure secrets are set in test environment
+    if (!process.env.ADULT_JWT_SECRET) {
+      process.env.ADULT_JWT_SECRET = 'test_adult_jwt_secret_12345';
+    }
+    if (!process.env.JWT_SECRET) {
+      process.env.JWT_SECRET = 'test_jwt_secret_12345';
+    }
+
+    const adultSecret = process.env.ADULT_JWT_SECRET;
     userToken = jwt.sign({ sub: normalUser._id.toString(), role: 'user' }, adultSecret);
     providerToken = jwt.sign({ sub: providerUser._id.toString(), role: 'provider' }, adultSecret);
     adminToken = jwt.sign({ sub: adminUser._id.toString(), isAdmin: true }, adultSecret);

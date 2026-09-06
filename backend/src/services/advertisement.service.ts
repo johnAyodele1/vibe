@@ -138,12 +138,19 @@ export class AdvertisementService {
     // Pick candidate
     const selected = candidates[Math.floor(Math.random() * candidates.length)];
 
-    // 3. Persist impression record atomically on delivery
-    await AdvertisementImpression.create({
-      advertisementId: selected._id,
-      userId: userObjId,
-      shownAt: now,
-    });
+    // 3. Persist impression record atomically on delivery.
+    // If impression creation fails, revert the user's lastAdShownAt so cooldown is not consumed.
+    try {
+      await AdvertisementImpression.create({
+        advertisementId: selected._id,
+        userId: userObjId,
+        shownAt: now,
+      });
+    } catch (error) {
+      await AdultUser.updateOne({ _id: userObjId }, { $set: { lastAdShownAt: null } });
+      await User.updateOne({ _id: userObjId }, { $set: { lastAdShownAt: null } });
+      throw error;
+    }
 
     return {
       id: selected._id.toString(),
@@ -243,15 +250,21 @@ export class AdvertisementService {
       throw new Error('Advertisement not found');
     }
 
+    // Only record click if user has a valid impression within the last 24 hours
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const impression = await AdvertisementImpression.findOneAndUpdate(
-      { userId: userObjId, advertisementId: adObjId },
+      { userId: userObjId, advertisementId: adObjId, shownAt: { $gte: cutoff } },
       { $set: { clickedAt: new Date() } },
       { sort: { shownAt: -1 }, new: true }
     );
 
+    if (!impression) {
+      throw new Error('No valid impression record found to attribute click');
+    }
+
     return {
       success: true,
-      clickedAt: impression?.clickedAt || new Date(),
+      clickedAt: impression.clickedAt || new Date(),
     };
   }
 

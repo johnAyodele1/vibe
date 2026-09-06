@@ -192,11 +192,6 @@ const ProviderMessages: React.FC = () => {
         if (data.success && data.data?.advertisement) {
           const ad = data.data.advertisement;
           setEligibleAd(ad);
-
-          fetch(`${API_BASE_URL}/v1/ads/${ad.id}/impression`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}` }
-          }).catch(err => console.error('Impression error:', err));
         } else {
           setEligibleAd(null);
         }
