@@ -15,6 +15,8 @@ import { compressToWebP } from '../../lib/media/compressImage';
 import { VoiceNotePlayer } from './VoiceNotePlayer';
 import { OfficialBadge } from './PrivateSext';
 import { ChatSafetyNotice } from './ChatSafetyNotice';
+import AdvertisementOverlay from '../Advertisement/AdvertisementOverlay';
+import { EligibleAdvertisement } from '../Advertisement/types';
 
 const FALLBACK_AVATAR = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=150&auto=format&fit=crop";
 
@@ -123,7 +125,7 @@ interface Gift {
 
 const ProviderMessages: React.FC = () => {
   const { user } = useAdultAuth();
-  const token = localStorage.getItem('adultAccessToken') || '';
+  const token = localStorage.getItem('adultAccessToken') || localStorage.getItem('accessToken') || '';
 
   // Conversation list & messages state
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -134,6 +136,9 @@ const ProviderMessages: React.FC = () => {
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [msgPage, setMsgPage] = useState(1);
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
+
+  // Advertisement state
+  const [eligibleAd, setEligibleAd] = useState<EligibleAdvertisement | null>(null);
 
   // Form states
   const [inputText, setInputText] = useState('');
@@ -174,6 +179,44 @@ const ProviderMessages: React.FC = () => {
   const [isSendingGiftRequest, setIsSendingGiftRequest] = useState(false);
   const [isSendingServiceRequest, setIsSendingServiceRequest] = useState(false);
   const [processingIds, setProcessingIds] = useState<Record<string, boolean>>({});
+
+  // Fetch eligible advertisement for active conversation
+  useEffect(() => {
+    const fetchEligibleAd = async () => {
+      if (!selectedConv || !token) return;
+      try {
+        const res = await fetch(`${API_BASE_URL}/v1/ads/eligible`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success && data.data?.advertisement) {
+          const ad = data.data.advertisement;
+          setEligibleAd(ad);
+
+          fetch(`${API_BASE_URL}/v1/ads/${ad.id}/impression`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` }
+          }).catch(err => console.error('Impression error:', err));
+        } else {
+          setEligibleAd(null);
+        }
+      } catch (err) {
+        console.error('Error fetching eligible ad:', err);
+      }
+    };
+
+    void fetchEligibleAd();
+  }, [selectedConv?.conversationId, token]);
+
+  const handleAdClick = (adId: string, clickUrl: string) => {
+    if (token) {
+      fetch(`${API_BASE_URL}/v1/ads/${adId}/click`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      }).catch(err => console.error('Click error:', err));
+    }
+    window.open(clickUrl, '_blank', 'noopener,noreferrer');
+  };
 
   useEffect(() => {
     if (showServiceRequestDialog) {
@@ -1589,7 +1632,15 @@ const ProviderMessages: React.FC = () => {
             />
 
             {/* MESSAGES SCROLL area */}
-            <div ref={feedRef} onScroll={handleScroll} data-testid="message-feed" className="flex-grow overflow-y-auto p-6 space-y-6 flex flex-col no-scrollbar message-feed message-feed-container">
+            <div ref={feedRef} onScroll={handleScroll} data-testid="message-feed" className="flex-grow overflow-y-auto p-6 space-y-6 flex flex-col no-scrollbar message-feed message-feed-container relative">
+              {eligibleAd && (
+                <AdvertisementOverlay
+                  ad={eligibleAd}
+                  onClose={() => setEligibleAd(null)}
+                  onClickCTA={handleAdClick}
+                />
+              )}
+
               {hasMoreMessages && (
                 <button
                   onClick={loadMoreMessages}

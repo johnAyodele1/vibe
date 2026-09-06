@@ -8,6 +8,8 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useSocket } from "../../contexts/SocketContext";
 import { useVideoReadiness } from "../../hooks/useVideoReadiness";
 import VideoFallbackOverlay from "../AdultZone/VideoFallbackOverlay";
+import AdvertisementOverlay from "../Advertisement/AdvertisementOverlay";
+import { EligibleAdvertisement } from "../Advertisement/types";
 
 type CallStatus = "idle" | "calling" | "receiving" | "connected" | "ended";
 
@@ -98,6 +100,9 @@ const DirectMessage: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isInitialLoadRef = useRef(true);
 
+  // Advertisement state
+  const [eligibleAd, setEligibleAd] = useState<EligibleAdvertisement | null>(null);
+
   // Call state
   const [callStatus, setCallStatus] = useState<CallStatus>("idle");
   const [isVideoCall, setIsVideoCall] = useState(false);
@@ -121,6 +126,45 @@ const DirectMessage: React.FC = () => {
   const userObj = user as unknown as { _id?: string; photos?: PhotoItem[]; firstName?: string };
   const currentUserId = userObj?._id || "";
   const token = localStorage.getItem("accessToken");
+
+  // Fetch eligible ad on load
+  useEffect(() => {
+    const fetchEligibleAd = async () => {
+      if (!token) return;
+      try {
+        const res = await fetch(`${API_BASE_URL}/v1/ads/eligible`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success && data.data?.advertisement) {
+          const ad = data.data.advertisement;
+          setEligibleAd(ad);
+
+          // Record impression
+          fetch(`${API_BASE_URL}/v1/ads/${ad.id}/impression`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` }
+          }).catch(err => console.error('Impression error:', err));
+        } else {
+          setEligibleAd(null);
+        }
+      } catch (err) {
+        console.error('Error fetching eligible ad:', err);
+      }
+    };
+
+    void fetchEligibleAd();
+  }, [conversationId, token]);
+
+  const handleAdClick = (adId: string, clickUrl: string) => {
+    if (token) {
+      fetch(`${API_BASE_URL}/v1/ads/${adId}/click`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      }).catch(err => console.error('Click error:', err));
+    }
+    window.open(clickUrl, '_blank', 'noopener,noreferrer');
+  };
 
   // Synchronize body background color
   useEffect(() => {
@@ -923,6 +967,14 @@ const DirectMessage: React.FC = () => {
         </header>
 
         <main className={styles.chatStream} id="chat-container">
+          {eligibleAd && (
+            <AdvertisementOverlay
+              ad={eligibleAd}
+              onClose={() => setEligibleAd(null)}
+              onClickCTA={handleAdClick}
+            />
+          )}
+
           {loading ? (
             <div style={{ padding: "20px", textAlign: "center" }}>
               Loading messages...
