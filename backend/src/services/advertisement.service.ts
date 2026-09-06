@@ -1,6 +1,8 @@
 import mongoose from 'mongoose';
 import Advertisement, { IAdvertisement } from '../models/Advertisement';
 import AdvertisementImpression from '../models/AdvertisementImpression';
+import AdultUser from '../models/AdultUser';
+import User from '../models/User';
 
 export const TWO_HOURS_MS = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
 
@@ -52,9 +54,12 @@ export const validateAdTimingsAndDates = (
 
   if (clickUrl && clickUrl.trim().length > 0) {
     try {
-      new URL(clickUrl);
-    } catch {
-      throw new Error('Malformed click URL format');
+      const parsed = new URL(clickUrl.trim());
+      if (!['http:', 'https:'].includes(parsed.protocol.toLowerCase())) {
+        throw new Error('Click URL must use HTTP or HTTPS protocol');
+      }
+    } catch (err: any) {
+      throw new Error(err.message || 'Malformed click URL format');
     }
   }
 };
@@ -62,28 +67,52 @@ export const validateAdTimingsAndDates = (
 export class AdvertisementService {
   /**
    * Get an eligible advertisement for an authenticated user/provider.
-   * Enforces 2-hour server-authoritative cooldown per user account.
+   * Atomically checks & enforces 2-hour server-authoritative cooldown per user account,
+   * creating the impression record directly upon ad selection to guarantee race-free delivery.
    */
   static async getEligibleAdvertisement(
     userId: string | mongoose.Types.ObjectId,
     userRole: 'user' | 'provider' | 'admin'
   ) {
     const userObjId = new mongoose.Types.ObjectId(userId);
+    const now = new Date();
+    const cooldownCutoff = new Date(now.getTime() - TWO_HOURS_MS);
 
-    // 1. Check user's 2-hour cooldown across all conversations
-    const lastImpression = await AdvertisementImpression.findOne({ userId: userObjId })
-      .sort({ shownAt: -1 })
-      .lean();
+    // 1. Atomically claim ad delivery slot on user document
+    let claimedUser = await AdultUser.findOneAndUpdate(
+      {
+        _id: userObjId,
+        $or: [
+          { lastAdShownAt: { $lt: cooldownCutoff } },
+          { lastAdShownAt: { $exists: false } },
+          { lastAdShownAt: null },
+        ],
+      },
+      { $set: { lastAdShownAt: now } },
+      { new: true }
+    );
 
-    if (lastImpression) {
-      const timeSinceLastImpression = Date.now() - new Date(lastImpression.shownAt).getTime();
-      if (timeSinceLastImpression < TWO_HOURS_MS) {
-        return null;
-      }
+    if (!claimedUser) {
+      claimedUser = await User.findOneAndUpdate(
+        {
+          _id: userObjId,
+          $or: [
+            { lastAdShownAt: { $lt: cooldownCutoff } },
+            { lastAdShownAt: { $exists: false } },
+            { lastAdShownAt: null },
+          ],
+        },
+        { $set: { lastAdShownAt: now } },
+        { new: true }
+      );
+    }
+
+    // If atomic claim failed, user is still in 2-hour cooldown
+    if (!claimedUser) {
+      return null;
     }
 
     // 2. Query eligible active advertisements within campaign window
-    const now = new Date();
     const audienceFilter =
       userRole === 'provider'
         ? { targetAudience: { $in: ['provider', 'both'] } }
@@ -100,11 +129,21 @@ export class AdvertisementService {
     }).lean();
 
     if (!candidates || candidates.length === 0) {
+      // Revert atomic claim so user is not penalized if no ad is currently active
+      await AdultUser.updateOne({ _id: userObjId }, { $set: { lastAdShownAt: null } });
+      await User.updateOne({ _id: userObjId }, { $set: { lastAdShownAt: null } });
       return null;
     }
 
-    // Pick a random eligible advertisement among candidates
+    // Pick candidate
     const selected = candidates[Math.floor(Math.random() * candidates.length)];
+
+    // 3. Persist impression record atomically on delivery
+    await AdvertisementImpression.create({
+      advertisementId: selected._id,
+      userId: userObjId,
+      shownAt: now,
+    });
 
     return {
       id: selected._id.toString(),
@@ -120,7 +159,7 @@ export class AdvertisementService {
   }
 
   /**
-   * Record that an advertisement was displayed.
+   * Record that an advertisement was displayed (idempotent / backup).
    */
   static async recordImpression(
     userId: string | mongoose.Types.ObjectId,
@@ -147,18 +186,20 @@ export class AdvertisementService {
 
     // Verify audience targeting matches user role
     if (
-      userRole === 'provider' && ad.targetAudience === 'user' ||
-      userRole === 'user' && ad.targetAudience === 'provider'
+      (userRole === 'provider' && ad.targetAudience === 'user') ||
+      (userRole === 'user' && ad.targetAudience === 'provider')
     ) {
       throw new Error('Advertisement is not targeted to your account type');
     }
 
-    // Duplicate impression protection (e.g. component remounts within 1 minute)
+    // Check if an impression already exists for this delivery
     const recentImpression = await AdvertisementImpression.findOne({
       userId: userObjId,
       advertisementId: adObjId,
-      shownAt: { $gte: new Date(Date.now() - 60 * 1000) },
-    }).lean();
+      shownAt: { $gte: new Date(Date.now() - 2 * 60 * 60 * 1000) },
+    })
+      .sort({ shownAt: -1 })
+      .lean();
 
     if (recentImpression) {
       return {
@@ -172,7 +213,7 @@ export class AdvertisementService {
     const impression = await AdvertisementImpression.create({
       advertisementId: adObjId,
       userId: userObjId,
-      shownAt: new Date(),
+      shownAt: now,
     });
 
     return {
@@ -202,7 +243,6 @@ export class AdvertisementService {
       throw new Error('Advertisement not found');
     }
 
-    // Find recent impression for this user & ad and update clickedAt
     const impression = await AdvertisementImpression.findOneAndUpdate(
       { userId: userObjId, advertisementId: adObjId },
       { $set: { clickedAt: new Date() } },
@@ -229,9 +269,8 @@ export class AdvertisementService {
       Advertisement.countDocuments({ isArchived: false }),
     ]);
 
-    // Update effective availability status if needed on fetch
     const now = new Date();
-    const formattedAds = ads.map(ad => {
+    const formattedAds = ads.map((ad) => {
       let effectiveStatus = ad.status;
       if (ad.status === 'active' && (now > new Date(ad.campaignEndsAt) || now < new Date(ad.campaignStartsAt))) {
         effectiveStatus = now > new Date(ad.campaignEndsAt) ? 'expired' : 'scheduled';
@@ -282,9 +321,10 @@ export class AdvertisementService {
       input.clickUrl
     );
 
-    const createdByObjId = adminUserId && mongoose.Types.ObjectId.isValid(adminUserId)
-      ? new mongoose.Types.ObjectId(adminUserId)
-      : undefined;
+    const createdByObjId =
+      adminUserId && mongoose.Types.ObjectId.isValid(adminUserId)
+        ? new mongoose.Types.ObjectId(adminUserId)
+        : undefined;
 
     const ad = await Advertisement.create({
       title: input.title.trim(),
@@ -347,7 +387,10 @@ export class AdvertisementService {
     return existing;
   }
 
-  static async adminUpdateAdvertisementStatus(adId: string, status: 'draft' | 'scheduled' | 'active' | 'paused' | 'expired') {
+  static async adminUpdateAdvertisementStatus(
+    adId: string,
+    status: 'draft' | 'scheduled' | 'active' | 'paused' | 'expired'
+  ) {
     if (!mongoose.Types.ObjectId.isValid(adId)) {
       throw new Error('Invalid advertisement ID');
     }

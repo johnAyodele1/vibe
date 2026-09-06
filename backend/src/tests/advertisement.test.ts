@@ -6,7 +6,6 @@ import Advertisement from '../models/Advertisement';
 import AdvertisementImpression from '../models/AdvertisementImpression';
 import AdultUser from '../models/AdultUser';
 import User from '../models/User';
-import { generateAccessToken } from '../middleware/auth';
 import jwt from 'jsonwebtoken';
 
 describe('In-Chat Advertisement System Tests', () => {
@@ -83,6 +82,8 @@ describe('In-Chat Advertisement System Tests', () => {
   beforeEach(async () => {
     await Advertisement.deleteMany({});
     await AdvertisementImpression.deleteMany({});
+    await AdultUser.updateMany({}, { $set: { lastAdShownAt: null } });
+    await User.updateMany({}, { $set: { lastAdShownAt: null } });
   });
 
   describe('Eligibility Endpoint (GET /api/v1/ads/eligible)', () => {
@@ -190,8 +191,7 @@ describe('In-Chat Advertisement System Tests', () => {
         campaignEndsAt: new Date(now.getTime() + 100000),
       });
 
-      // Provider should NOT get user-only ad when only user-only ad is available
-      // Let's test provider request
+      // Provider request -> gets Provider Special
       const providerRes = await request(app)
         .get('/api/v1/ads/eligible')
         .set('Authorization', `Bearer ${providerToken}`);
@@ -199,7 +199,7 @@ describe('In-Chat Advertisement System Tests', () => {
       expect(providerRes.status).toBe(200);
       expect(providerRes.body.data.advertisement.title).toBe('Provider Special');
 
-      // User should get User Special
+      // User request -> gets User Special
       const userRes = await request(app)
         .get('/api/v1/ads/eligible')
         .set('Authorization', `Bearer ${userToken}`);
@@ -227,14 +227,7 @@ describe('In-Chat Advertisement System Tests', () => {
 
       expect(firstRes.body.data.advertisement).not.toBeNull();
 
-      // Record impression for user
-      await AdvertisementImpression.create({
-        advertisementId: ad._id,
-        userId: normalUser._id,
-        shownAt: new Date(),
-      });
-
-      // Second call immediately after impression -> returns null (cooldown active)
+      // Second call immediately after -> returns null (cooldown active)
       const secondRes = await request(app)
         .get('/api/v1/ads/eligible')
         .set('Authorization', `Bearer ${userToken}`);
@@ -242,10 +235,10 @@ describe('In-Chat Advertisement System Tests', () => {
       expect(secondRes.status).toBe(200);
       expect(secondRes.body.data.advertisement).toBeNull();
 
-      // Update impression shownAt to 2 hours and 1 minute ago
-      await AdvertisementImpression.updateOne(
-        { userId: normalUser._id },
-        { shownAt: new Date(Date.now() - (2 * 60 * 60 * 1000 + 60 * 1000)) }
+      // Reset user lastAdShownAt to 2 hours and 1 minute ago
+      await AdultUser.updateOne(
+        { _id: normalUser._id },
+        { $set: { lastAdShownAt: new Date(Date.now() - (2 * 60 * 60 * 1000 + 60 * 1000)) } }
       );
 
       // Third call -> eligible again!
@@ -256,6 +249,39 @@ describe('In-Chat Advertisement System Tests', () => {
       expect(thirdRes.status).toBe(200);
       expect(thirdRes.body.data.advertisement).not.toBeNull();
       expect(thirdRes.body.data.advertisement.id).toBe(ad._id.toString());
+    });
+
+    it('should handle 10 concurrent requests atomically resulting in exactly 1 ad delivery', async () => {
+      const now = new Date();
+      await Advertisement.create({
+        title: 'Concurrent Test Ad',
+        mediaType: 'image',
+        mediaUrl: 'https://example.com/concurrent.jpg',
+        targetAudience: 'both',
+        status: 'active',
+        campaignStartsAt: new Date(now.getTime() - 10000),
+        campaignEndsAt: new Date(now.getTime() + 100000),
+      });
+
+      // Dispatch 10 simultaneous requests
+      const requests = Array.from({ length: 10 }).map(() =>
+        request(app)
+          .get('/api/v1/ads/eligible')
+          .set('Authorization', `Bearer ${userToken}`)
+      );
+
+      const responses = await Promise.all(requests);
+
+      // Verify responses: exactly 1 response has non-null advertisement
+      const adsReturned = responses.filter(r => r.body.data?.advertisement !== null);
+      const nullsReturned = responses.filter(r => r.body.data?.advertisement === null);
+
+      expect(adsReturned.length).toBe(1);
+      expect(nullsReturned.length).toBe(9);
+
+      // Verify database record count: exactly 1 impression was persisted
+      const totalImpressions = await AdvertisementImpression.countDocuments({ userId: normalUser._id });
+      expect(totalImpressions).toBe(1);
     });
   });
 
@@ -366,6 +392,26 @@ describe('In-Chat Advertisement System Tests', () => {
       expect(res.status).toBe(201);
       expect(res.body.success).toBe(true);
       expect(res.body.data.advertisement.title).toBe('Admin Created Campaign');
+    });
+
+    it('should reject clickUrl with invalid protocol (e.g. javascript: or ftp:)', async () => {
+      const now = new Date();
+      const res = await request(app)
+        .post('/api/v1/admin/ads')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          title: 'Unsafe Link Ad',
+          mediaType: 'image',
+          mediaUrl: 'https://example.com/banner.jpg',
+          clickUrl: 'javascript:alert(1)',
+          campaignStartsAt: now.toISOString(),
+          campaignEndsAt: new Date(now.getTime() + 100000).toISOString(),
+          displayDurationSeconds: 30,
+          closeAfterSeconds: 15,
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('HTTP or HTTPS protocol');
     });
 
     it('should reject admin ad creation with invalid timings or dates', async () => {

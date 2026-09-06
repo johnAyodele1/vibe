@@ -966,7 +966,108 @@ const DirectMessage: React.FC = () => {
           </div>
         </header>
 
-        <main className={styles.chatStream} id="chat-container">
+        <div className={styles.chatViewport}>
+          <main className={styles.chatStream} id="chat-container">
+            {loading ? (
+              <div style={{ padding: "20px", textAlign: "center" }}>
+                Loading messages...
+              </div>
+            ) : (
+              <>
+                <div className={styles.dateDivider}>
+                  <span className={styles.datePill}>Today</span>
+                </div>
+
+                {messages.map((msg) => {
+                  const isSentByMe = msg.sender._id === currentUserId;
+                  const time = new Date(msg.createdAt).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  });
+
+                  return (
+                    <div
+                      key={msg._id}
+                      className={`${styles.messageRow} ${
+                        isSentByMe ? styles.sent : ""
+                      }`}
+                    >
+                      {!isSentByMe && (
+                        <div
+                          className={styles.msgAvatarSmall}
+                          style={{
+                            backgroundImage: `url("${
+                              msg.sender.photos.find((p) => p.isMain)?.url ||
+                              "/placeholder.svg"
+                            }")`,
+                          }}
+                        />
+                      )}
+
+                      <div className={styles.msgContentWrapper}>
+                        <div
+                          className={`${styles.bubble} ${
+                            isSentByMe ? styles.bubbleSent : styles.bubbleReceived
+                          } ${msg.messageType === "image" ? styles.bubbleImage : ""}`}
+                        >
+                          {msg.messageType === "image" ? (
+                            <img
+                              src={msg.content}
+                              alt="Shared photo"
+                              className={styles.sharedImage}
+                              onLoad={() => scrollToBottom("smooth")}
+                            />
+                          ) : (
+                            <p>{msg.content}</p>
+                          )}
+                        </div>
+
+                        <span className={styles.timestamp}>
+                          {time}
+                          {isSentByMe && msg.isRead && (
+                            <span
+                              className="material-symbols-outlined"
+                              style={{ fontSize: "12px", color: "#f42559" }}
+                            >
+                              done_all
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {isTyping &&
+                  conversation &&
+                  typingUser === otherParticipant?._id && (
+                    <div className={styles.messageRow}>
+                      <div
+                        className={styles.msgAvatarSmall}
+                        style={{
+                          backgroundImage: `url("${
+                            otherParticipant?.photos.find((p) => p.isMain)?.url ||
+                            "/placeholder.svg"
+                          }")`,
+                        }}
+                      />
+                      <div className={styles.msgContentWrapper}>
+                        <div className={styles.bubbleReceived}>
+                          <div className={styles.typingBubble}>
+                            <span className={styles.typingDot}></span>
+                            <span className={styles.typingDot}></span>
+                            <span className={styles.typingDot}></span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                <div ref={messagesEndRef} />
+              </>
+            )}
+          </main>
+
           {eligibleAd && (
             <AdvertisementOverlay
               ad={eligibleAd}
@@ -974,106 +1075,7 @@ const DirectMessage: React.FC = () => {
               onClickCTA={handleAdClick}
             />
           )}
-
-          {loading ? (
-            <div style={{ padding: "20px", textAlign: "center" }}>
-              Loading messages...
-            </div>
-          ) : (
-            <>
-              <div className={styles.dateDivider}>
-                <span className={styles.datePill}>Today</span>
-              </div>
-
-              {messages.map((msg) => {
-                const isSentByMe = msg.sender._id === currentUserId;
-                const time = new Date(msg.createdAt).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                });
-
-                return (
-                  <div
-                    key={msg._id}
-                    className={`${styles.messageRow} ${
-                      isSentByMe ? styles.sent : ""
-                    }`}
-                  >
-                    {!isSentByMe && (
-                      <div
-                        className={styles.msgAvatarSmall}
-                        style={{
-                          backgroundImage: `url("${
-                            msg.sender.photos.find((p) => p.isMain)?.url ||
-                            "/placeholder.svg"
-                          }")`,
-                        }}
-                      />
-                    )}
-
-                    <div className={styles.msgContentWrapper}>
-                      <div
-                        className={`${styles.bubble} ${
-                          isSentByMe ? styles.bubbleSent : styles.bubbleReceived
-                        } ${msg.messageType === "image" ? styles.bubbleImage : ""}`}
-                      >
-                        {msg.messageType === "image" ? (
-                          <img
-                            src={msg.content}
-                            alt="Shared photo"
-                            className={styles.sharedImage}
-                            onLoad={() => scrollToBottom("smooth")}
-                          />
-                        ) : (
-                          <p>{msg.content}</p>
-                        )}
-                      </div>
-
-                      <span className={styles.timestamp}>
-                        {time}
-                        {isSentByMe && msg.isRead && (
-                          <span
-                            className="material-symbols-outlined"
-                            style={{ fontSize: "12px", color: "#f42559" }}
-                          >
-                            done_all
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-
-              {isTyping &&
-                conversation &&
-                typingUser === otherParticipant?._id && (
-                  <div className={styles.messageRow}>
-                    <div
-                      className={styles.msgAvatarSmall}
-                      style={{
-                        backgroundImage: `url("${
-                          otherParticipant?.photos.find((p) => p.isMain)?.url ||
-                          "/placeholder.svg"
-                        }")`,
-                      }}
-                    />
-                    <div className={styles.msgContentWrapper}>
-                      <div className={styles.bubbleReceived}>
-                        <div className={styles.typingBubble}>
-                          <span className={styles.typingDot}></span>
-                          <span className={styles.typingDot}></span>
-                          <span className={styles.typingDot}></span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-              <div ref={messagesEndRef} />
-            </>
-          )}
-        </main>
+        </div>
 
         <footer className={styles.footer}>
           <input

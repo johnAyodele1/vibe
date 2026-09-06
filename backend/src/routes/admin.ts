@@ -63,7 +63,8 @@ import {
   adminUploadMedia
 } from '../controllers/advertisement.controller';
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const adMediaUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
 const router = Router();
 
@@ -126,6 +127,6 @@ router.post('/ads', adminCreateAd);
 router.put('/ads/:id', adminUpdateAd);
 router.patch('/ads/:id/status', adminUpdateAdStatus);
 router.delete('/ads/:id', adminDeleteAd);
-router.post('/ads/upload-media', upload.single('file'), adminUploadMedia);
+router.post('/ads/upload-media', adMediaUpload.single('file'), adminUploadMedia);
 
 export default router;

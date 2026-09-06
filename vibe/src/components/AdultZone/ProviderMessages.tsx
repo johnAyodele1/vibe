@@ -1632,15 +1632,8 @@ const ProviderMessages: React.FC = () => {
             />
 
             {/* MESSAGES SCROLL area */}
-            <div ref={feedRef} onScroll={handleScroll} data-testid="message-feed" className="flex-grow overflow-y-auto p-6 space-y-6 flex flex-col no-scrollbar message-feed message-feed-container relative">
-              {eligibleAd && (
-                <AdvertisementOverlay
-                  ad={eligibleAd}
-                  onClose={() => setEligibleAd(null)}
-                  onClickCTA={handleAdClick}
-                />
-              )}
-
+            <div className="relative flex-grow flex flex-col h-full min-h-0 overflow-hidden">
+              <div ref={feedRef} onScroll={handleScroll} data-testid="message-feed" className="flex-grow overflow-y-auto p-6 space-y-6 flex flex-col no-scrollbar message-feed message-feed-container">
               {hasMoreMessages && (
                 <button
                   onClick={loadMoreMessages}
@@ -1938,6 +1931,15 @@ const ProviderMessages: React.FC = () => {
               })}
 
               <div ref={messagesEndRef} style={{ height: 1 }} />
+            </div>
+
+            {eligibleAd && (
+              <AdvertisementOverlay
+                ad={eligibleAd}
+                onClose={() => setEligibleAd(null)}
+                onClickCTA={handleAdClick}
+              />
+            )}
             </div>
 
             {uploadPreview && (
