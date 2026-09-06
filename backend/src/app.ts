@@ -98,6 +98,13 @@ if (process.env.NODE_ENV !== 'test') {
         throw err;
       }
     }
+
+    try {
+      const { startTicketRefundReconciliationWorker } = require('./controllers/ticket.controller');
+      startTicketRefundReconciliationWorker(60000);
+    } catch (err: any) {
+      console.error('Failed to start ticket refund reconciliation worker:', err.message);
+    }
   }).catch(error => console.error('MongoDB connection error:', error));
 }
 

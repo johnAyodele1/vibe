@@ -185,7 +185,7 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
   const preparedTickets: any[] = [];
   for (let i = 0; i < qty; i++) {
     const ticketCode = await generateTicketCode();
-    const qrData = `https://zippo.com.ng/ticket/${ticketCode}`;
+    const qrData = `https://zippo.com.ng/me/tickets/${ticketCode}`;
     const realQrUrl = await generateQRCode(qrData);
 
     preparedTickets.push({
@@ -438,6 +438,24 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
       $set: { status: finalStatus, refundReference: refundRef, updatedAt: new Date() },
     }).catch(() => {});
 
+    if (finalStatus === 'refunded') {
+      await Ticket.updateMany(
+        { orderId: claimedOrder._id },
+        { $set: { paymentStatus: 'refunded', isValid: false, invalidReason: 'Order refunded', updatedAt: new Date() } }
+      ).catch(() => {});
+
+      if (claimedOrder.platformFeeNaira > 0) {
+        await PlatformEarning.create({
+          source: 'ticket_refund',
+          amount: -claimedOrder.platformFeeNaira,
+          nairaValue: -claimedOrder.platformFeeNaira,
+          fromUserId: claimedOrder.buyerId,
+          referenceId: claimedOrder._id,
+          metadata: { partyId: claimedOrder.partyId, orderId: claimedOrder._id },
+        }).catch(() => {});
+      }
+    }
+
     if (claimedOrder.paymentProvider === 'paystack') {
       console.warn(`[Paystack Refund Reconciliation] Order ${claimedOrder._id} (${claimedOrder.orderReference}) status: ${finalStatus}. Reason: ${err.message}`);
     }
@@ -449,6 +467,23 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
 /**
  * Helper to reconcile and retry pending refunds for Paystack ticket orders due for backoff retry.
  */
+let refundWorkerInterval: NodeJS.Timeout | null = null;
+
+export const startTicketRefundReconciliationWorker = (intervalMs = 60000): NodeJS.Timeout => {
+  if (refundWorkerInterval) {
+    clearInterval(refundWorkerInterval);
+  }
+  // Run once immediately on start
+  void reconcilePendingTicketRefunds();
+  refundWorkerInterval = setInterval(() => {
+    void reconcilePendingTicketRefunds();
+  }, intervalMs);
+  if (refundWorkerInterval.unref) {
+    refundWorkerInterval.unref();
+  }
+  return refundWorkerInterval;
+};
+
 export const reconcilePendingTicketRefunds = async (): Promise<number> => {
   let reconciledCount = 0;
   try {
@@ -478,6 +513,23 @@ export const reconcilePendingTicketRefunds = async (): Promise<number> => {
               updatedAt: new Date(),
             },
           });
+
+          await Ticket.updateMany(
+            { orderId: order._id },
+            { $set: { paymentStatus: 'refunded', isValid: false, invalidReason: 'Order refunded', updatedAt: new Date() } }
+          ).catch(() => {});
+
+          if (order.platformFeeNaira > 0) {
+            await PlatformEarning.create({
+              source: 'ticket_refund',
+              amount: -order.platformFeeNaira,
+              nairaValue: -order.platformFeeNaira,
+              fromUserId: order.buyerId,
+              referenceId: order._id,
+              metadata: { partyId: order.partyId, orderId: order._id },
+            }).catch(() => {});
+          }
+
           reconciledCount++;
         } else {
           // Exponential backoff: 5 mins * attempts (max 1 hour)

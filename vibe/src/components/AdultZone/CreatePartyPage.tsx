@@ -25,7 +25,9 @@ export const CreatePartyPage: React.FC = () => {
   const [coverImage, setCoverImage] = useState('');
   const [organizerPhone, setOrganizerPhone] = useState('');
 
-  const [guardAccessCode, setGuardAccessCode] = useState('123456');
+  const [guardAccessCode, setGuardAccessCode] = useState(() =>
+    Math.floor(100000 + Math.random() * 900000).toString()
+  );
 
   const [ticketTiers, setTicketTiers] = useState([
     { name: 'Regular', description: 'General admission ticket', price: 5000, quantity: 100, perPersonLimit: 4 },

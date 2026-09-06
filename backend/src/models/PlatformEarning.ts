@@ -4,7 +4,7 @@ const PlatformEarningSchema = new Schema(
   {
     source: {
       type: String,
-      enum: ['tip', 'gift', 'call', 'service', 'paid_media', 'spin_wheel', 'ticket_sale'],
+      enum: ['tip', 'gift', 'call', 'service', 'paid_media', 'spin_wheel', 'ticket_sale', 'ticket_refund'],
       required: true,
     },
     amount: {

@@ -113,17 +113,16 @@ export const getClubs = async (req: Request, res: Response) => {
       ];
     }
 
-    const allMatchingClubs = await Club.find(filter).sort({ createdAt: -1 }).lean();
+    const [clubs, total] = await Promise.all([
+      Club.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
+      Club.countDocuments(filter),
+    ]);
 
-    let filteredClubs = allMatchingClubs;
-    if (openToday === 'true') {
-      filteredClubs = allMatchingClubs.filter((c) => isClubOpenTonight(c.operatingHours));
-    }
-
-    const total = filteredClubs.length;
-    const paginatedClubs = filteredClubs.slice(skip, skip + limitNum);
-
-    const formattedClubs = paginatedClubs.map((club) => ({
+    const formattedClubs = clubs.map((club) => ({
       ...club,
       isOpenNow: isClubOpenNow(club.operatingHours),
       isOpenTonight: isClubOpenTonight(club.operatingHours),

@@ -4,6 +4,7 @@ import Ticket from '../models/Ticket';
 import TicketOrder from '../models/TicketOrder';
 import AdultUser from '../models/AdultUser';
 import CreditTransaction from '../models/CreditTransaction';
+import PlatformEarning from '../models/PlatformEarning';
 import { getDiamondNairaRate } from '../shared/pricing';
 import { PaystackService } from '../services/paystack.service';
 import { reconcilePendingTicketRefunds } from './ticket.controller';
@@ -395,23 +396,108 @@ export const cancelParty = async (req: Request, res: Response) => {
         const requiredDiamonds = Math.ceil(order.priceNaira / diamondRate);
         const estimatedUsdVal = parseFloat((order.priceNaira / 1500).toFixed(2));
 
-        // Credit user wallet back
-        await AdultUser.findByIdAndUpdate(order.buyerId, { $inc: { credits: requiredDiamonds } });
+        let session: mongoose.ClientSession | null = null;
+        try {
+          session = await mongoose.startSession();
+          session.startTransaction();
 
-        // Record CreditTransaction refund
-        await CreditTransaction.create({
-          userId: order.buyerId,
-          type: 'refund',
-          amount: requiredDiamonds,
-          usdAmount: estimatedUsdVal,
-          nairaAmount: order.priceNaira,
-          description: `Refund - Party '${party.title}' cancelled by organizer`,
-          relatedUserId: party.organizerId,
-          status: 'completed',
-          metadata: { orderId: order._id, partyId: party._id },
-        });
+          // Atomic state claim: status 'fulfilled' -> 'refunded'
+          const claimedOrder = await TicketOrder.findOneAndUpdate(
+            { _id: order._id, status: 'fulfilled' },
+            { $set: { status: 'refunded', updatedAt: new Date() } },
+            { session, new: true }
+          );
 
-        await TicketOrder.findByIdAndUpdate(order._id, { $set: { status: 'refunded', updatedAt: new Date() } });
+          if (claimedOrder) {
+            // Credit user wallet back
+            await AdultUser.findByIdAndUpdate(order.buyerId, { $inc: { credits: requiredDiamonds } }, { session });
+
+            // Record CreditTransaction refund
+            await CreditTransaction.create(
+              [
+                {
+                  userId: order.buyerId,
+                  type: 'refund',
+                  amount: requiredDiamonds,
+                  usdAmount: estimatedUsdVal,
+                  nairaAmount: order.priceNaira,
+                  description: `Refund - Party '${party.title}' cancelled by organizer`,
+                  relatedUserId: party.organizerId,
+                  status: 'completed',
+                  metadata: { orderId: order._id, partyId: party._id },
+                },
+              ],
+              { session }
+            );
+
+            // Update associated Tickets
+            await Ticket.updateMany(
+              { orderId: order._id },
+              { $set: { paymentStatus: 'refunded', isValid: false, invalidReason: 'Party cancelled by organizer', updatedAt: new Date() } },
+              { session }
+            );
+
+            // Create PlatformEarning reversal
+            if (order.platformFeeNaira > 0) {
+              await PlatformEarning.create(
+                [
+                  {
+                    source: 'ticket_refund',
+                    amount: -order.platformFeeNaira,
+                    nairaValue: -order.platformFeeNaira,
+                    fromUserId: order.buyerId,
+                    toProviderId: party.organizerId,
+                    referenceId: order._id,
+                    metadata: { partyId: party._id, partyTitle: party.title, orderId: order._id },
+                  },
+                ],
+                { session }
+              );
+            }
+
+            await session.commitTransaction();
+          } else {
+            await session.abortTransaction();
+          }
+        } catch {
+          if (session) await session.abortTransaction().catch(() => {});
+          // Fallback for non-replica sets or standalone Mongo
+          const claimedOrder = await TicketOrder.findOneAndUpdate(
+            { _id: order._id, status: 'fulfilled' },
+            { $set: { status: 'refunded', updatedAt: new Date() } }
+          );
+          if (claimedOrder) {
+            await AdultUser.findByIdAndUpdate(order.buyerId, { $inc: { credits: requiredDiamonds } });
+            await CreditTransaction.create({
+              userId: order.buyerId,
+              type: 'refund',
+              amount: requiredDiamonds,
+              usdAmount: estimatedUsdVal,
+              nairaAmount: order.priceNaira,
+              description: `Refund - Party '${party.title}' cancelled by organizer`,
+              relatedUserId: party.organizerId,
+              status: 'completed',
+              metadata: { orderId: order._id, partyId: party._id },
+            });
+            await Ticket.updateMany(
+              { orderId: order._id },
+              { $set: { paymentStatus: 'refunded', isValid: false, invalidReason: 'Party cancelled by organizer', updatedAt: new Date() } }
+            );
+            if (order.platformFeeNaira > 0) {
+              await PlatformEarning.create({
+                source: 'ticket_refund',
+                amount: -order.platformFeeNaira,
+                nairaValue: -order.platformFeeNaira,
+                fromUserId: order.buyerId,
+                toProviderId: party.organizerId,
+                referenceId: order._id,
+                metadata: { partyId: party._id, partyTitle: party.title, orderId: order._id },
+              });
+            }
+          }
+        } finally {
+          if (session) session.endSession();
+        }
       } else if (order.paymentProvider === 'paystack' && order.paymentReference) {
         // Fast queuing: mark Paystack orders as 'refund_pending' with immediate nextRefundAttemptAt
         await TicketOrder.findByIdAndUpdate(order._id, {

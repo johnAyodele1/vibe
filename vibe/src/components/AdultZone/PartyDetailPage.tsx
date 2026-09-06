@@ -80,6 +80,10 @@ export const PartyDetailPage: React.FC = () => {
     if (!selectedTier || !party) return;
     setPurchasing(true);
 
+    const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `ik_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
     try {
       const token = localStorage.getItem('adultAccessToken') || localStorage.getItem('token');
       const res = await fetch(`${API_BASE_URL}/parties/${party._id}/tickets/orders`, {
@@ -92,6 +96,7 @@ export const PartyDetailPage: React.FC = () => {
           tierId: selectedTier.tierId,
           quantity,
           paymentProvider,
+          idempotencyKey,
         }),
       });
 
