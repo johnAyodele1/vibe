@@ -52,6 +52,7 @@ export interface IAdultUser extends Document {
   emailVerificationToken?: string;
   passwordResetToken?: string;
   passwordResetExpires?: Date;
+  lastAdShownAt?: Date;
   loginHistory: ILoginHistory[];
   status?: string;
   isVerified?: boolean;

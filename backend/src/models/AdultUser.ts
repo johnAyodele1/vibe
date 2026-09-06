@@ -134,6 +134,11 @@ const adultUserSchema = new Schema<IAdultUser, IAdultUserModel>(
     emailVerificationToken: String,
     passwordResetToken: String,
     passwordResetExpires: Date,
+    lastAdShownAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
     loginHistory: [
       {
         ip: String,
