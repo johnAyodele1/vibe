@@ -55,6 +55,10 @@ export const getTicketAvailability = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: 'Party not found or not approved' });
     }
 
+    if (party.startDate < new Date()) {
+      return res.status(400).json({ success: false, error: 'Party has already started or ended' });
+    }
+
     const tiers = party.ticketTiers.map((tier) => ({
       tierId: tier.tierId,
       name: tier.name,
@@ -440,6 +444,71 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
 
     throw err;
   }
+};
+
+/**
+ * Helper to reconcile and retry pending refunds for Paystack ticket orders due for backoff retry.
+ */
+export const reconcilePendingTicketRefunds = async (): Promise<number> => {
+  let reconciledCount = 0;
+  try {
+    const now = new Date();
+    const pendingRefundOrders = await TicketOrder.find({
+      status: 'refund_pending',
+      paymentProvider: 'paystack',
+      $or: [
+        { nextRefundAttemptAt: { $exists: false } },
+        { nextRefundAttemptAt: { $lte: now } },
+      ],
+    }).limit(20);
+
+    for (const order of pendingRefundOrders) {
+      if (!order.paymentReference) continue;
+
+      const attempts = (order.refundAttempts || 0) + 1;
+      try {
+        const refundRes = await PaystackService.refundTransaction(order.paymentReference, order.priceNaira * 100);
+        if (refundRes?.status) {
+          await TicketOrder.findByIdAndUpdate(order._id, {
+            $set: {
+              status: 'refunded',
+              refundReference: String(refundRes?.data?.id || order.paymentReference),
+              refundAttempts: attempts,
+              refundError: null,
+              updatedAt: new Date(),
+            },
+          });
+          reconciledCount++;
+        } else {
+          // Exponential backoff: 5 mins * attempts (max 1 hour)
+          const nextAttemptMinutes = Math.min(60, 5 * attempts);
+          const nextAttemptAt = new Date(Date.now() + nextAttemptMinutes * 60 * 1000);
+          await TicketOrder.findByIdAndUpdate(order._id, {
+            $set: {
+              refundAttempts: attempts,
+              nextRefundAttemptAt: nextAttemptAt,
+              refundError: refundRes?.message || 'Paystack refund rejected',
+              updatedAt: new Date(),
+            },
+          });
+        }
+      } catch (err: any) {
+        const nextAttemptMinutes = Math.min(60, 5 * attempts);
+        const nextAttemptAt = new Date(Date.now() + nextAttemptMinutes * 60 * 1000);
+        await TicketOrder.findByIdAndUpdate(order._id, {
+          $set: {
+            refundAttempts: attempts,
+            nextRefundAttemptAt: nextAttemptAt,
+            refundError: err.message || 'Refund processing exception',
+            updatedAt: new Date(),
+          },
+        });
+      }
+    }
+  } catch (err) {
+    console.error('Error executing reconcilePendingTicketRefunds:', err);
+  }
+  return reconciledCount;
 };
 
 // POST /api/v1/parties/:partyId/tickets/orders

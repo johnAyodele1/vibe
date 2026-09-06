@@ -6,6 +6,7 @@ import AdultUser from '../models/AdultUser';
 import CreditTransaction from '../models/CreditTransaction';
 import { getDiamondNairaRate } from '../shared/pricing';
 import { PaystackService } from '../services/paystack.service';
+import { reconcilePendingTicketRefunds } from './ticket.controller';
 import { createPartySchema } from '../validators/partiesAndClubs.validator';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
@@ -412,21 +413,13 @@ export const cancelParty = async (req: Request, res: Response) => {
 
         await TicketOrder.findByIdAndUpdate(order._id, { $set: { status: 'refunded', updatedAt: new Date() } });
       } else if (order.paymentProvider === 'paystack' && order.paymentReference) {
-        let finalStatus: 'refunded' | 'refund_pending' = 'refund_pending';
-        let refundRef: string | undefined = undefined;
-
-        try {
-          const refundRes = await PaystackService.refundTransaction(order.paymentReference, order.priceNaira * 100);
-          if (refundRes?.status) {
-            finalStatus = 'refunded';
-            refundRef = String(refundRes?.data?.id || order.paymentReference);
-          }
-        } catch (err: any) {
-          console.warn(`[Paystack Refund Error] Cancellation refund failed for order ${order._id}:`, err?.message);
-        }
-
+        // Fast queuing: mark Paystack orders as 'refund_pending' with immediate nextRefundAttemptAt
         await TicketOrder.findByIdAndUpdate(order._id, {
-          $set: { status: finalStatus, refundReference: refundRef, updatedAt: new Date() },
+          $set: {
+            status: 'refund_pending',
+            nextRefundAttemptAt: new Date(),
+            updatedAt: new Date(),
+          },
         });
       }
     }
@@ -436,6 +429,9 @@ export const cancelParty = async (req: Request, res: Response) => {
       { partyId: party._id, status: { $in: ['pending', 'processing'] } },
       { $set: { status: 'failed', updatedAt: new Date() } }
     );
+
+    // Trigger asynchronous Paystack refund reconciliation without blocking HTTP response
+    void reconcilePendingTicketRefunds();
 
     return res.json({ success: true, party, message: 'Party cancelled and tickets refunded/invalidated successfully' });
   } catch (err: any) {

@@ -17,6 +17,9 @@ export interface ITicketOrder extends Document {
   providerReference?: string;
   status: 'pending' | 'processing' | 'fulfilled' | 'failed' | 'refund_pending' | 'refunded';
   refundReference?: string;
+  refundAttempts?: number;
+  nextRefundAttemptAt?: Date;
+  refundError?: string;
   fulfillmentToken?: string;
   fulfillmentLeaseExpiresAt?: Date;
   expiresAt: Date;
@@ -51,6 +54,9 @@ const TicketOrderSchema = new Schema<ITicketOrder>(
       default: 'pending',
     },
     refundReference: { type: String },
+    refundAttempts: { type: Number, default: 0 },
+    nextRefundAttemptAt: { type: Date },
+    refundError: { type: String },
     fulfillmentToken: { type: String },
     fulfillmentLeaseExpiresAt: { type: Date },
     expiresAt: {

@@ -471,6 +471,67 @@ describe('Parties & Clubs Feature Concurrency & Security Test Suite', () => {
       expect(res.body.error).toContain('expired');
     });
 
+    it('reconciles pending refund orders via background retry helper', async () => {
+      const start = new Date(Date.now() + 86400000);
+      const party = await Party.create({
+        title: 'Reconcile Party',
+        description: 'Testing refund reconciliation',
+        venueName: 'Hall',
+        venueAddress: 'Lagos',
+        startDate: start,
+        endDate: new Date(start.getTime() + 36000000),
+        coverImage: 'https://example.com/rec.jpg',
+        organizerId: new mongoose.Types.ObjectId(),
+        status: 'approved',
+        ticketTiers: [{ tierId: 't1', name: 'Reg', price: 1000, quantity: 10, sold: 1, perPersonLimit: 4, isActive: true }],
+      });
+
+      const pendingOrder = await TicketOrder.create({
+        orderReference: 'ZPP-ORD-REC1',
+        partyId: party._id,
+        tierId: 't1',
+        buyerId: new mongoose.Types.ObjectId(userId),
+        buyerName: 'Test User',
+        quantity: 1,
+        priceNaira: 1000,
+        platformFeeNaira: 50,
+        organizerNaira: 950,
+        paymentProvider: 'paystack',
+        paymentReference: 'paystack_ref_rec1',
+        status: 'refund_pending',
+        nextRefundAttemptAt: new Date(Date.now() - 1000), // Due for retry
+      });
+
+      const { reconcilePendingTicketRefunds } = await import('../controllers/ticket.controller');
+      const count = await reconcilePendingTicketRefunds();
+
+      expect(count).toBeGreaterThanOrEqual(0);
+      const updatedOrder = await TicketOrder.findById(pendingOrder._id).lean();
+      expect(['refunded', 'refund_pending']).toContain(updatedOrder?.status);
+      expect(updatedOrder?.refundAttempts).toBe(1);
+    });
+
+    it('rejects availability request for a party that has already started or ended', async () => {
+      const pastStart = new Date(Date.now() - 3600000); // 1 hour ago
+      const party = await Party.create({
+        title: 'Past Party',
+        description: 'Testing past availability',
+        venueName: 'Hall',
+        venueAddress: 'Lagos',
+        startDate: pastStart,
+        endDate: new Date(pastStart.getTime() + 1800000),
+        coverImage: 'https://example.com/past.jpg',
+        organizerId: new mongoose.Types.ObjectId(),
+        status: 'approved',
+        ticketTiers: [{ tierId: 't1', name: 'Reg', price: 1000, quantity: 10, sold: 0, perPersonLimit: 4, isActive: true }],
+      });
+
+      const res = await request(app).get(`/api/v1/parties/${party._id}/tickets/availability`);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('already started or ended');
+    });
+
     it('restricts ticket detail lookup by code to the ticket owner', async () => {
       const start = new Date(Date.now() + 86400000);
       const party = await Party.create({
