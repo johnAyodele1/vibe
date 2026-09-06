@@ -16,6 +16,8 @@ export const getReconciledAnalyticsOverview = async (_req: Request, res: Respons
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
+    // ⚡ OPTIMIZATION (Bolt): Combine two separate PlatformEarning aggregation queries into a single $facet aggregation query,
+    // and parallelize all count/aggregate queries concurrently in Promise.all to reduce database roundtrips.
     const [
       rate,
       totalMembers,
@@ -23,9 +25,8 @@ export const getReconciledAnalyticsOverview = async (_req: Request, res: Respons
       activeToday,
       newToday,
       onlineNow,
-      allTimePlatformFees,
+      platformEarningsData,
       payouts,
-      sourceBreakdowns,
       camSessionStats,
       totalMessages,
       totalTransactions,
@@ -38,10 +39,19 @@ export const getReconciledAnalyticsOverview = async (_req: Request, res: Respons
       AdultUser.countDocuments({ isOnline: true }),
       PlatformEarning.aggregate([
         {
-          $group: {
-            _id: null,
-            total: { $sum: '$amount' },
-            totalNaira: { $sum: { $ifNull: ['$nairaValue', 0] } },
+          $facet: {
+            allTimeTotals: [
+              {
+                $group: {
+                  _id: null,
+                  total: { $sum: '$amount' },
+                  totalNaira: { $sum: { $ifNull: ['$nairaValue', 0] } },
+                },
+              },
+            ],
+            sourceBreakdowns: [
+              { $group: { _id: '$source', total: { $sum: '$amount' } } },
+            ],
           },
         },
       ]),
@@ -72,9 +82,6 @@ export const getReconciledAnalyticsOverview = async (_req: Request, res: Respons
           },
         },
       ]),
-      PlatformEarning.aggregate([
-        { $group: { _id: '$source', total: { $sum: '$amount' } } },
-      ]),
       (async () => {
         try {
           const [active, total] = await Promise.all([
@@ -89,6 +96,9 @@ export const getReconciledAnalyticsOverview = async (_req: Request, res: Respons
       AdultMessage.countDocuments(),
       CreditTransaction.countDocuments(),
     ]);
+
+    const allTimePlatformFees = platformEarningsData[0]?.allTimeTotals || [];
+    const sourceBreakdowns: Array<{ _id: string; total: number }> = platformEarningsData[0]?.sourceBreakdowns || [];
 
     const totalPlatformFees = allTimePlatformFees[0]?.total || 0;
     const totalPlatformNaira = allTimePlatformFees[0]?.totalNaira || 0;
