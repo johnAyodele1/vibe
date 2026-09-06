@@ -296,6 +296,53 @@ describe('Parties & Clubs Feature Concurrency & Security Test Suite', () => {
       expect(verifyRes.body.tickets).toHaveLength(2);
     });
 
+    it('prevents worker with stale lease token from overwriting state or refunding in fencing race', async () => {
+      const start = new Date(Date.now() + 86400000);
+      const party = await Party.create({
+        title: 'Fencing Test Party',
+        description: 'Testing fencing token safety',
+        venueName: 'Hall',
+        venueAddress: 'Lagos',
+        startDate: start,
+        endDate: new Date(start.getTime() + 36000000),
+        coverImage: 'https://example.com/fencing.jpg',
+        organizerId: new mongoose.Types.ObjectId(),
+        status: 'approved',
+        ticketTiers: [{ tierId: 't1', name: 'Reg', price: 100, quantity: 10, sold: 0, perPersonLimit: 4, isActive: true }],
+      });
+
+      // Worker B claims the order with token B and lease
+      const order = await TicketOrder.create({
+        orderReference: 'ZPP-ORD-FENCE1',
+        partyId: party._id,
+        tierId: 't1',
+        buyerId: new mongoose.Types.ObjectId(userId),
+        buyerName: 'Test User',
+        quantity: 1,
+        priceNaira: 100,
+        platformFeeNaira: 5,
+        organizerNaira: 95,
+        paymentProvider: 'wallet',
+        paymentReference: 'ref_fence1',
+        status: 'processing',
+        fulfillmentToken: 'worker_B_token',
+        fulfillmentLeaseExpiresAt: new Date(Date.now() + 300000),
+      });
+
+      // Worker A attempts fulfillment verification using its stale request.
+      // Because Worker B holds the active token 'worker_B_token', Worker A cannot overwrite or refund.
+      const resA = await request(app)
+        .post(`/api/v1/parties/orders/${order._id}/verify`)
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({ paymentReference: 'ref_fence1' });
+
+      // Worker A receives 202 processing status, order remains processing with Worker B's token
+      expect(resA.status).toBe(202);
+      const dbOrder = await TicketOrder.findById(order._id).lean();
+      expect(dbOrder?.fulfillmentToken).toBe('worker_B_token');
+      expect(dbOrder?.status).toBe('processing');
+    });
+
     it('handles concurrent order verification calls cleanly without duplicate tickets or errors', async () => {
       const start = new Date(Date.now() + 86400000);
       const party = await Party.create({

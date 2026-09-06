@@ -291,6 +291,23 @@ export const updateParty = async (req: Request, res: Response) => {
     }
 
     if (Array.isArray(ticketTiers) && ticketTiers.length > 0) {
+      const tierIdSet = new Set<string>();
+      const tierNameSet = new Set<string>();
+
+      for (const t of ticketTiers) {
+        if (t.tierId) {
+          if (tierIdSet.has(t.tierId)) {
+            return res.status(400).json({ success: false, error: `Duplicate ticket tier ID "${t.tierId}"` });
+          }
+          tierIdSet.add(t.tierId);
+        }
+        const nameKey = (t.name || '').trim().toLowerCase();
+        if (tierNameSet.has(nameKey)) {
+          return res.status(400).json({ success: false, error: `Duplicate ticket tier name "${t.name}"` });
+        }
+        tierNameSet.add(nameKey);
+      }
+
       const existingTierMap = new Map(party.ticketTiers.map((tier) => [tier.tierId, tier]));
       const updatedSubmittedTierIds = new Set(ticketTiers.map((t) => t.tierId).filter(Boolean));
 

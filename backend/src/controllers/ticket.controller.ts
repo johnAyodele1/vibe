@@ -209,15 +209,13 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
   const myFulfillmentToken = `ft_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
   const myLeaseExpiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5-min lease window
 
-  // ATOMIC CLAIM WITH FENCING LEASE TOKEN
-  const twoMinsAgo = new Date(Date.now() - 2 * 60 * 1000);
+  // ATOMIC CLAIM WITH STRICT FENCING LEASE EXPIRY (NO LOOSE UPDATEDAT OVERRIDE)
   const claimedOrder = await TicketOrder.findOneAndUpdate(
     {
       _id: orderId,
       $or: [
         { status: 'pending' },
         { status: 'processing', fulfillmentLeaseExpiresAt: { $lte: new Date() } },
-        { status: 'processing', updatedAt: { $lte: twoMinsAgo } },
       ],
     },
     {
@@ -399,7 +397,22 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
 
     return fulfillmentResult;
   } catch (err: any) {
-    // Attempt automatic Paystack refund dispatch ONLY if payment was confirmed captured AND this invocation held the processing claim
+    // FENCED CATCH BLOCK: Verify this worker STILL owns the active processing claim token
+    const fenceCheck = await TicketOrder.findOneAndUpdate(
+      { _id: claimedOrder._id, status: 'processing', fulfillmentToken: myFulfillmentToken },
+      { $set: { status: 'failed', updatedAt: new Date() } },
+      { new: true }
+    );
+
+    if (!fenceCheck) {
+      // Lease was lost/reclaimed by another worker or order was fulfilled concurrently -> DO NOT REFUND OR OVERWRITE
+      console.warn(`[Fulfillment Fence Warning] Worker token ${myFulfillmentToken} lost claim lease for order ${claimedOrder._id}. Skipping refund.`);
+      const current = await TicketOrder.findById(claimedOrder._id).lean();
+      const existing = await Ticket.find({ paymentRef }).lean();
+      return { order: current || claimedOrder, tickets: existing, isAlreadyFulfilled: current?.status === 'fulfilled' };
+    }
+
+    // Attempt automatic Paystack refund dispatch ONLY if payment was confirmed captured AND this worker holds the fence token
     let finalStatus: 'refunded' | 'refund_pending' | 'failed' = 'failed';
     let refundRef: string | undefined = undefined;
 
@@ -548,6 +561,16 @@ export const createTicketOrder = async (req: Request, res: Response) => {
             orderReference: order.orderReference,
             paymentReference: order.paymentReference,
             message: 'Checkout already initialized for this order',
+          });
+        }
+
+        // Return terminal failed / refunded / refund_pending status directly without re-executing
+        if (['failed', 'refunded', 'refund_pending'].includes(order.status)) {
+          return res.status(200).json({
+            success: false,
+            orderReference: order.orderReference,
+            status: order.status,
+            error: `Order has already reached terminal status: ${order.status}`,
           });
         }
       }
