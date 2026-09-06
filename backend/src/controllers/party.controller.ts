@@ -8,7 +8,7 @@ import PlatformEarning from '../models/PlatformEarning';
 import { getDiamondNairaRate } from '../shared/pricing';
 import { PaystackService } from '../services/paystack.service';
 import { reconcilePendingTicketRefunds } from './ticket.controller';
-import { createPartySchema } from '../validators/partiesAndClubs.validator';
+import { createPartySchema, updatePartySchema } from '../validators/partiesAndClubs.validator';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
 
@@ -253,6 +253,14 @@ export const updateParty = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'Cannot update party after approval or cancellation' });
     }
 
+    const parseResult = updatePartySchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({
+        success: false,
+        error: parseResult.error.issues[0]?.message || 'Invalid party update data',
+      });
+    }
+
     const {
       title,
       description,
@@ -269,7 +277,7 @@ export const updateParty = async (req: Request, res: Response) => {
       guardAccessCode,
       genres,
       vibes,
-    } = req.body;
+    } = parseResult.data;
 
     if (title) party.title = title.trim();
     if (description) party.description = description.trim();
@@ -315,7 +323,7 @@ export const updateParty = async (req: Request, res: Response) => {
 
       for (const t of ticketTiers) {
         const existing = t.tierId ? existingTierMap.get(t.tierId) : undefined;
-        const newQty = Math.max(1, parseInt(t.quantity, 10) || 1);
+        const newQty = Math.max(1, typeof t.quantity === 'number' ? t.quantity : parseInt(String(t.quantity), 10) || 1);
         const currentSold = existing ? existing.sold : 0;
         if (newQty < currentSold) {
           return res.status(400).json({
@@ -333,7 +341,7 @@ export const updateParty = async (req: Request, res: Response) => {
           name: t.name || existing?.name || 'General Admission',
           description: t.description ?? existing?.description ?? '',
           price: Math.max(0, parseFloat(t.price) || 0),
-          quantity: Math.max(1, parseInt(t.quantity, 10) || 1),
+          quantity: Math.max(1, typeof t.quantity === 'number' ? t.quantity : parseInt(String(t.quantity), 10) || 1),
           sold: currentSold,
           perPersonLimit: Math.max(1, parseInt(t.perPersonLimit, 10) || 4),
           isActive: t.isActive !== false,
@@ -394,7 +402,7 @@ export const cancelParty = async (req: Request, res: Response) => {
     for (const order of fulfilledOrders) {
       if (order.paymentProvider === 'wallet') {
         const requiredDiamonds = Math.ceil(order.priceNaira / diamondRate);
-        const estimatedUsdVal = parseFloat((order.priceNaira / 1500).toFixed(2));
+        const estimatedUsdVal = parseFloat((requiredDiamonds * 0.0075).toFixed(2));
 
         let session: mongoose.ClientSession | null = null;
         try {
@@ -434,6 +442,13 @@ export const cancelParty = async (req: Request, res: Response) => {
             await Ticket.updateMany(
               { orderId: order._id },
               { $set: { paymentStatus: 'refunded', isValid: false, invalidReason: 'Party cancelled by organizer', updatedAt: new Date() } },
+              { session }
+            );
+
+            // Revert organizer's ticket_sale_earning transaction
+            await CreditTransaction.updateMany(
+              { 'metadata.orderId': order._id, type: 'ticket_sale_earning' },
+              { $set: { status: 'reverted', eligibleForPayout: false, updatedAt: new Date() } },
               { session }
             );
 
@@ -483,6 +498,11 @@ export const cancelParty = async (req: Request, res: Response) => {
               { orderId: order._id },
               { $set: { paymentStatus: 'refunded', isValid: false, invalidReason: 'Party cancelled by organizer', updatedAt: new Date() } }
             );
+            await CreditTransaction.updateMany(
+              { 'metadata.orderId': order._id, type: 'ticket_sale_earning' },
+              { $set: { status: 'reverted', eligibleForPayout: false, updatedAt: new Date() } }
+            );
+
             if (order.platformFeeNaira > 0) {
               await PlatformEarning.create({
                 source: 'ticket_refund',
@@ -510,11 +530,28 @@ export const cancelParty = async (req: Request, res: Response) => {
       }
     }
 
-    // 3. Mark any pending or processing ticket orders for this party as failed
-    await TicketOrder.updateMany(
-      { partyId: party._id, status: { $in: ['pending', 'processing'] } },
-      { $set: { status: 'failed', updatedAt: new Date() } }
-    );
+    // 3. Reconcile pending and processing ticket orders for this party
+    const pendingProcessingOrders = await TicketOrder.find({
+      partyId: party._id,
+      status: { $in: ['pending', 'processing'] },
+    }).lean();
+
+    for (const order of pendingProcessingOrders) {
+      if (order.paymentProvider === 'paystack' && order.paymentReference) {
+        // Captured/in-flight Paystack payment queued for refund reconciliation
+        await TicketOrder.findByIdAndUpdate(order._id, {
+          $set: {
+            status: 'refund_pending',
+            nextRefundAttemptAt: new Date(),
+            updatedAt: new Date(),
+          },
+        });
+      } else {
+        await TicketOrder.findByIdAndUpdate(order._id, {
+          $set: { status: 'failed', updatedAt: new Date() },
+        });
+      }
+    }
 
     // Trigger asynchronous Paystack refund reconciliation without blocking HTTP response
     void reconcilePendingTicketRefunds();

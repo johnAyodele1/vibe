@@ -15,14 +15,21 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import mongoose from 'mongoose';
 
-// Generate unique ticket code: ZPP-XXXXXX
+// Generate unique ticket code: ZPP-XXXXXX with collision retry loop
 const generateTicketCode = async (): Promise<string> => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let rand = '';
-  for (let i = 0; i < 6; i++) {
-    rand += chars[Math.floor(Math.random() * chars.length)];
+  let attempts = 0;
+  while (attempts < 20) {
+    let rand = '';
+    for (let i = 0; i < 6; i++) {
+      rand += chars[Math.floor(Math.random() * chars.length)];
+    }
+    const code = `ZPP-${rand}`;
+    const exists = await Ticket.exists({ ticketCode: code });
+    if (!exists) return code;
+    attempts++;
   }
-  return `ZPP-${rand}`;
+  return `ZPP-${Date.now().toString(36).toUpperCase().slice(-6)}`;
 };
 
 // Generate unique order reference: ZPP-ORD-XXXXXX
@@ -173,19 +180,20 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
   }
 
   const singlePrice = tier.price;
-  const singlePlatformFee = Math.floor(singlePrice * party.platformFeeRate);
+  const singlePlatformFee = Math.round(singlePrice * party.platformFeeRate);
   const singleOrganizerNaira = singlePrice - singlePlatformFee;
   const qty = initialOrder.quantity;
 
   const diamondRate = await getDiamondNairaRate();
   const requiredDiamonds = Math.ceil(initialOrder.priceNaira / diamondRate);
-  const estimatedUsdVal = parseFloat((initialOrder.priceNaira / 1500).toFixed(2));
+  const estimatedUsdVal = parseFloat((requiredDiamonds * 0.0075).toFixed(2));
 
   // 1. PRE-GENERATE ALL TICKETS & 2D SCANNABLE QR CODES OUTSIDE MONGO TRANSACTION NETWORK I/O
   const preparedTickets: any[] = [];
   for (let i = 0; i < qty; i++) {
     const ticketCode = await generateTicketCode();
-    const qrData = `https://zippo.com.ng/me/tickets/${ticketCode}`;
+    const publicAppUrl = process.env.FRONTEND_URL || 'https://zippo.com.ng';
+    const qrData = `${publicAppUrl.replace(/\/$/, '')}/me/tickets/${ticketCode}`;
     const realQrUrl = await generateQRCode(qrData);
 
     preparedTickets.push({
@@ -331,22 +339,44 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
     const docs = await Ticket.create(preparedTickets, session ? { session } : {});
     createdTickets.push(...docs);
 
-    // Record Platform Earning
+    // Record Platform Earning and Organizer Earning Transaction
     if (createdTickets.length > 0) {
-      await PlatformEarning.create(
-        [
-          {
-            source: 'ticket_sale',
-            amount: claimedOrder.platformFeeNaira,
-            nairaValue: claimedOrder.platformFeeNaira,
-            fromUserId: claimedOrder.buyerId,
-            toProviderId: party.organizerId,
-            referenceId: createdTickets[0]._id,
-            metadata: { partyId: party._id, partyTitle: party.title, quantity: qty, tierName: tier.name },
-          },
-        ],
-        session ? { session } : {}
-      );
+      const organizerDiamonds = Math.ceil(claimedOrder.organizerNaira / diamondRate);
+      const organizerUsdVal = parseFloat((organizerDiamonds * 0.0075).toFixed(2));
+
+      await Promise.all([
+        PlatformEarning.create(
+          [
+            {
+              source: 'ticket_sale',
+              amount: claimedOrder.platformFeeNaira,
+              nairaValue: claimedOrder.platformFeeNaira,
+              fromUserId: claimedOrder.buyerId,
+              toProviderId: party.organizerId,
+              referenceId: createdTickets[0]._id,
+              metadata: { partyId: party._id, partyTitle: party.title, quantity: qty, tierName: tier.name },
+            },
+          ],
+          session ? { session } : {}
+        ),
+        CreditTransaction.create(
+          [
+            {
+              userId: party.organizerId,
+              type: 'ticket_sale_earning',
+              amount: organizerDiamonds,
+              usdAmount: organizerUsdVal,
+              nairaAmount: claimedOrder.organizerNaira,
+              description: `Ticket Revenue - ${qty} ticket(s) for ${party.title}`,
+              relatedUserId: claimedOrder.buyerId,
+              status: 'completed',
+              eligibleForPayout: true,
+              metadata: { partyId: party._id, orderId: claimedOrder._id, tierId: claimedOrder.tierId },
+            },
+          ],
+          session ? { session } : {}
+        ),
+      ]);
     }
 
     return { order: updatedOrder, tickets: createdTickets, isAlreadyFulfilled: false };
@@ -444,6 +474,11 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
         { $set: { paymentStatus: 'refunded', isValid: false, invalidReason: 'Order refunded', updatedAt: new Date() } }
       ).catch(() => {});
 
+      await CreditTransaction.updateMany(
+        { 'metadata.orderId': claimedOrder._id, type: 'ticket_sale_earning' },
+        { $set: { status: 'reverted', eligibleForPayout: false, updatedAt: new Date() } }
+      ).catch(() => {});
+
       if (claimedOrder.platformFeeNaira > 0) {
         await PlatformEarning.create({
           source: 'ticket_refund',
@@ -488,73 +523,116 @@ export const reconcilePendingTicketRefunds = async (): Promise<number> => {
   let reconciledCount = 0;
   try {
     const now = new Date();
-    const pendingRefundOrders = await TicketOrder.find({
+    const candidateOrders = await TicketOrder.find({
       status: 'refund_pending',
       paymentProvider: 'paystack',
       $or: [
         { nextRefundAttemptAt: { $exists: false } },
         { nextRefundAttemptAt: { $lte: now } },
       ],
-    }).limit(20);
+    }).limit(20).lean();
 
-    for (const order of pendingRefundOrders) {
+    for (const order of candidateOrders) {
       if (!order.paymentReference) continue;
 
-      const attempts = (order.refundAttempts || 0) + 1;
+      const refundWorkerClaimToken = `rft_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      const leaseExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+      // ATOMIC CLAIM LEASE: transition status from refund_pending -> refund_processing
+      const claimedOrder = await TicketOrder.findOneAndUpdate(
+        {
+          _id: order._id,
+          $or: [
+            { status: 'refund_pending' },
+            { status: 'refund_processing', fulfillmentLeaseExpiresAt: { $lte: new Date() } },
+          ],
+        },
+        {
+          $set: {
+            status: 'refund_processing',
+            fulfillmentToken: refundWorkerClaimToken,
+            fulfillmentLeaseExpiresAt: leaseExpiresAt,
+            updatedAt: new Date(),
+          },
+        },
+        { new: true }
+      );
+
+      if (!claimedOrder) continue;
+
+      const attempts = (claimedOrder.refundAttempts || 0) + 1;
       try {
-        const refundRes = await PaystackService.refundTransaction(order.paymentReference, order.priceNaira * 100);
+        const refundRes = await PaystackService.refundTransaction(claimedOrder.paymentReference!, claimedOrder.priceNaira * 100);
         if (refundRes?.status) {
-          await TicketOrder.findByIdAndUpdate(order._id, {
-            $set: {
-              status: 'refunded',
-              refundReference: String(refundRes?.data?.id || order.paymentReference),
-              refundAttempts: attempts,
-              refundError: null,
-              updatedAt: new Date(),
+          const updated = await TicketOrder.findOneAndUpdate(
+            { _id: claimedOrder._id, status: 'refund_processing', fulfillmentToken: refundWorkerClaimToken },
+            {
+              $set: {
+                status: 'refunded',
+                refundReference: String(refundRes?.data?.id || claimedOrder.paymentReference),
+                refundAttempts: attempts,
+                refundError: null,
+                updatedAt: new Date(),
+              },
             },
-          });
+            { new: true }
+          );
 
-          await Ticket.updateMany(
-            { orderId: order._id },
-            { $set: { paymentStatus: 'refunded', isValid: false, invalidReason: 'Order refunded', updatedAt: new Date() } }
-          ).catch(() => {});
+          if (updated) {
+            await Ticket.updateMany(
+              { orderId: claimedOrder._id },
+              { $set: { paymentStatus: 'refunded', isValid: false, invalidReason: 'Order refunded', updatedAt: new Date() } }
+            ).catch(() => {});
 
-          if (order.platformFeeNaira > 0) {
-            await PlatformEarning.create({
-              source: 'ticket_refund',
-              amount: -order.platformFeeNaira,
-              nairaValue: -order.platformFeeNaira,
-              fromUserId: order.buyerId,
-              referenceId: order._id,
-              metadata: { partyId: order.partyId, orderId: order._id },
-            }).catch(() => {});
+            await CreditTransaction.updateMany(
+              { 'metadata.orderId': claimedOrder._id, type: 'ticket_sale_earning' },
+              { $set: { status: 'reverted', eligibleForPayout: false, updatedAt: new Date() } }
+            ).catch(() => {});
+
+            if (claimedOrder.platformFeeNaira > 0) {
+              await PlatformEarning.create({
+                source: 'ticket_refund',
+                amount: -claimedOrder.platformFeeNaira,
+                nairaValue: -claimedOrder.platformFeeNaira,
+                fromUserId: claimedOrder.buyerId,
+                referenceId: claimedOrder._id,
+                metadata: { partyId: claimedOrder.partyId, orderId: claimedOrder._id },
+              }).catch(() => {});
+            }
+
+            reconciledCount++;
           }
-
-          reconciledCount++;
         } else {
-          // Exponential backoff: 5 mins * attempts (max 1 hour)
           const nextAttemptMinutes = Math.min(60, 5 * attempts);
           const nextAttemptAt = new Date(Date.now() + nextAttemptMinutes * 60 * 1000);
-          await TicketOrder.findByIdAndUpdate(order._id, {
-            $set: {
-              refundAttempts: attempts,
-              nextRefundAttemptAt: nextAttemptAt,
-              refundError: refundRes?.message || 'Paystack refund rejected',
-              updatedAt: new Date(),
-            },
-          });
+          await TicketOrder.findOneAndUpdate(
+            { _id: claimedOrder._id, status: 'refund_processing', fulfillmentToken: refundWorkerClaimToken },
+            {
+              $set: {
+                status: 'refund_pending',
+                refundAttempts: attempts,
+                nextRefundAttemptAt: nextAttemptAt,
+                refundError: refundRes?.message || 'Paystack refund rejected',
+                updatedAt: new Date(),
+              },
+            }
+          );
         }
       } catch (err: any) {
         const nextAttemptMinutes = Math.min(60, 5 * attempts);
         const nextAttemptAt = new Date(Date.now() + nextAttemptMinutes * 60 * 1000);
-        await TicketOrder.findByIdAndUpdate(order._id, {
-          $set: {
-            refundAttempts: attempts,
-            nextRefundAttemptAt: nextAttemptAt,
-            refundError: err.message || 'Refund processing exception',
-            updatedAt: new Date(),
-          },
-        });
+        await TicketOrder.findOneAndUpdate(
+          { _id: claimedOrder._id, status: 'refund_processing', fulfillmentToken: refundWorkerClaimToken },
+          {
+            $set: {
+              status: 'refund_pending',
+              refundAttempts: attempts,
+              nextRefundAttemptAt: nextAttemptAt,
+              refundError: err.message || 'Refund processing exception',
+              updatedAt: new Date(),
+            },
+          }
+        );
       }
     }
   } catch (err) {
@@ -624,7 +702,7 @@ export const createTicketOrder = async (req: Request, res: Response) => {
 
     // 4. Exact Fee Calculations
     const singlePrice = tier.price;
-    const singlePlatformFee = Math.floor(singlePrice * party.platformFeeRate);
+    const singlePlatformFee = Math.round(singlePrice * party.platformFeeRate);
     const singleOrganizerNaira = singlePrice - singlePlatformFee;
 
     const priceNaira = singlePrice * qty;

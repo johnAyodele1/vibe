@@ -83,6 +83,8 @@ export const purchaseTicketsSchema = z.object({
   paymentProvider: z.enum(['paystack', 'wallet', 'simulated']).optional().default('paystack'),
 });
 
+export const updatePartySchema = createPartySchema.partial();
+
 export const checkinScanSchema = z.object({
   ticketCode: z.string().min(6, 'ticketCode is required'),
   action: z.enum(['entered', 'exited', 're_entered']),

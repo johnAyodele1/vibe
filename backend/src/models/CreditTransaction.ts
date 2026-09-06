@@ -32,7 +32,8 @@ const creditTransactionSchema = new Schema<ICreditTransaction>(
         'spin_wheel',
         'call_refund',
         'credit_purchase',
-        'ticket_purchase'
+        'ticket_purchase',
+        'ticket_sale_earning'
       ],
     },
     amount: {
