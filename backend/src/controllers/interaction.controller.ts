@@ -204,20 +204,19 @@ export const dislike = async (req: Request, res: Response): Promise<Response> =>
       });
     }
 
-    const currentUser = await User.findById(req.user._id) as IUser | null;
-    if (!currentUser) return res.status(404).json({ success: false, message: 'User not found' });
+    const targetObjId = new mongoose.Types.ObjectId(targetUserId);
 
-    // Check if already disliked
-    if (currentUser.dislikedUsers.some((id) => id.toString() === targetUserId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'User already disliked',
-      });
+    // Optimization (⚡ Bolt): Use atomic findOneAndUpdate with $addToSet and conditional query to eliminate read-modify-write cycle and document hydration.
+    const updatedUser = await User.findOneAndUpdate(
+      { _id: req.user._id, dislikedUsers: { $ne: targetObjId } },
+      { $addToSet: { dislikedUsers: targetObjId } }
+    ).lean();
+
+    if (!updatedUser) {
+      const userExists = await User.exists({ _id: req.user._id });
+      if (!userExists) return res.status(404).json({ success: false, message: 'User not found' });
+      return res.status(400).json({ success: false, message: 'User already disliked' });
     }
-
-    // Add to disliked users
-    currentUser.dislikedUsers.push(new mongoose.Types.ObjectId(targetUserId));
-    await currentUser.save();
 
     return res.json({ success: true, message: 'User disliked' });
   } catch (error) {
@@ -249,31 +248,31 @@ export const superLike = async (req: Request, res: Response): Promise<Response> 
       });
     }
 
-    // Check if target user exists
-    const targetUser = await User.findById(targetUserId);
-    if (!targetUser) {
+    // Check if target user exists via lightweight .exists() before modifying state
+    const targetExists = await User.exists({ _id: targetUserId });
+    if (!targetExists) {
       return res.status(404).json({
         success: false,
         message: `User not found with ID: ${targetUserId}`,
       });
     }
 
-    const currentUser = await User.findById(req.user._id) as IUser | null;
-    if (!currentUser) return res.status(404).json({ success: false, message: 'User not found' });
+    const targetObjId = new mongoose.Types.ObjectId(targetUserId);
 
-    // Check if already favourited
-    if (
-      currentUser.favouritedUsers.some((id) => id.toString() === targetUserId)
-    ) {
+    // Optimization (⚡ Bolt): Use atomic findOneAndUpdate with $addToSet and .lean() to eliminate read-modify-write cycle and document hydration.
+    const updatedUser = await User.findOneAndUpdate(
+      { _id: req.user._id, favouritedUsers: { $ne: targetObjId } },
+      { $addToSet: { favouritedUsers: targetObjId } }
+    ).lean();
+
+    if (!updatedUser) {
+      const userExists = await User.exists({ _id: req.user._id });
+      if (!userExists) return res.status(404).json({ success: false, message: 'User not found' });
       return res.status(400).json({
         success: false,
         message: 'User already in favourites',
       });
     }
-
-    // Add to favourited users
-    currentUser.favouritedUsers.push(new mongoose.Types.ObjectId(targetUserId));
-    await currentUser.save();
 
     return res.json({ success: true, message: 'User added to favourites' });
   } catch (error) {
