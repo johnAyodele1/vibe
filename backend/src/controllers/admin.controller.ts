@@ -604,18 +604,21 @@ export const adminAction = async (req: IExpressRequest, res: Response): Promise<
     const { action, targetId, reportId } = req.body;
 
     if (action === 'block' || action === 'unblock') {
-      await User.findByIdAndUpdate(targetId, { isBlocked: action === 'block' });
-      if (reportId) {
-        await Report.findByIdAndUpdate(reportId, { status: 'resolved' });
-      }
+      // Optimization (⚡ Bolt): Update user status and resolve report concurrently via Promise.all.
+      await Promise.all([
+        User.findByIdAndUpdate(targetId, { isBlocked: action === 'block' }),
+        reportId ? Report.findByIdAndUpdate(reportId, { status: 'resolved' }) : Promise.resolve(),
+      ]);
       return res.json({ success: true, message: `User ${action}ed successfully` });
     }
 
     if (action === 'delete') {
-      await User.findByIdAndDelete(targetId);
-      // Clean up reports and conversations
-      await Report.deleteMany({ $or: [{ reporter: targetId }, { reported: targetId }] });
-      await Conversation.deleteMany({ participants: targetId });
+      // Optimization (⚡ Bolt): Delete user, reports, and conversations concurrently via Promise.all.
+      await Promise.all([
+        User.findByIdAndDelete(targetId),
+        Report.deleteMany({ $or: [{ reporter: targetId }, { reported: targetId }] }),
+        Conversation.deleteMany({ participants: targetId }),
+      ]);
       return res.json({ success: true, message: 'User deleted successfully' });
     }
 

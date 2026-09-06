@@ -25,3 +25,7 @@
 ## 2026-08-23 - Eliminating Database Waterfall Latency with Promise.all
 **Learning:** Sequentially awaiting independent database queries or write updates (such as pagination counts alongside data queries, or dual user updates in match/interaction handlers) introduces avoidable database waterfall latency that scales linearly with roundtrip count.
 **Action:** Wrap independent database operations in `Promise.all` to execute them concurrently, reducing endpoint response time by up to ~50%.
+
+## 2026-08-28 - Conditional Database Filter to Skip Duplicate Writes
+**Learning:** Performing atomic updates (like `$addToSet`) without checking if the target item already exists in the target array executes a database write operation and acquires write locks on every request—even for duplicate requests.
+**Action:** Include `{ arrayField: { $ne: itemId } }` in the `findOneAndUpdate` query filter so duplicate requests return `null` immediately without performing redundant database writes or acquiring write locks.
