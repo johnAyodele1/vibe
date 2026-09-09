@@ -431,28 +431,36 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
 
     return fulfillmentResult;
   } catch (err: any) {
+    const targetOrderId = claimedOrder?._id || initialOrder._id;
+
     // FENCED CATCH BLOCK: Verify this worker STILL owns the active processing claim token
     const fenceCheck = await TicketOrder.findOneAndUpdate(
-      { _id: claimedOrder._id, status: 'processing', fulfillmentToken: myFulfillmentToken },
+      { _id: targetOrderId, status: 'processing', fulfillmentToken: myFulfillmentToken },
       { $set: { status: 'failed', updatedAt: new Date() } },
       { new: true }
     );
 
     if (!fenceCheck) {
       // Lease was lost/reclaimed by another worker or order was fulfilled concurrently -> DO NOT REFUND OR OVERWRITE
-      console.warn(`[Fulfillment Fence Warning] Worker token ${myFulfillmentToken} lost claim lease for order ${claimedOrder._id}. Skipping refund.`);
-      const current = await TicketOrder.findById(claimedOrder._id).lean();
+      console.warn(`[Fulfillment Fence Warning] Worker token ${myFulfillmentToken} lost claim lease for order ${targetOrderId}. Skipping refund.`);
+      const current = await TicketOrder.findById(targetOrderId).lean();
       const existing = await Ticket.find({ paymentRef }).lean();
-      return { order: current || claimedOrder, tickets: existing, isAlreadyFulfilled: current?.status === 'fulfilled' };
+      return { order: current || claimedOrder || initialOrder, tickets: existing, isAlreadyFulfilled: current?.status === 'fulfilled' };
     }
 
     // Attempt automatic Paystack refund dispatch ONLY if payment was confirmed captured AND this worker holds the fence token
     let finalStatus: 'refunded' | 'refund_pending' | 'failed' = 'failed';
     let refundRef: string | undefined = undefined;
 
-    if (claimedOrder.paymentProvider === 'paystack' && paymentVerified) {
+    const orderPriceNaira = claimedOrder?.priceNaira || initialOrder.priceNaira;
+    const orderBuyerId = claimedOrder?.buyerId || initialOrder.buyerId;
+    const orderPartyId = claimedOrder?.partyId || initialOrder.partyId;
+    const orderPlatformFee = claimedOrder?.platformFeeNaira || initialOrder.platformFeeNaira;
+    const orderProvider = claimedOrder?.paymentProvider || initialOrder.paymentProvider;
+
+    if (orderProvider === 'paystack' && paymentVerified) {
       try {
-        const refundRes = await PaystackService.refundTransaction(paymentRef, claimedOrder.priceNaira * 100);
+        const refundRes = await PaystackService.refundTransaction(paymentRef, orderPriceNaira * 100);
         if (refundRes?.status) {
           finalStatus = 'refunded';
           refundRef = String(refundRes?.data?.id || paymentRef);
@@ -464,29 +472,29 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
       }
     }
 
-    await TicketOrder.findByIdAndUpdate(claimedOrder._id, {
+    await TicketOrder.findByIdAndUpdate(targetOrderId, {
       $set: { status: finalStatus, refundReference: refundRef, updatedAt: new Date() },
     }).catch(() => {});
 
     if (finalStatus === 'refunded') {
       await Ticket.updateMany(
-        { orderId: claimedOrder._id },
+        { orderId: targetOrderId },
         { $set: { paymentStatus: 'refunded', isValid: false, invalidReason: 'Order refunded', updatedAt: new Date() } }
       ).catch(() => {});
 
       await CreditTransaction.updateMany(
-        { 'metadata.orderId': claimedOrder._id, type: 'ticket_sale_earning' },
+        { 'metadata.orderId': targetOrderId, type: 'ticket_sale_earning' },
         { $set: { status: 'reverted', eligibleForPayout: false, updatedAt: new Date() } }
       ).catch(() => {});
 
-      if (claimedOrder.platformFeeNaira > 0) {
+      if (orderPlatformFee > 0) {
         await PlatformEarning.create({
           source: 'ticket_refund',
-          amount: -claimedOrder.platformFeeNaira,
-          nairaValue: -claimedOrder.platformFeeNaira,
-          fromUserId: claimedOrder.buyerId,
-          referenceId: claimedOrder._id,
-          metadata: { partyId: claimedOrder.partyId, orderId: claimedOrder._id },
+          amount: -orderPlatformFee,
+          nairaValue: -orderPlatformFee,
+          fromUserId: orderBuyerId,
+          referenceId: targetOrderId,
+          metadata: { partyId: orderPartyId, orderId: targetOrderId },
         }).catch(() => {});
       }
     }

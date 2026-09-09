@@ -36,8 +36,11 @@ const buildPayoutDetailsSnapshot = (user: any) => {
 export const getEligiblePayout = async (req: Request, res: Response) => {
   try {
     const user = req.adultUser;
-    if (!user) {
-      return res.status(403).json({ success: false, error: 'Unauthorized: Authentication required' });
+    const isProvider = user?.role === 'provider';
+    const isOrganizer = Boolean((user as any)?.organizerProfile?.isOrganizer || user?.role === 'user');
+
+    if (!user || (!isProvider && !isOrganizer)) {
+      return res.status(403).json({ success: false, error: 'Only providers or party organizers can check eligible payouts' });
     }
 
     // Optimization (⚡ Bolt): Execute independent queries for eligible transactions, disputed transactions,
@@ -517,8 +520,11 @@ export const markRefundCompleted = async (req: Request, res: Response) => {
 export const requestPayout = async (req: Request, res: Response) => {
   try {
     const user = req.adultUser;
-    if (!user) {
-      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Authentication required' } });
+    const isProvider = user?.role === 'provider';
+    const isOrganizer = Boolean((user as any)?.organizerProfile?.isOrganizer || user?.role === 'user');
+
+    if (!user || (!isProvider && !isOrganizer)) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Only providers or party organizers can request payout' } });
     }
 
     const profile: any = user.providerProfile || {};
