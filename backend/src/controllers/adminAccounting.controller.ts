@@ -3,7 +3,7 @@ import CreditTransaction from '../models/CreditTransaction';
 import PayoutRequest from '../models/PayoutRequest';
 import CustomerRefund from '../models/CustomerRefund';
 import PlatformEarning from '../models/PlatformEarning';
-import Ticket from '../models/Ticket';
+import TicketOrder from '../models/TicketOrder';
 import Party from '../models/Party';
 import { PROVIDER_EARNING_TYPES, REVERT_TYPES } from '../shared/earnings';
 import { getDiamondNairaRate } from '../shared/pricing';
@@ -170,29 +170,29 @@ export const getAccountingSummary = async (_req: Request, res: Response): Promis
         },
       ]),
 
-      // 8. Ticket Revenue Pipeline (5% platform fee)
-      Ticket.aggregate([
-        { $match: { paymentStatus: 'paid', isValid: true } },
+      // 8. Ticket Revenue Pipeline derived from financial TicketOrder ledger
+      TicketOrder.aggregate([
+        { $match: { status: 'fulfilled' } },
         {
           $group: {
             _id: null,
             grossTicketSales: { $sum: '$priceNaira' },
             platformFees: { $sum: '$platformFeeNaira' },
             organizerPayouts: { $sum: '$organizerNaira' },
-            totalTicketsCount: { $sum: 1 },
+            totalTicketsCount: { $sum: '$quantity' },
           },
         },
       ]),
 
-      // 9. Top Parties by Ticket Revenue
-      Ticket.aggregate([
-        { $match: { paymentStatus: 'paid', isValid: true } },
+      // 9. Top Parties by Ticket Revenue derived from financial TicketOrder ledger
+      TicketOrder.aggregate([
+        { $match: { status: 'fulfilled' } },
         {
           $group: {
             _id: '$partyId',
             grossSales: { $sum: '$priceNaira' },
             platformFee: { $sum: '$platformFeeNaira' },
-            ticketCount: { $sum: 1 },
+            ticketCount: { $sum: '$quantity' },
           },
         },
         { $sort: { grossSales: -1 } },

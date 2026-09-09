@@ -153,7 +153,7 @@ export class PaystackService {
     try {
       // 1. PROVIDER-SIDE IDEMPOTENCY CHECK: Query existing Paystack refunds for this transaction reference
       const checkRes = await fetch(
-        `https://api.paystack.co/refund?reference=${encodeURIComponent(transactionRef)}`,
+        `https://api.paystack.co/refund?transaction=${encodeURIComponent(transactionRef)}`,
         {
           method: 'GET',
           headers: {

@@ -541,7 +541,7 @@ export const reconcilePendingTicketRefunds = async (): Promise<number> => {
   try {
     const now = new Date();
     const candidateOrders = await TicketOrder.find({
-      status: 'refund_pending',
+      status: { $in: ['refund_pending', 'provider_refunded', 'accounting_pending'] },
       paymentProvider: 'paystack',
       $or: [
         { nextRefundAttemptAt: { $exists: false } },
@@ -579,103 +579,120 @@ export const reconcilePendingTicketRefunds = async (): Promise<number> => {
 
       const attempts = (claimedOrder.refundAttempts || 0) + 1;
       try {
-        const refundRes = await PaystackService.refundTransaction(claimedOrder.paymentReference!, claimedOrder.priceNaira * 100);
-        if (refundRes?.status) {
-          const updated = await TicketOrder.findOneAndUpdate(
-            { _id: claimedOrder._id, status: 'refund_processing', fulfillmentToken: refundWorkerClaimToken },
-            {
-              $set: {
-                status: 'refunded',
-                refundReference: String(refundRes?.data?.id || claimedOrder.paymentReference),
-                refundAttempts: attempts,
-                refundError: null,
-                updatedAt: new Date(),
-              },
+        let isProviderRefunded = ['provider_refunded', 'accounting_pending'].includes(claimedOrder.status);
+        let refundRef = claimedOrder.refundReference;
+        let lastRefundMessage = '';
+
+        if (!isProviderRefunded) {
+          const refundRes = await PaystackService.refundTransaction(claimedOrder.paymentReference!, claimedOrder.priceNaira * 100);
+          if (refundRes?.status) {
+            isProviderRefunded = true;
+            refundRef = String(refundRes?.data?.id || claimedOrder.paymentReference);
+          } else {
+            lastRefundMessage = refundRes?.message || 'Paystack refund rejected';
+          }
+        }
+
+        if (isProviderRefunded) {
+          // STEP 1: Mark order as provider_refunded / accounting_pending
+          await TicketOrder.findByIdAndUpdate(claimedOrder._id, {
+            $set: {
+              status: 'accounting_pending',
+              refundReference: refundRef,
+              refundAttempts: attempts,
+              refundError: null,
+              updatedAt: new Date(),
             },
-            { new: true }
-          );
+          });
 
-          if (updated) {
-            let session: mongoose.ClientSession | null = null;
-            try {
-              session = await mongoose.startSession();
-              session.startTransaction();
+          // STEP 2: Execute durable accounting mutations
+          let session: mongoose.ClientSession | null = null;
+          try {
+            session = await mongoose.startSession();
+            session.startTransaction();
 
-              await Ticket.updateMany(
-                { orderId: claimedOrder._id },
-                { $set: { paymentStatus: 'refunded', isValid: false, invalidReason: 'Order refunded', updatedAt: new Date() } },
-                { session }
-              );
+            await Ticket.updateMany(
+              { orderId: claimedOrder._id },
+              { $set: { paymentStatus: 'refunded', isValid: false, invalidReason: 'Order refunded', updatedAt: new Date() } },
+              { session }
+            );
 
-              await CreditTransaction.updateMany(
-                { 'metadata.orderId': claimedOrder._id, type: 'ticket_sale_earning' },
-                { $set: { status: 'reverted', eligibleForPayout: false, updatedAt: new Date() } },
-                { session }
-              );
+            await CreditTransaction.updateMany(
+              { 'metadata.orderId': claimedOrder._id, type: 'ticket_sale_earning' },
+              { $set: { status: 'reverted', eligibleForPayout: false, updatedAt: new Date() } },
+              { session }
+            );
 
-              await Party.updateOne(
-                { _id: claimedOrder.partyId, 'ticketTiers.tierId': claimedOrder.tierId },
-                {
-                  $inc: {
-                    totalRevenue: -claimedOrder.priceNaira,
-                    'ticketTiers.$.sold': -claimedOrder.quantity,
-                  },
+            await Party.updateOne(
+              { _id: claimedOrder.partyId, 'ticketTiers.tierId': claimedOrder.tierId },
+              {
+                $inc: {
+                  totalRevenue: -claimedOrder.priceNaira,
+                  'ticketTiers.$.sold': -claimedOrder.quantity,
                 },
+              },
+              { session }
+            );
+
+            if (claimedOrder.platformFeeNaira > 0) {
+              await PlatformEarning.create(
+                [
+                  {
+                    source: 'ticket_refund',
+                    amount: -claimedOrder.platformFeeNaira,
+                    nairaValue: -claimedOrder.platformFeeNaira,
+                    fromUserId: claimedOrder.buyerId,
+                    referenceId: claimedOrder._id,
+                    metadata: { partyId: claimedOrder.partyId, orderId: claimedOrder._id },
+                  },
+                ],
                 { session }
               );
-
-              if (claimedOrder.platformFeeNaira > 0) {
-                await PlatformEarning.create(
-                  [
-                    {
-                      source: 'ticket_refund',
-                      amount: -claimedOrder.platformFeeNaira,
-                      nairaValue: -claimedOrder.platformFeeNaira,
-                      fromUserId: claimedOrder.buyerId,
-                      referenceId: claimedOrder._id,
-                      metadata: { partyId: claimedOrder.partyId, orderId: claimedOrder._id },
-                    },
-                  ],
-                  { session }
-                );
-              }
-
-              await session.commitTransaction();
-            } catch {
-              if (session) await session.abortTransaction().catch(() => {});
-              // Non-replica set fallback
-              await Ticket.updateMany(
-                { orderId: claimedOrder._id },
-                { $set: { paymentStatus: 'refunded', isValid: false, invalidReason: 'Order refunded', updatedAt: new Date() } }
-              );
-              await CreditTransaction.updateMany(
-                { 'metadata.orderId': claimedOrder._id, type: 'ticket_sale_earning' },
-                { $set: { status: 'reverted', eligibleForPayout: false, updatedAt: new Date() } }
-              );
-              await Party.updateOne(
-                { _id: claimedOrder.partyId, 'ticketTiers.tierId': claimedOrder.tierId },
-                {
-                  $inc: {
-                    totalRevenue: -claimedOrder.priceNaira,
-                    'ticketTiers.$.sold': -claimedOrder.quantity,
-                  },
-                }
-              );
-              if (claimedOrder.platformFeeNaira > 0) {
-                await PlatformEarning.create({
-                  source: 'ticket_refund',
-                  amount: -claimedOrder.platformFeeNaira,
-                  nairaValue: -claimedOrder.platformFeeNaira,
-                  fromUserId: claimedOrder.buyerId,
-                  referenceId: claimedOrder._id,
-                  metadata: { partyId: claimedOrder.partyId, orderId: claimedOrder._id },
-                });
-              }
-            } finally {
-              if (session) session.endSession();
             }
 
+            // STEP 3: Finalize status to terminal refunded ONLY after session commit
+            await TicketOrder.findByIdAndUpdate(
+              claimedOrder._id,
+              { $set: { status: 'refunded', updatedAt: new Date() } },
+              { session }
+            );
+
+            await session.commitTransaction();
             reconciledCount++;
+          } catch {
+            if (session) await session.abortTransaction().catch(() => {});
+            // Non-replica set fallback
+            await Ticket.updateMany(
+              { orderId: claimedOrder._id },
+              { $set: { paymentStatus: 'refunded', isValid: false, invalidReason: 'Order refunded', updatedAt: new Date() } }
+            );
+            await CreditTransaction.updateMany(
+              { 'metadata.orderId': claimedOrder._id, type: 'ticket_sale_earning' },
+              { $set: { status: 'reverted', eligibleForPayout: false, updatedAt: new Date() } }
+            );
+            await Party.updateOne(
+              { _id: claimedOrder.partyId, 'ticketTiers.tierId': claimedOrder.tierId },
+              {
+                $inc: {
+                  totalRevenue: -claimedOrder.priceNaira,
+                  'ticketTiers.$.sold': -claimedOrder.quantity,
+                },
+              }
+            );
+            if (claimedOrder.platformFeeNaira > 0) {
+              await PlatformEarning.create({
+                source: 'ticket_refund',
+                amount: -claimedOrder.platformFeeNaira,
+                nairaValue: -claimedOrder.platformFeeNaira,
+                fromUserId: claimedOrder.buyerId,
+                referenceId: claimedOrder._id,
+                metadata: { partyId: claimedOrder.partyId, orderId: claimedOrder._id },
+              });
+            }
+            await TicketOrder.findByIdAndUpdate(claimedOrder._id, { $set: { status: 'refunded', updatedAt: new Date() } });
+            reconciledCount++;
+          } finally {
+            if (session) session.endSession();
           }
         } else {
           const nextAttemptMinutes = Math.min(60, 5 * attempts);
@@ -687,7 +704,7 @@ export const reconcilePendingTicketRefunds = async (): Promise<number> => {
                 status: 'refund_pending',
                 refundAttempts: attempts,
                 nextRefundAttemptAt: nextAttemptAt,
-                refundError: refundRes?.message || 'Paystack refund rejected',
+                refundError: lastRefundMessage || 'Paystack refund rejected',
                 updatedAt: new Date(),
               },
             }
@@ -825,6 +842,16 @@ export const createTicketOrder = async (req: Request, res: Response) => {
               platformFee: order.platformFeeNaira,
               organizerGets: order.organizerNaira,
             },
+          });
+        }
+
+        if (order.status === 'processing') {
+          return res.status(202).json({
+            success: true,
+            orderId: order._id,
+            orderReference: order.orderReference,
+            status: 'processing',
+            message: 'Order fulfillment is currently in progress',
           });
         }
 
@@ -1032,6 +1059,37 @@ export const handlePaystackTicketWebhook = async (req: Request, res: Response) =
           if (order.status === 'pending' || (order.status === 'processing' && order.updatedAt <= twoMinsAgo)) {
             await fulfillTicketOrderInternal(order._id.toString());
           }
+        }
+      }
+    } else if (payload?.event === 'refund.processed' || payload?.event === 'refund.processing') {
+      const data = payload.data;
+      const reference = data?.transaction_reference || data?.reference;
+      if (reference) {
+        const order = await TicketOrder.findOne({ paymentReference: reference });
+        if (order && order.status !== 'refunded') {
+          await TicketOrder.findByIdAndUpdate(order._id, {
+            $set: {
+              status: 'accounting_pending',
+              refundReference: String(data?.id || reference),
+              updatedAt: new Date(),
+            },
+          });
+          void reconcilePendingTicketRefunds();
+        }
+      }
+    } else if (payload?.event === 'refund.failed') {
+      const data = payload.data;
+      const reference = data?.transaction_reference || data?.reference;
+      if (reference) {
+        const order = await TicketOrder.findOne({ paymentReference: reference });
+        if (order) {
+          await TicketOrder.findByIdAndUpdate(order._id, {
+            $set: {
+              status: 'refund_pending',
+              refundError: data?.reason || 'Paystack refund event reported failure',
+              updatedAt: new Date(),
+            },
+          });
         }
       }
     }

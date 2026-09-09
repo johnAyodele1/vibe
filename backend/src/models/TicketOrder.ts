@@ -15,7 +15,7 @@ export interface ITicketOrder extends Document {
   paymentProvider: 'paystack' | 'wallet' | 'simulated';
   paymentReference?: string;
   providerReference?: string;
-  status: 'pending' | 'processing' | 'fulfilled' | 'failed' | 'refund_pending' | 'refund_processing' | 'refunded';
+  status: 'pending' | 'processing' | 'fulfilled' | 'failed' | 'refund_pending' | 'refund_processing' | 'provider_refunded' | 'accounting_pending' | 'refunded';
   refundReference?: string;
   refundAttempts?: number;
   nextRefundAttemptAt?: Date;
@@ -50,7 +50,7 @@ const TicketOrderSchema = new Schema<ITicketOrder>(
     providerReference: { type: String },
     status: {
       type: String,
-      enum: ['pending', 'processing', 'fulfilled', 'failed', 'refund_pending', 'refund_processing', 'refunded'],
+      enum: ['pending', 'processing', 'fulfilled', 'failed', 'refund_pending', 'refund_processing', 'provider_refunded', 'accounting_pending', 'refunded'],
       default: 'pending',
     },
     refundReference: { type: String },
