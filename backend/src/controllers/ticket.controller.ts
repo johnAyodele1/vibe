@@ -271,12 +271,21 @@ export const fulfillTicketOrderInternal = async (orderId: string) => {
       return { order: claimedOrder, tickets: existing, isAlreadyFulfilled: true };
     }
 
-    // Transactional Per-Person Limit
-    const existingPaidCount = await Ticket.countDocuments(
-      { partyId: party._id, tierId: tier.tierId, buyerId: claimedOrder.buyerId, paymentStatus: 'paid' },
+    // Atomic Transactional Per-Person Limit check across fulfilled orders & active processing orders
+    const fulfilledOrders = await TicketOrder.find(
+      {
+        partyId: party._id,
+        tierId: tier.tierId,
+        buyerId: claimedOrder.buyerId,
+        _id: { $ne: claimedOrder._id },
+        status: { $in: ['fulfilled', 'processing'] },
+      },
+      null,
       session ? { session } : {}
-    );
-    if (existingPaidCount + qty > tier.perPersonLimit) {
+    ).lean();
+
+    const existingReservedCount = fulfilledOrders.reduce((sum, o) => sum + o.quantity, 0);
+    if (existingReservedCount + qty > tier.perPersonLimit) {
       throw new Error(`Maximum ${tier.perPersonLimit} tickets per person for this tier`);
     }
 
@@ -587,35 +596,83 @@ export const reconcilePendingTicketRefunds = async (): Promise<number> => {
           );
 
           if (updated) {
-            await Ticket.updateMany(
-              { orderId: claimedOrder._id },
-              { $set: { paymentStatus: 'refunded', isValid: false, invalidReason: 'Order refunded', updatedAt: new Date() } }
-            ).catch(() => {});
+            let session: mongoose.ClientSession | null = null;
+            try {
+              session = await mongoose.startSession();
+              session.startTransaction();
 
-            await CreditTransaction.updateMany(
-              { 'metadata.orderId': claimedOrder._id, type: 'ticket_sale_earning' },
-              { $set: { status: 'reverted', eligibleForPayout: false, updatedAt: new Date() } }
-            ).catch(() => {});
+              await Ticket.updateMany(
+                { orderId: claimedOrder._id },
+                { $set: { paymentStatus: 'refunded', isValid: false, invalidReason: 'Order refunded', updatedAt: new Date() } },
+                { session }
+              );
 
-            await Party.updateOne(
-              { _id: claimedOrder.partyId, 'ticketTiers.tierId': claimedOrder.tierId },
-              {
-                $inc: {
-                  totalRevenue: -claimedOrder.priceNaira,
-                  'ticketTiers.$.sold': -claimedOrder.quantity,
+              await CreditTransaction.updateMany(
+                { 'metadata.orderId': claimedOrder._id, type: 'ticket_sale_earning' },
+                { $set: { status: 'reverted', eligibleForPayout: false, updatedAt: new Date() } },
+                { session }
+              );
+
+              await Party.updateOne(
+                { _id: claimedOrder.partyId, 'ticketTiers.tierId': claimedOrder.tierId },
+                {
+                  $inc: {
+                    totalRevenue: -claimedOrder.priceNaira,
+                    'ticketTiers.$.sold': -claimedOrder.quantity,
+                  },
                 },
-              }
-            ).catch(() => {});
+                { session }
+              );
 
-            if (claimedOrder.platformFeeNaira > 0) {
-              await PlatformEarning.create({
-                source: 'ticket_refund',
-                amount: -claimedOrder.platformFeeNaira,
-                nairaValue: -claimedOrder.platformFeeNaira,
-                fromUserId: claimedOrder.buyerId,
-                referenceId: claimedOrder._id,
-                metadata: { partyId: claimedOrder.partyId, orderId: claimedOrder._id },
-              }).catch(() => {});
+              if (claimedOrder.platformFeeNaira > 0) {
+                await PlatformEarning.create(
+                  [
+                    {
+                      source: 'ticket_refund',
+                      amount: -claimedOrder.platformFeeNaira,
+                      nairaValue: -claimedOrder.platformFeeNaira,
+                      fromUserId: claimedOrder.buyerId,
+                      referenceId: claimedOrder._id,
+                      metadata: { partyId: claimedOrder.partyId, orderId: claimedOrder._id },
+                    },
+                  ],
+                  { session }
+                );
+              }
+
+              await session.commitTransaction();
+            } catch {
+              if (session) await session.abortTransaction().catch(() => {});
+              // Non-replica set fallback
+              await Ticket.updateMany(
+                { orderId: claimedOrder._id },
+                { $set: { paymentStatus: 'refunded', isValid: false, invalidReason: 'Order refunded', updatedAt: new Date() } }
+              );
+              await CreditTransaction.updateMany(
+                { 'metadata.orderId': claimedOrder._id, type: 'ticket_sale_earning' },
+                { $set: { status: 'reverted', eligibleForPayout: false, updatedAt: new Date() } }
+              );
+              await Party.updateOne(
+                { _id: claimedOrder.partyId, 'ticketTiers.tierId': claimedOrder.tierId },
+                {
+                  $inc: {
+                    totalRevenue: -claimedOrder.priceNaira,
+                    'ticketTiers.$.sold': -claimedOrder.quantity,
+                  },
+                }
+              );
+              if (claimedOrder.platformFeeNaira > 0) {
+                await PlatformEarning.create({
+                  source: 'ticket_refund',
+                  amount: -claimedOrder.platformFeeNaira,
+                  nairaValue: -claimedOrder.platformFeeNaira,
+                  fromUserId: claimedOrder.buyerId,
+                  referenceId: claimedOrder._id,
+                  metadata: { partyId: claimedOrder.partyId, orderId: claimedOrder._id },
+                });
+              }
+            } finally {
+              if (session) session.endSession();
             }
 
             reconciledCount++;

@@ -151,6 +151,35 @@ export class PaystackService {
     }
 
     try {
+      // 1. PROVIDER-SIDE IDEMPOTENCY CHECK: Query existing Paystack refunds for this transaction reference
+      const checkRes = await fetch(
+        `https://api.paystack.co/refund?reference=${encodeURIComponent(transactionRef)}`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${secretKey}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (checkRes.ok) {
+        const checkData = (await checkRes.json()) as any;
+        if (checkData?.status && Array.isArray(checkData.data) && checkData.data.length > 0) {
+          const existingRefund = checkData.data.find(
+            (r: any) => r.status === 'processed' || r.status === 'pending'
+          );
+          if (existingRefund) {
+            return {
+              status: true,
+              message: 'Refund already executed on Paystack',
+              data: existingRefund,
+            };
+          }
+        }
+      }
+
+      // 2. Perform Paystack refund request if not already processed
       const response = await fetch('https://api.paystack.co/refund', {
         method: 'POST',
         headers: {
