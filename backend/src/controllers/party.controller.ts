@@ -486,56 +486,18 @@ export const cancelParty = async (req: Request, res: Response) => {
           } else {
             await session.abortTransaction();
           }
-        } catch {
+        } catch (walletRefundErr: any) {
           if (session) await session.abortTransaction().catch(() => {});
-          // Fallback for non-replica sets or standalone Mongo
-          const claimedOrder = await TicketOrder.findOneAndUpdate(
-            { _id: order._id, status: 'fulfilled' },
-            { $set: { status: 'refunded', updatedAt: new Date() } }
-          );
-          if (claimedOrder) {
-            await AdultUser.findByIdAndUpdate(order.buyerId, { $inc: { credits: requiredDiamonds } });
-            await CreditTransaction.create({
-              userId: order.buyerId,
-              type: 'refund',
-              amount: requiredDiamonds,
-              usdAmount: estimatedUsdVal,
-              nairaAmount: order.priceNaira,
-              description: `Refund - Party '${party.title}' cancelled by organizer`,
-              relatedUserId: party.organizerId,
-              status: 'completed',
-              metadata: { orderId: order._id, partyId: party._id },
-            });
-            await Ticket.updateMany(
-              { orderId: order._id },
-              { $set: { paymentStatus: 'refunded', isValid: false, invalidReason: 'Party cancelled by organizer', updatedAt: new Date() } }
-            );
-            await CreditTransaction.updateMany(
-              { 'metadata.orderId': order._id, type: 'ticket_sale_earning' },
-              { $set: { status: 'reverted', eligibleForPayout: false, updatedAt: new Date() } }
-            );
-            await Party.updateOne(
-              { _id: party._id, 'ticketTiers.tierId': order.tierId },
-              {
-                $inc: {
-                  totalRevenue: -order.priceNaira,
-                  'ticketTiers.$.sold': -order.quantity,
-                },
-              }
-            );
-
-            if (order.platformFeeNaira > 0) {
-              await PlatformEarning.create({
-                source: 'ticket_refund',
-                amount: -order.platformFeeNaira,
-                nairaValue: -order.platformFeeNaira,
-                fromUserId: order.buyerId,
-                toProviderId: party.organizerId,
-                referenceId: order._id,
-                metadata: { partyId: party._id, partyTitle: party.title, orderId: order._id },
-              });
-            }
-          }
+          console.error(`[Party Cancel Wallet Refund Error] Order ${order._id} refund transaction failed. Error:`, walletRefundErr);
+          // Queue order in accounting_pending for background worker retry
+          await TicketOrder.findByIdAndUpdate(order._id, {
+            $set: {
+              status: 'accounting_pending',
+              refundError: walletRefundErr?.message || 'Wallet refund transaction failed',
+              nextRefundAttemptAt: new Date(),
+              updatedAt: new Date(),
+            },
+          }).catch(() => {});
         } finally {
           if (session) session.endSession();
         }
