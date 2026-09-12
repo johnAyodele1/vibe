@@ -8,7 +8,6 @@ import session from 'express-session';
 import dotenv from 'dotenv';
 import passport from './config/passport';
 import User from './models/User';
-
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
 import matchRoutes from './routes/matches';
@@ -31,26 +30,19 @@ app.use(express.urlencoded({ extended: true }));
 app.use(session({ secret: process.env.SESSION_SECRET || 'vibe_session_secret', resave: false, saveUninitialized: false, cookie: { secure: process.env.NODE_ENV === 'production', maxAge: 24 * 60 * 60 * 1000 } }));
 app.use(passport.initialize());
 app.use(passport.session());
-
 const allowedOrigins = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()) : [process.env.FRONTEND_URL || 'https://zippo-r8hk.onrender.com', process.env.FRONTEND_DATING_URL || 'http://localhost:3000', process.env.FRONTEND_ADULT_URL || 'http://localhost:3001', 'http://localhost:5173'];
 const allowedPreviewOrigin = /^https:\/\/deploy-preview-\d+--petheven\.netlify\.app$/;
 app.use(cors({ origin: (origin, callback) => { if (!origin || process.env.NODE_ENV === 'test' || allowedOrigins.includes(origin) || allowedPreviewOrigin.test(origin)) return callback(null, true); return callback(new Error('CORS policy violation: Access denied for origin ' + origin)); }, credentials: true }));
-
 if (process.env.NODE_ENV !== 'test') {
   const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/vibe';
   mongoose.connect(mongoUri).then(async () => {
     console.log('Connected to MongoDB');
-    try { await User.updateMany({}, { isOnline: false }); const { cleanStalePresence } = require('./socket/adultSocket'); await cleanStalePresence(); }
-    catch (err) { console.error("Error resetting users' online status:", err); }
-    try { const { repairPushSubscriptionIndex } = require('./services/pushIndexMigrationService'); await repairPushSubscriptionIndex(); }
-    catch (err) { console.error("Error repairing PushSubscription indexes:", err); }
-    try { const { repairPayoutIndex } = require('./services/payoutIndexMigrationService'); await repairPayoutIndex(); }
-    catch (err: any) { console.error('[FATAL] Failed to establish required payout database index:', err.message); if (process.env.NODE_ENV === 'production') process.exit(1); else throw err; }
-    try { const { startTicketRefundReconciliationWorker } = require('./controllers/ticket.controller'); startTicketRefundReconciliationWorker(60000); }
-    catch (err: any) { console.error('Failed to start ticket refund reconciliation worker:', err.message); }
+    try { await User.updateMany({}, { isOnline: false }); const { cleanStalePresence } = require('./socket/adultSocket'); await cleanStalePresence(); } catch (err) { console.error("Error resetting users' online status:", err); }
+    try { const { repairPushSubscriptionIndex } = require('./services/pushIndexMigrationService'); await repairPushSubscriptionIndex(); } catch (err) { console.error("Error repairing PushSubscription indexes:", err); }
+    try { const { repairPayoutIndex } = require('./services/payoutIndexMigrationService'); await repairPayoutIndex(); } catch (err: any) { console.error('[FATAL] Failed to establish required payout database index:', err.message); if (process.env.NODE_ENV === 'production') process.exit(1); else throw err; }
+    try { const { startTicketRefundWorker } = require('./workers/ticketRefundReconciliation.worker'); startTicketRefundWorker(60000); } catch (err: any) { console.error('Failed to start ticket refund reconciliation worker:', err.message); }
   }).catch(error => console.error('MongoDB connection error:', error));
 }
-
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/matches', matchRoutes);
@@ -65,7 +57,6 @@ app.use('/api/v1/adult', providerDiscoveryRoutes);
 app.use('/api/ads', adsRoutes);
 app.use('/api/v1/ads', adsRoutes);
 app.use('/api/v1', v1Routes);
-
 app.get('/api/health', (req: Request, res: Response) => res.json({ status: 'OK', timestamp: new Date().toISOString(), uptime: process.uptime() }));
 app.use(express.static(path.join(__dirname, '../../vibe/dist')));
 app.get('*', (req: Request, res: Response) => { if (req.path.includes('.') || req.path.startsWith('/assets/') || req.path.startsWith('/src/')) return res.status(404).json({ error: 'Asset not found' }); res.sendFile(path.join(__dirname, '../../vibe/dist/index.html')); });
