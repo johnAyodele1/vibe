@@ -22,6 +22,7 @@ import AdminErrorsPage from "../Admin/AdminErrorsPage";
 import AdminOfficialChannels from "../Admin/AdminOfficialChannels";
 import AdminClubsPage from "../Admin/AdminClubsPage";
 import AdminPartiesPage from "../Admin/AdminPartiesPage";
+import AdminAdvertisementsPage from "../Admin/AdminAdvertisementsPage";
 import LoadingScreen from "../LoadingScreen/LoadingScreen";
 import AdultZoneLayout from "../AdultZone/AdultZoneLayout";
 import AdultHome from "../AdultZone/AdultHome";
@@ -171,6 +172,7 @@ function App() {
         <Route path="/admin/analytics" element={isAdminAuthenticated ? <AdminAnalyticsWithAccounting /> : <Navigate to="/admin/login" replace />} />
         <Route path="/admin/accounting" element={<Navigate to="/admin/analytics" replace />} />
         <Route path="/admin/rewards" element={isAdminAuthenticated ? <AdminRewardsPage /> : <Navigate to="/admin/login" replace />} />
+        <Route path="/admin/ads" element={isAdminAuthenticated ? <AdminAdvertisementsPage /> : <Navigate to="/admin/login" replace />} />
         <Route path="/admin/login" element={<AdminLogin />} />
         <Route path="/admin" element={isAdminAuthenticated ? <AdminDashboard /> : <Navigate to="/admin/login" replace />} />
         <Route path="/auth" element={<Auth />} />

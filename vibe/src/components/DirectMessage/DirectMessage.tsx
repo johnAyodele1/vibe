@@ -8,6 +8,8 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useSocket } from "../../contexts/SocketContext";
 import { useVideoReadiness } from "../../hooks/useVideoReadiness";
 import VideoFallbackOverlay from "../AdultZone/VideoFallbackOverlay";
+import AdvertisementOverlay from "../Advertisement/AdvertisementOverlay";
+import { EligibleAdvertisement } from "../Advertisement/types";
 
 type CallStatus = "idle" | "calling" | "receiving" | "connected" | "ended";
 
@@ -98,6 +100,9 @@ const DirectMessage: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isInitialLoadRef = useRef(true);
 
+  // Advertisement state
+  const [eligibleAd, setEligibleAd] = useState<EligibleAdvertisement | null>(null);
+
   // Call state
   const [callStatus, setCallStatus] = useState<CallStatus>("idle");
   const [isVideoCall, setIsVideoCall] = useState(false);
@@ -121,6 +126,39 @@ const DirectMessage: React.FC = () => {
   const userObj = user as unknown as { _id?: string; photos?: PhotoItem[]; firstName?: string };
   const currentUserId = userObj?._id || "";
   const token = localStorage.getItem("accessToken");
+
+  // Fetch eligible ad on load
+  useEffect(() => {
+    const fetchEligibleAd = async () => {
+      if (!token) return;
+      try {
+        const res = await fetch(`${API_BASE_URL}/v1/ads/eligible`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success && data.data?.advertisement) {
+          const ad = data.data.advertisement;
+          setEligibleAd(ad);
+        } else {
+          setEligibleAd(null);
+        }
+      } catch (err) {
+        console.error('Error fetching eligible ad:', err);
+      }
+    };
+
+    void fetchEligibleAd();
+  }, [conversationId, token]);
+
+  const handleAdClick = (adId: string, clickUrl: string) => {
+    if (token) {
+      fetch(`${API_BASE_URL}/v1/ads/${adId}/click`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      }).catch(err => console.error('Click error:', err));
+    }
+    window.open(clickUrl, '_blank', 'noopener,noreferrer');
+  };
 
   // Synchronize body background color
   useEffect(() => {
@@ -922,106 +960,116 @@ const DirectMessage: React.FC = () => {
           </div>
         </header>
 
-        <main className={styles.chatStream} id="chat-container">
-          {loading ? (
-            <div style={{ padding: "20px", textAlign: "center" }}>
-              Loading messages...
-            </div>
-          ) : (
-            <>
-              <div className={styles.dateDivider}>
-                <span className={styles.datePill}>Today</span>
+        <div className={styles.chatViewport}>
+          <main className={styles.chatStream} id="chat-container">
+            {loading ? (
+              <div style={{ padding: "20px", textAlign: "center" }}>
+                Loading messages...
               </div>
+            ) : (
+              <>
+                <div className={styles.dateDivider}>
+                  <span className={styles.datePill}>Today</span>
+                </div>
 
-              {messages.map((msg) => {
-                const isSentByMe = msg.sender._id === currentUserId;
-                const time = new Date(msg.createdAt).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                });
+                {messages.map((msg) => {
+                  const isSentByMe = msg.sender._id === currentUserId;
+                  const time = new Date(msg.createdAt).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  });
 
-                return (
-                  <div
-                    key={msg._id}
-                    className={`${styles.messageRow} ${
-                      isSentByMe ? styles.sent : ""
-                    }`}
-                  >
-                    {!isSentByMe && (
+                  return (
+                    <div
+                      key={msg._id}
+                      className={`${styles.messageRow} ${
+                        isSentByMe ? styles.sent : ""
+                      }`}
+                    >
+                      {!isSentByMe && (
+                        <div
+                          className={styles.msgAvatarSmall}
+                          style={{
+                            backgroundImage: `url("${
+                              msg.sender.photos.find((p) => p.isMain)?.url ||
+                              "/placeholder.svg"
+                            }")`,
+                          }}
+                        />
+                      )}
+
+                      <div className={styles.msgContentWrapper}>
+                        <div
+                          className={`${styles.bubble} ${
+                            isSentByMe ? styles.bubbleSent : styles.bubbleReceived
+                          } ${msg.messageType === "image" ? styles.bubbleImage : ""}`}
+                        >
+                          {msg.messageType === "image" ? (
+                            <img
+                              src={msg.content}
+                              alt="Shared photo"
+                              className={styles.sharedImage}
+                              onLoad={() => scrollToBottom("smooth")}
+                            />
+                          ) : (
+                            <p>{msg.content}</p>
+                          )}
+                        </div>
+
+                        <span className={styles.timestamp}>
+                          {time}
+                          {isSentByMe && msg.isRead && (
+                            <span
+                              className="material-symbols-outlined"
+                              style={{ fontSize: "12px", color: "#f42559" }}
+                            >
+                              done_all
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {isTyping &&
+                  conversation &&
+                  typingUser === otherParticipant?._id && (
+                    <div className={styles.messageRow}>
                       <div
                         className={styles.msgAvatarSmall}
                         style={{
                           backgroundImage: `url("${
-                            msg.sender.photos.find((p) => p.isMain)?.url ||
+                            otherParticipant?.photos.find((p) => p.isMain)?.url ||
                             "/placeholder.svg"
                           }")`,
                         }}
                       />
-                    )}
-
-                    <div className={styles.msgContentWrapper}>
-                      <div
-                        className={`${styles.bubble} ${
-                          isSentByMe ? styles.bubbleSent : styles.bubbleReceived
-                        } ${msg.messageType === "image" ? styles.bubbleImage : ""}`}
-                      >
-                        {msg.messageType === "image" ? (
-                          <img
-                            src={msg.content}
-                            alt="Shared photo"
-                            className={styles.sharedImage}
-                            onLoad={() => scrollToBottom("smooth")}
-                          />
-                        ) : (
-                          <p>{msg.content}</p>
-                        )}
-                      </div>
-
-                      <span className={styles.timestamp}>
-                        {time}
-                        {isSentByMe && msg.isRead && (
-                          <span
-                            className="material-symbols-outlined"
-                            style={{ fontSize: "12px", color: "#f42559" }}
-                          >
-                            done_all
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-
-              {isTyping &&
-                conversation &&
-                typingUser === otherParticipant?._id && (
-                  <div className={styles.messageRow}>
-                    <div
-                      className={styles.msgAvatarSmall}
-                      style={{
-                        backgroundImage: `url("${
-                          otherParticipant?.photos.find((p) => p.isMain)?.url ||
-                          "/placeholder.svg"
-                        }")`,
-                      }}
-                    />
-                    <div className={styles.msgContentWrapper}>
-                      <div className={styles.bubbleReceived}>
-                        <div className={styles.typingBubble}>
-                          <span className={styles.typingDot}></span>
-                          <span className={styles.typingDot}></span>
-                          <span className={styles.typingDot}></span>
+                      <div className={styles.msgContentWrapper}>
+                        <div className={styles.bubbleReceived}>
+                          <div className={styles.typingBubble}>
+                            <span className={styles.typingDot}></span>
+                            <span className={styles.typingDot}></span>
+                            <span className={styles.typingDot}></span>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-              <div ref={messagesEndRef} />
-            </>
+                <div ref={messagesEndRef} />
+              </>
+            )}
+          </main>
+
+          {eligibleAd && (
+            <AdvertisementOverlay
+              ad={eligibleAd}
+              onClose={() => setEligibleAd(null)}
+              onClickCTA={handleAdClick}
+            />
           )}
-        </main>
+        </div>
 
         <footer className={styles.footer}>
           <input
