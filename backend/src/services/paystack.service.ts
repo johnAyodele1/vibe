@@ -140,6 +140,65 @@ export class PaystackService {
     return data;
   }
 
+  public static async refundTransaction(
+    transactionRef: string,
+    amountKobo?: number
+  ): Promise<{ status: boolean; message: string; data?: any }> {
+    const secretKey = this.getSecretKey();
+
+    if (process.env.NODE_ENV === 'test') {
+      return { status: true, message: 'Transaction refund initiated' };
+    }
+
+    try {
+      // 1. PROVIDER-SIDE IDEMPOTENCY CHECK: Query existing Paystack refunds for this transaction reference
+      const checkRes = await fetch(
+        `https://api.paystack.co/refund?transaction=${encodeURIComponent(transactionRef)}`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${secretKey}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (checkRes.ok) {
+        const checkData = (await checkRes.json()) as any;
+        if (checkData?.status && Array.isArray(checkData.data) && checkData.data.length > 0) {
+          const existingRefund = checkData.data.find(
+            (r: any) => r.status === 'processed' || r.status === 'pending'
+          );
+          if (existingRefund) {
+            return {
+              status: true,
+              message: 'Refund already executed on Paystack',
+              data: existingRefund,
+            };
+          }
+        }
+      }
+
+      // 2. Perform Paystack refund request if not already processed
+      const response = await fetch('https://api.paystack.co/refund', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${secretKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          transaction: transactionRef,
+          amount: amountKobo,
+        }),
+      });
+
+      const data = (await response.json()) as any;
+      return data;
+    } catch (err: any) {
+      return { status: false, message: err.message || 'Refund dispatch failed' };
+    }
+  }
+
   public static verifyWebhookSignature(
     rawBody: Buffer | string,
     signature: string

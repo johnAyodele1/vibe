@@ -4,27 +4,6 @@ import { http, HttpResponse } from 'msw';
 const API_BASE_URL = 'http://localhost:5000/api';
 
 export const handlers = [
-  http.get('*/ads/eligible', () => {
-    return HttpResponse.json({
-      success: true,
-      data: { advertisement: null }
-    });
-  }),
-
-  http.post('*/ads/:id/impression', () => {
-    return HttpResponse.json({
-      success: true,
-      data: { impression: { id: 'imp_1' } }
-    });
-  }),
-
-  http.post('*/ads/:id/click', () => {
-    return HttpResponse.json({
-      success: true,
-      data: { success: true }
-    });
-  }),
-
   http.post(`${API_BASE_URL}/adult/auth/login`, async () => {
     return HttpResponse.json({
       success: true,

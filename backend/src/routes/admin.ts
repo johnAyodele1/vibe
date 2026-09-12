@@ -43,6 +43,8 @@ import {
   resolveError,
   clearResolvedErrors
 } from '../controllers/adminErrors.controller';
+import { adminGetClubs, adminApproveClub, adminRejectClub, adminSuspendClub } from '../controllers/club.controller';
+import { adminGetParties, adminGetPartyDetail, adminApproveParty, adminRejectParty, adminToggleFeatureParty } from '../controllers/party.controller';
 import {
   adminCreateNotification,
   adminGetNotifications,
@@ -54,17 +56,8 @@ import {
   getOfficialChannelsConfig,
   adminUploadChannelAvatar
 } from '../controllers/officialSupport.controller';
-import {
-  adminGetAds,
-  adminCreateAd,
-  adminUpdateAd,
-  adminUpdateAdStatus,
-  adminDeleteAd,
-  adminUploadMedia
-} from '../controllers/advertisement.controller';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
-const adMediaUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
 const router = Router();
 
@@ -121,12 +114,17 @@ router.get('/errors/:errorId', getError);
 router.put('/errors/:errorId/resolve', resolveError);
 router.delete('/errors/resolved', clearResolvedErrors);
 
-// Advertisements Admin Routes
-router.get('/ads', adminGetAds);
-router.post('/ads', adminCreateAd);
-router.put('/ads/:id', adminUpdateAd);
-router.patch('/ads/:id/status', adminUpdateAdStatus);
-router.delete('/ads/:id', adminDeleteAd);
-router.post('/ads/upload-media', adMediaUpload.single('file'), adminUploadMedia);
+// Admin Clubs Management
+router.get('/clubs', adminGetClubs);
+router.put('/clubs/:clubId/approve', adminApproveClub);
+router.put('/clubs/:clubId/reject', adminRejectClub);
+router.put('/clubs/:clubId/suspend', adminSuspendClub);
+
+// Admin Parties Management
+router.get('/parties', adminGetParties);
+router.get('/parties/:id', adminGetPartyDetail);
+router.put('/parties/:id/approve', adminApproveParty);
+router.put('/parties/:id/reject', adminRejectParty);
+router.put('/parties/:id/feature', adminToggleFeatureParty);
 
 export default router;

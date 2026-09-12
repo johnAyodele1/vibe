@@ -36,7 +36,6 @@ export interface IUser extends Document {
   lastActive: Date;
   isOnline: boolean;
   lastNotificationSentAt: Date;
-  lastAdShownAt?: Date;
   verificationToken?: string;
   verificationTokenExpires?: Date;
   passwordResetToken?: string;
