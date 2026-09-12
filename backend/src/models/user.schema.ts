@@ -33,7 +33,6 @@ export const userSchema = new Schema<IUser, IUserModel>(
     lastActive: { type: Date, default: Date.now },
     isOnline: { type: Boolean, default: false },
     lastNotificationSentAt: { type: Date, default: new Date(0) },
-    lastAdShownAt: { type: Date, default: null, index: true },
     verificationToken: String,
     verificationTokenExpires: Date,
     passwordResetToken: String,

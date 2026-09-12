@@ -19,7 +19,6 @@ import analyticsRoutes from './routes/analytics';
 import adultRoutes from './routes/adult.routes';
 import v1Routes from './routes/v1.routes';
 import providerDiscoveryRoutes from './routes/providerDiscovery.routes';
-import adsRoutes from './routes/ads';
 
 dotenv.config();
 const app = express();
@@ -120,8 +119,6 @@ app.use('/api/v1/admin', adminRoutes);
 app.use('/api/adult', adultRoutes);
 app.use('/api/adult', providerDiscoveryRoutes);
 app.use('/api/v1/adult', providerDiscoveryRoutes);
-app.use('/api/ads', adsRoutes);
-app.use('/api/v1/ads', adsRoutes);
 app.use('/api/v1', v1Routes);
 
 app.get('/api/health', (req: Request, res: Response) => res.json({ status: 'OK', timestamp: new Date().toISOString(), uptime: process.uptime() }));
