@@ -40,7 +40,7 @@ const partyDateSchema = z.object({
   endDate: z.string().refine((val) => !isNaN(Date.parse(val)), 'Invalid end date'),
 });
 
-export const createPartySchema = z.object({
+const createPartySchemaBase = z.object({
   title: z.string().min(3, 'Title must be at least 3 characters').max(100),
   description: z.string().min(10, 'Description must be at least 10 characters').max(2000),
   tagline: z.string().max(120).optional(),
@@ -77,7 +77,9 @@ export const createPartySchema = z.object({
   guardAccessCode: z.string().regex(/^\d{6}$/, 'Guard access PIN must be exactly 6 digits').optional(),
   genres: z.array(z.string()).optional(),
   vibes: z.array(z.string()).optional(),
-}).superRefine((data, ctx) => {
+});
+
+export const createPartySchema = createPartySchemaBase.superRefine((data, ctx) => {
   const start = new Date(data.startDate);
   const end = new Date(data.endDate);
   const now = new Date();
@@ -94,7 +96,7 @@ export const purchaseTicketsSchema = z.object({
   paymentProvider: z.enum(['paystack', 'wallet', 'simulated']).optional().default('paystack'),
 });
 
-export const updatePartySchema = createPartySchema.partial().superRefine((data, ctx) => {
+export const updatePartySchema = createPartySchemaBase.partial().superRefine((data, ctx) => {
   const start = data.startDate ? new Date(data.startDate) : undefined;
   const end = data.endDate ? new Date(data.endDate) : undefined;
   const now = new Date();
