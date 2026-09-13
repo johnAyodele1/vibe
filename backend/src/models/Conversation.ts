@@ -85,15 +85,21 @@ conversationSchema.statics.findDirectConversation = function (
 conversationSchema.methods.updateParticipantInfo = async function (this: IConversation) {
   try {
     const User = mongoose.model('User');
+
+    // Optimization (⚡ Bolt): Batch query all participant users in a single query with .lean() to eliminate N+1 roundtrips and hydration overhead.
+    const users = await User.find({ _id: { $in: this.participants } })
+      .select('firstName lastName photos isOnline lastActive')
+      .lean();
+
+    const userMap = new Map(users.map((u: any) => [u._id.toString(), u]));
+
     const participantInfo: IParticipantInfo[] = [];
 
     for (const participantId of this.participants) {
-      const user = await User.findById(participantId).select(
-        'firstName lastName photos isOnline lastActive'
-      );
+      const user = userMap.get(participantId.toString());
 
       if (user) {
-        const mainPhoto = user.photos.find((photo: { isMain: boolean; url: string }) => photo.isMain);
+        const mainPhoto = user.photos?.find((photo: { isMain: boolean; url: string }) => photo.isMain);
         participantInfo.push({
           user: user._id,
           firstName: user.firstName,

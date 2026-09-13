@@ -612,10 +612,12 @@ export const adminAction = async (req: IExpressRequest, res: Response): Promise<
     }
 
     if (action === 'delete') {
-      await User.findByIdAndDelete(targetId);
-      // Clean up reports and conversations
-      await Report.deleteMany({ $or: [{ reporter: targetId }, { reported: targetId }] });
-      await Conversation.deleteMany({ participants: targetId });
+      // Optimization (⚡ Bolt): Execute user deletion and cleanup queries concurrently via Promise.all.
+      await Promise.all([
+        User.findByIdAndDelete(targetId),
+        Report.deleteMany({ $or: [{ reporter: targetId }, { reported: targetId }] }),
+        Conversation.deleteMany({ participants: targetId }),
+      ]);
       return res.json({ success: true, message: 'User deleted successfully' });
     }
 
