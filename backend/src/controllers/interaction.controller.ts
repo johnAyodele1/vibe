@@ -204,20 +204,20 @@ export const dislike = async (req: Request, res: Response): Promise<Response> =>
       });
     }
 
-    const currentUser = await User.findById(req.user._id) as IUser | null;
-    if (!currentUser) return res.status(404).json({ success: false, message: 'User not found' });
+    const targetObjId = new mongoose.Types.ObjectId(targetUserId);
 
-    // Check if already disliked
-    if (currentUser.dislikedUsers.some((id) => id.toString() === targetUserId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'User already disliked',
-      });
+    // Optimization (⚡ Bolt): Use findOneAndUpdate with $ne query filter to avoid redundant database writes when target user is already disliked.
+    const updatedUser = await User.findOneAndUpdate(
+      { _id: req.user._id, dislikedUsers: { $ne: targetObjId } },
+      { $addToSet: { dislikedUsers: targetObjId } },
+      { new: true }
+    ).select('_id').lean();
+
+    if (!updatedUser) {
+      const exists = await User.exists({ _id: req.user._id });
+      if (!exists) return res.status(404).json({ success: false, message: 'User not found' });
+      return res.status(400).json({ success: false, message: 'User already disliked' });
     }
-
-    // Add to disliked users
-    currentUser.dislikedUsers.push(new mongoose.Types.ObjectId(targetUserId));
-    await currentUser.save();
 
     return res.json({ success: true, message: 'User disliked' });
   } catch (error) {
@@ -249,8 +249,12 @@ export const superLike = async (req: Request, res: Response): Promise<Response> 
       });
     }
 
-    // Check if target user exists
-    const targetUser = await User.findById(targetUserId);
+    // Optimization (⚡ Bolt): Fetch targetUser existence check and currentUser concurrently via Promise.all.
+    const [targetUser, currentUser] = (await Promise.all([
+      User.findById(targetUserId).select('_id').lean(),
+      User.findById(req.user._id),
+    ])) as [IUser | null, IUser | null];
+
     if (!targetUser) {
       return res.status(404).json({
         success: false,
@@ -258,7 +262,6 @@ export const superLike = async (req: Request, res: Response): Promise<Response> 
       });
     }
 
-    const currentUser = await User.findById(req.user._id) as IUser | null;
     if (!currentUser) return res.status(404).json({ success: false, message: 'User not found' });
 
     // Check if already favourited
