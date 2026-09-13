@@ -90,7 +90,10 @@ TicketOrderSchema.index({ paymentReference: 1, refundLockExpiresAt: 1 });
  *
  * When a reservation is first created, seed it from already-fulfilled orders so
  * orders that existed before this feature was deployed still count toward the
- * per-person limit.
+ * per-person limit. Concurrent first-time reservations are allowed to race on
+ * the unique key; a duplicate-key loser re-reads the reservation created by the
+ * winner and continues with the same conditional update instead of failing the
+ * ticket purchase.
  */
 TicketOrderSchema.pre('findOneAndUpdate', function (next) {
   const queryMiddleware = this;
@@ -113,11 +116,15 @@ TicketOrderSchema.pre('findOneAndUpdate', function (next) {
       const tier = party?.ticketTiers?.find((candidate: any) => candidate.tierId === current.tierId);
       if (!tier) throw new Error('Ticket tier not found while reserving buyer ticket limit');
 
-      const existingReservation = await TicketBuyerReservation.findOne({
+      const reservationKey = {
         partyId: current.partyId,
         tierId: current.tierId,
         buyerId: current.buyerId,
-      }).session(session || null).lean();
+      };
+
+      const existingReservation = await TicketBuyerReservation.findOne(reservationKey)
+        .session(session || null)
+        .lean();
 
       if (!existingReservation) {
         const existingFulfilled = await queryMiddleware.model.aggregate([
@@ -142,26 +149,30 @@ TicketOrderSchema.pre('findOneAndUpdate', function (next) {
         const seededQuantity = existingFulfilled[0]?.reservedQuantity || 0;
         const seededOrderIds = existingFulfilled[0]?.orderIds || [];
 
-        await TicketBuyerReservation.updateOne(
-          { partyId: current.partyId, tierId: current.tierId, buyerId: current.buyerId },
-          {
-            $setOnInsert: {
-              partyId: current.partyId,
-              tierId: current.tierId,
-              buyerId: current.buyerId,
-              reservedQuantity: seededQuantity,
-              orderIds: seededOrderIds,
+        try {
+          await TicketBuyerReservation.updateOne(
+            reservationKey,
+            {
+              $setOnInsert: {
+                ...reservationKey,
+                reservedQuantity: seededQuantity,
+                orderIds: seededOrderIds,
+              },
             },
-          },
-          { upsert: true, session }
-        );
+            { upsert: true, session }
+          );
+        } catch (error: any) {
+          // Another concurrent fulfillment may have inserted the unique
+          // reservation between our read and upsert. That is not a business
+          // failure; continue and let the conditional increment below decide
+          // whether this order fits within the per-person limit.
+          if (error?.code !== 11000) throw error;
+        }
       }
 
       const result = await TicketBuyerReservation.updateOne(
         {
-          partyId: current.partyId,
-          tierId: current.tierId,
-          buyerId: current.buyerId,
+          ...reservationKey,
           orderIds: { $ne: current._id },
           $expr: {
             $lte: [
