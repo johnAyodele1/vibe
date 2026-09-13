@@ -21,7 +21,7 @@ export const ClubsPage: React.FC = () => {
   const [clubs, setClubs] = useState<Club[]>([]);
   const [loading, setLoading] = useState(true);
   const [cityFilter, setCityFilter] = useState('');
-  const [openTodayOnly, setOpenTodayOnly] = useState(false);
+  const [openTonightOnly, setOpenTonightOnly] = useState(false);
   const [selectedGenre, setSelectedGenre] = useState('');
 
   const genresList = ['afrobeats', 'hip-hop', 'amapiano', 'highlife', 'dancehall'];
@@ -31,7 +31,7 @@ export const ClubsPage: React.FC = () => {
       setLoading(true);
       try {
         let url = `${API_BASE_URL}/clubs?`;
-        if (openTodayOnly) url += `openToday=true&`;
+        if (openTonightOnly) url += `openTonight=true&`;
         if (cityFilter) url += `city=${encodeURIComponent(cityFilter)}&`;
         if (selectedGenre) url += `genre=${encodeURIComponent(selectedGenre)}&`;
 
@@ -47,7 +47,7 @@ export const ClubsPage: React.FC = () => {
       }
     };
     fetchClubs();
-  }, [openTodayOnly, cityFilter, selectedGenre]);
+  }, [openTonightOnly, cityFilter, selectedGenre]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
@@ -75,9 +75,9 @@ export const ClubsPage: React.FC = () => {
         />
 
         <button
-          onClick={() => setOpenTodayOnly(!openTodayOnly)}
+          onClick={() => setOpenTonightOnly(!openTonightOnly)}
           className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors flex items-center gap-2 ${
-            openTodayOnly
+            openTonightOnly
               ? 'bg-green-500/20 border-green-500 text-green-400'
               : 'bg-[var(--az-bg-primary)] border-[var(--az-border)] text-[var(--az-text-secondary)]'
           }`}
