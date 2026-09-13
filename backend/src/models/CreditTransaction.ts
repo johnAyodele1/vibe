@@ -31,7 +31,9 @@ const creditTransactionSchema = new Schema<ICreditTransaction>(
         'paid_media_unlock',
         'spin_wheel',
         'call_refund',
-        'credit_purchase'
+        'credit_purchase',
+        'ticket_purchase',
+        'ticket_sale_earning'
       ],
     },
     amount: {
@@ -121,6 +123,16 @@ creditTransactionSchema.index(
     partialFilterExpression: {
       'metadata.callId': { $exists: true },
       'metadata.minuteIndex': { $exists: true },
+    },
+  }
+);
+
+creditTransactionSchema.index(
+  { 'metadata.orderId': 1, userId: 1, type: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      'metadata.orderId': { $exists: true },
     },
   }
 );

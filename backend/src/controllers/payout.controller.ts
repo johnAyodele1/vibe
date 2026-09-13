@@ -36,8 +36,11 @@ const buildPayoutDetailsSnapshot = (user: any) => {
 export const getEligiblePayout = async (req: Request, res: Response) => {
   try {
     const user = req.adultUser;
-    if (!user || user.role !== 'provider') {
-      return res.status(403).json({ success: false, error: 'Only providers can check eligible payouts' });
+    const isProvider = user?.role === 'provider';
+    const hasEarnings = await CreditTransaction.exists({ userId: user?._id, type: { $in: PROVIDER_EARNING_TYPES }, status: 'completed' });
+
+    if (!user || (!isProvider && !hasEarnings)) {
+      return res.status(403).json({ success: false, error: 'Only providers or accounts with earned revenue can check eligible payouts' });
     }
 
     // Optimization (⚡ Bolt): Execute independent queries for eligible transactions, disputed transactions,
@@ -517,8 +520,11 @@ export const markRefundCompleted = async (req: Request, res: Response) => {
 export const requestPayout = async (req: Request, res: Response) => {
   try {
     const user = req.adultUser;
-    if (!user || user.role !== 'provider') {
-      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Only providers can request payout' } });
+    const isProvider = user?.role === 'provider';
+    const hasEarnings = await CreditTransaction.exists({ userId: user?._id, type: { $in: PROVIDER_EARNING_TYPES }, status: 'completed' });
+
+    if (!user || (!isProvider && !hasEarnings)) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Only providers or accounts with earned revenue can request payout' } });
     }
 
     const profile: any = user.providerProfile || {};
@@ -717,8 +723,11 @@ export const requestPayout = async (req: Request, res: Response) => {
 export const getPayoutStatus = async (req: Request, res: Response) => {
   try {
     const user = req.adultUser;
-    if (!user || user.role !== 'provider') {
-      return res.status(403).json({ success: false, error: 'Only providers can view payout status' });
+    const isProvider = user?.role === 'provider';
+    const hasPayoutActivity = await PayoutRequest.exists({ providerId: user?._id });
+
+    if (!user || (!isProvider && !hasPayoutActivity)) {
+      return res.status(403).json({ success: false, error: 'Only providers or accounts with payout activity can view payout status' });
     }
 
     // Optimization (⚡ Bolt): Append .lean() to read-only queries to eliminate Mongoose document instantiation and model hydration overhead.
@@ -760,8 +769,11 @@ export const getPayoutStatus = async (req: Request, res: Response) => {
 export const getPayoutHistory = async (req: Request, res: Response) => {
   try {
     const user = req.adultUser;
-    if (!user || user.role !== 'provider') {
-      return res.status(403).json({ success: false, error: 'Only providers can view history' });
+    const isProvider = user?.role === 'provider';
+    const hasPayoutActivity = await PayoutRequest.exists({ providerId: user?._id });
+
+    if (!user || (!isProvider && !hasPayoutActivity)) {
+      return res.status(403).json({ success: false, error: 'Only providers or accounts with payout activity can view history' });
     }
 
     const page = parseInt(req.query.page as string) || 1;

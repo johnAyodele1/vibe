@@ -60,6 +60,21 @@ export type Accounting = {
   totalReversions?: number;
   totalReversionsNaira?: number;
   refundCount?: number;
+
+  // Ticket Sales & Revenue Pipeline
+  ticketSales?: {
+    grossTicketSales?: number;
+    platformFees?: number;
+    organizerPayouts?: number;
+    totalTicketsCount?: number;
+    topParties?: Array<{
+      partyId: string;
+      title: string;
+      grossSales: number;
+      platformFee: number;
+      ticketCount: number;
+    }>;
+  };
 };
 
 const money = (value?: number) => `💎 ${formatAmount(value || 0)}`;
@@ -275,6 +290,61 @@ const AdminAnalyticsAccountingSection: React.FC = () => {
           />
         </div>
       </div>
+
+      {/* 6. Ticket Revenue Pipeline (5%) */}
+      {data.ticketSales && (
+        <div>
+          <div className="mb-3">
+            <h3 className="text-[11px] uppercase tracking-widest text-neutral-300 font-bold">6. Party Ticketing Revenue (5% Platform Fee)</h3>
+            <p className="text-[11px] text-neutral-500 mt-0.5">
+              Party ticket sales breakdown: 5% platform fee retains, 95% organizer payout split.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Metric
+              label="Gross Ticket Sales"
+              value={naira(data.ticketSales.grossTicketSales)}
+              sub={`${(data.ticketSales.totalTicketsCount || 0).toLocaleString()} total ticket(s) sold`}
+              tone="text-emerald-400"
+            />
+            <Metric
+              label="Platform Fees (5%)"
+              value={naira(data.ticketSales.platformFees)}
+              sub="Platform net revenue from tickets"
+              tone="text-amber-400"
+            />
+            <Metric
+              label="Organizer Payouts (95%)"
+              value={naira(data.ticketSales.organizerPayouts)}
+              sub="Net organizer earnings from tickets"
+              tone="text-blue-400"
+            />
+            <Metric
+              label="Top Parties Count"
+              value={(data.ticketSales.topParties?.length || 0).toString()}
+              sub="Parties with ticket revenue"
+              tone="text-purple-400"
+            />
+          </div>
+
+          {data.ticketSales.topParties && data.ticketSales.topParties.length > 0 && (
+            <div className="mt-4 bg-[#130d10] border border-red-950/40 rounded-2xl p-5">
+              <h4 className="text-xs uppercase font-bold text-neutral-400 mb-3">Top Parties by Revenue</h4>
+              <div className="space-y-2">
+                {data.ticketSales.topParties.map((tp, idx) => (
+                  <div key={tp.partyId || idx} className="flex justify-between items-center text-xs border-b border-neutral-900 pb-2 last:border-0 last:pb-0">
+                    <span className="font-bold text-white">{idx + 1}. {tp.title}</span>
+                    <div className="text-right">
+                      <span className="font-mono text-amber-400 font-bold">₦{tp.grossSales?.toLocaleString()} gross</span>
+                      <span className="text-[10px] text-neutral-500 block">Fee (5%): ₦{tp.platformFee?.toLocaleString()}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 5. Refunds & Reversions */}
       <div>
