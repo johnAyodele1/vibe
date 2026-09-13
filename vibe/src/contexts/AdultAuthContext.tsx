@@ -70,6 +70,21 @@ export function extractErrorMessage(data: ApiResponseData | unknown): string {
   return 'Request failed';
 }
 
+const isAdultApiRequest = (input: RequestInfo | URL): boolean => {
+  const requestUrl = typeof input === 'string'
+    ? input
+    : input instanceof URL
+      ? input.toString()
+      : input.url;
+
+  try {
+    const pathname = new URL(requestUrl, window.location.origin).pathname;
+    return pathname.includes('/adult/');
+  } catch {
+    return requestUrl.includes('/adult/');
+  }
+};
+
 interface AdultUser { id: string; email: string; firstName: string; role: 'user' | 'provider'; credits: number; profilePhoto?: string; subscriptionTier?: 'none' | 'gold' | 'platinum' | 'diamond'; }
 interface AdultAuthContextType { user: AdultUser | null; isAuthenticated: boolean; loading: boolean; login: (credentials: Record<string, unknown>) => Promise<AdultUser>; signup: (data: Record<string, unknown>) => Promise<AdultUser>; logout: () => void; refetchUser: () => Promise<void>; updateCredits: (credits: number) => void; }
 const AdultAuthContext = createContext<AdultAuthContextType | undefined>(undefined);
@@ -97,7 +112,7 @@ export const AdultAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const originalFetch = window.fetch;
     window.fetch = async (...args) => {
       const response = await originalFetch(...args);
-      if (response.status === 401) {
+      if (response.status === 401 && isAdultApiRequest(args[0])) {
         const token = localStorage.getItem('adultAccessToken');
         if (token) { localStorage.removeItem('adultAccessToken'); setUser(null); toast.error('Session expired. Kindly relogin.', { id: 'session-expired' }); window.dispatchEvent(new CustomEvent('open-adult-auth-modal')); }
       }
