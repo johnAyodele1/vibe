@@ -12,6 +12,13 @@ const generateSlug = (name: string): string => {
     .replace(/-+/g, '-');
 };
 
+const parseClubTime = (timeStr?: string, defaultMins = 0): number => {
+  if (!timeStr) return defaultMins;
+  const parts = timeStr.split(':');
+  if (parts.length < 2) return defaultMins;
+  return (parseInt(parts[0], 10) || 0) * 60 + (parseInt(parts[1], 10) || 0);
+};
+
 export const isClubOpenNow = (
   clubHours: Array<{ day: number; isOpen: boolean; openTime?: string; closeTime?: string }>
 ): boolean => {
@@ -24,17 +31,10 @@ export const isClubOpenNow = (
   const currentDay = lagosNow.getDay();
   const currentMinutes = lagosNow.getHours() * 60 + lagosNow.getMinutes();
 
-  const parseTime = (timeStr?: string, defaultMins = 0): number => {
-    if (!timeStr) return defaultMins;
-    const parts = timeStr.split(':');
-    if (parts.length < 2) return defaultMins;
-    return (parseInt(parts[0], 10) || 0) * 60 + (parseInt(parts[1], 10) || 0);
-  };
-
   const todayHours = clubHours.find((h) => h.day === currentDay);
   if (todayHours && todayHours.isOpen) {
-    const openMins = parseTime(todayHours.openTime, 22 * 60);
-    const closeMins = parseTime(todayHours.closeTime, 4 * 60);
+    const openMins = parseClubTime(todayHours.openTime, 22 * 60);
+    const closeMins = parseClubTime(todayHours.closeTime, 4 * 60);
 
     if (openMins < closeMins) {
       if (currentMinutes >= openMins && currentMinutes <= closeMins) return true;
@@ -46,8 +46,8 @@ export const isClubOpenNow = (
   const prevDay = (currentDay + 6) % 7;
   const prevHours = clubHours.find((h) => h.day === prevDay);
   if (prevHours && prevHours.isOpen) {
-    const openMins = parseTime(prevHours.openTime, 22 * 60);
-    const closeMins = parseTime(prevHours.closeTime, 4 * 60);
+    const openMins = parseClubTime(prevHours.openTime, 22 * 60);
+    const closeMins = parseClubTime(prevHours.closeTime, 4 * 60);
     if (openMins > closeMins && currentMinutes <= closeMins) return true;
   }
 
@@ -65,15 +65,23 @@ export const isClubOpenTonight = (
   const currentDay = lagosNow.getDay();
 
   const todayHours = clubHours.find((h) => h.day === currentDay);
-  if (todayHours && todayHours.isOpen) return true;
+  if (!todayHours || !todayHours.isOpen) return false;
 
-  return isClubOpenNow(clubHours);
+  const eveningStart = 18 * 60;
+  const openMins = parseClubTime(todayHours.openTime, 22 * 60);
+  const closeMins = parseClubTime(todayHours.closeTime, 4 * 60);
+
+  // "Open Tonight" means today's schedule overlaps the evening window.
+  // A daytime-only schedule such as 09:00-17:00 must not be labelled tonight.
+  if (openMins >= eveningStart || closeMins > eveningStart) return true;
+
+  return false;
 };
 
 // GET /api/v1/clubs
 export const getClubs = async (req: Request, res: Response) => {
   try {
-    const { city, country, state, openToday, genre, page = '1', limit = '20' } = req.query;
+    const { city, country, state, openTonight, genre, page = '1', limit = '20' } = req.query;
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const limitNum = Math.min(50, Math.max(1, parseInt(limit as string, 10) || 20));
     const skip = (pageNum - 1) * limitNum;
@@ -85,12 +93,21 @@ export const getClubs = async (req: Request, res: Response) => {
     if (country) filter['location.country.code'] = (country as string).trim().toUpperCase();
     if (genre) filter.genres = { $in: [(genre as string).toLowerCase()] };
 
-    if (openToday === 'true') {
+    if (openTonight === 'true') {
       const lagosNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Lagos' }));
       const currentDay = lagosNow.getDay();
-      // openToday means the club is scheduled to operate today. Overnight
-      // opening from yesterday is represented separately by isOpenNow.
-      filter.operatingHours = { $elemMatch: { day: currentDay, isOpen: true } };
+      // Keep the filter aligned with isClubOpenTonight: today's schedule must
+      // overlap the 18:00-24:00 evening window. This excludes 09:00-17:00 clubs.
+      filter.operatingHours = {
+        $elemMatch: {
+          day: currentDay,
+          isOpen: true,
+          $or: [
+            { openTime: { $gte: '18:00' } },
+            { closeTime: { $gt: '18:00' } },
+          ],
+        },
+      };
     }
 
     const [clubs, total] = await Promise.all([
