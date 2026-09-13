@@ -34,18 +34,10 @@ export const getParties = async (req: Request, res: Response) => {
       startDate: { $gte: new Date() },
     };
 
-    if (city) {
-      filter['location.city'] = new RegExp(`^${(city as string).trim()}$`, 'i');
-    }
-    if (state) {
-      filter['location.state.code'] = (state as string).trim().toUpperCase();
-    }
-    if (country) {
-      filter['location.country.code'] = (country as string).trim().toUpperCase();
-    }
-    if (genre) {
-      filter.genres = { $in: [(genre as string).toLowerCase()] };
-    }
+    if (city) filter['location.city'] = new RegExp(`^${(city as string).trim()}$`, 'i');
+    if (state) filter['location.state.code'] = (state as string).trim().toUpperCase();
+    if (country) filter['location.country.code'] = (country as string).trim().toUpperCase();
+    if (genre) filter.genres = { $in: [(genre as string).toLowerCase()] };
     if (from || to) {
       filter.startDate = {};
       if (from) filter.startDate.$gte = new Date(from as string);
@@ -53,33 +45,20 @@ export const getParties = async (req: Request, res: Response) => {
     }
 
     const [parties, total] = await Promise.all([
-      Party.find(filter)
-        .sort({ isFeatured: -1, startDate: 1 })
-        .skip(skip)
-        .limit(limitNum)
-        .lean(),
+      Party.find(filter).sort({ isFeatured: -1, startDate: 1 }).skip(skip).limit(limitNum).lean(),
       Party.countDocuments(filter),
     ]);
 
     const formattedParties = parties.map((p) => {
       const isSoldOut = p.ticketTiers.every((t) => t.sold >= t.quantity || !t.isActive);
       const minPrice = p.ticketTiers.reduce((min, t) => (t.price < min ? t.price : min), Infinity);
-      return {
-        ...p,
-        isSoldOut,
-        startingPrice: minPrice === Infinity ? 0 : minPrice,
-      };
+      return { ...p, isSoldOut, startingPrice: minPrice === Infinity ? 0 : minPrice };
     });
 
     return res.json({
       success: true,
       parties: formattedParties,
-      pagination: {
-        page: pageNum,
-        limit: limitNum,
-        total,
-        pages: Math.ceil(total / limitNum),
-      },
+      pagination: { page: pageNum, limit: limitNum, total, pages: Math.ceil(total / limitNum) },
     });
   } catch (err: any) {
     console.error('Error fetching parties:', err);
@@ -99,16 +78,11 @@ export const getPartyById = async (req: Request, res: Response) => {
     }
 
     const party = await Party.findById(partyId).lean();
-    if (!party) {
-      return res.status(404).json({ success: false, error: 'Party not found' });
-    }
-
-    // Enforce public visibility constraint
+    if (!party) return res.status(404).json({ success: false, error: 'Party not found' });
     if (party.status !== 'approved' && !isAdmin && party.organizerId?.toString() !== userId?.toString()) {
       return res.status(404).json({ success: false, error: 'Party not found or not approved' });
     }
 
-    // Increment view count asynchronously
     void Party.findByIdAndUpdate(party._id, { $inc: { viewCount: 1 } });
 
     const formattedTiers = party.ticketTiers.map((t) => ({
@@ -117,13 +91,7 @@ export const getPartyById = async (req: Request, res: Response) => {
       isSoldOut: t.sold >= t.quantity,
     }));
 
-    return res.json({
-      success: true,
-      party: {
-        ...party,
-        ticketTiers: formattedTiers,
-      },
-    });
+    return res.json({ success: true, party: { ...party, ticketTiers: formattedTiers } });
   } catch (err: any) {
     console.error('Error fetching party detail:', err);
     return res.status(500).json({ success: false, error: err.message || 'Failed to fetch party detail' });
@@ -135,43 +103,23 @@ export const createParty = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).adultUser?._id || (req as any).user?._id;
     const userName = (req as any).adultUser?.displayName || (req as any).user?.displayName || (req as any).user?.firstName;
-    if (!userId) {
-      return res.status(401).json({ success: false, error: 'Unauthorized' });
-    }
+    if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
     const parseResult = createPartySchema.safeParse(req.body);
     if (!parseResult.success) {
-      return res.status(400).json({
-        success: false,
-        error: parseResult.error.issues[0]?.message || 'Invalid party data',
-      });
+      return res.status(400).json({ success: false, error: parseResult.error.issues[0]?.message || 'Invalid party data' });
     }
 
     const {
-      title,
-      description,
-      tagline,
-      coverImage,
-      gallery,
-      organizerName: reqOrganizerName,
-      organizerPhone,
-      venueName,
-      venueAddress,
-      location,
-      startDate,
-      endDate,
-      timezone = 'Africa/Lagos',
-      ticketTiers,
-      guardAccessCode,
-      genres,
-      vibes,
+      title, description, tagline, coverImage, gallery,
+      organizerName: reqOrganizerName, organizerPhone, venueName, venueAddress,
+      location, startDate, endDate, timezone = 'Africa/Lagos', ticketTiers,
+      guardAccessCode, genres, vibes,
     } = parseResult.data;
 
     const start = new Date(startDate);
     const end = new Date(endDate);
-    if (start >= end) {
-      return res.status(400).json({ success: false, error: 'Start date must be before end date' });
-    }
+    if (start >= end) return res.status(400).json({ success: false, error: 'Start date must be before end date' });
 
     const tierNameSet = new Set<string>();
     for (const t of ticketTiers) {
@@ -193,39 +141,24 @@ export const createParty = async (req: Request, res: Response) => {
       isActive: t.isActive !== false,
     }));
 
-    const rawPin = (guardAccessCode && String(guardAccessCode).trim().length === 6)
+    const rawPin = guardAccessCode && String(guardAccessCode).trim().length === 6
       ? String(guardAccessCode).trim()
       : generateGuardPin();
-
     const guardAccessCodeHash = await hashGuardPin(rawPin);
 
     const party = await Party.create({
-      title: title.trim(),
-      description: description.trim(),
-      tagline: tagline ? tagline.trim() : undefined,
-      coverImage,
-      gallery: gallery || [],
-      organizerId: userId,
-      organizerName: reqOrganizerName || userName || 'Organizer',
-      organizerPhone: organizerPhone || '',
-      venueName: venueName.trim(),
-      venueAddress: venueAddress.trim(),
-      location: location || {},
-      startDate: start,
-      endDate: end,
-      timezone,
-      ticketTiers: processedTiers,
-      platformFeeRate: 0.05, // Non-editable 5% platform fee
-      status: 'pending_review',
-      guardAccessCodeHash,
+      title: title.trim(), description: description.trim(), tagline: tagline ? tagline.trim() : undefined,
+      coverImage, gallery: gallery || [], organizerId: userId,
+      organizerName: reqOrganizerName || userName || 'Organizer', organizerPhone: organizerPhone || '',
+      venueName: venueName.trim(), venueAddress: venueAddress.trim(), location: location || {},
+      startDate: start, endDate: end, timezone, ticketTiers: processedTiers,
+      platformFeeRate: 0.05, status: 'pending_review', guardAccessCodeHash,
       genres: Array.isArray(genres) ? genres.map((g: string) => g.toLowerCase()) : [],
       vibes: Array.isArray(vibes) ? vibes.map((v: string) => v.toLowerCase()) : [],
     });
 
     return res.status(201).json({
-      success: true,
-      party,
-      guardPin: rawPin, // Return raw PIN once so organizer can copy it for guards
+      success: true, party, guardPin: rawPin,
       message: 'Party submitted for review. Admin typically reviews within 24 hours.',
     });
   } catch (err: any) {
@@ -239,44 +172,23 @@ export const updateParty = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).adultUser?._id || (req as any).user?._id;
     const { partyId } = req.params;
-
     const party = await Party.findById(partyId);
-    if (!party) {
-      return res.status(404).json({ success: false, error: 'Party not found' });
-    }
-
+    if (!party) return res.status(404).json({ success: false, error: 'Party not found' });
     if (party.organizerId.toString() !== userId?.toString()) {
       return res.status(403).json({ success: false, error: 'Forbidden: You are not the organizer of this party' });
     }
-
     if (party.status !== 'draft' && party.status !== 'pending_review') {
       return res.status(400).json({ success: false, error: 'Cannot update party after approval or cancellation' });
     }
 
     const parseResult = updatePartySchema.safeParse(req.body);
     if (!parseResult.success) {
-      return res.status(400).json({
-        success: false,
-        error: parseResult.error.issues[0]?.message || 'Invalid party update data',
-      });
+      return res.status(400).json({ success: false, error: parseResult.error.issues[0]?.message || 'Invalid party update data' });
     }
 
     const {
-      title,
-      description,
-      tagline,
-      coverImage,
-      gallery,
-      venueName,
-      venueAddress,
-      location,
-      startDate,
-      endDate,
-      timezone,
-      ticketTiers,
-      guardAccessCode,
-      genres,
-      vibes,
+      title, description, tagline, coverImage, gallery, venueName, venueAddress,
+      location, startDate, endDate, timezone, ticketTiers, guardAccessCode, genres, vibes,
     } = parseResult.data;
 
     if (title) party.title = title.trim();
@@ -289,13 +201,10 @@ export const updateParty = async (req: Request, res: Response) => {
     if (location) party.location = location;
     if (startDate) party.startDate = new Date(startDate);
     if (endDate) party.endDate = new Date(endDate);
-    if (party.startDate >= party.endDate) {
-      return res.status(400).json({ success: false, error: 'Start date must be before end date' });
-    }
+    if (party.startDate >= party.endDate) return res.status(400).json({ success: false, error: 'Start date must be before end date' });
     if (timezone) party.timezone = timezone;
     if (genres) party.genres = genres.map((g: string) => g.toLowerCase());
     if (vibes) party.vibes = vibes.map((v: string) => v.toLowerCase());
-
     if (guardAccessCode && String(guardAccessCode).trim().length === 6) {
       party.guardAccessCodeHash = await hashGuardPin(String(guardAccessCode).trim());
     }
@@ -303,18 +212,13 @@ export const updateParty = async (req: Request, res: Response) => {
     if (Array.isArray(ticketTiers) && ticketTiers.length > 0) {
       const tierIdSet = new Set<string>();
       const tierNameSet = new Set<string>();
-
       for (const t of ticketTiers) {
         if (t.tierId) {
-          if (tierIdSet.has(t.tierId)) {
-            return res.status(400).json({ success: false, error: `Duplicate ticket tier ID "${t.tierId}"` });
-          }
+          if (tierIdSet.has(t.tierId)) return res.status(400).json({ success: false, error: `Duplicate ticket tier ID "${t.tierId}"` });
           tierIdSet.add(t.tierId);
         }
         const nameKey = (t.name || '').trim().toLowerCase();
-        if (tierNameSet.has(nameKey)) {
-          return res.status(400).json({ success: false, error: `Duplicate ticket tier name "${t.name}"` });
-        }
+        if (tierNameSet.has(nameKey)) return res.status(400).json({ success: false, error: `Duplicate ticket tier name "${t.name}"` });
         tierNameSet.add(nameKey);
       }
 
@@ -326,10 +230,7 @@ export const updateParty = async (req: Request, res: Response) => {
         const newQty = Math.max(1, typeof t.quantity === 'number' ? t.quantity : parseInt(String(t.quantity), 10) || 1);
         const currentSold = existing ? existing.sold : 0;
         if (newQty < currentSold) {
-          return res.status(400).json({
-            success: false,
-            error: `Cannot reduce tier quantity below tickets already sold (${currentSold}) for tier "${t.name || existing?.name}"`,
-          });
+          return res.status(400).json({ success: false, error: `Cannot reduce tier quantity below tickets already sold (${currentSold}) for tier "${t.name || existing?.name}"` });
         }
       }
 
@@ -348,21 +249,15 @@ export const updateParty = async (req: Request, res: Response) => {
         };
       });
 
-      // Preserve existing tiers with sold > 0 if omitted from update payload (marking them inactive)
       for (const [existingId, existingTier] of existingTierMap.entries()) {
         if (existingTier.sold > 0 && !updatedSubmittedTierIds.has(existingId)) {
-          newTiersList.push({
-            ...existingTier,
-            isActive: false, // Mark inactive so no new tickets can be bought, but tier inventory contract remains
-          });
+          newTiersList.push({ ...existingTier, isActive: false });
         }
       }
-
       party.ticketTiers = newTiersList;
     }
 
     await party.save();
-
     return res.json({ success: true, party, message: 'Party updated successfully' });
   } catch (err: any) {
     console.error('Error updating party:', err);
@@ -376,12 +271,8 @@ export const cancelParty = async (req: Request, res: Response) => {
     const userId = (req as any).adultUser?._id || (req as any).user?._id;
     const isAdmin = (req as any).adultUser?.isAdmin || (req as any).user?.isAdmin;
     const { partyId } = req.params;
-
     const party = await Party.findById(partyId);
-    if (!party) {
-      return res.status(404).json({ success: false, error: 'Party not found' });
-    }
-
+    if (!party) return res.status(404).json({ success: false, error: 'Party not found' });
     if (!isAdmin && party.organizerId.toString() !== userId?.toString()) {
       return res.status(403).json({ success: false, error: 'Forbidden: You cannot cancel this party' });
     }
@@ -389,13 +280,11 @@ export const cancelParty = async (req: Request, res: Response) => {
     party.status = 'cancelled';
     await party.save();
 
-    // 1. Invalidate all issued tickets for this cancelled party
     await Ticket.updateMany(
       { partyId: party._id },
       { $set: { isValid: false, invalidReason: 'Party cancelled by organizer' } }
     );
 
-    // 2. Process automatic refunds for fulfilled ticket orders
     const fulfilledOrders = await TicketOrder.find({ partyId: party._id, status: 'fulfilled' }).lean();
     const diamondRate = await getDiamondNairaRate();
 
@@ -403,13 +292,10 @@ export const cancelParty = async (req: Request, res: Response) => {
       if (order.paymentProvider === 'wallet') {
         const requiredDiamonds = Math.ceil(order.priceNaira / diamondRate);
         const estimatedUsdVal = parseFloat((requiredDiamonds * 0.0075).toFixed(2));
-
         let session: mongoose.ClientSession | null = null;
         try {
           session = await mongoose.startSession();
           session.startTransaction();
-
-          // Atomic state claim: status 'fulfilled' -> 'refunded'
           const claimedOrder = await TicketOrder.findOneAndUpdate(
             { _id: order._id, status: 'fulfilled' },
             { $set: { status: 'refunded', updatedAt: new Date() } },
@@ -417,71 +303,44 @@ export const cancelParty = async (req: Request, res: Response) => {
           );
 
           if (claimedOrder) {
-            // Credit user wallet back
             await AdultUser.findByIdAndUpdate(order.buyerId, { $inc: { credits: requiredDiamonds } }, { session });
-
-            // Record CreditTransaction refund
-            await CreditTransaction.create(
-              [
-                {
-                  userId: order.buyerId,
-                  type: 'refund',
-                  amount: requiredDiamonds,
-                  usdAmount: estimatedUsdVal,
-                  nairaAmount: order.priceNaira,
-                  description: `Refund - Party '${party.title}' cancelled by organizer`,
-                  relatedUserId: party.organizerId,
-                  status: 'completed',
-                  metadata: { orderId: order._id, partyId: party._id },
-                },
-              ],
-              { session }
-            );
-
-            // Update associated Tickets
+            await CreditTransaction.create([{
+              userId: order.buyerId,
+              type: 'refund',
+              amount: requiredDiamonds,
+              usdAmount: estimatedUsdVal,
+              nairaAmount: order.priceNaira,
+              description: `Refund - Party '${party.title}' cancelled by organizer`,
+              relatedUserId: party.organizerId,
+              status: 'completed',
+              metadata: { orderId: order._id, partyId: party._id },
+            }], { session });
             await Ticket.updateMany(
               { orderId: order._id },
               { $set: { paymentStatus: 'refunded', isValid: false, invalidReason: 'Party cancelled by organizer', updatedAt: new Date() } },
               { session }
             );
-
-            // Revert organizer's ticket_sale_earning transaction
             await CreditTransaction.updateMany(
               { 'metadata.orderId': order._id, type: 'ticket_sale_earning' },
               { $set: { status: 'reverted', eligibleForPayout: false, updatedAt: new Date() } },
               { session }
             );
-
-            // Reconcile Party totalRevenue and tier sold inventory
             await Party.updateOne(
               { _id: party._id, 'ticketTiers.tierId': order.tierId },
-              {
-                $inc: {
-                  totalRevenue: -order.priceNaira,
-                  'ticketTiers.$.sold': -order.quantity,
-                },
-              },
+              { $inc: { totalRevenue: -order.priceNaira, 'ticketTiers.$.sold': -order.quantity } },
               { session }
             );
-
-            // Create PlatformEarning reversal
             if (order.platformFeeNaira > 0) {
-              await PlatformEarning.create(
-                [
-                  {
-                    source: 'ticket_refund',
-                    amount: -order.platformFeeNaira,
-                    nairaValue: -order.platformFeeNaira,
-                    fromUserId: order.buyerId,
-                    toProviderId: party.organizerId,
-                    referenceId: order._id,
-                    metadata: { partyId: party._id, partyTitle: party.title, orderId: order._id },
-                  },
-                ],
-                { session }
-              );
+              await PlatformEarning.create([{
+                source: 'ticket_refund',
+                amount: -order.platformFeeNaira,
+                nairaValue: -order.platformFeeNaira,
+                fromUserId: order.buyerId,
+                toProviderId: party.organizerId,
+                referenceId: order._id,
+                metadata: { partyId: party._id, partyTitle: party.title, orderId: order._id },
+              }], { session });
             }
-
             await session.commitTransaction();
           } else {
             await session.abortTransaction();
@@ -489,7 +348,6 @@ export const cancelParty = async (req: Request, res: Response) => {
         } catch (walletRefundErr: any) {
           if (session) await session.abortTransaction().catch(() => {});
           console.error(`[Party Cancel Wallet Refund Error] Order ${order._id} refund transaction failed. Error:`, walletRefundErr);
-          // Queue order in accounting_pending for background worker retry
           await TicketOrder.findByIdAndUpdate(order._id, {
             $set: {
               status: 'accounting_pending',
@@ -502,18 +360,12 @@ export const cancelParty = async (req: Request, res: Response) => {
           if (session) session.endSession();
         }
       } else if (order.paymentProvider === 'paystack' && order.paymentReference) {
-        // Fast queuing: mark Paystack orders as 'refund_pending' with immediate nextRefundAttemptAt
         await TicketOrder.findByIdAndUpdate(order._id, {
-          $set: {
-            status: 'refund_pending',
-            nextRefundAttemptAt: new Date(),
-            updatedAt: new Date(),
-          },
+          $set: { status: 'refund_pending', nextRefundAttemptAt: new Date(), updatedAt: new Date() },
         });
       }
     }
 
-    // 3. Reconcile pending and processing ticket orders for this party
     const pendingProcessingOrders = await TicketOrder.find({
       partyId: party._id,
       status: { $in: ['pending', 'processing'] },
@@ -521,31 +373,45 @@ export const cancelParty = async (req: Request, res: Response) => {
 
     for (const order of pendingProcessingOrders) {
       if (order.paymentProvider === 'paystack' && order.paymentReference) {
-        let isCaptured = false;
-        if (process.env.NODE_ENV !== 'test') {
+        let verificationState: 'success' | 'failed' | 'unknown' = 'unknown';
+        let verificationError: string | undefined;
+
+        if (process.env.NODE_ENV === 'test') {
+          verificationState = 'success';
+        } else {
           try {
             const verifyRes = await PaystackService.verifyTransaction(order.paymentReference);
             if (verifyRes?.status && verifyRes?.data?.status === 'success') {
-              isCaptured = true;
+              verificationState = 'success';
+            } else if (verifyRes?.data?.status === 'failed') {
+              verificationState = 'failed';
+            } else {
+              verificationError = verifyRes?.message || 'Paystack payment state is not yet terminal';
             }
-          } catch {
-            isCaptured = false;
+          } catch (verifyErr: any) {
+            verificationError = verifyErr?.message || 'Paystack verification failed';
           }
-        } else {
-          isCaptured = true;
         }
 
-        if (isCaptured) {
+        if (verificationState === 'success') {
+          await TicketOrder.findByIdAndUpdate(order._id, {
+            $set: { status: 'refund_pending', nextRefundAttemptAt: new Date(), updatedAt: new Date(), refundError: null },
+          });
+        } else if (verificationState === 'failed') {
+          await TicketOrder.findByIdAndUpdate(order._id, {
+            $set: { status: 'failed', updatedAt: new Date(), refundError: null },
+          });
+        } else {
+          // Verification failure is not payment failure. Keep the order in the
+          // refund/reconciliation queue so a captured transaction can still be
+          // refunded after Paystack becomes reachable again.
           await TicketOrder.findByIdAndUpdate(order._id, {
             $set: {
               status: 'refund_pending',
-              nextRefundAttemptAt: new Date(),
+              nextRefundAttemptAt: new Date(Date.now() + 5 * 60 * 1000),
+              refundError: verificationError || 'Paystack payment state is currently unknown',
               updatedAt: new Date(),
             },
-          });
-        } else {
-          await TicketOrder.findByIdAndUpdate(order._id, {
-            $set: { status: 'failed', updatedAt: new Date() },
           });
         }
       } else {
@@ -555,10 +421,13 @@ export const cancelParty = async (req: Request, res: Response) => {
       }
     }
 
-    // Trigger asynchronous Paystack refund reconciliation without blocking HTTP response
     void reconcilePendingTicketRefunds();
 
-    return res.json({ success: true, party, message: 'Party cancelled and tickets refunded/invalidated successfully' });
+    return res.json({
+      success: true,
+      party,
+      message: 'Party cancelled. Tickets were invalidated and eligible refunds were queued for processing.',
+    });
   } catch (err: any) {
     console.error('Error cancelling party:', err);
     return res.status(500).json({ success: false, error: err.message || 'Failed to cancel party' });
@@ -572,26 +441,15 @@ export const adminGetParties = async (req: Request, res: Response) => {
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const limitNum = Math.min(50, Math.max(1, parseInt(limit as string, 10) || 20));
     const skip = (pageNum - 1) * limitNum;
-
     const filter: any = {};
-    if (status && status !== 'all') {
-      filter.status = status;
-    }
+    if (status && status !== 'all') filter.status = status;
 
     const [parties, total] = await Promise.all([
       Party.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean(),
       Party.countDocuments(filter),
     ]);
 
-    return res.json({
-      success: true,
-      data: {
-        parties,
-        total,
-        page: pageNum,
-        limit: limitNum,
-      },
-    });
+    return res.json({ success: true, data: { parties, total, page: pageNum, limit: limitNum } });
   } catch (err: any) {
     console.error('Admin error fetching parties:', err);
     return res.status(500).json({ success: false, error: err.message || 'Failed to fetch admin parties' });
@@ -603,10 +461,7 @@ export const adminGetPartyDetail = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const party = await Party.findById(id).populate('organizerId', 'displayName email phone profilePhoto').lean();
-    if (!party) {
-      return res.status(404).json({ success: false, error: 'Party not found' });
-    }
-
+    if (!party) return res.status(404).json({ success: false, error: 'Party not found' });
     return res.json({ success: true, party });
   } catch (err: any) {
     console.error('Admin error fetching party detail:', err);
@@ -619,25 +474,12 @@ export const adminApproveParty = async (req: Request, res: Response) => {
   try {
     const adminId = (req as any).adultUser?._id || (req as any).user?._id;
     const { id } = req.params;
-
-    // Enforce state transition rule: pending_review -> approved
     const party = await Party.findOneAndUpdate(
       { _id: id, status: 'pending_review' },
-      {
-        $set: {
-          status: 'approved',
-          approvedAt: new Date(),
-          approvedBy: adminId,
-          rejectionReason: null,
-        },
-      },
+      { $set: { status: 'approved', approvedAt: new Date(), approvedBy: adminId, rejectionReason: null } },
       { new: true }
     ).lean();
-
-    if (!party) {
-      return res.status(400).json({ success: false, error: 'Party not found or not in pending review status' });
-    }
-
+    if (!party) return res.status(400).json({ success: false, error: 'Party not found or not in pending review status' });
     return res.json({ success: true, party, message: 'Party approved and is now live!' });
   } catch (err: any) {
     console.error('Admin error approving party:', err);
@@ -650,23 +492,12 @@ export const adminRejectParty = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { reason } = req.body;
-
-    // Enforce state transition rule: pending_review -> rejected
     const party = await Party.findOneAndUpdate(
       { _id: id, status: 'pending_review' },
-      {
-        $set: {
-          status: 'rejected',
-          rejectionReason: reason || 'Does not comply with event guidelines',
-        },
-      },
+      { $set: { status: 'rejected', rejectionReason: reason || 'Does not comply with event guidelines' } },
       { new: true }
     ).lean();
-
-    if (!party) {
-      return res.status(400).json({ success: false, error: 'Party not found or not in pending review status' });
-    }
-
+    if (!party) return res.status(400).json({ success: false, error: 'Party not found or not in pending review status' });
     return res.json({ success: true, party, message: 'Party rejected' });
   } catch (err: any) {
     console.error('Admin error rejecting party:', err);
@@ -678,15 +509,10 @@ export const adminRejectParty = async (req: Request, res: Response) => {
 export const adminToggleFeatureParty = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    // Enforce business invariant: only approved live parties can be featured
     const party = await Party.findOne({ _id: id, status: 'approved' });
-    if (!party) {
-      return res.status(400).json({ success: false, error: 'Party not found or not in approved status' });
-    }
-
+    if (!party) return res.status(400).json({ success: false, error: 'Party not found or not in approved status' });
     party.isFeatured = !party.isFeatured;
     await party.save();
-
     return res.json({ success: true, isFeatured: party.isFeatured, message: `Party ${party.isFeatured ? 'featured' : 'unfeatured'}` });
   } catch (err: any) {
     console.error('Admin error featuring party:', err);
