@@ -96,7 +96,7 @@ TicketSchema.index({ ticketCode: 1 });
 TicketSchema.index({ orderId: 1, ticketIndex: 1 }, { unique: true, sparse: true });
 
 TicketSchema.pre('validate', function (next) {
-  if (this.isNew) this.ticketCode = generateTicketCode();
+  if (this.isNew && !this.ticketCode) this.ticketCode = generateTicketCode();
   next();
 });
 
