@@ -35,6 +35,11 @@ export const createClubSchema = z.object({
   vibes: z.array(z.string()).optional(),
 });
 
+const partyDateSchema = z.object({
+  startDate: z.string().refine((val) => !isNaN(Date.parse(val)), 'Invalid start date'),
+  endDate: z.string().refine((val) => !isNaN(Date.parse(val)), 'Invalid end date'),
+});
+
 export const createPartySchema = z.object({
   title: z.string().min(3, 'Title must be at least 3 characters').max(100),
   description: z.string().min(10, 'Description must be at least 10 characters').max(2000),
@@ -72,6 +77,12 @@ export const createPartySchema = z.object({
   guardAccessCode: z.string().regex(/^\d{6}$/, 'Guard access PIN must be exactly 6 digits').optional(),
   genres: z.array(z.string()).optional(),
   vibes: z.array(z.string()).optional(),
+}).superRefine((data, ctx) => {
+  const start = new Date(data.startDate);
+  const end = new Date(data.endDate);
+  const now = new Date();
+  if (start < now) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['startDate'], message: 'Start date must be in the future' });
+  if (end <= start) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['endDate'], message: 'End date must be after start date' });
 });
 
 export const purchaseTicketsSchema = z.object({
@@ -83,7 +94,14 @@ export const purchaseTicketsSchema = z.object({
   paymentProvider: z.enum(['paystack', 'wallet', 'simulated']).optional().default('paystack'),
 });
 
-export const updatePartySchema = createPartySchema.partial();
+export const updatePartySchema = createPartySchema.partial().superRefine((data, ctx) => {
+  const start = data.startDate ? new Date(data.startDate) : undefined;
+  const end = data.endDate ? new Date(data.endDate) : undefined;
+  const now = new Date();
+  if (start && start < now) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['startDate'], message: 'Start date must be in the future' });
+  if (end && end < now) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['endDate'], message: 'End date must be in the future' });
+  if (start && end && end <= start) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['endDate'], message: 'End date must be after start date' });
+});
 
 export const checkinScanSchema = z.object({
   ticketCode: z.string().min(6, 'ticketCode is required'),
