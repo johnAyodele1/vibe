@@ -87,6 +87,10 @@ TicketOrderSchema.index({ paymentReference: 1, refundLockExpiresAt: 1 });
  * A read-then-count in that controller is not sufficient because two concurrent
  * orders can both observe the same prior count. This hook reserves the buyer's
  * quantity with a single conditional MongoDB update inside the caller's session.
+ *
+ * When a reservation is first created, seed it from already-fulfilled orders so
+ * orders that existed before this feature was deployed still count toward the
+ * per-person limit.
  */
 TicketOrderSchema.pre('findOneAndUpdate', function (next) {
   const queryMiddleware = this;
@@ -109,19 +113,49 @@ TicketOrderSchema.pre('findOneAndUpdate', function (next) {
       const tier = party?.ticketTiers?.find((candidate: any) => candidate.tierId === current.tierId);
       if (!tier) throw new Error('Ticket tier not found while reserving buyer ticket limit');
 
-      await TicketBuyerReservation.updateOne(
-        { partyId: current.partyId, tierId: current.tierId, buyerId: current.buyerId },
-        {
-          $setOnInsert: {
-            partyId: current.partyId,
-            tierId: current.tierId,
-            buyerId: current.buyerId,
-            reservedQuantity: 0,
-            orderIds: [],
+      const existingReservation = await TicketBuyerReservation.findOne({
+        partyId: current.partyId,
+        tierId: current.tierId,
+        buyerId: current.buyerId,
+      }).session(session || null).lean();
+
+      if (!existingReservation) {
+        const existingFulfilled = await queryMiddleware.model.aggregate([
+          {
+            $match: {
+              partyId: current.partyId,
+              tierId: current.tierId,
+              buyerId: current.buyerId,
+              status: 'fulfilled',
+              _id: { $ne: current._id },
+            },
           },
-        },
-        { upsert: true, session }
-      );
+          {
+            $group: {
+              _id: null,
+              reservedQuantity: { $sum: '$quantity' },
+              orderIds: { $push: '$_id' },
+            },
+          },
+        ]).session(session || null);
+
+        const seededQuantity = existingFulfilled[0]?.reservedQuantity || 0;
+        const seededOrderIds = existingFulfilled[0]?.orderIds || [];
+
+        await TicketBuyerReservation.updateOne(
+          { partyId: current.partyId, tierId: current.tierId, buyerId: current.buyerId },
+          {
+            $setOnInsert: {
+              partyId: current.partyId,
+              tierId: current.tierId,
+              buyerId: current.buyerId,
+              reservedQuantity: seededQuantity,
+              orderIds: seededOrderIds,
+            },
+          },
+          { upsert: true, session }
+        );
+      }
 
       const result = await TicketBuyerReservation.updateOne(
         {
