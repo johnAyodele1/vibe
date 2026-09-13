@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import CreditTransaction from '../models/CreditTransaction';
+import TicketOrder from '../models/TicketOrder';
 
 export interface PaystackInitializeOptions {
   email: string;
@@ -25,15 +26,15 @@ export interface PaystackVerifyResponse {
   data?: {
     id: number;
     domain: string;
-    status: string; // 'success', 'failed', 'abandoned', etc.
+    status: string;
     reference: string;
-    amount: number; // in kobo
+    amount: number;
     message?: string;
     gateway_response?: string;
     paid_at?: string;
     created_at?: string;
     channel?: string;
-    currency: string; // 'NGN'
+    currency: string;
     metadata?: any;
     customer?: {
       id: number;
@@ -145,13 +146,40 @@ export class PaystackService {
     amountKobo?: number
   ): Promise<{ status: boolean; message: string; data?: any }> {
     const secretKey = this.getSecretKey();
+    const lockToken = crypto.randomUUID();
+    const lockExpiresAt = new Date(Date.now() + 2 * 60 * 1000);
 
     if (process.env.NODE_ENV === 'test') {
       return { status: true, message: 'Transaction refund initiated' };
     }
 
+    // Serialize refund dispatch per TicketOrder. The provider-side GET/POST pair
+    // is not itself atomic, so two workers must not be allowed to POST concurrently.
+    const lockedOrder = await TicketOrder.findOneAndUpdate(
+      {
+        paymentReference: transactionRef,
+        $or: [
+          { refundLockExpiresAt: { $exists: false } },
+          { refundLockExpiresAt: { $lte: new Date() } },
+        ],
+      },
+      {
+        $set: {
+          refundLockToken: lockToken,
+          refundLockExpiresAt: lockExpiresAt,
+        },
+      },
+      { new: true }
+    );
+
+    if (!lockedOrder) {
+      return {
+        status: false,
+        message: 'Refund is already being processed for this payment reference',
+      };
+    }
+
     try {
-      // 1. PROVIDER-SIDE IDEMPOTENCY CHECK: Query existing Paystack refunds for this transaction reference
       const checkRes = await fetch(
         `https://api.paystack.co/refund?transaction=${encodeURIComponent(transactionRef)}`,
         {
@@ -179,7 +207,6 @@ export class PaystackService {
         }
       }
 
-      // 2. Perform Paystack refund request if not already processed
       const response = await fetch('https://api.paystack.co/refund', {
         method: 'POST',
         headers: {
@@ -192,10 +219,14 @@ export class PaystackService {
         }),
       });
 
-      const data = (await response.json()) as any;
-      return data;
+      return (await response.json()) as any;
     } catch (err: any) {
       return { status: false, message: err.message || 'Refund dispatch failed' };
+    } finally {
+      await TicketOrder.updateOne(
+        { _id: lockedOrder._id, refundLockToken: lockToken },
+        { $unset: { refundLockToken: 1, refundLockExpiresAt: 1 } }
+      ).catch(() => {});
     }
   }
 

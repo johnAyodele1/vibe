@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import crypto from 'crypto';
 
 export interface IEntryLog {
   action: 'entered' | 'exited' | 're_entered';
@@ -33,6 +34,11 @@ export interface ITicket extends Document {
   createdAt: Date;
   updatedAt: Date;
 }
+
+const generateTicketCode = (): string => {
+  const suffix = crypto.randomBytes(8).toString('base64url').slice(0, 10).toUpperCase();
+  return `ZPP-${suffix}`;
+};
 
 const TicketSchema = new Schema<ITicket>(
   {
@@ -88,6 +94,22 @@ TicketSchema.index({ partyId: 1, entryStatus: 1 });
 TicketSchema.index({ buyerId: 1, createdAt: -1 });
 TicketSchema.index({ ticketCode: 1 });
 TicketSchema.index({ orderId: 1, ticketIndex: 1 }, { unique: true, sparse: true });
+
+TicketSchema.pre('validate', function (next) {
+  if (this.isNew) this.ticketCode = generateTicketCode();
+  next();
+});
+
+// Check-in dashboard status counters must use the same validity predicate as its
+// total count. Restrict this middleware to status-count queries so unrelated
+// Ticket.countDocuments calls keep their original semantics.
+TicketSchema.pre('countDocuments', function () {
+  const query = this.getQuery() as any;
+  if (query.partyId && query.entryStatus) {
+    query.paymentStatus = 'paid';
+    query.isValid = true;
+  }
+});
 
 export const Ticket = mongoose.model<ITicket>('Ticket', TicketSchema);
 export default Ticket;
