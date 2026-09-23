@@ -46,7 +46,7 @@ export interface IParty extends Document {
   adminReviewNote?: string;
   rejectionReason?: string;
   approvedAt?: Date;
-  approvedBy?: mongoose.Types.ObjectId;
+  approvedBy?: string;
   guardAccessCodeHash?: string;
   genres: string[];
   vibes: string[];
@@ -108,7 +108,9 @@ const PartySchema = new Schema<IParty>(
     adminReviewNote: { type: String },
     rejectionReason: { type: String },
     approvedAt: { type: Date },
-    approvedBy: { type: Schema.Types.ObjectId, ref: 'AdultUser' },
+    // Admin authentication uses a virtual/system identity ("admin_user_id"),
+    // not an AdultUser ObjectId. Keep the audit actor as an opaque identifier.
+    approvedBy: { type: String },
     guardAccessCodeHash: { type: String },
     genres: [{ type: String }],
     vibes: [{ type: String }],
