@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { API_BASE_URL } from '../../config';
+import { V1_API_BASE_URL } from '../../config';
 
 interface ClubItem {
   _id: string;
@@ -33,7 +33,7 @@ export const PartiesAndClubs: React.FC = () => {
   useEffect(() => {
     const fetchClubs = async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/clubs?openTonight=true&limit=10`);
+        const res = await fetch(`${V1_API_BASE_URL}/clubs?openTonight=true&limit=10`);
         const data = await res.json();
         if (data.success && Array.isArray(data.clubs)) setOpenClubs(data.clubs);
       } catch (err) {
@@ -45,7 +45,7 @@ export const PartiesAndClubs: React.FC = () => {
 
     const fetchParties = async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/parties?limit=10`);
+        const res = await fetch(`${V1_API_BASE_URL}/parties?limit=10`);
         const data = await res.json();
         if (data.success && Array.isArray(data.parties)) setUpcomingParties(data.parties);
       } catch (err) {

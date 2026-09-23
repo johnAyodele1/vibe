@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { API_BASE_URL } from '../../config';
+import { V1_API_BASE_URL } from '../../config';
 import { toast } from 'sonner';
 
 export const CreatePartyPage: React.FC = () => {
@@ -34,6 +34,106 @@ export const CreatePartyPage: React.FC = () => {
     { name: 'VIP', description: 'VIP lounge access & line skip', price: 15000, quantity: 30, perPersonLimit: 2 },
   ]);
 
+  type FieldErrors = Record<string, string>;
+
+  const [errors, setErrors] = useState<FieldErrors>({});
+
+  const inputClass = (field: string, extra = '') =>
+    `w-full bg-[rgba(255,255,255,0.025)] border ${errors[field] ? 'border-red-400/70 ring-1 ring-red-400/20' : 'border-white/10'} text-white text-xs px-4 py-2.5 rounded-xl outline-none placeholder:text-white/20 hover:border-white/20 focus:border-[rgba(200,16,46,0.55)] focus:ring-2 focus:ring-[rgba(200,16,46,0.12)] transition-all duration-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_8px_30px_rgba(0,0,0,0.16)] backdrop-blur-sm ${extra}`;
+
+  const errorSummary = Object.entries(errors);
+
+  const getStepErrors = (stepToValidate: number): FieldErrors => {
+    const nextErrors: FieldErrors = {};
+
+    if (stepToValidate === 1) {
+      if (!title.trim()) nextErrors.title = 'Party title is required.';
+      else if (title.trim().length < 3) nextErrors.title = 'Party title must be at least 3 characters.';
+
+      if (!description.trim()) nextErrors.description = 'Description is required.';
+      else if (description.trim().length < 10) nextErrors.description = 'Description must be at least 10 characters.';
+    }
+
+    if (stepToValidate === 2) {
+      if (!venueName.trim()) nextErrors.venueName = 'Venue name is required.';
+      if (!venueAddress.trim()) nextErrors.venueAddress = 'Venue address is required.';
+      if (!startDate) nextErrors.startDate = 'Start date and time is required.';
+      if (!endDate) nextErrors.endDate = 'Expected end time is required.';
+
+      if (startDate && endDate) {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+
+        if (Number.isNaN(start.getTime())) nextErrors.startDate = 'Enter a valid start date and time.';
+        if (Number.isNaN(end.getTime())) nextErrors.endDate = 'Enter a valid end date and time.';
+        if (!Number.isNaN(start.getTime()) && start <= new Date()) nextErrors.startDate = 'Start date must be in the future.';
+        if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end <= start) {
+          nextErrors.endDate = 'End time must be after the start time.';
+        }
+      }
+    }
+
+    if (stepToValidate === 3) {
+      if (coverImage.trim() && !/^https?:\/\//i.test(coverImage.trim())) {
+        nextErrors.coverImage = 'Cover image must be a valid http(s) URL.';
+      }
+
+      if (organizerPhone.trim() && !/^\+?[0-9\s()\-]{7,20}$/.test(organizerPhone.trim())) {
+        nextErrors.organizerPhone = 'Enter a valid phone number.';
+      }
+    }
+
+    if (stepToValidate === 4) {
+      if (!/^\d{6}$/.test(guardAccessCode)) {
+        nextErrors.guardAccessCode = 'Security PIN must be exactly 6 digits.';
+      }
+
+      if (ticketTiers.length < 1) {
+        nextErrors.ticketTiers = 'Add at least one ticket tier.';
+      }
+
+      ticketTiers.forEach((tier, index) => {
+        if (!tier.name.trim()) nextErrors[`tierName-${index}`] = 'Tier name is required.';
+        if (!Number.isFinite(tier.price) || tier.price < 0) nextErrors[`tierPrice-${index}`] = 'Price cannot be negative.';
+        if (!Number.isInteger(tier.quantity) || tier.quantity <= 0) nextErrors[`tierQuantity-${index}`] = 'Quantity must be a whole number greater than 0.';
+        if (!Number.isInteger(tier.perPersonLimit) || tier.perPersonLimit <= 0) nextErrors[`tierLimit-${index}`] = 'Per-person limit must be at least 1.';
+        else if (Number.isInteger(tier.quantity) && tier.perPersonLimit > tier.quantity) {
+          nextErrors[`tierLimit-${index}`] = 'Per-person limit cannot exceed tier quantity.';
+        }
+      });
+    }
+
+    return nextErrors;
+  };
+
+  const validateStep = (stepToValidate: number) => {
+    const nextErrors = getStepErrors(stepToValidate);
+    setErrors(nextErrors);
+
+    if (Object.keys(nextErrors).length > 0) {
+      toast.error('Fix the highlighted fields before continuing');
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleNext = (nextStep: number) => {
+    if (validateStep(step)) {
+      setStep(nextStep);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const clearError = (field: string) => {
+    setErrors((current) => {
+      if (!current[field]) return current;
+      const nextErrors = { ...current };
+      delete nextErrors[field];
+      return nextErrors;
+    });
+  };
+
   const handleAddTier = () => {
     if (ticketTiers.length >= 5) {
       toast.error('Maximum 5 ticket tiers allowed');
@@ -53,13 +153,29 @@ export const CreatePartyPage: React.FC = () => {
     setTicketTiers(ticketTiers.filter((_, i) => i !== index));
   };
 
-  const handleUpdateTier = (index: number, field: string, value: any) => {
+  const handleUpdateTier = (index: number, field: string, value: string | number) => {
     const updated = [...ticketTiers];
     (updated[index] as any)[field] = value;
     setTicketTiers(updated);
+
+    if (field === 'name') clearError(`tierName-${index}`);
+    if (field === 'price') clearError(`tierPrice-${index}`);
+    if (field === 'quantity') clearError(`tierQuantity-${index}`);
+    if (field === 'perPersonLimit') clearError(`tierLimit-${index}`);
   };
 
   const handleSubmit = async () => {
+    const steps = [1, 2, 3, 4];
+    for (const stepToValidate of steps) {
+      const stepErrors = getStepErrors(stepToValidate);
+      if (Object.keys(stepErrors).length > 0) {
+        setStep(stepToValidate);
+        setErrors(stepErrors);
+        toast.error('Fix the highlighted fields before submitting');
+        return;
+      }
+    }
+
     const token = localStorage.getItem('adultAccessToken') || localStorage.getItem('token');
     if (!token) {
       toast.error('Please log in to submit a party');
@@ -67,48 +183,45 @@ export const CreatePartyPage: React.FC = () => {
       return;
     }
 
-    if (!title || !description || !venueName || !venueAddress || !startDate || !endDate) {
-      toast.error('Please fill in all required fields');
-      return;
-    }
-
     const defaultCover = coverImage.trim() || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=1000&auto=format&fit=crop';
 
     setSubmitting(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/parties`, {
+      const res = await fetch(`${V1_API_BASE_URL}/parties`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          title,
-          tagline,
-          description,
-          genres: genres.split(',').map((g) => g.trim()),
-          vibes: vibes.split(',').map((v) => v.trim()),
-          venueName,
-          venueAddress,
-          location: { city, country: { name: 'Nigeria', code: 'NG' } },
+          title: title.trim(),
+          tagline: tagline.trim(),
+          description: description.trim(),
+          genres: genres.split(',').map((g) => g.trim()).filter(Boolean),
+          vibes: vibes.split(',').map((v) => v.trim()).filter(Boolean),
+          venueName: venueName.trim(),
+          venueAddress: venueAddress.trim(),
+          location: { city: city.trim() || 'Lagos', country: { name: 'Nigeria', code: 'NG' } },
           startDate,
           endDate,
           coverImage: defaultCover,
-          organizerPhone,
+          organizerPhone: organizerPhone.trim(),
           guardAccessCode,
           ticketTiers,
         }),
       });
 
       const data = await res.json();
-      if (data.success) {
-        setCreatedGuardPin(data.guardPin || guardAccessCode);
-        toast.success('Party submitted for review!');
-      } else {
+
+      if (!res.ok || !data.success) {
         toast.error(data.error || 'Failed to submit party');
+        return;
       }
+
+      setCreatedGuardPin(data.guardPin || guardAccessCode);
+      toast.success('Party submitted for review!');
     } catch {
-      toast.error('Submission error');
+      toast.error('Submission error. Please check your connection and try again.');
     } finally {
       setSubmitting(false);
     }
@@ -166,14 +279,22 @@ export const CreatePartyPage: React.FC = () => {
       {step === 1 && (
         <div className="space-y-4 bg-[var(--az-bg-secondary)] p-6 rounded-2xl border border-[var(--az-border)]">
           <h2 className="text-lg font-bold text-white">Step 1: Event Info</h2>
+          {errorSummary.length > 0 && (
+            <div role="alert" className="rounded-xl border border-red-400/20 bg-red-500/5 px-4 py-3 space-y-1">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-red-300">Please fix the highlighted fields</p>
+              {errorSummary.map(([field, message]) => (
+                <p key={field} className="text-xs text-red-200">• {message}</p>
+              ))}
+            </div>
+          )}
           <div>
             <label className="text-xs text-neutral-400 block mb-1 font-bold">Party Title *</label>
             <input
               type="text"
               placeholder="e.g. Lagos Carnival Night"
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full bg-neutral-900 border border-neutral-800 text-white text-xs px-4 py-2.5 rounded-xl outline-none"
+              onChange={(e) => { setTitle(e.target.value); clearError('title'); }}
+              className={inputClass('title')}
             />
           </div>
           <div>
@@ -182,8 +303,8 @@ export const CreatePartyPage: React.FC = () => {
               type="text"
               placeholder="e.g. The biggest night of the weekend"
               value={tagline}
-              onChange={(e) => setTagline(e.target.value)}
-              className="w-full bg-neutral-900 border border-neutral-800 text-white text-xs px-4 py-2.5 rounded-xl outline-none"
+              onChange={(e) => { setTagline(e.target.value); clearError('tagline'); }}
+              className={inputClass('tagline')}
             />
           </div>
           <div>
@@ -192,8 +313,8 @@ export const CreatePartyPage: React.FC = () => {
               rows={4}
               placeholder="Describe the vibe, lineup, dress code, etc."
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full bg-neutral-900 border border-neutral-800 text-white text-xs p-4 rounded-xl outline-none"
+              onChange={(e) => { setDescription(e.target.value); clearError('description'); }}
+              className={inputClass('description', 'min-h-[120px] resize-y')}
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -203,7 +324,7 @@ export const CreatePartyPage: React.FC = () => {
                 type="text"
                 value={genres}
                 onChange={(e) => setGenres(e.target.value)}
-                className="w-full bg-neutral-900 border border-neutral-800 text-white text-xs px-4 py-2 rounded-xl outline-none"
+                className={inputClass('genres')}
               />
             </div>
             <div>
@@ -212,12 +333,12 @@ export const CreatePartyPage: React.FC = () => {
                 type="text"
                 value={vibes}
                 onChange={(e) => setVibes(e.target.value)}
-                className="w-full bg-neutral-900 border border-neutral-800 text-white text-xs px-4 py-2 rounded-xl outline-none"
+                className={inputClass('vibes')}
               />
             </div>
           </div>
           <button
-            onClick={() => setStep(2)}
+            onClick={() => handleNext(2)}
             className="w-full py-3 bg-[var(--az-accent-rose)] text-white text-xs font-bold uppercase rounded-xl mt-4"
           >
             Next: Venue & Date →
@@ -229,14 +350,22 @@ export const CreatePartyPage: React.FC = () => {
       {step === 2 && (
         <div className="space-y-4 bg-[var(--az-bg-secondary)] p-6 rounded-2xl border border-[var(--az-border)]">
           <h2 className="text-lg font-bold text-white">Step 2: Venue & Date</h2>
+          {errorSummary.length > 0 && (
+            <div role="alert" className="rounded-xl border border-red-400/20 bg-red-500/5 px-4 py-3 space-y-1">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-red-300">Please fix the highlighted fields</p>
+              {errorSummary.map(([field, message]) => (
+                <p key={field} className="text-xs text-red-200">• {message}</p>
+              ))}
+            </div>
+          )}
           <div>
             <label className="text-xs text-neutral-400 block mb-1 font-bold">Venue Name *</label>
             <input
               type="text"
               placeholder="e.g. Club Quilox"
               value={venueName}
-              onChange={(e) => setVenueName(e.target.value)}
-              className="w-full bg-neutral-900 border border-neutral-800 text-white text-xs px-4 py-2.5 rounded-xl outline-none"
+              onChange={(e) => { setVenueName(e.target.value); clearError('venueName'); }}
+              className={inputClass('venueName')}
             />
           </div>
           <div>
@@ -245,8 +374,8 @@ export const CreatePartyPage: React.FC = () => {
               type="text"
               placeholder="e.g. 873 Ozumba Mbadiwe Ave, Victoria Island"
               value={venueAddress}
-              onChange={(e) => setVenueAddress(e.target.value)}
-              className="w-full bg-neutral-900 border border-neutral-800 text-white text-xs px-4 py-2.5 rounded-xl outline-none"
+              onChange={(e) => { setVenueAddress(e.target.value); clearError('venueAddress'); }}
+              className={inputClass('venueAddress')}
             />
           </div>
           <div>
@@ -254,8 +383,8 @@ export const CreatePartyPage: React.FC = () => {
             <input
               type="text"
               value={city}
-              onChange={(e) => setCity(e.target.value)}
-              className="w-full bg-neutral-900 border border-neutral-800 text-white text-xs px-4 py-2.5 rounded-xl outline-none"
+              onChange={(e) => { setCity(e.target.value); clearError('city'); }}
+              className={inputClass('city')}
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -264,8 +393,8 @@ export const CreatePartyPage: React.FC = () => {
               <input
                 type="datetime-local"
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full bg-neutral-900 border border-neutral-800 text-white text-xs px-4 py-2 rounded-xl outline-none"
+                onChange={(e) => { setStartDate(e.target.value); clearError('startDate'); clearError('endDate'); }}
+                className={inputClass('startDate')}
               />
             </div>
             <div>
@@ -273,8 +402,8 @@ export const CreatePartyPage: React.FC = () => {
               <input
                 type="datetime-local"
                 value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-full bg-neutral-900 border border-neutral-800 text-white text-xs px-4 py-2 rounded-xl outline-none"
+                onChange={(e) => { setEndDate(e.target.value); clearError('endDate'); }}
+                className={inputClass('endDate')}
               />
             </div>
           </div>
@@ -282,7 +411,7 @@ export const CreatePartyPage: React.FC = () => {
             <button onClick={() => setStep(1)} className="w-1/3 py-3 bg-neutral-800 text-white text-xs font-bold uppercase rounded-xl">
               ← Back
             </button>
-            <button onClick={() => setStep(3)} className="w-2/3 py-3 bg-[var(--az-accent-rose)] text-white text-xs font-bold uppercase rounded-xl">
+            <button onClick={() => handleNext(3)} className="w-2/3 py-3 bg-[var(--az-accent-rose)] text-white text-xs font-bold uppercase rounded-xl">
               Next: Media →
             </button>
           </div>
@@ -293,14 +422,22 @@ export const CreatePartyPage: React.FC = () => {
       {step === 3 && (
         <div className="space-y-4 bg-[var(--az-bg-secondary)] p-6 rounded-2xl border border-[var(--az-border)]">
           <h2 className="text-lg font-bold text-white">Step 3: Media Upload</h2>
+          {errorSummary.length > 0 && (
+            <div role="alert" className="rounded-xl border border-red-400/20 bg-red-500/5 px-4 py-3 space-y-1">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-red-300">Please fix the highlighted fields</p>
+              {errorSummary.map(([field, message]) => (
+                <p key={field} className="text-xs text-red-200">• {message}</p>
+              ))}
+            </div>
+          )}
           <div>
             <label className="text-xs text-neutral-400 block mb-1 font-bold">Cover Banner Image URL</label>
             <input
               type="text"
               placeholder="https://..."
               value={coverImage}
-              onChange={(e) => setCoverImage(e.target.value)}
-              className="w-full bg-neutral-900 border border-neutral-800 text-white text-xs px-4 py-2.5 rounded-xl outline-none"
+              onChange={(e) => { setCoverImage(e.target.value); clearError('coverImage'); }}
+              className={inputClass('coverImage')}
             />
             <p className="text-[10px] text-neutral-500 mt-1">Leave empty to use recommended default banner.</p>
           </div>
@@ -310,15 +447,15 @@ export const CreatePartyPage: React.FC = () => {
               type="text"
               placeholder="+234..."
               value={organizerPhone}
-              onChange={(e) => setOrganizerPhone(e.target.value)}
-              className="w-full bg-neutral-900 border border-neutral-800 text-white text-xs px-4 py-2.5 rounded-xl outline-none"
+              onChange={(e) => { setOrganizerPhone(e.target.value); clearError('organizerPhone'); }}
+              className={inputClass('organizerPhone')}
             />
           </div>
           <div className="flex gap-3 pt-4">
             <button onClick={() => setStep(2)} className="w-1/3 py-3 bg-neutral-800 text-white text-xs font-bold uppercase rounded-xl">
               ← Back
             </button>
-            <button onClick={() => setStep(4)} className="w-2/3 py-3 bg-[var(--az-accent-rose)] text-white text-xs font-bold uppercase rounded-xl">
+            <button onClick={() => handleNext(4)} className="w-2/3 py-3 bg-[var(--az-accent-rose)] text-white text-xs font-bold uppercase rounded-xl">
               Next: Tickets & Security →
             </button>
           </div>
@@ -329,6 +466,14 @@ export const CreatePartyPage: React.FC = () => {
       {step === 4 && (
         <div className="space-y-6 bg-[var(--az-bg-secondary)] p-6 rounded-2xl border border-[var(--az-border)]">
           <h2 className="text-lg font-bold text-white">Step 4: Ticket Tiers & Guard Security PIN</h2>
+          {errorSummary.length > 0 && (
+            <div role="alert" className="rounded-xl border border-red-400/20 bg-red-500/5 px-4 py-3 space-y-1">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-red-300">Please fix the highlighted fields</p>
+              {errorSummary.map(([field, message]) => (
+                <p key={field} className="text-xs text-red-200">• {message}</p>
+              ))}
+            </div>
+          )}
 
           <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-xl text-xs text-amber-400 space-y-1">
             <p className="font-bold">⚡ Platform Revenue Split (5%):</p>
@@ -344,7 +489,7 @@ export const CreatePartyPage: React.FC = () => {
             </div>
 
             {ticketTiers.map((tier, idx) => (
-              <div key={idx} className="bg-neutral-900 p-4 rounded-xl border border-neutral-800 space-y-3">
+              <div key={idx} className="bg-[rgba(255,255,255,0.022)] p-4 rounded-xl border border-white/10 space-y-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.035),0_12px_34px_rgba(0,0,0,0.14)]">
                 <div className="flex justify-between items-center">
                   <span className="text-xs font-bold text-white">Tier #{idx + 1}</span>
                   {ticketTiers.length > 1 && (
@@ -359,28 +504,28 @@ export const CreatePartyPage: React.FC = () => {
                     placeholder="Tier Name (e.g. Regular)"
                     value={tier.name}
                     onChange={(e) => handleUpdateTier(idx, 'name', e.target.value)}
-                    className="bg-black border border-neutral-800 text-white text-xs px-3 py-2 rounded-lg"
+                    className={inputClass(`tierName-${idx}`)}
                   />
                   <input
                     type="number"
                     placeholder="Price in Naira (₦)"
                     value={tier.price}
                     onChange={(e) => handleUpdateTier(idx, 'price', parseFloat(e.target.value))}
-                    className="bg-black border border-neutral-800 text-white text-xs px-3 py-2 rounded-lg font-mono"
+                    className={inputClass(`tierPrice-${idx}`, 'font-mono')}
                   />
                   <input
                     type="number"
                     placeholder="Total Quantity"
                     value={tier.quantity}
                     onChange={(e) => handleUpdateTier(idx, 'quantity', parseInt(e.target.value, 10))}
-                    className="bg-black border border-neutral-800 text-white text-xs px-3 py-2 rounded-lg"
+                    className={inputClass(`tierQuantity-${idx}`)}
                   />
                   <input
                     type="number"
                     placeholder="Per-person Limit"
                     value={tier.perPersonLimit}
                     onChange={(e) => handleUpdateTier(idx, 'perPersonLimit', parseInt(e.target.value, 10))}
-                    className="bg-black border border-neutral-800 text-white text-xs px-3 py-2 rounded-lg"
+                    className={inputClass(`tierLimit-${idx}`)}
                   />
                 </div>
               </div>
@@ -393,8 +538,8 @@ export const CreatePartyPage: React.FC = () => {
               type="text"
               maxLength={6}
               value={guardAccessCode}
-              onChange={(e) => setGuardAccessCode(e.target.value)}
-              className="w-full bg-neutral-900 border border-neutral-800 text-white text-xs px-4 py-2.5 rounded-xl font-mono tracking-widest text-lg font-bold"
+              onChange={(e) => { setGuardAccessCode(e.target.value.replace(/\D/g, '').slice(0, 6)); clearError('guardAccessCode'); }}
+              className={inputClass('guardAccessCode', 'font-mono tracking-widest text-lg font-bold')}
             />
             <p className="text-[10px] text-neutral-500 mt-1">Guards will enter this PIN at door check-in scan screen.</p>
           </div>

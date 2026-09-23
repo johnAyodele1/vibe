@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { API_BASE_URL } from '../../config';
+import { V1_API_BASE_URL } from '../../config';
 
 interface ClubDetail {
   _id: string;
@@ -32,7 +32,7 @@ export const ClubDetailPage: React.FC = () => {
   useEffect(() => {
     const fetchClub = async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/clubs/${clubId}`);
+        const res = await fetch(`${V1_API_BASE_URL}/clubs/${clubId}`);
         const data = await res.json();
         if (data.success && data.club) {
           setClub(data.club);

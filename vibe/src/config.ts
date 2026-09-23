@@ -21,5 +21,8 @@ const getSocketUrl = () => {
 // Use full backend URL for production, relative path for development
 export const API_BASE_URL = getApiBaseUrl();
 
+// Public clubs/parties and ticket routes are mounted under /api/v1.
+export const V1_API_BASE_URL = API_BASE_URL.endsWith('/v1') ? API_BASE_URL : `${API_BASE_URL}/v1`;
+
 // Socket URL for real-time connections
 export const SOCKET_URL = getSocketUrl();
