@@ -9,6 +9,7 @@ import { recordPlatformEarning } from '../shared/fees';
 import { getDiamondNairaRate } from '../shared/pricing';
 import { sendPushToUser } from '../shared/push';
 import { PROVIDER_EARNING_TYPES } from '../shared/earnings';
+import PartyPayoutRequest from '../models/PartyPayoutRequest';
 
 /**
  * Helper to construct payout details snapshot from provider profile.
@@ -811,7 +812,6 @@ export const getPayoutHistory = async (req: Request, res: Response) => {
 /**
  * GET /admin/payouts
  */
-export const adminGetPayouts = async (req: Request, res: Response) => {
   try {
     if (!verifyAdminAuth(req)) {
       return res.status(403).json({ success: false, error: 'Admin authorization required' });
@@ -820,268 +820,55 @@ export const adminGetPayouts = async (req: Request, res: Response) => {
     const status = req.query.status as string;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
-
     const filter: any = {};
-    if (status && status !== 'all') {
-      filter.status = status;
-    }
+    if (status && status !== 'all') filter.status = status;
 
-    // Optimization (⚡ Bolt): Use .lean() on read-only admin query to eliminate document hydration overhead
-    const requests = await PayoutRequest.find(filter)
-      .sort({ requestedAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(limit)
-      .lean();
-
-    const total = await PayoutRequest.countDocuments(filter);
-
-    // Optimization (⚡ Bolt): Single database aggregation query for counts breakdown instead of 5 separate count queries
-    const countAgg = await PayoutRequest.aggregate([
-      { $group: { _id: '$status', count: { $sum: 1 } } }
+    const [requests, partyRequests] = await Promise.all([
+      PayoutRequest.find(filter).sort({ requestedAt: -1 }).lean(),
+      PartyPayoutRequest.find().sort({ requestedAt: -1 }).lean(),
     ]);
-    const countsMap = new Map(countAgg.map(item => [item._id, item.count]));
 
-    const counts = {
-      queued: countsMap.get('queued') || 0,
-      verifying: countsMap.get('verifying') || 0,
-      processing: countsMap.get('processing') || 0,
-      completed: countsMap.get('completed') || 0,
-      rejected: countsMap.get('rejected') || 0,
-    };
+    const mappedPartyRequests = partyRequests
+      .map((payout) => ({
+        _id: payout._id,
+        providerId: payout.organizerId,
+        providerName: payout.partyTitle,
+        amount: 0,
+        amountNaira: payout.amountNaira,
+        nairaRateSnapshot: 1,
+        status: payout.status === 'requested' ? 'queued' : payout.status === 'paid' ? 'completed' : payout.status,
+        payoutMethod: 'bank',
+        payoutDetails: payout.payoutDetails,
+        requestedAt: payout.requestedAt,
+        adminReference: payout.adminReference,
+        rejectedReason: payout.adminNotes,
+        isPartyPayout: true,
+        partyTitle: payout.partyTitle,
+      }));
+
+    const combined = [...requests.map((request) => ({ ...request, isPartyPayout: false })), ...mappedPartyRequests]
+      .filter((request) => !status || status === 'all' || request.status === status)
+      .sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime());
+
+    const total = combined.length;
+    const paged = combined.slice((page - 1) * limit, page * limit);
+
+    const countAgg = await PayoutRequest.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]);
+    const countsMap = new Map(countAgg.map(item => [item._id, item.count]));
+    for (const payout of mappedPartyRequests) {
+      countsMap.set(payout.status, (countsMap.get(payout.status) || 0) + 1);
+    }
 
     return res.json({
       success: true,
-      requests,
-      counts,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit)
-      }
-    });
-  } catch (error: any) {
-    return res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-/**
- * PUT /admin/payouts/:requestId/verify
- */
-export const adminVerifyPayout = async (req: Request, res: Response) => {
-  try {
-    if (!verifyAdminAuth(req)) {
-      return res.status(403).json({ success: false, error: 'Admin authorization required' });
-    }
-
-    const { requestId } = req.params;
-    const payout = await PayoutRequest.findById(requestId);
-
-    if (!payout) {
-      return res.status(404).json({ success: false, message: 'Payout request not found' });
-    }
-
-    if (payout.status !== 'queued') {
-      return res.status(400).json({ success: false, message: 'Payout request must be queued to verify' });
-    }
-
-    payout.status = 'verifying';
-    payout.verifyingAt = new Date();
-    payout.processedBy = (req as any).adminId || (req as any).userId || undefined;
-
-    await payout.save();
-    return res.json({ success: true, data: payout });
-  } catch (error: any) {
-    return res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-/**
- * PUT /admin/payouts/:requestId/process
- */
-export const adminProcessPayout = async (req: Request, res: Response) => {
-  try {
-    if (!verifyAdminAuth(req)) {
-      return res.status(403).json({ success: false, error: 'Admin authorization required' });
-    }
-
-    const { requestId } = req.params;
-    const payout = await PayoutRequest.findById(requestId);
-
-    if (!payout) {
-      return res.status(404).json({ success: false, message: 'Payout request not found' });
-    }
-
-    if (payout.status !== 'verifying') {
-      return res.status(400).json({ success: false, message: 'Payout request must be in verifying status to process' });
-    }
-
-    payout.status = 'processing';
-    payout.processingAt = new Date();
-
-    await payout.save();
-    return res.json({ success: true, data: payout });
-  } catch (error: any) {
-    return res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-/**
- * PUT /admin/payouts/:requestId/complete
- */
-export const adminCompletePayout = async (req: Request, res: Response) => {
-  try {
-    if (!verifyAdminAuth(req)) {
-      return res.status(403).json({ success: false, error: 'Admin authorization required' });
-    }
-
-    const { requestId } = req.params;
-    const { reference } = req.body;
-    const payout = await PayoutRequest.findById(requestId);
-
-    if (!payout) {
-      return res.status(404).json({ success: false, message: 'Payout request not found' });
-    }
-
-    if (payout.status !== 'processing') {
-      return res.status(400).json({ success: false, message: 'Payout request must be in processing status to complete' });
-    }
-
-    // Filter out any transaction that has been reverted in the meantime
-    const validTxs = await CreditTransaction.find({
-      _id: { $in: payout.eligibleTransactionIds },
-      status: { $ne: 'reverted' }
+      requests: paged,
+      counts: {
+        queued: countsMap.get('queued') || 0,
+        verifying: countsMap.get('verifying') || 0,
+        processing: countsMap.get('processing') || 0,
+        completed: countsMap.get('completed') || 0,
+        rejected: countsMap.get('rejected') || 0,
+      },
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) }
     });
 
-    const validTxIds = validTxs.map(t => t._id);
-    const actualPayableAmount = validTxs.reduce((sum, t) => sum + Math.abs(t.amount), 0);
-
-    // 1. Deduct diamonds from provider wallet balance
-    const provider = await AdultUser.findById(payout.providerId);
-    if (!provider) {
-      return res.status(404).json({ success: false, message: 'Provider user not found' });
-    }
-
-    const payoutDeduction = Math.min(payout.amount, actualPayableAmount);
-
-    if (provider.credits < payoutDeduction) {
-      return res.status(400).json({ success: false, message: 'Provider has insufficient credits to complete this payout' });
-    }
-
-    provider.credits -= payoutDeduction;
-    if (provider.providerProfile) {
-      (provider.providerProfile as any).totalPayouts = ((provider.providerProfile as any).totalPayouts || 0) + payoutDeduction;
-    }
-    await provider.save();
-
-    // 2. Mark valid covered transactions as paidOut: true (excluding reverted)
-    await CreditTransaction.updateMany(
-      { _id: { $in: validTxIds } },
-      { $set: { paidOut: true } }
-    );
-
-    // 3. Create a debit "payout" credit transaction to keep historical records consistent
-    await CreditTransaction.create({
-      userId: payout.providerId,
-      type: 'payout',
-      amount: -payout.amount,
-      usdAmount: -(payout.amount * 0.0075),
-      nairaAmount: -payout.amountNaira,
-      description: `Payout completed: Ref ${reference || 'N/A'}`,
-      status: 'completed',
-    });
-
-    // 4. Update PayoutRequest
-    payout.status = 'completed';
-    payout.completedAt = new Date();
-    payout.adminReference = reference;
-    await payout.save();
-
-    // 5. Emit socket event
-    const ns = req.app.get('adultNamespace');
-    if (ns) {
-      ns.to(`user:${payout.providerId}`).emit('payout:completed', {
-        requestId: payout._id,
-        amount: payout.amount,
-        adminReference: reference,
-      });
-    }
-
-    // 6. Send push notification
-    sendPushToUser(payout.providerId, {
-      title: '✅ Payout Sent!',
-      body: `Your payout of ₦${payout.amountNaira.toLocaleString('en-NG')} has been sent!`,
-      tag: 'payout',
-      url: '/adult/provider/payout',
-      type: 'payout_update',
-      unreadCount: 0,
-    }).catch(err => console.error('[Push] Error sending completed payout push:', err));
-
-    return res.json({ success: true, data: payout });
-  } catch (error: any) {
-    return res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-/**
- * PUT /admin/payouts/:requestId/reject
- */
-export const adminRejectPayout = async (req: Request, res: Response) => {
-  try {
-    if (!verifyAdminAuth(req)) {
-      return res.status(403).json({ success: false, error: 'Admin authorization required' });
-    }
-
-    const { requestId } = req.params;
-    const { reason } = req.body;
-
-    if (!reason || reason.trim() === '') {
-      return res.status(400).json({ success: false, message: 'Reason for rejection is required' });
-    }
-
-    const payout = await PayoutRequest.findById(requestId);
-
-    if (!payout) {
-      return res.status(404).json({ success: false, message: 'Payout request not found' });
-    }
-
-    if (!['queued', 'verifying', 'processing'].includes(payout.status)) {
-      return res.status(400).json({ success: false, message: 'Can only reject pending/active payout requests' });
-    }
-
-    // 1. Return transactions to eligible state (remove inPayoutRequest)
-    await CreditTransaction.updateMany(
-      { _id: { $in: payout.eligibleTransactionIds } },
-      { $unset: { inPayoutRequest: '' } }
-    );
-
-    // 2. Update status and save
-    payout.status = 'rejected';
-    payout.rejectedReason = reason;
-    payout.rejectedAt = new Date();
-    await payout.save();
-
-    // 3. Emit socket event
-    const ns = req.app.get('adultNamespace');
-    if (ns) {
-      ns.to(`user:${payout.providerId}`).emit('payout:rejected', {
-        requestId: payout._id,
-        reason,
-      });
-    }
-
-    // 4. Send push notification
-    sendPushToUser(payout.providerId, {
-      title: '⚠️ Payout Update',
-      body: `Your payout request status has been updated.`,
-      tag: 'payout',
-      url: '/adult/provider/payout',
-      type: 'payout_update',
-      unreadCount: 0,
-    }).catch(err => console.error('[Push] Error sending rejected payout push:', err));
-
-    return res.json({ success: true, data: payout });
-  } catch (error: any) {
-    return res.status(500).json({ success: false, error: error.message });
-  }
-};
