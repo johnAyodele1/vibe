@@ -176,9 +176,9 @@ export const MyTicketsPage: React.FC = () => {
 
               <button
                 onClick={() => setSelectedQrTicket(ticket)}
-                className="px-6 py-2.5 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-white text-xs font-bold rounded-full transition-colors flex items-center justify-center gap-2"
+                className="px-6 py-2.5 bg-[var(--az-bg-tertiary)] hover:bg-[var(--az-bg-primary)] border border-[var(--az-accent-gold)]/50 hover:border-[var(--az-accent-gold)] text-[var(--az-accent-gold)] text-xs font-bold rounded-full transition-colors flex items-center justify-center gap-2"
               >
-                <span>📱 View QR Code</span>
+                <span>View QR Code</span>
               </button>
             </div>
           ))}
