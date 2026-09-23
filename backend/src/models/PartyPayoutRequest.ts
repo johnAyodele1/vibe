@@ -1,6 +1,6 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
-export type PartyPayoutStatus = 'requested' | 'processing' | 'paid' | 'rejected';
+export type PartyPayoutStatus = 'requested' | 'verifying' | 'processing' | 'paid' | 'rejected';
 
 export interface IPartyPayoutRequest extends Document {
   partyId: mongoose.Types.ObjectId;
@@ -32,7 +32,7 @@ const partyPayoutRequestSchema = new Schema<IPartyPayoutRequest>(
     },
     status: {
       type: String,
-      enum: ['requested', 'processing', 'paid', 'rejected'],
+      enum: ['requested', 'verifying', 'processing', 'paid', 'rejected'],
       default: 'requested',
       index: true,
     },
