@@ -173,13 +173,11 @@ router.put('/clubs/:clubId', verifyAdultJWT, updateClub);
 
 // ── PARTIES ─────────────────────────────────────────────────
 router.get('/parties', getParties);
+router.get('/parties/hosted/me', verifyAdultJWT, getMyHostedParties);
 router.get('/parties/:partyId', getPartyById);
 router.post('/parties', verifyAdultJWT, createParty);
 router.put('/parties/:partyId', verifyAdultJWT, updateParty);
 router.delete('/parties/:partyId', verifyAdultJWT, cancelParty);
-router.get('/parties/:partyId/payout', verifyAdultJWT, getPartyPayout);
-router.post('/parties/:partyId/payout', verifyAdultJWT, requestPartyPayout);
-router.get('/parties/hosted/me', verifyAdultJWT, getMyHostedParties);
 router.get('/parties/:partyId/payout', verifyAdultJWT, getPartyPayout);
 router.post('/parties/:partyId/payout', verifyAdultJWT, requestPartyPayout);
 
