@@ -9,7 +9,6 @@ import { recordPlatformEarning } from '../shared/fees';
 import { getDiamondNairaRate } from '../shared/pricing';
 import { sendPushToUser } from '../shared/push';
 import { PROVIDER_EARNING_TYPES } from '../shared/earnings';
-import PartyPayoutRequest from '../models/PartyPayoutRequest';
 
 /**
  * Helper to construct payout details snapshot from provider profile.
