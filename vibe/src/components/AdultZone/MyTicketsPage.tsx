@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { API_BASE_URL } from '../../config';
+import { V1_API_BASE_URL } from '../../config';
 import { toast } from 'sonner';
 
 interface TicketItem {
@@ -44,7 +44,7 @@ export const MyTicketsPage: React.FC = () => {
       if (payRef) {
         toast.loading('Verifying Paystack ticket payment...', { id: 'verify-tkt' });
         try {
-          const verifyRes = await fetch(`${API_BASE_URL}/parties/orders/${payRef}/verify`, {
+          const verifyRes = await fetch(`${V1_API_BASE_URL}/parties/orders/${payRef}/verify`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -67,7 +67,7 @@ export const MyTicketsPage: React.FC = () => {
       }
 
       try {
-        const res = await fetch(`${API_BASE_URL}/me/tickets`, {
+        const res = await fetch(`${V1_API_BASE_URL}/me/tickets`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         const data = await res.json();

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { API_BASE_URL } from '../../config';
+import { V1_API_BASE_URL } from '../../config';
 import { toast } from 'sonner';
 
 interface TicketTier {
@@ -51,7 +51,7 @@ export const PartyDetailPage: React.FC = () => {
   useEffect(() => {
     const fetchParty = async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/parties/${partyId}`);
+        const res = await fetch(`${V1_API_BASE_URL}/parties/${partyId}`);
         const data = await res.json();
         if (data.success && data.party) {
           setParty(data.party);
@@ -86,7 +86,7 @@ export const PartyDetailPage: React.FC = () => {
 
     try {
       const token = localStorage.getItem('adultAccessToken') || localStorage.getItem('token');
-      const res = await fetch(`${API_BASE_URL}/parties/${party._id}/tickets/orders`, {
+      const res = await fetch(`${V1_API_BASE_URL}/parties/${party._id}/tickets/orders`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

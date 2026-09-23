@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { API_BASE_URL } from '../../config';
+import { V1_API_BASE_URL } from '../../config';
 
 interface Party {
   _id: string;
@@ -28,7 +28,7 @@ export const PartiesPage: React.FC = () => {
     const fetchParties = async () => {
       setLoading(true);
       try {
-        let url = `${API_BASE_URL}/parties?`;
+        let url = `${V1_API_BASE_URL}/parties?`;
         if (cityFilter) url += `city=${encodeURIComponent(cityFilter)}&`;
         if (selectedGenre) url += `genre=${encodeURIComponent(selectedGenre)}&`;
 

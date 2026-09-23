@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { API_BASE_URL } from '../../config';
+import { V1_API_BASE_URL } from '../../config';
 
 interface ScanResult {
   success: boolean;
@@ -42,7 +42,7 @@ export const GuardScanPage: React.FC = () => {
 
     setScanning(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/parties/${partyId}/checkin/scan`, {
+      const res = await fetch(`${V1_API_BASE_URL}/parties/${partyId}/checkin/scan`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

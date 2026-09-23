@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { API_BASE_URL } from '../../config';
+import { V1_API_BASE_URL } from '../../config';
 
 interface Club {
   _id: string;
@@ -30,7 +30,7 @@ export const ClubsPage: React.FC = () => {
     const fetchClubs = async () => {
       setLoading(true);
       try {
-        let url = `${API_BASE_URL}/clubs?`;
+        let url = `${V1_API_BASE_URL}/clubs?`;
         if (openTonightOnly) url += `openTonight=true&`;
         if (cityFilter) url += `city=${encodeURIComponent(cityFilter)}&`;
         if (selectedGenre) url += `genre=${encodeURIComponent(selectedGenre)}&`;
