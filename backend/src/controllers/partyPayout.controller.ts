@@ -103,7 +103,8 @@ export const getPartyPayout = async (req: Request, res: Response) => {
 export const requestPartyPayout = async (req: Request, res: Response) => {
   try {
     const organizerId = getAdultUserId(req);
-    const party = await ensureOrganizer(req.params.partyId, organizerId);
+    const partyId = Array.isArray(req.params.partyId) ? req.params.partyId[0] : req.params.partyId;
+    const party = await ensureOrganizer(partyId, organizerId);
     if (!party) return res.status(404).json({ success: false, error: 'Party not found' });
 
     if (new Date(party.endDate) >= new Date()) {
