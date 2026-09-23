@@ -13,7 +13,6 @@ export const PROVIDER_EARNING_TYPES = [
   'paid_media_unlock',
   'spin_earning',
   'spin_wheel',
-  'ticket_sale_earning',
 ];
 
 export const REVERT_TYPES = [

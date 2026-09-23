@@ -235,20 +235,22 @@ export const PartyDetailPage: React.FC = () => {
               </div>
 
               {party.organizerName && (
-                <div className="flex items-center gap-2 pt-2 border-t border-white/5">
-                  <span>👤</span>
-                  <span>Hosted by <strong>{party.organizerName}</strong></span>
+                <div className="pt-4 border-t border-white/5">
+                  <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-[var(--az-text-muted)]">Hosted by</p>
+                  <div className="mt-2 flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--az-accent-gold)]/30 bg-[var(--az-bg-tertiary)] text-[var(--az-accent-gold)]">H</div>
+                    <div>
+                      <p className="font-bold text-white">{party.organizerName}</p>
+                      <p className="text-[10px] text-[var(--az-text-muted)]">Official event host</p>
+                    </div>
+                  </div>
                 </div>
               )}
 
-              <div className="pt-3 border-t border-white/10">
-                <button
-                  onClick={() => navigate('/wallet')}
-                  className="w-full py-2 bg-neutral-800 hover:bg-neutral-700 text-white text-[11px] font-bold uppercase rounded-xl transition-colors flex items-center justify-center gap-2"
-                >
-                  <span>💎</span>
-                  <span>Manage Earnings & Payouts</span>
-                </button>
+              <div className="pt-4 border-t border-white/5">
+                <p className="text-[10px] leading-relaxed text-[var(--az-text-muted)]">
+                  Tickets are purchased here. Hosts manage guest entry and party payouts from the Host Dashboard.
+                </p>
               </div>
             </div>
           </div>

@@ -100,12 +100,12 @@ export const getTransactions = async (req: Request, res: Response) => {
 
     // Optimization (⚡ Bolt): Fetch transactions and total count concurrently via Promise.all.
     const [transactions, total] = await Promise.all([
-      CreditTransaction.find({ userId: user._id })
+      CreditTransaction.find({ userId: user._id, type: { $ne: 'ticket_sale_earning' } })
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .lean(),
-      CreditTransaction.countDocuments({ userId: user._id }),
+      CreditTransaction.countDocuments({ userId: user._id, type: { $ne: 'ticket_sale_earning' } }),
     ]);
 
     return res.json({

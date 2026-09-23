@@ -19,6 +19,7 @@ import { getZegoToken } from '../controllers/zego.controller';
 import { joinMatchQueue, leaveMatchQueue, endMatchSession, nextStranger } from '../controllers/randomMatch.controller';
 import { getClubs, getClubById, createClub, updateClub } from '../controllers/club.controller';
 import { getParties, getPartyById, createParty, updateParty, cancelParty } from '../controllers/party.controller';
+import { getMyHostedParties, getPartyPayout, requestPartyPayout } from '../controllers/partyPayout.controller';
 import { getTicketAvailability, purchaseTickets, createTicketOrder, verifyTicketOrder, handlePaystackTicketWebhook, getMyTickets, getTicketByCode, scanCheckinQuery, performCheckinScan, getCheckinDashboard } from '../controllers/ticket.controller';
 import { trackDailyActive } from '../middleware/trackDailyActive';
 import { validateProviderPricing } from '../middleware/providerPricingValidation';
@@ -172,10 +173,13 @@ router.put('/clubs/:clubId', verifyAdultJWT, updateClub);
 
 // ── PARTIES ─────────────────────────────────────────────────
 router.get('/parties', getParties);
+router.get('/parties/hosted/me', verifyAdultJWT, getMyHostedParties);
 router.get('/parties/:partyId', getPartyById);
 router.post('/parties', verifyAdultJWT, createParty);
 router.put('/parties/:partyId', verifyAdultJWT, updateParty);
 router.delete('/parties/:partyId', verifyAdultJWT, cancelParty);
+router.get('/parties/:partyId/payout', verifyAdultJWT, getPartyPayout);
+router.post('/parties/:partyId/payout', verifyAdultJWT, requestPartyPayout);
 
 // ── TICKETS & CHECK-IN ──────────────────────────────────────
 router.get('/parties/:partyId/tickets/availability', getTicketAvailability);
