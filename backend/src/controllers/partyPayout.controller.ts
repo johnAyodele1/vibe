@@ -77,7 +77,8 @@ export const getMyHostedParties = async (req: Request, res: Response) => {
 export const getPartyPayout = async (req: Request, res: Response) => {
   try {
     const organizerId = getAdultUserId(req);
-    const party = await ensureOrganizer(req.params.partyId, organizerId);
+    const partyId = Array.isArray(req.params.partyId) ? req.params.partyId[0] : req.params.partyId;
+    const party = await ensureOrganizer(partyId, organizerId);
     if (!party) return res.status(404).json({ success: false, error: 'Party not found' });
 
     const [orders, payout] = await Promise.all([
