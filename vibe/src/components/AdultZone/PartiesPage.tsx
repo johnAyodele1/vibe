@@ -56,13 +56,19 @@ export const PartiesPage: React.FC = () => {
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate('/me/tickets')}
-            className="px-5 py-2.5 bg-neutral-800 border border-neutral-700 text-white text-xs font-bold rounded-full hover:bg-neutral-700 transition-colors"
+            className="px-5 py-2.5 rounded-full border border-[var(--az-border)] bg-[var(--az-bg-tertiary)] text-white text-xs font-bold hover:border-white/20 transition-colors"
           >
-            🎟 My Tickets
+            My Tickets
+          </button>
+          <button
+            onClick={() => navigate('/parties/hosted')}
+            className="px-5 py-2.5 rounded-full border border-[var(--az-accent-gold)]/40 bg-[var(--az-bg-tertiary)] text-[var(--az-accent-gold)] text-xs font-bold uppercase tracking-wider hover:border-[var(--az-accent-gold)] transition-colors"
+          >
+            Host Dashboard
           </button>
           <button
             onClick={() => navigate('/parties/create')}
-            className="px-6 py-2.5 bg-[var(--az-accent-primary)] text-white text-xs font-bold uppercase tracking-wider rounded-full hover:scale-105 transition-transform"
+            className="px-6 py-2.5 rounded-full bg-[var(--az-accent-primary)] text-white text-xs font-bold uppercase tracking-wider hover:brightness-110 transition-transform"
           >
             + Host a Party
           </button>
