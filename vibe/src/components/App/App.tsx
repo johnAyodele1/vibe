@@ -52,6 +52,7 @@ import PartyDetailPage from "../AdultZone/PartyDetailPage";
 import CreatePartyPage from "../AdultZone/CreatePartyPage";
 import MyTicketsPage from "../AdultZone/MyTicketsPage";
 import GuardScanPage from "../AdultZone/GuardScanPage";
+import HostedPartiesPage from "../AdultZone/HostedPartiesPage";
 import NotificationPrompt from "../pwa/NotificationPrompt";
 import { useAuth } from "../../contexts/AuthContext";
 import { useAdultAuth } from "../../contexts/AdultAuthContext";
@@ -159,6 +160,7 @@ function App() {
           <Route path="clubs/:clubId" element={<ClubDetailPage />} />
           <Route path="parties" element={<PartiesPage />} />
           <Route path="parties/create" element={<CreatePartyPage />} />
+          <Route path="parties/hosted" element={<HostedPartiesPage />} />
           <Route path="parties/:partyId" element={<PartyDetailPage />} />
           <Route path="me/tickets" element={<MyTicketsPage />} />
           <Route path="guard" element={<GuardScanPage />} />
