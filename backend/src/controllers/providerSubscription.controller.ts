@@ -179,7 +179,7 @@ export const notifyProviderSubscribers = async (req: Request, res: Response) => 
       badge: '/icons/badge-72x72.png',
       tag: `provider_subscriber_${providerId.toString()}`,
       renotify: true,
-      url: `/adult/provider/${providerId.toString()}`,
+      url: `/adult/providers/${providerId.toString()}`,
       type: 'provider_subscriber_notification',
       timestamp: Date.now(),
       providerId: providerId.toString(),
