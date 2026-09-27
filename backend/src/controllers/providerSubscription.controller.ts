@@ -78,6 +78,25 @@ export const followProvider = async (req: Request, res: Response) => {
       data: { isFollowing: true, subscriptionId: subscription?._id ?? null },
     });
   } catch (error: any) {
+    if (error?.code === 11000) {
+      const subscriberId = getAuthenticatedUserId(req);
+      const providerId = String(req.params.providerId);
+      if (subscriberId && mongoose.Types.ObjectId.isValid(providerId)) {
+        const existing = await ProviderSubscription.findOne({
+          providerId,
+          subscriberId,
+          isActive: true,
+        }).select('_id').lean();
+
+        if (existing) {
+          return res.status(200).json({
+            success: true,
+            data: { isFollowing: true, subscriptionId: existing._id },
+          });
+        }
+      }
+    }
+
     console.error('[ProviderSubscription] Follow failed:', error);
     return res.status(500).json({ success: false, message: 'Failed to follow provider' });
   }
