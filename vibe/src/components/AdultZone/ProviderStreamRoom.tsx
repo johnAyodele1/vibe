@@ -258,7 +258,7 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
   }
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '400px' }}>
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       {!videoState.isVideoReady && <VideoFallbackOverlay avatarUrl={providerAvatar} displayName={providerName || userName || 'Provider'} statusText="Starting camera stream..." />}
       <div ref={videoState.containerRef} style={{ width: '100%', height: '100%', background: '#0a0608' }} className={`transition-opacity duration-300 ${videoState.isVideoReady ? 'opacity-100 z-0' : 'opacity-0 pointer-events-none'}`} data-testid="zego-provider-stream-room" />
       <div className="absolute bottom-3 sm:bottom-6 inset-x-0 flex justify-center z-20 px-3 sm:px-0">
