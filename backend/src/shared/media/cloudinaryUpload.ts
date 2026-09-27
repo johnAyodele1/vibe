@@ -35,6 +35,7 @@ export const FOLDERS = {
   voiceNote:       'zippo/adult/chat/voice',
   paidMedia:       'zippo/adult/paid',
   camThumbnail:    'zippo/adult/cams',
+  partyPhoto:      'zippo/parties/photos',
   giftIcon:        'zippo/gifts',
 };
 
