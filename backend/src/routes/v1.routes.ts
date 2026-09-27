@@ -24,6 +24,7 @@ import { getMyHostedParties, getPartyPayout, requestPartyPayout } from '../contr
 import { getTicketAvailability, purchaseTickets, createTicketOrder, verifyTicketOrder, handlePaystackTicketWebhook, getMyTickets, getTicketByCode, scanCheckinQuery, performCheckinScan, getCheckinDashboard } from '../controllers/ticket.controller';
 import { trackDailyActive } from '../middleware/trackDailyActive';
 import { validateProviderPricing } from '../middleware/providerPricingValidation';
+import { subscriberNotificationLimiter } from '../middleware/rateLimiter';
 
 const router = express.Router();
 router.use(trackDailyActive);
@@ -119,7 +120,7 @@ router.post('/adult/rewards/checkin', verifyAdultJWT, dailyCheckin);
 router.get('/adult/providers/me/onboarding', verifyAdultJWT, getOnboardingProgress);
 router.put('/adult/providers/me/onboarding/step/:stepNumber', verifyAdultJWT, validateProviderPricing, saveOnboardingStep);
 router.get('/adult/providers/me/subscribers', verifyAdultJWT, getProviderSubscriberStats);
-router.post('/adult/providers/me/subscribers/notify', verifyAdultJWT, notifyProviderSubscribers);
+router.post('/adult/providers/me/subscribers/notify', verifyAdultJWT, subscriberNotificationLimiter, notifyProviderSubscribers);
 router.get('/adult/providers/:providerId/subscription', verifyAdultJWT, getProviderSubscription);
 router.post('/adult/providers/:providerId/subscription', verifyAdultJWT, followProvider);
 router.delete('/adult/providers/:providerId/subscription', verifyAdultJWT, unfollowProvider);
