@@ -98,6 +98,7 @@ describe('Provider Camera Teardown & Media Lifecycle Tests', () => {
 
   afterEach(() => {
     cleanup();
+    vi.unstubAllGlobals();
   });
 
   it('Test 1 — Call ends: Provider camera active -> 1-to-1 call accepted -> call ends -> camera/media cleanup executes', async () => {
@@ -318,5 +319,90 @@ describe('Provider Camera Teardown & Media Lifecycle Tests', () => {
 
     expect(onEndMock).not.toHaveBeenCalled();
     expect(mockVideoTrack.close).not.toHaveBeenCalled();
+  });
+
+  it('Test 7 — End Session: explicit provider end persists the ended state on the server', async () => {
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.includes('/adult/cams/stream/start')) {
+        return Promise.resolve({
+          json: () => Promise.resolve({
+            success: true,
+            data: {
+              sessionId: 'session-explicit-end',
+              roomId: 'room-explicit-end',
+              token: 'agora-token-explicit-end',
+              appId: '12345'
+            }
+          })
+        });
+      }
+      return Promise.resolve({ json: () => Promise.resolve({ success: true }) });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await act(async () => {
+      render(
+        <MemoryRouter>
+          <ProviderLive />
+        </MemoryRouter>
+      );
+    });
+
+    await act(async () => {
+      screen.getByText('Start Webcam Session').click();
+    });
+
+    await act(async () => {
+      screen.getByText('End Session').click();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/adult/cams/stream/session-explicit-end/end'),
+      expect.objectContaining({ method: 'PATCH' })
+    );
+    expect(screen.getByText('Offline Preview')).toBeInTheDocument();
+  });
+
+  it('Test 8 — Provider navigation: leaving the live page ends the persisted stream with keepalive', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.includes('/adult/cams/stream/start')) {
+        return Promise.resolve({
+          json: () => Promise.resolve({
+            success: true,
+            data: {
+              sessionId: 'session-navigation-end',
+              roomId: 'room-navigation-end',
+              token: 'agora-token-navigation-end',
+              appId: '12345'
+            }
+          })
+        });
+      }
+      return Promise.resolve({ json: () => Promise.resolve({ success: true }) });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await act(async () => {
+      const { unmount } = render(
+        <MemoryRouter>
+          <ProviderLive />
+        </MemoryRouter>
+      );
+
+      await act(async () => {
+        screen.getByText('Start Webcam Session').click();
+      });
+
+      unmount();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/adult/cams/stream/session-navigation-end/end'),
+      expect.objectContaining({
+        method: 'PATCH',
+        keepalive: true,
+      })
+    );
   });
 });
