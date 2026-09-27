@@ -48,6 +48,48 @@ const ProviderLive: React.FC = () => {
   }, [agoraSessionId]);
 
   const socketRef = useRef<Socket | null>(null);
+
+  const endSessionOnServer = useCallback(async (sessionId: string, keepalive = false) => {
+    try {
+      await fetch(`${API_BASE_URL}/adult/cams/stream/${sessionId}/end`, {
+        method: 'PATCH',
+        headers: getHeaders(),
+        ...(keepalive ? { keepalive: true } : {}),
+      });
+    } catch (err) {
+      console.error('Failed to end stream session on server:', err);
+    }
+  }, [getHeaders]);
+
+  const terminateActiveSession = useCallback((keepalive = false) => {
+    const sessionId = agoraSessionIdRef.current;
+    if (!sessionId) return;
+
+    // Clear the ref immediately so route cleanup/pagehide cannot issue a second end request.
+    agoraSessionIdRef.current = null;
+
+    if (socketRef.current) {
+      socketRef.current.emit('cam:leave', sessionId);
+      if (keepalive) {
+        socketRef.current.disconnect();
+      }
+    }
+
+    void endSessionOnServer(sessionId, keepalive);
+  }, [endSessionOnServer]);
+
+  useEffect(() => {
+    const handlePageHide = () => {
+      terminateActiveSession(true);
+    };
+
+    window.addEventListener('pagehide', handlePageHide);
+
+    return () => {
+      window.removeEventListener('pagehide', handlePageHide);
+      terminateActiveSession(true);
+    };
+  }, [terminateActiveSession]);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const [chatMessages, setChatMessages] = useState<ChatMessageItem[]>([]);
@@ -222,18 +264,21 @@ const ProviderLive: React.FC = () => {
 
   const handleEndStream = useCallback(async (confirm = true) => {
     if (confirm && !window.confirm('Are you sure you want to end this webcam session?')) return;
+
+    const sessionId = agoraSessionIdRef.current || agoraSessionId;
+    if (sessionId) {
+      agoraSessionIdRef.current = null;
+    }
+
     try {
-      if (agoraSessionId && confirm) {
-        await fetch(`${API_BASE_URL}/adult/cams/stream/${agoraSessionId}/end`, {
-          method: 'PATCH',
-          headers: getHeaders()
-        });
+      if (sessionId) {
+        // Every explicit end path must end the persisted CamSession, including
+        // End Broadcast from the embedded stream room.
+        await endSessionOnServer(sessionId);
       }
-    } catch (err) {
-      console.error(err);
     } finally {
-      if (agoraSessionId && socketRef.current) {
-        socketRef.current.emit('cam:leave', agoraSessionId);
+      if (sessionId && socketRef.current) {
+        socketRef.current.emit('cam:leave', sessionId);
         socketRef.current.off('cam:viewerCount');
         socketRef.current.off('cam:viewer_count');
       }
@@ -245,7 +290,7 @@ const ProviderLive: React.FC = () => {
       setViewerCount(0);
       toast.info(`Session ended. Tips accumulated: 💎 ${formatAmount(sessionTips)}`);
     }
-  }, [agoraSessionId, getHeaders, sessionTips]);
+  }, [agoraSessionId, endSessionOnServer, sessionTips]);
 
   const handleSendChat = () => {
     const text = inputText.trim();
