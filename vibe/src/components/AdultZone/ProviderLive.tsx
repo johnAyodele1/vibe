@@ -272,7 +272,7 @@ const ProviderLive: React.FC = () => {
 
         {/* Left: Video Preview Feed */}
         <div className="lg:col-span-2 space-y-4">
-          <div className="bg-black border border-[var(--az-border)] rounded-3xl aspect-video relative overflow-hidden flex flex-col justify-between p-6 shadow-2xl">
+          <div className="bg-black border border-[var(--az-border)] rounded-3xl aspect-[4/5] sm:aspect-video relative overflow-hidden flex flex-col justify-between p-4 sm:p-6 shadow-2xl">
             {/* Top Row indicators */}
             <div className="flex justify-between items-center z-10">
               {isLive ? (
@@ -323,18 +323,18 @@ const ProviderLive: React.FC = () => {
             </div>
 
             {/* Bottom Stream Control Bar */}
-            <div className="flex justify-end items-center z-10 border-t border-[var(--az-border)]/20 pt-4 mt-auto bg-black/35 backdrop-blur-sm -mx-6 -mb-6 p-6">
+            <div className="flex justify-end items-center z-10 border-t border-[var(--az-border)]/20 pt-3 sm:pt-4 mt-auto bg-black/35 backdrop-blur-sm -mx-4 -mb-4 p-4 sm:-mx-6 sm:-mb-6 sm:p-6">
               {!isLive ? (
                 <button
                   onClick={handleStartStream}
-                  className="px-10 py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-full shadow-[0_0_15px_var(--az-glow)] transition-all"
+                  className="px-6 py-2.5 sm:px-10 sm:py-3 bg-[var(--az-accent-primary)] hover:bg-red-700 text-white font-bold text-[10px] sm:text-xs uppercase tracking-widest rounded-full shadow-[0_0_15px_var(--az-glow)] transition-all"
                 >
                   Start Webcam Session
                 </button>
               ) : (
                 <button
                   onClick={() => handleEndStream(true)}
-                  className="px-10 py-3 bg-red-950 text-red-400 border border-red-500/30 hover:bg-red-900 font-bold text-xs uppercase tracking-widest rounded-full transition-all"
+                  className="px-5 py-2.5 sm:px-10 sm:py-3 bg-red-950 text-red-400 border border-red-500/30 hover:bg-red-900 font-bold text-[10px] sm:text-xs uppercase tracking-widest rounded-full transition-all"
                 >
                   End Session
                 </button>

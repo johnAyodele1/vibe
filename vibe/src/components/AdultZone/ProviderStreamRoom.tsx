@@ -248,7 +248,7 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
 
   if (sessionEndedExternally) {
     return (
-      <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '400px' }} className="flex items-center justify-center bg-[#0a0608]" data-testid="provider-stream-ended">
+      <div style={{ position: 'relative', width: '100%', height: '100%' }} className="flex items-center justify-center bg-[#0a0608]" data-testid="provider-stream-ended">
         <div className="text-center space-y-2">
           <span className="text-5xl opacity-40">📹</span>
           <p className="text-xs text-[var(--az-text-muted)] font-serif italic">Camera Offline</p>
@@ -258,11 +258,11 @@ const ProviderStreamRoom: React.FC<ProviderStreamRoomProps> = ({
   }
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '400px' }}>
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       {!videoState.isVideoReady && <VideoFallbackOverlay avatarUrl={providerAvatar} displayName={providerName || userName || 'Provider'} statusText="Starting camera stream..." />}
-      <div ref={videoState.containerRef} style={{ width: '100%', height: '100%', minHeight: '400px', background: '#0a0608' }} className={`transition-opacity duration-300 ${videoState.isVideoReady ? 'opacity-100 z-0' : 'opacity-0 pointer-events-none'}`} data-testid="zego-provider-stream-room" />
-      <div className="absolute bottom-6 inset-x-0 flex justify-center z-20">
-        <button onClick={handleEndClick} className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest rounded-full shadow-[0_0_15px_rgba(220,38,38,0.5)] transition-all">End Broadcast ✕</button>
+      <div ref={videoState.containerRef} style={{ width: '100%', height: '100%', background: '#0a0608' }} className={`transition-opacity duration-300 ${videoState.isVideoReady ? 'opacity-100 z-0' : 'opacity-0 pointer-events-none'}`} data-testid="zego-provider-stream-room" />
+      <div className="absolute bottom-3 sm:bottom-6 inset-x-0 flex justify-center z-20 px-3 sm:px-0">
+        <button onClick={handleEndClick} className="px-4 py-2 sm:px-6 sm:py-3 bg-red-600 hover:bg-red-700 text-white font-bold text-[10px] sm:text-xs uppercase tracking-widest rounded-full shadow-[0_0_15px_rgba(220,38,38,0.5)] transition-all">End Broadcast ✕</button>
       </div>
     </div>
   );
