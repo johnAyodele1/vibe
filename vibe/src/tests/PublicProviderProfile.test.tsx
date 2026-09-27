@@ -33,6 +33,12 @@ describe('PublicProviderProfile Authentication Interceptor', () => {
 
     mockFetch.mockImplementation(async (input: any) => {
       const url = typeof input === 'string' ? input : input.url;
+      if (url.includes('/adult/providers/provider-123/subscription')) {
+        return {
+          ok: true,
+          json: async () => ({ success: true, data: { isFollowing: false } })
+        };
+      }
       if (url.includes('/adult/providers/provider-123')) {
         return {
           ok: true,
@@ -88,6 +94,58 @@ describe('PublicProviderProfile Authentication Interceptor', () => {
     expect(modalEventTriggered).toBe(true);
 
     window.removeEventListener('open-adult-auth-modal', handleModalEvent);
+  });
+
+
+  it('shows the follow action for an authenticated member', async () => {
+    mockIsAuthenticated = true;
+    mockFetch.mockImplementation(async (input: any, init?: any) => {
+      const url = typeof input === 'string' ? input : input.url;
+      if (url.includes('/subscription')) {
+        return {
+          ok: true,
+          json: async () => ({ success: true, data: { isFollowing: init?.method === 'POST' } })
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: {
+            id: 'provider-123',
+            stageName: 'Zara Lux',
+            bio: 'Sensual and elegant',
+            isOnline: true,
+            isVerified: true,
+            rating: 4.9,
+            reviewCount: 42,
+            photos: [{ url: 'https://test.com/photo.jpg', isExplicit: false }]
+          }
+        })
+      };
+    });
+
+    render(
+      <MemoryRouter>
+        <PublicProviderProfile />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Follow Provider/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Follow Provider/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Following/i })).toBeInTheDocument();
+    });
+
+    const followRequest = mockFetch.mock.calls.find(([input, init]) => {
+      const url = typeof input === 'string' ? input : input.url;
+      return url.includes('/subscription') && init?.method === 'POST';
+    });
+    expect(followRequest).toBeTruthy();
   });
 
   it('bypasses Login Required and fetches profile successfully when authenticated', async () => {
