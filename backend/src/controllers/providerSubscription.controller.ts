@@ -129,7 +129,13 @@ export const getProviderSubscriberStats = async (req: Request, res: Response) =>
     const providerId = getAuthenticatedUserId(req);
     if (!providerId) return res.status(401).json({ success: false, message: 'Authentication required' });
 
-    const provider = await AdultUser.findOne({ _id: providerId, role: 'provider' }).select('_id').lean();
+    const provider = await AdultUser.findOne({
+      _id: providerId,
+      role: 'provider',
+      status: 'active',
+      isVerified: true,
+      'providerProfile.onboarding.isComplete': true,
+    }).select('_id').lean();
     if (!provider) return res.status(403).json({ success: false, message: 'Only providers can view subscriber stats' });
 
     const activeSubs = await ProviderSubscription.countDocuments({
@@ -154,7 +160,13 @@ export const notifyProviderSubscribers = async (req: Request, res: Response) => 
     const providerId = getAuthenticatedUserId(req);
     if (!providerId) return res.status(401).json({ success: false, message: 'Authentication required' });
 
-    const provider = await AdultUser.findOne({ _id: providerId, role: 'provider' })
+    const provider = await AdultUser.findOne({
+      _id: providerId,
+      role: 'provider',
+      status: 'active',
+      isVerified: true,
+      'providerProfile.onboarding.isComplete': true,
+    })
       .select('_id displayName username providerProfile.stageName profilePhoto')
       .lean();
 
