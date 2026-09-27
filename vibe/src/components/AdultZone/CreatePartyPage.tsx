@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { V1_API_BASE_URL } from '../../config';
 import { toast } from 'sonner';
+import { compressToWebP } from '../../lib/media/compressImage';
+import { uploadMedia } from '../../lib/media/uploadMedia';
 
 export const CreatePartyPage: React.FC = () => {
   const navigate = useNavigate();
@@ -22,7 +24,9 @@ export const CreatePartyPage: React.FC = () => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
-  const [coverImage, setCoverImage] = useState('');
+  const [partyPhotos, setPartyPhotos] = useState<string[]>([]);
+  const [compressing, setCompressing] = useState(false);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
   const [organizerPhone, setOrganizerPhone] = useState('');
 
   const [guardAccessCode, setGuardAccessCode] = useState(() =>
@@ -74,9 +78,7 @@ export const CreatePartyPage: React.FC = () => {
     }
 
     if (stepToValidate === 3) {
-      if (coverImage.trim() && !/^https?:\/\//i.test(coverImage.trim())) {
-        nextErrors.coverImage = 'Cover image must be a valid http(s) URL.';
-      }
+      if (partyPhotos.length === 0) nextErrors.coverImage = 'Upload at least one party photo.';
 
       if (organizerPhone.trim() && !/^\+?[0-9\s()\-]{7,20}$/.test(organizerPhone.trim())) {
         nextErrors.organizerPhone = 'Enter a valid phone number.';
@@ -134,6 +136,51 @@ export const CreatePartyPage: React.FC = () => {
     });
   };
 
+  const handlePartyPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (files.length === 0) return;
+
+    const remaining = 12 - partyPhotos.length;
+    if (files.length > remaining) {
+      toast.error(`You can upload up to 12 party photos. Select ${remaining} more.`);
+      return;
+    }
+
+    const invalid = files.find(file => !file.type.startsWith('image/'));
+    if (invalid) {
+      toast.error(`${invalid.name} is not an image`);
+      return;
+    }
+
+    setCompressing(true);
+    setUploadingMedia(true);
+
+    let uploadedCount = 0;
+
+    try {
+      for (const file of files) {
+        const webpFile = await compressToWebP(file);
+        const result = await uploadMedia(webpFile, 'party_photo');
+        setPartyPhotos(prev => [...prev, result.url]);
+        uploadedCount += 1;
+        clearError('coverImage');
+      }
+
+      toast.success(`${uploadedCount} photo${uploadedCount === 1 ? '' : 's'} uploaded and optimized`);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'Photo upload failed';
+      toast.error(errMsg);
+    } finally {
+      setCompressing(false);
+      setUploadingMedia(false);
+    }
+  };
+
+  const handleRemovePartyPhoto = (index: number) => {
+    setPartyPhotos(prev => prev.filter((_, photoIndex) => photoIndex !== index));
+  };
+
   const handleAddTier = () => {
     if (ticketTiers.length >= 5) {
       toast.error('Maximum 5 ticket tiers allowed');
@@ -183,7 +230,12 @@ export const CreatePartyPage: React.FC = () => {
       return;
     }
 
-    const defaultCover = coverImage.trim() || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=1000&auto=format&fit=crop';
+    if (partyPhotos.length === 0) {
+      setStep(3);
+      setErrors({ coverImage: 'Upload at least one party photo.' });
+      toast.error('Upload at least one party photo before submitting');
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -204,7 +256,8 @@ export const CreatePartyPage: React.FC = () => {
           location: { city: city.trim() || 'Lagos', country: { name: 'Nigeria', code: 'NG' } },
           startDate,
           endDate,
-          coverImage: defaultCover,
+          coverImage: partyPhotos[0],
+          gallery: partyPhotos.map((url, index) => ({ type: 'image', url, order: index })),
           organizerPhone: organizerPhone.trim(),
           guardAccessCode,
           ticketTiers,
@@ -431,15 +484,71 @@ export const CreatePartyPage: React.FC = () => {
             </div>
           )}
           <div>
-            <label className="text-xs text-neutral-400 block mb-1 font-bold">Cover Banner Image URL</label>
-            <input
-              type="text"
-              placeholder="https://..."
-              value={coverImage}
-              onChange={(e) => { setCoverImage(e.target.value); clearError('coverImage'); }}
-              className={inputClass('coverImage')}
-            />
-            <p className="text-[10px] text-neutral-500 mt-1">Leave empty to use recommended default banner.</p>
+            <label className="text-xs text-neutral-400 block mb-2 font-bold">Party Photos (Up to 12)</label>
+            <p className="text-[10px] text-neutral-500 mb-3">
+              Upload photos directly from your phone. The first photo becomes the cover banner.
+            </p>
+
+            {errors.coverImage && (
+              <p className="text-xs text-red-300 mb-3">{errors.coverImage}</p>
+            )}
+
+            {compressing && (
+              <div className="mb-4 bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden">
+                <div className="h-1 bg-neutral-800">
+                  <div className="h-full w-2/3 bg-[var(--az-accent-rose)] animate-pulse" />
+                </div>
+                <p className="text-xs text-neutral-300 px-3 py-2">Optimising images...</p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {partyPhotos.map((photo, index) => (
+                <div key={`${photo}-${index}`} className="aspect-square bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl overflow-hidden relative group">
+                  <img src={photo} alt={`Party photo ${index + 1}`} className="w-full h-full object-cover" />
+                  {index === 0 && (
+                    <span className="absolute bottom-2 left-2 rounded-md bg-black/70 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-white">
+                      Cover
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleRemovePartyPhoto(index)}
+                    disabled={uploadingMedia || submitting}
+                    className="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/70 hover:bg-red-600 text-white text-xs flex items-center justify-center disabled:opacity-50"
+                    aria-label={`Remove party photo ${index + 1}`}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+
+              {uploadingMedia && (
+                <div className="aspect-square bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl flex flex-col items-center justify-center">
+                  <div className="w-6 h-6 border-2 border-[var(--az-accent-rose)] border-t-transparent rounded-full animate-spin" />
+                  <span className="text-[10px] uppercase font-bold text-[var(--az-text-secondary)] mt-2">
+                    Uploading...
+                  </span>
+                </div>
+              )}
+
+              {partyPhotos.length < 12 && !uploadingMedia && (
+                <label className="aspect-square bg-[var(--az-bg-tertiary)] border-2 border-dashed border-[var(--az-border)] hover:border-[var(--az-accent-rose)] rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all">
+                  <span className="text-2xl text-[var(--az-text-secondary)]">+</span>
+                  <span className="text-[10px] uppercase font-bold text-[var(--az-text-secondary)] mt-1">
+                    Add Photos
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={handlePartyPhotoUpload}
+                    disabled={uploadingMedia || submitting}
+                  />
+                </label>
+              )}
+            </div>
           </div>
           <div>
             <label className="text-xs text-neutral-400 block mb-1 font-bold">Organizer Phone (For Admin Verification)</label>

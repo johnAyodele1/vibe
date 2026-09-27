@@ -100,6 +100,7 @@ export const uploadMedia = async (req: Request, res: Response) => {
     paid_image:       { folder: FOLDERS.paidMedia,       resourceType: 'image',  isPrivate: true  },
     paid_video:       { folder: FOLDERS.paidMedia,       resourceType: 'video',  isPrivate: true  },
     cam_thumbnail:    { folder: FOLDERS.camThumbnail,    resourceType: 'image',  isPrivate: false },
+    party_photo:      { folder: FOLDERS.partyPhoto,      resourceType: 'image',  isPrivate: false },
   };
 
   const config = CONTEXT_MAP[context as string];
