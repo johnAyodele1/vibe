@@ -78,6 +78,8 @@ export const CreatePartyPage: React.FC = () => {
     }
 
     if (stepToValidate === 3) {
+      if (partyPhotos.length === 0) nextErrors.coverImage = 'Upload at least one party photo.';
+
       if (organizerPhone.trim() && !/^\+?[0-9\s()\-]{7,20}$/.test(organizerPhone.trim())) {
         nextErrors.organizerPhone = 'Enter a valid phone number.';
       }
@@ -154,18 +156,18 @@ export const CreatePartyPage: React.FC = () => {
     setCompressing(true);
     setUploadingMedia(true);
 
-    try {
-      const uploadedUrls: string[] = [];
+    let uploadedCount = 0;
 
+    try {
       for (const file of files) {
         const webpFile = await compressToWebP(file);
         const result = await uploadMedia(webpFile, 'party_photo');
-        uploadedUrls.push(result.url);
+        setPartyPhotos(prev => [...prev, result.url]);
+        uploadedCount += 1;
+        clearError('coverImage');
       }
 
-      setPartyPhotos(prev => [...prev, ...uploadedUrls]);
-      clearError('coverImage');
-      toast.success(`${uploadedUrls.length} photo${uploadedUrls.length === 1 ? '' : 's'} uploaded and optimized`);
+      toast.success(`${uploadedCount} photo${uploadedCount === 1 ? '' : 's'} uploaded and optimized`);
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : 'Photo upload failed';
       toast.error(errMsg);
