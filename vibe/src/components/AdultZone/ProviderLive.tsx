@@ -210,6 +210,9 @@ const ProviderLive: React.FC = () => {
       const resData = await res.json();
       if (resData.success && resData.data) {
         const { sessionId, roomId, token: zToken, appId } = resData.data;
+        // Keep the ref in sync synchronously so an immediate route change cannot
+        // navigate away before the cleanup effect sees the new session ID.
+        agoraSessionIdRef.current = sessionId;
         setAgoraToken(zToken);
         setAgoraAppId(appId);
         setAgoraRoomId(roomId);
@@ -266,9 +269,8 @@ const ProviderLive: React.FC = () => {
     if (confirm && !window.confirm('Are you sure you want to end this webcam session?')) return;
 
     const sessionId = agoraSessionIdRef.current || agoraSessionId;
-    if (sessionId) {
-      agoraSessionIdRef.current = null;
-    }
+    if (!sessionId) return;
+    agoraSessionIdRef.current = null;
 
     try {
       if (sessionId) {
