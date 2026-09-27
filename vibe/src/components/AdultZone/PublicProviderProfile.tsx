@@ -26,6 +26,8 @@ export const PublicProviderProfile: React.FC = () => {
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
   const [activeVideoIndex, setActiveVideoIndex] = useState(0);
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [isFollowLoading, setIsFollowLoading] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -54,6 +56,26 @@ export const PublicProviderProfile: React.FC = () => {
     if (providerId) fetchProviderProfile();
   }, [providerId, isAuthenticated]);
 
+  useEffect(() => {
+    const fetchSubscriptionStatus = async () => {
+      if (!isAuthenticated || !providerId) return;
+      try {
+        const token = localStorage.getItem('adultAccessToken');
+        const response = await fetch(
+          `${API_BASE_URL}/v1/adult/providers/${providerId}/subscription`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data.success) setIsFollowing(Boolean(data.data?.isFollowing));
+      } catch (error) {
+        console.error('Failed to load provider subscription status:', error);
+      }
+    };
+
+    void fetchSubscriptionStatus();
+  }, [providerId, isAuthenticated]);
+
   const handleStartConversation = async () => {
     if (!isAuthenticated) { window.dispatchEvent(new CustomEvent('open-adult-auth-modal')); return; }
     setIsStartingConversation(true);
@@ -69,6 +91,39 @@ export const PublicProviderProfile: React.FC = () => {
         navigate(isMobile ? `/inbox/${data.conversationId}` : `/inbox?conversation=${data.conversationId}`);
       } else { toast.error('Could not start conversation'); setIsStartingConversation(false); }
     } catch { toast.error('Could not start conversation'); setIsStartingConversation(false); }
+  };
+
+  const handleFollowToggle = async () => {
+    if (!isAuthenticated) {
+      window.dispatchEvent(new CustomEvent('open-adult-auth-modal'));
+      return;
+    }
+    if (!provider?.id || isFollowLoading) return;
+
+    setIsFollowLoading(true);
+    try {
+      const token = localStorage.getItem('adultAccessToken');
+      const response = await fetch(
+        `${API_BASE_URL}/v1/adult/providers/${provider.id}/subscription`,
+        {
+          method: isFollowing ? 'DELETE' : 'POST',
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        toast.error(data.message || 'Could not update subscription');
+        return;
+      }
+
+      setIsFollowing(Boolean(data.data?.isFollowing));
+      toast.success(data.data?.isFollowing ? `You are now following ${provider.stageName}` : `You unfollowed ${provider.stageName}`);
+    } catch (error) {
+      console.error('Failed to update provider subscription:', error);
+      toast.error('Could not update subscription');
+    } finally {
+      setIsFollowLoading(false);
+    }
   };
 
   const handleTipClick = () => {
@@ -153,6 +208,14 @@ export const PublicProviderProfile: React.FC = () => {
           <div className="mb-6 max-w-full"><div className="flex items-center gap-3 mb-2 max-w-full"><h1 className="text-4xl font-serif italic text-white tracking-wide truncate max-w-full" title={provider.stageName}>{provider.stageName}</h1>{provider.isVerified && <span className="inline-flex items-center justify-center bg-[var(--az-accent-gold)] text-black text-[9px] font-extrabold px-1.5 py-0.5 rounded-full uppercase tracking-tighter">✓ Verified</span>}</div><p className="text-sm text-[var(--az-text-secondary)] font-sans">📍 {provider.location?.city || 'Unknown City'} · {provider.location?.country?.name || 'Unknown Country'}</p><div className="flex items-center gap-4 mt-3 text-xs text-[var(--az-text-muted)] font-mono"><span className="text-[var(--az-accent-gold)]">★ {provider.rating?.toFixed(1) || '0.0'}</span><span>·</span><span>{provider.reviewCount} reviews</span><span>·</span><span>{provider.memberSince}</span></div>{responseBadge && <div className="mt-3"><span className="inline-block text-[10px] font-bold border rounded-full px-2.5 py-0.5 leading-none" style={{ borderColor: responseBadge.color, color: responseBadge.color }}>⚡ {responseBadge.label}</span></div>}</div>
           {provider.bio && <div className="mb-8 p-5 bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-2xl relative overflow-hidden"><p className="text-sm text-[var(--az-text-secondary)] leading-relaxed font-serif italic">"{provider.bio}"</p>{provider.tagline && <p className="text-xs text-[var(--az-accent-rose)] font-bold uppercase tracking-wider mt-3">🏷️ {provider.tagline}</p>}</div>}
           <div className="mb-8"><h3 className="text-xs uppercase tracking-widest font-extrabold text-[var(--az-text-muted)] mb-4 border-b border-[var(--az-border)] pb-2">Services & Pricing</h3>{provider.servicesOffered?.length === 0 ? <p className="text-xs text-[var(--az-text-muted)]">No active services offered. Message to enquire.</p> : <div className="provider-profile__services">{provider.servicesOffered?.map((service: string) => { const meta = SERVICE_LABELS[service] || { icon: '✨', label: service, color: '#c9a84c' }; return <div className="service-card shadow-lg" key={service}><span className="service-card__icon" style={{ textShadow: `0 0 10px ${meta.color}40` }}>{meta.icon}</span><div className="service-card__info"><span className="service-card__label">{meta.label}</span><span className="service-card__price">{service === 'private_call' && provider.pricing?.perMinuteRate ? `💎 ${provider.pricing.perMinuteRate} / min` : service === 'hookup' && provider.pricing?.tonightRate ? `💎 ${provider.pricing.tonightRate} / Activity` : 'Message to enquire'}</span></div></div>; })}</div>}</div>
+          <button
+            type="button"
+            onClick={handleFollowToggle}
+            disabled={isFollowLoading}
+            className="mb-3 w-full rounded-full border border-[var(--az-accent-gold)] px-6 py-3 text-xs font-bold uppercase tracking-widest text-[var(--az-accent-gold)] hover:bg-[var(--az-accent-gold)]/10 transition-colors disabled:opacity-50"
+          >
+            {isFollowLoading ? 'Updating…' : isFollowing ? '✓ Following' : '+ Follow Provider'}
+          </button>
           <button className="provider-profile__message-btn truncate max-w-full" onClick={handleStartConversation} disabled={isStartingConversation}>{isStartingConversation ? <span className="animate-spin rounded-full h-5 w-5 border-t-2 border-white"></span> : <span className="truncate"><span className="message-btn__icon">💬</span> Message {provider.stageName.length > 15 ? `${provider.stageName.slice(0, 15)}...` : provider.stageName}</span>}</button>
           <button className="provider-profile__tip-btn" onClick={handleTipClick}>💎 Send a Tip</button>
         </div>
