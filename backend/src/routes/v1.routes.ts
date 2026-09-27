@@ -10,6 +10,7 @@ import { startConversation, getConversations, getUnreadCount, getMessages as get
 import { getOfficialNotificationsForUser, markNotificationRead, getOrCreateSupportConversation, sendSupportMessage, getOfficialChannelsConfig } from '../controllers/officialSupport.controller';
 import { getRooms, createRoom as createAdultRoom, getRoom as getAdultRoom, joinRoom as joinAdultRoom, leaveRoom as leaveAdultRoom, getRoomMembers, getRoomLeaderboard, getThreads, createThread, getThread, reactThread, pinThread, lockThread, getMessages as getAdultRoomMessages, sendMessage as sendAdultRoomMessage, reactMessage as reactAdultRoomMessage, deleteMessage as deleteAdultRoomMessage, getReplies, postReply, reactReply, getActivePolls, createPoll, votePoll, reportRoom, muteUser, kickUser } from '../controllers/adultRooms.controller';
 import { getProviderPublicProfile, unlockProviderPhoto } from '../controllers/adultProviders.controller';
+import { getProviderSubscription, followProvider, unfollowProvider, getProviderSubscriberStats, notifyProviderSubscribers } from '../controllers/providerSubscription.controller';
 import { getPublicProviderProfileWithResponseStats } from '../controllers/providerDiscovery.controller';
 import { savePushSubscription, removePushSubscription, getVapidPublicKey, getCurrentDevice, registerDevice, removeDevice, diagnosePush } from '../controllers/adultPush.controller';
 import { sendPushHealthTest, acknowledgePushHealthTest, getPushHealthTestStatus, markPushHealth } from '../controllers/pushHealth.controller';
@@ -23,6 +24,7 @@ import { getMyHostedParties, getPartyPayout, requestPartyPayout } from '../contr
 import { getTicketAvailability, purchaseTickets, createTicketOrder, verifyTicketOrder, handlePaystackTicketWebhook, getMyTickets, getTicketByCode, scanCheckinQuery, performCheckinScan, getCheckinDashboard } from '../controllers/ticket.controller';
 import { trackDailyActive } from '../middleware/trackDailyActive';
 import { validateProviderPricing } from '../middleware/providerPricingValidation';
+import { subscriberNotificationLimiter } from '../middleware/rateLimiter';
 
 const router = express.Router();
 router.use(trackDailyActive);
@@ -117,6 +119,11 @@ router.post('/adult/rewards/tasks/:taskId/complete', verifyAdultJWT, completeTas
 router.post('/adult/rewards/checkin', verifyAdultJWT, dailyCheckin);
 router.get('/adult/providers/me/onboarding', verifyAdultJWT, getOnboardingProgress);
 router.put('/adult/providers/me/onboarding/step/:stepNumber', verifyAdultJWT, validateProviderPricing, saveOnboardingStep);
+router.get('/adult/providers/me/subscribers', verifyAdultJWT, getProviderSubscriberStats);
+router.post('/adult/providers/me/subscribers/notify', verifyAdultJWT, subscriberNotificationLimiter, notifyProviderSubscribers);
+router.get('/adult/providers/:providerId/subscription', verifyAdultJWT, getProviderSubscription);
+router.post('/adult/providers/:providerId/subscription', verifyAdultJWT, followProvider);
+router.delete('/adult/providers/:providerId/subscription', verifyAdultJWT, unfollowProvider);
 router.get('/adult/providers/me/dashboard', verifyAdultJWT, getProviderDashboard);
 router.get('/adult/providers/me/earnings', verifyAdultJWT, getProviderEarnings);
 router.get('/adult/providers/me/payout/eligible', verifyAdultJWT, getEligiblePayout);

@@ -18,6 +18,12 @@ export const tipLimiter = rateLimit({
   message: { success: false, error: { code: 'RATE_LIMITED', message: 'Too many tips' } },
 });
 
+export const subscriberNotificationLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 3,
+  message: { success: false, error: { code: 'RATE_LIMITED', message: 'Too many subscriber notifications' } },
+});
+
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 1000, // Increased limit from 100

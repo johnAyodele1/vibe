@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../../config';
 import { usePricingStore, formatNaira, formatAmount } from '../../lib/pricing';
+import { toast } from 'sonner';
 
 const ProviderDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -24,6 +25,10 @@ const ProviderDashboard: React.FC = () => {
   const [recentSessions, setRecentSessions] = useState<any[]>([]);
   const [recentMessages, setRecentMessages] = useState<any[]>([]);
   const [schedule, setSchedule] = useState<any[]>([]);
+  const [isNotifyModalOpen, setIsNotifyModalOpen] = useState(false);
+  const [notificationTitle, setNotificationTitle] = useState('New update from me');
+  const [notificationBody, setNotificationBody] = useState('I have something new for you.');
+  const [isSendingNotification, setIsSendingNotification] = useState(false);
 
   useEffect(() => {
     if (!token) {
@@ -64,6 +69,18 @@ const ProviderDashboard: React.FC = () => {
           const d = data.data;
           setStats(d.stats);
           setRecentSessions(d.recentSessions || []);
+
+          try {
+            const subscriberRes = await fetch(`${API_BASE_URL}/v1/adult/providers/me/subscribers`, {
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const subscriberData = await subscriberRes.json();
+            if (subscriberRes.ok && subscriberData.success) {
+              setStats((current: any) => ({ ...current, activeSubs: subscriberData.data?.activeSubs || 0 }));
+            }
+          } catch (subscriberErr) {
+            console.error('Failed to load subscriber count:', subscriberErr);
+          }
           setRecentMessages(d.recentMessages || []);
 
           const dayShortNames: { [key: string]: string } = {
@@ -120,6 +137,44 @@ const ProviderDashboard: React.FC = () => {
       </div>
     );
   }
+
+  const openNotifySubscribers = () => {
+    if (stats.activeSubs <= 0) {
+      toast.info('You do not have any active subscribers yet.');
+      return;
+    }
+    setIsNotifyModalOpen(true);
+  };
+
+  const sendSubscriberNotification = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (isSendingNotification || stats.activeSubs <= 0) return;
+
+    setIsSendingNotification(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/v1/adult/providers/me/subscribers/notify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ title: notificationTitle, body: notificationBody })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        toast.error(data.message || 'Could not notify subscribers');
+        return;
+      }
+
+      toast.success(data.message || 'Notification sent to subscribers');
+      setIsNotifyModalOpen(false);
+    } catch (error) {
+      console.error('Failed to notify subscribers:', error);
+      toast.error('Could not notify subscribers');
+    } finally {
+      setIsSendingNotification(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[var(--az-bg-primary)] text-white font-sans az-grain py-24 px-4 sm:px-6 lg:px-8">
@@ -192,18 +247,53 @@ const ProviderDashboard: React.FC = () => {
         {/* Quick Stats Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[
-            { label: 'Profile Views', val: stats.profileViews, sub: null },
-            { label: 'New Messages', val: stats.newMessages, sub: 'unread' },
-            { label: 'Active Subs', val: stats.activeSubs, sub: 'this month' },
-            { label: 'Avg Rating', val: `★ ${stats.avgRating}`, sub: `${stats.reviewCount} reviews` }
+            { label: 'Profile Views', val: stats.profileViews, sub: null, onClick: undefined },
+            { label: 'New Messages', val: stats.newMessages, sub: 'unread', onClick: undefined },
+            { label: 'Active Subs', val: stats.activeSubs, sub: 'Notify Subs', onClick: openNotifySubscribers },
+            { label: 'Avg Rating', val: `★ ${stats.avgRating}`, sub: `${stats.reviewCount} reviews`, onClick: undefined }
           ].map((st, i) => (
             <div key={i} className="bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-2xl p-6 text-center">
               <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">{st.label}</p>
               <p className="text-3xl font-serif text-white mb-1 font-bold">{st.val}</p>
-              {st.sub && <p className="text-[10px] text-[var(--az-text-muted)] font-mono">{st.sub}</p>}
+              {st.sub && (st.onClick ? (
+                <button type="button" onClick={st.onClick} className="text-[10px] text-[var(--az-text-muted)] font-mono underline underline-offset-2 hover:text-white transition-colors">
+                  {st.sub}
+                </button>
+              ) : <p className="text-[10px] text-[var(--az-text-muted)] font-mono">{st.sub}</p>)}
             </div>
           ))}
         </div>
+
+        {isNotifyModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4" role="dialog" aria-modal="true" aria-labelledby="notify-subs-title">
+            <div className="w-full max-w-lg rounded-3xl border border-[var(--az-border)] bg-[var(--az-bg-secondary)] p-6 shadow-2xl">
+              <div className="flex items-start justify-between gap-4 mb-6">
+                <div>
+                  <h2 id="notify-subs-title" className="text-xl font-serif italic text-white">Notify Your Subscribers</h2>
+                  <p className="mt-1 text-xs text-[var(--az-text-secondary)]">Send a push notification to your {stats.activeSubs} active subscriber{stats.activeSubs === 1 ? '' : 's'}.</p>
+                </div>
+                <button type="button" onClick={() => setIsNotifyModalOpen(false)} className="text-[var(--az-text-muted)] hover:text-white text-xl" aria-label="Close">×</button>
+              </div>
+
+              <form onSubmit={sendSubscriberNotification} className="space-y-4">
+                <div>
+                  <label htmlFor="subscriber-notification-title" className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-secondary)]">Title</label>
+                  <input id="subscriber-notification-title" value={notificationTitle} onChange={e => setNotificationTitle(e.target.value)} maxLength={80} required className="w-full rounded-xl border border-[var(--az-border)] bg-[var(--az-bg-tertiary)] px-4 py-3 text-sm text-white outline-none focus:border-[var(--az-accent-gold)]" />
+                </div>
+                <div>
+                  <label htmlFor="subscriber-notification-body" className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-secondary)]">Message</label>
+                  <textarea id="subscriber-notification-body" value={notificationBody} onChange={e => setNotificationBody(e.target.value)} maxLength={240} rows={4} required className="w-full resize-none rounded-xl border border-[var(--az-border)] bg-[var(--az-bg-tertiary)] px-4 py-3 text-sm text-white outline-none focus:border-[var(--az-accent-gold)]" />
+                </div>
+                <div className="flex justify-end gap-3 pt-2">
+                  <button type="button" onClick={() => setIsNotifyModalOpen(false)} className="rounded-full border border-[var(--az-border)] px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] hover:text-white">Cancel</button>
+                  <button type="submit" disabled={isSendingNotification || !notificationTitle.trim() || !notificationBody.trim()} className="rounded-full bg-[var(--az-accent-gold)] px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-black disabled:opacity-50">
+                    {isSendingNotification ? 'Sending…' : 'Send Push Notification'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
 
         {/* Dashboard split content slots */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
