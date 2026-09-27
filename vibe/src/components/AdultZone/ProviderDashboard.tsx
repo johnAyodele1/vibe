@@ -247,10 +247,10 @@ const ProviderDashboard: React.FC = () => {
         {/* Quick Stats Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[
-            { label: 'Profile Views', val: stats.profileViews, sub: null },
-            { label: 'New Messages', val: stats.newMessages, sub: 'unread' },
+            { label: 'Profile Views', val: stats.profileViews, sub: null, onClick: undefined },
+            { label: 'New Messages', val: stats.newMessages, sub: 'unread', onClick: undefined },
             { label: 'Active Subs', val: stats.activeSubs, sub: 'Notify Subs', onClick: openNotifySubscribers },
-            { label: 'Avg Rating', val: `★ ${stats.avgRating}`, sub: `${stats.reviewCount} reviews` }
+            { label: 'Avg Rating', val: `★ ${stats.avgRating}`, sub: `${stats.reviewCount} reviews`, onClick: undefined }
           ].map((st, i) => (
             <div key={i} className="bg-[var(--az-bg-secondary)] border border-[var(--az-border)] rounded-2xl p-6 text-center">
               <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">{st.label}</p>
