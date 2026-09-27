@@ -49,6 +49,22 @@ const ProviderLive: React.FC = () => {
 
   const socketRef = useRef<Socket | null>(null);
 
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const [chatMessages, setChatMessages] = useState<ChatMessageItem[]>([]);
+  const [inputText, setInputText] = useState('');
+
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollTop = chatEndRef.current.scrollHeight;
+    }
+  }, [chatMessages]);
+
+  const getHeaders = useCallback(() => ({
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  }), [token]);
+
   const endSessionOnServer = useCallback(async (sessionId: string, keepalive = false) => {
     try {
       await fetch(`${API_BASE_URL}/adult/cams/stream/${sessionId}/end`, {
@@ -90,22 +106,6 @@ const ProviderLive: React.FC = () => {
       terminateActiveSession(true);
     };
   }, [terminateActiveSession]);
-  const chatEndRef = useRef<HTMLDivElement>(null);
-
-  const [chatMessages, setChatMessages] = useState<ChatMessageItem[]>([]);
-  const [inputText, setInputText] = useState('');
-
-  useEffect(() => {
-    if (chatEndRef.current) {
-      chatEndRef.current.scrollTop = chatEndRef.current.scrollHeight;
-    }
-  }, [chatMessages]);
-
-  const getHeaders = useCallback(() => ({
-    'Authorization': `Bearer ${token}`,
-    'Content-Type': 'application/json'
-  }), [token]);
-
   useEffect(() => {
     if (!token) {
       navigate('/');
