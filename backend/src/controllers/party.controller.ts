@@ -11,6 +11,7 @@ import { reconcilePendingTicketRefunds } from './ticket.controller';
 import { createPartySchema, updatePartySchema } from '../validators/partiesAndClubs.validator';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
+import { invalidatePartyPayoutForOrder } from '../services/partyPayoutAccounting.service';
 
 // Generate 6-digit random PIN if needed
 const generateGuardPin = (): string => Math.floor(100000 + Math.random() * 900000).toString();
@@ -171,6 +172,11 @@ export const cancelParty = async (req: Request, res: Response) => {
         try {
           session = await mongoose.startSession();
           session.startTransaction();
+          await invalidatePartyPayoutForOrder(
+            order._id,
+            'A ticket refund invalidated an active party payout. The host must submit a new payout request.',
+            session
+          );
           const claimedOrder = await TicketOrder.findOneAndUpdate({ _id: order._id, status: 'fulfilled' }, { $set: { status: 'refunded', updatedAt: new Date() } }, { session, new: true });
           if (claimedOrder) {
             await AdultUser.findByIdAndUpdate(order.buyerId, { $inc: { credits: requiredDiamonds } }, { session });
@@ -189,6 +195,10 @@ export const cancelParty = async (req: Request, res: Response) => {
           if (session) session.endSession();
         }
       } else if (order.paymentProvider === 'paystack' && order.paymentReference) {
+        await invalidatePartyPayoutForOrder(
+          order._id,
+          'A ticket refund invalidated an active party payout. The host must submit a new payout request.'
+        );
         await TicketOrder.findByIdAndUpdate(order._id, { $set: { status: 'refund_pending', nextRefundAttemptAt: new Date(), updatedAt: new Date() } });
       }
     }
