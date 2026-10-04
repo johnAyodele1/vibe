@@ -235,7 +235,7 @@ const AdultZoneLayoutInner: React.FC = () => {
     { name: 'Casual Rooms', path: '/rooms' },
     { name: 'Private Inbox', path: '/inbox' },
     { name: 'Random Stranger', path: '/random' },
-    { name: 'Meet Up Today', path: '/hookup' },
+    { name: 'Meet Up Today', path: '/meetup' },
   ];
 
   return (
@@ -401,7 +401,7 @@ const AdultZoneLayoutInner: React.FC = () => {
             { icon: '📹', path: '/cams', label: 'Live' },
             { icon: '💬', path: '/inbox', label: 'Inbox' },
             { icon: '🎲', path: '/random', label: 'Random' },
-            { icon: '📍', path: '/hookup', label: 'Meet Up' },
+            { icon: '📍', path: '/meetup', label: 'Meet Up' },
           ].map((item) => (
             <Link
               key={item.path}
