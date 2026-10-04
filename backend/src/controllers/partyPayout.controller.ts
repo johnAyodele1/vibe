@@ -206,6 +206,10 @@ const requestPayout = async ({
       };
     });
 
+    if (!result) {
+      throw new Error('Party payout transaction did not return a result.');
+    }
+
     return result;
   } catch (error: any) {
     if (
