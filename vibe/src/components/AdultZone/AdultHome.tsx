@@ -49,7 +49,7 @@ const AdultHome: React.FC = () => {
     roomsActive: Math.floor(1100 + Math.random() * 200),
     sextChatting: Math.floor(3100 + Math.random() * 600),
     randomWaiting: Math.floor(820 + Math.random() * 140),
-    hookupNearby: Math.floor(130 + Math.random() * 40),
+    meetupNearby: Math.floor(130 + Math.random() * 40),
   }));
 
   useEffect(() => {
@@ -68,7 +68,7 @@ const AdultHome: React.FC = () => {
           roomsActive: change(prev.roomsActive, 2, 8, 900, 1500),
           sextChatting: change(prev.sextChatting, 5, 15, 2500, 4500),
           randomWaiting: change(prev.randomWaiting, 1, 4, 700, 1000),
-          hookupNearby: change(prev.hookupNearby, 1, 2, 100, 250),
+          meetupNearby: change(prev.meetupNearby, 1, 2, 100, 250),
         };
       });
     }, 4000);
@@ -254,12 +254,12 @@ const AdultHome: React.FC = () => {
       color: 'from-indigo-900/40'
     },
     {
-      id: 'hookup',
+      id: 'meetup',
       title: 'Meet Up Today',
       tagline: 'Find someone nearby to connect with',
       icon: '📍',
-      stats: `🔴 ${stats.hookupNearby.toLocaleString()} nearby`,
-      path: '/hookup',
+      stats: `🔴 ${stats.meetupNearby.toLocaleString()} nearby`,
+      path: '/meetup',
       color: 'from-orange-900/40'
     },
     {
