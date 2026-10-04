@@ -44,6 +44,16 @@ type PayoutForm = {
   accountNumber: string;
 };
 
+type PayoutHistoryItem = {
+  _id: string;
+  amountNaira: number;
+  status: 'requested' | 'verifying' | 'processing' | 'paid' | 'rejected' | 'failed';
+  requestedAt: string;
+  processedAt?: string;
+  reference: string | null;
+  partyTitle: string;
+};
+
 const money = (value: number) =>
   new Intl.NumberFormat('en-NG', {
     style: 'currency',
@@ -77,6 +87,8 @@ export const HostedPartiesPage: React.FC = () => {
     accountNumber: '',
   });
   const [submittingPayout, setSubmittingPayout] = useState(false);
+  const [payoutHistory, setPayoutHistory] = useState<PayoutHistoryItem[]>([]);
+  const [totalWithdrawnNaira, setTotalWithdrawnNaira] = useState(0);
 
   const token = localStorage.getItem('adultAccessToken') || localStorage.getItem('token');
 
@@ -105,6 +117,24 @@ export const HostedPartiesPage: React.FC = () => {
           activePayout: null,
         }
       );
+
+      // History is informational. A temporary history failure should not hide
+      // current ticket earnings or prevent a payout request.
+      try {
+        const historyRes = await fetch(`${V1_API_BASE_URL}/parties/hosted/payout/history`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const historyData = await historyRes.json();
+
+        if (historyRes.ok && historyData.success) {
+          setPayoutHistory(Array.isArray(historyData.history) ? historyData.history : []);
+          setTotalWithdrawnNaira(Number(historyData.totalWithdrawnNaira) || 0);
+        } else {
+          console.error('Unable to load party payout history:', historyData.error);
+        }
+      } catch (historyError) {
+        console.error('Unable to load party payout history:', historyError);
+      }
     } catch (error: any) {
       toast.error(error?.message || 'Unable to load hosted parties');
     } finally {
@@ -198,11 +228,11 @@ export const HostedPartiesPage: React.FC = () => {
             <p>📍 {party.venueName} · {party.venueAddress}</p>
           </div>
 
-          {ended && party.availablePayoutNaira > 0 && (
+          {party.availablePayoutNaira > 0 && (
             <div className="mt-4 rounded-2xl border border-[var(--az-accent-gold)]/20 bg-[var(--az-accent-gold)]/5 px-4 py-3">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-muted)]">
-                  Unpaid from this party
+                  Available from ticket sales
                 </span>
                 <span className="font-mono text-sm font-bold text-[var(--az-accent-gold)]">
                   {money(party.availablePayoutNaira)}
@@ -252,7 +282,7 @@ export const HostedPartiesPage: React.FC = () => {
             </p>
             <h1 className="mt-2 font-serif text-4xl italic text-white">Your parties</h1>
             <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[var(--az-text-secondary)]">
-              Manage events, scan guests at the door, and withdraw your ticket earnings whenever your available balance reaches ₦10,000.
+              Manage events, track ticket sales, and cash out fulfilled ticket earnings whenever your available balance reaches ₦10,000. You do not have to wait for the party to end.
             </p>
           </div>
 
@@ -267,6 +297,12 @@ export const HostedPartiesPage: React.FC = () => {
                   Min. ₦10k
                 </span>
               </div>
+              <p className="mt-2 text-[10px] text-[var(--az-text-secondary)]">
+                Includes fulfilled ticket sales from active and completed parties.
+              </p>
+              <p className="mt-1 text-[10px] text-[var(--az-text-secondary)]">
+                Already withdrawn: <span className="font-mono font-bold text-white">{money(totalWithdrawnNaira)}</span>
+              </p>
               {payoutSummary.activePayout && (
                 <p className="mt-1 text-[10px] text-[var(--az-text-secondary)]">
                   Current request: {payoutSummary.activePayout.status}
@@ -339,6 +375,49 @@ export const HostedPartiesPage: React.FC = () => {
             </section>
           )}
         </>
+      )}
+
+      {payoutHistory.length > 0 && (
+        <section className="space-y-4">
+          <div className="border-t border-[var(--az-border)] pt-8">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--az-text-muted)]">
+                  Money out
+                </p>
+                <h2 className="mt-1 font-serif text-2xl italic text-white">Cashout history</h2>
+              </div>
+              <p className="text-xs text-[var(--az-text-secondary)]">
+                Total paid out: <span className="font-mono font-bold text-white">{money(totalWithdrawnNaira)}</span>
+              </p>
+            </div>
+
+            <div className="overflow-hidden rounded-3xl border border-[var(--az-border)] bg-[var(--az-bg-secondary)]">
+              <div className="divide-y divide-[var(--az-border)]">
+                {payoutHistory.map((payout) => (
+                  <div key={payout._id} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-white">{payout.partyTitle}</p>
+                      <p className="mt-1 text-[10px] text-[var(--az-text-muted)]">
+                        Requested {new Date(payout.requestedAt).toLocaleString()}
+                        {payout.reference ? ' · Ref: ' + payout.reference : ''}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-left sm:text-right">
+                      <p className="font-mono text-sm font-bold text-[var(--az-accent-gold)]">
+                        {money(payout.amountNaira)}
+                      </p>
+                      <p className="mt-1 text-[9px] font-bold uppercase tracking-widest text-[var(--az-text-muted)]">
+                        {payout.status}
+                        {payout.processedAt ? ' · ' + new Date(payout.processedAt).toLocaleDateString() : ''}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
       )}
 
       {showPayoutForm && (

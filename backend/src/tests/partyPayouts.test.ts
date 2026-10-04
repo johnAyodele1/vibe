@@ -129,6 +129,33 @@ describe('Party host payout accounting', () => {
         accountNumber: '0123456789',
       });
 
+  it('makes fulfilled ticket earnings available before the party ends', async () => {
+    const { party } = await createEndedPartyAndOrder();
+
+    await Party.updateOne(
+      { _id: party._id },
+      {
+        $set: {
+          startDate: new Date(Date.now() - 60_000),
+          endDate: new Date(Date.now() + 86_400_000),
+        },
+      }
+    );
+
+    const hostedRes = await request(app)
+      .get('/api/v1/parties/hosted/me')
+      .set('Authorization', `Bearer ${organizerToken}`);
+
+    expect(hostedRes.status).toBe(200);
+    expect(hostedRes.body.payoutSummary.availableNaira).toBe(12_000);
+    expect(hostedRes.body.payoutSummary.canRequest).toBe(true);
+    expect(hostedRes.body.parties[0].availablePayoutNaira).toBe(12_000);
+
+    const payoutRes = await requestPayout();
+    expect(payoutRes.status).toBe(201);
+    expect(payoutRes.body.payout.amountNaira).toBe(12_000);
+  });
+
   it('rejects an active payout and releases all claims when a claimed order is refunded', async () => {
     const { order } = await createEndedPartyAndOrder();
 
@@ -222,6 +249,42 @@ describe('Party host payout accounting', () => {
     expect(payout?.isActive).toBe(false);
     expect(payout?.failedBy?.toString()).toBe(adminId);
     expect(updatedOrder?.partyPayoutId).toBeUndefined();
+  });
+
+  it('returns cashout history and total paid out', async () => {
+    await createEndedPartyAndOrder();
+
+    const payoutRes = await requestPayout();
+    expect(payoutRes.status).toBe(201);
+
+    const payoutId = payoutRes.body.payout._id;
+
+    await request(app)
+      .put(`/api/admin/party-payouts/${payoutId}/verify`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    await request(app)
+      .put(`/api/admin/party-payouts/${payoutId}/process`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    await request(app)
+      .put(`/api/admin/party-payouts/${payoutId}/complete`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reference: 'bank-ref-history-1' });
+
+    const historyRes = await request(app)
+      .get('/api/v1/parties/hosted/payout/history')
+      .set('Authorization', `Bearer ${organizerToken}`);
+
+    expect(historyRes.status).toBe(200);
+    expect(historyRes.body.totalWithdrawnNaira).toBe(12_000);
+    expect(historyRes.body.history).toHaveLength(1);
+    expect(historyRes.body.history[0]).toMatchObject({
+      amountNaira: 12_000,
+      status: 'paid',
+      reference: 'bank-ref-history-1',
+      partyTitle: 'Host Payout Test',
+    });
   });
 
   it('supports a repeat payout after a previous payout is paid', async () => {
