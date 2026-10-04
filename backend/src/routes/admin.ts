@@ -6,7 +6,7 @@ import { getReconciledAnalyticsOverview } from '../controllers/adminAccountingOv
 import { getAccountingSummary } from '../controllers/adminAccounting.controller';
 import { adminGetTasks, adminCreateTask, adminUpdateTask, adminDeleteTask, adminGetStats } from '../controllers/adultRewards.controller';
 import { adminGetPayouts, adminVerifyPayout, adminProcessPayout, adminCompletePayout, adminRejectPayout, adminGetDisputes, resolveDispute, markRefundCompleted } from '../controllers/payout.controller';
-import { adminGetPartyPayouts, adminVerifyPartyPayout, adminProcessPartyPayout, adminCompletePartyPayout, adminRejectPartyPayout } from '../controllers/partyPayoutAdmin.controller';
+import { adminGetPartyPayouts, adminVerifyPartyPayout, adminProcessPartyPayout, adminCompletePartyPayout, adminRejectPartyPayout, adminFailPartyPayout } from '../controllers/partyPayoutAdmin.controller';
 import { listErrors, getError, resolveError, clearResolvedErrors } from '../controllers/adminErrors.controller';
 import { adminGetClubs, adminApproveClub, adminRejectClub, adminSuspendClub } from '../controllers/club.controller';
 import { adminGetParties, adminGetPartyDetail, adminApproveParty, adminRejectParty, adminToggleFeatureParty } from '../controllers/party.controller';
@@ -50,6 +50,7 @@ router.put('/party-payouts/:requestId/verify', adminVerifyPartyPayout);
 router.put('/party-payouts/:requestId/process', adminProcessPartyPayout);
 router.put('/party-payouts/:requestId/complete', adminCompletePartyPayout);
 router.put('/party-payouts/:requestId/reject', adminRejectPartyPayout);
+router.put('/party-payouts/:requestId/fail', adminFailPartyPayout);
 router.get('/disputes', adminGetDisputes);
 router.put('/disputes/:reportId/resolve', resolveDispute);
 router.put('/disputes/:reportId/refund-complete', markRefundCompleted);
