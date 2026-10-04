@@ -298,7 +298,7 @@ const AdultHome: React.FC = () => {
           </h1>
 
           <p className="text-lg md:text-xl text-[var(--az-text-secondary)] font-serif italic mb-10 max-w-2xl mx-auto opacity-80">
-            Premium experiences, curated for you. Cinematic, intimate, and entirely yours.
+            Premium experiences, curated for you. Cinematic, immersive, and entirely yours.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
