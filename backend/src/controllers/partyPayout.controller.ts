@@ -113,7 +113,10 @@ const requestPayout = async ({
   const session = await mongoose.startSession();
 
   try {
-    const result = await session.withTransaction(async (): Promise<PartyPayoutResult> => {
+    // mongodb@5.9 types withTransaction() as Promise<undefined | Document>,
+    // even though the callback return value is propagated at runtime.
+    const result = (await session.withTransaction(
+      async (): Promise<PartyPayoutResult> => {
       const activeInsideTransaction = await PartyPayoutRequest.findOne({
         organizerId,
         isActive: true,
@@ -215,7 +218,8 @@ const requestPayout = async ({
           requestedAt: payout.requestedAt,
         },
       };
-    });
+      }
+    )) as unknown as PartyPayoutResult | undefined;
 
     if (!result) {
       throw new Error('Party payout transaction did not return a result.');
