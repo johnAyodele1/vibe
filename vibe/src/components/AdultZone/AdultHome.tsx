@@ -218,61 +218,60 @@ const AdultHome: React.FC = () => {
 
   const serviceCards = [
     {
-      id: 'cams',
-      title: 'Live Cams',
-      tagline: 'Watch stunning performers live, tip to interact',
-      icon: '📹',
-      stats: `🔴 ${stats.camsOnline.toLocaleString()} online`,
-      path: '/cams',
-      color: 'from-red-900/40'
-    },
-    {
-      id: 'rooms',
-      title: 'Casual Rooms',
-      tagline: 'Join themed group chat rooms, no limits',
-      icon: '🛋️',
-      stats: `🔴 ${formatK(stats.roomsActive)} active`,
-      path: '/rooms',
-      color: 'from-purple-900/40'
-    },
-    {
-      id: 'sext',
-      title: 'Private Inbox',
-      tagline: 'One-on-one private text & photo exchange',
-      icon: '💬',
-      stats: `🔴 ${formatK(stats.sextChatting)} chatting`,
-      path: '/inbox',
-      color: 'from-pink-900/40'
-    },
-    {
-      id: 'random',
-      title: 'Random Stranger',
-      tagline: 'Matched with a random user, no names needed',
-      icon: '🎲',
-      stats: `🔴 ${stats.randomWaiting.toLocaleString()} waiting`,
-      path: '/random',
-      color: 'from-indigo-900/40'
-    },
-    {
-      id: 'hookup',
-      title: 'Meet Up Today',
-      tagline: 'Find someone nearby to connect with',
+      id: 'meetup',
+      title: 'Meetups',
+      tagline: 'Find people and activities happening near you',
       icon: '📍',
       stats: `🔴 ${stats.hookupNearby.toLocaleString()} nearby`,
       path: '/meetup',
       color: 'from-orange-900/40'
     },
     {
-      id: 'parties-clubs',
-      title: 'Parties & Clubs',
-      tagline: 'Discover nightlife, book party tickets & venues',
+      id: 'events',
+      title: 'Events & Parties',
+      tagline: 'Discover events, get tickets and make plans',
       icon: '🎟️',
       stats: '🔴 Live events',
       path: '/parties',
       color: 'from-amber-900/40'
+    },
+    {
+      id: 'clubs',
+      title: 'Clubs & Communities',
+      tagline: 'Explore local clubs and shared interests',
+      icon: '🏛️',
+      stats: '🔴 Explore now',
+      path: '/clubs',
+      color: 'from-purple-900/40'
+    },
+    {
+      id: 'rooms',
+      title: 'Community Rooms',
+      tagline: 'Join conversations around topics you enjoy',
+      icon: '💬',
+      stats: `🔴 ${formatK(stats.roomsActive)} active`,
+      path: '/rooms',
+      color: 'from-indigo-900/40'
+    },
+    {
+      id: 'random',
+      title: 'Random Connections',
+      tagline: 'Meet someone new and start a conversation',
+      icon: '🎲',
+      stats: `🔴 ${stats.randomWaiting.toLocaleString()} waiting`,
+      path: '/random',
+      color: 'from-blue-900/40'
+    },
+    {
+      id: 'messages',
+      title: 'Messages',
+      tagline: 'Keep up with the people and communities you follow',
+      icon: '✉️',
+      stats: `🔴 ${formatK(stats.sextChatting)} active`,
+      path: '/inbox',
+      color: 'from-pink-900/40'
     }
   ];
-
   return (
     <div className="flex flex-col">
       {/* Hero Section */}
@@ -298,7 +297,7 @@ const AdultHome: React.FC = () => {
           </h1>
 
           <p className="text-lg md:text-xl text-[var(--az-text-secondary)] font-serif italic mb-10 max-w-2xl mx-auto opacity-80">
-            Premium experiences, curated for you. Cinematic, intimate, and entirely yours.
+            Discover meetups, events, clubs and communities built around what you enjoy.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -309,7 +308,7 @@ const AdultHome: React.FC = () => {
               Explore Now
             </button>
             <button
-              onClick={() => navigate('/cams')}
+              onClick={() => navigate('/parties')}
               className="w-full sm:w-auto px-10 py-4 border-2 border-[var(--az-accent-rose)] text-[var(--az-accent-rose)] font-bold uppercase tracking-widest rounded-full hover:bg-[var(--az-accent-rose)] hover:text-white transition-all"
             >
               View Live Now
