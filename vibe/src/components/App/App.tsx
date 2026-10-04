@@ -142,7 +142,7 @@ function App() {
           <Route path="sext" element={<Navigate to="/inbox" replace />} />
           <Route path="sext/:conversationId" element={<Navigate to="/inbox" replace />} />
           <Route path="random" element={<RandomStranger />} />
-          <Route path="hookup" element={<HookUpTonight />} />
+          <Route path="meetup" element={<HookUpTonight />} />
           <Route path="vip" element={<VIPLounge />} />
           <Route path="wallet" element={<Wallet />} />
           <Route path="wallet/payment/callback" element={<PaymentCallback />} />
