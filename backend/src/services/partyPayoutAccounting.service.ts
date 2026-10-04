@@ -6,8 +6,11 @@ type Session = mongoose.ClientSession | undefined;
 
 const ACTIVE_PAYOUT_STATUSES = ['requested', 'verifying', 'processing'] as const;
 
-export const getAdminActorId = (req: any) =>
-  req?.user?._id || req?.userId || req?.adminId || req?.adultUser?._id || undefined;
+export const getAdminActorId = (req: any): mongoose.Types.ObjectId | undefined => {
+  const rawId = req?.user?._id || req?.userId || req?.adminId || req?.adultUser?._id;
+  if (!rawId || !mongoose.Types.ObjectId.isValid(rawId)) return undefined;
+  return new mongoose.Types.ObjectId(rawId);
+};
 
 export const releasePartyPayoutClaims = async (
   payoutId: mongoose.Types.ObjectId,
