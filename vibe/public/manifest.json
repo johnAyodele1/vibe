@@ -1,8 +1,8 @@
 {
-  "name": "Zippo",
-  "short_name": "Zippo",
-  "description": "Premium connections",
-  "start_url": "/adult",
+  "name": "Vibe",
+  "short_name": "Vibe",
+  "description": "Meet people, discover meetups, parties, clubs, and local events.",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#0a0608",

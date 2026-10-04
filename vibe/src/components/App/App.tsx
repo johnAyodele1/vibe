@@ -26,7 +26,6 @@ import AdminClubsPage from "../Admin/AdminClubsPage";
 import AdminPartiesPage from "../Admin/AdminPartiesPage";
 import LoadingScreen from "../LoadingScreen/LoadingScreen";
 import AdultZoneLayout from "../AdultZone/AdultZoneLayout";
-import AdultHome from "../AdultZone/AdultHome";
 import LiveCams from "../AdultZone/LiveCams";
 import NaughtyRooms from "../AdultZone/NaughtyRooms";
 import PrivateSext from "../AdultZone/PrivateSext";
@@ -65,7 +64,7 @@ function ProviderHomeRedirect() {
   const { user, isAuthenticated, loading } = useAdultAuth();
 
   if (loading) return <LoadingScreen />;
-  if (!isAuthenticated || user?.role !== 'provider') return <AdultHome />;
+  if (!isAuthenticated || user?.role !== 'provider') return <Navigate to="/parties" replace />;
 
   return (
     <ProviderOnboardingGuard>
@@ -142,7 +141,7 @@ function App() {
           <Route path="sext" element={<Navigate to="/inbox" replace />} />
           <Route path="sext/:conversationId" element={<Navigate to="/inbox" replace />} />
           <Route path="random" element={<RandomStranger />} />
-          <Route path="hookup" element={<HookUpTonight />} />
+          <Route path="meetup" element={<HookUpTonight />} />
           <Route path="vip" element={<VIPLounge />} />
           <Route path="wallet" element={<Wallet />} />
           <Route path="wallet/payment/callback" element={<PaymentCallback />} />
