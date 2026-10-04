@@ -14,6 +14,7 @@ import { PaystackService } from '../services/paystack.service';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import mongoose from 'mongoose';
+import { invalidatePartyPayoutForOrder } from '../services/partyPayoutAccounting.service';
 
 // Generate unique ticket code: ZPP-XXXXXX with collision retry loop
 const generateTicketCode = async (): Promise<string> => {
@@ -625,6 +626,12 @@ export const reconcilePendingTicketRefunds = async (): Promise<number> => {
           try {
             session = await mongoose.startSession();
             session.startTransaction();
+
+            await invalidatePartyPayoutForOrder(
+              claimedOrder._id,
+              'A ticket refund invalidated an active party payout. The host must submit a new payout request.',
+              session
+            );
 
             await Ticket.updateMany(
               { orderId: claimedOrder._id },

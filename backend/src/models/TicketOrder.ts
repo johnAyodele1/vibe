@@ -14,6 +14,7 @@ export interface ITicketOrder extends Document {
   priceNaira: number;
   platformFeeNaira: number;
   organizerNaira: number;
+  partyPayoutId?: mongoose.Types.ObjectId;
   paymentProvider: 'paystack' | 'wallet' | 'simulated';
   paymentReference?: string;
   providerReference?: string;
@@ -45,6 +46,7 @@ const TicketOrderSchema = new Schema<ITicketOrder>(
     priceNaira: { type: Number, required: true },
     platformFeeNaira: { type: Number, required: true },
     organizerNaira: { type: Number, required: true },
+    partyPayoutId: { type: Schema.Types.ObjectId, ref: 'PartyPayoutRequest', index: true },
     paymentProvider: {
       type: String,
       enum: ['paystack', 'wallet', 'simulated'],
@@ -78,7 +80,7 @@ const TicketOrderSchema = new Schema<ITicketOrder>(
 );
 
 TicketOrderSchema.index({ buyerId: 1, createdAt: -1 });
-TicketOrderSchema.index({ partyId: 1, status: 1 });
+TicketOrderSchema.index({ partyId: 1, status: 1, partyPayoutId: 1 });
 TicketOrderSchema.index({ paymentProvider: 1, providerReference: 1 });
 TicketOrderSchema.index({ paymentReference: 1, refundLockExpiresAt: 1 });
 

@@ -45,6 +45,7 @@ if (process.env.NODE_ENV !== 'test') {
     try { await User.updateMany({}, { isOnline: false }); const { cleanStalePresence } = require('./socket/adultSocket'); await cleanStalePresence(); } catch (err) { console.error("Error resetting users' online status:", err); }
     try { const { repairPushSubscriptionIndex } = require('./services/pushIndexMigrationService'); await repairPushSubscriptionIndex(); } catch (err) { console.error("Error repairing PushSubscription indexes:", err); }
     try { const { repairPayoutIndex } = require('./services/payoutIndexMigrationService'); await repairPayoutIndex(); } catch (err: any) { console.error('[FATAL] Failed to establish required payout database index:', err.message); if (process.env.NODE_ENV === 'production') process.exit(1); else throw err; }
+    try { const { repairPartyPayoutIndexes } = require('./services/partyPayoutIndexMigrationService'); await repairPartyPayoutIndexes(); } catch (err: any) { console.error('[FATAL] Failed to establish required party payout database indexes:', err.message); if (process.env.NODE_ENV === 'production') process.exit(1); else throw err; }
     try { const { startHardenedTicketRefundReconciliationWorker } = require('./services/ticketRefundReconciliationWorker.service'); startHardenedTicketRefundReconciliationWorker(60000); } catch (err: any) { console.error('Failed to start hardened ticket refund reconciliation worker:', err.message); }
   }).catch(error => console.error('MongoDB connection error:', error));
 }

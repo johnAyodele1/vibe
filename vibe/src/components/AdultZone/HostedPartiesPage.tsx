@@ -17,13 +17,25 @@ type Party = {
     grossSalesNaira: number;
     organizerPayoutNaira: number;
   };
+  availablePayoutNaira: number;
   payout: {
-    status: 'requested' | 'processing' | 'paid' | 'rejected';
+    status: 'requested' | 'verifying' | 'processing' | 'paid' | 'rejected' | 'failed';
     amountNaira: number;
     requestedAt: string;
     processedAt?: string;
   } | null;
-  canRequestPayout: boolean;
+};
+
+type PayoutSummary = {
+  availableNaira: number;
+  minimumNaira: number;
+  canRequest: boolean;
+  activePayout: {
+    _id: string;
+    amountNaira: number;
+    status: 'requested' | 'verifying' | 'processing';
+    requestedAt: string;
+  } | null;
 };
 
 type PayoutForm = {
@@ -33,7 +45,11 @@ type PayoutForm = {
 };
 
 const money = (value: number) =>
-  new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(value);
+  new Intl.NumberFormat('en-NG', {
+    style: 'currency',
+    currency: 'NGN',
+    maximumFractionDigits: 0,
+  }).format(value);
 
 const statusLabel: Record<Party['status'], string> = {
   draft: 'Draft',
@@ -47,9 +63,19 @@ const statusLabel: Record<Party['status'], string> = {
 export const HostedPartiesPage: React.FC = () => {
   const navigate = useNavigate();
   const [parties, setParties] = useState<Party[]>([]);
+  const [payoutSummary, setPayoutSummary] = useState<PayoutSummary>({
+    availableNaira: 0,
+    minimumNaira: 10_000,
+    canRequest: false,
+    activePayout: null,
+  });
   const [loading, setLoading] = useState(true);
-  const [selectedPayout, setSelectedPayout] = useState<Party | null>(null);
-  const [payoutForm, setPayoutForm] = useState<PayoutForm>({ bankName: '', accountHolder: '', accountNumber: '' });
+  const [showPayoutForm, setShowPayoutForm] = useState(false);
+  const [payoutForm, setPayoutForm] = useState<PayoutForm>({
+    bankName: '',
+    accountHolder: '',
+    accountNumber: '',
+  });
   const [submittingPayout, setSubmittingPayout] = useState(false);
 
   const token = localStorage.getItem('adultAccessToken') || localStorage.getItem('token');
@@ -65,8 +91,20 @@ export const HostedPartiesPage: React.FC = () => {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      if (!res.ok || !data.success) throw new Error(data.error || 'Unable to load hosted parties');
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Unable to load hosted parties');
+      }
+
       setParties(Array.isArray(data.parties) ? data.parties : []);
+      setPayoutSummary(
+        data.payoutSummary || {
+          availableNaira: 0,
+          minimumNaira: 10_000,
+          canRequest: false,
+          activePayout: null,
+        }
+      );
     } catch (error: any) {
       toast.error(error?.message || 'Unable to load hosted parties');
     } finally {
@@ -82,17 +120,21 @@ export const HostedPartiesPage: React.FC = () => {
     () => parties.filter((party) => new Date(party.endDate) >= new Date()),
     [parties]
   );
+
   const pastParties = useMemo(
     () => parties.filter((party) => new Date(party.endDate) < new Date()),
     [parties]
   );
 
-  const submitPayout = async () => {
-    if (!selectedPayout || !token) return;
+  const submitPayout = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!token) return;
+
     setSubmittingPayout(true);
 
     try {
-      const res = await fetch(`${V1_API_BASE_URL}/parties/${selectedPayout._id}/payout`, {
+      const res = await fetch(`${V1_API_BASE_URL}/parties/hosted/payout`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -100,11 +142,15 @@ export const HostedPartiesPage: React.FC = () => {
         },
         body: JSON.stringify(payoutForm),
       });
-      const data = await res.json();
-      if (!res.ok || !data.success) throw new Error(data.error || 'Unable to submit payout request');
 
-      toast.success('Payout details submitted. We will process the party payout.');
-      setSelectedPayout(null);
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Unable to submit payout request');
+      }
+
+      toast.success('Payout request submitted. Admin will process it.');
+      setShowPayoutForm(false);
       setPayoutForm({ bankName: '', accountHolder: '', accountNumber: '' });
       await loadParties();
     } catch (error: any) {
@@ -116,6 +162,7 @@ export const HostedPartiesPage: React.FC = () => {
 
   const PartyCard = ({ party }: { party: Party }) => {
     const ended = new Date(party.endDate) < new Date();
+
     return (
       <article className="overflow-hidden rounded-3xl border border-[var(--az-border)] bg-[var(--az-bg-secondary)]">
         <div className="relative aspect-[16/7] overflow-hidden bg-[#14090e]">
@@ -139,8 +186,10 @@ export const HostedPartiesPage: React.FC = () => {
               <p className="mt-1 font-mono text-sm font-bold text-white">{money(party.stats.grossSalesNaira)}</p>
             </div>
             <div className="p-4">
-              <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--az-text-muted)]">Your payout</p>
-              <p className="mt-1 font-mono text-sm font-bold text-[var(--az-accent-gold)]">{money(party.stats.organizerPayoutNaira)}</p>
+              <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--az-text-muted)]">Your earnings</p>
+              <p className="mt-1 font-mono text-sm font-bold text-[var(--az-accent-gold)]">
+                {money(party.stats.organizerPayoutNaira)}
+              </p>
             </div>
           </div>
 
@@ -148,6 +197,30 @@ export const HostedPartiesPage: React.FC = () => {
             <p>🗓 {new Date(party.startDate).toLocaleString()}</p>
             <p>📍 {party.venueName} · {party.venueAddress}</p>
           </div>
+
+          {ended && party.availablePayoutNaira > 0 && (
+            <div className="mt-4 rounded-2xl border border-[var(--az-accent-gold)]/20 bg-[var(--az-accent-gold)]/5 px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-muted)]">
+                  Unpaid from this party
+                </span>
+                <span className="font-mono text-sm font-bold text-[var(--az-accent-gold)]">
+                  {money(party.availablePayoutNaira)}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {party.payout && (
+            <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-[var(--az-border)] bg-[var(--az-bg-primary)] px-4 py-3">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-muted)]">
+                Last payout
+              </span>
+              <span className="text-right text-[10px] font-bold uppercase tracking-widest text-[var(--az-accent-gold)]">
+                {party.payout.status} · {money(party.payout.amountNaira)}
+              </span>
+            </div>
+          )}
 
           <div className="mt-5 grid grid-cols-2 gap-3">
             <button
@@ -164,24 +237,6 @@ export const HostedPartiesPage: React.FC = () => {
               View party
             </button>
           </div>
-
-          {ended && party.canRequestPayout && (
-            <button
-              onClick={() => setSelectedPayout(party)}
-              className="mt-3 w-full rounded-2xl bg-[var(--az-accent-gold)] px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-black transition hover:brightness-110"
-            >
-              Request {money(party.stats.organizerPayoutNaira)} payout
-            </button>
-          )}
-
-          {ended && party.payout && (
-            <div className="mt-3 flex items-center justify-between rounded-2xl border border-[var(--az-border)] bg-[var(--az-bg-primary)] px-4 py-3">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-muted)]">Payout</span>
-              <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--az-accent-gold)]">
-                {party.payout.status} · {money(party.payout.amountNaira)}
-              </span>
-            </div>
-          )}
         </div>
       </article>
     );
@@ -189,30 +244,68 @@ export const HostedPartiesPage: React.FC = () => {
 
   return (
     <div className="mx-auto max-w-6xl space-y-10 px-4 py-8">
-      <header className="flex flex-col gap-5 border-b border-[var(--az-border)] pb-7 md:flex-row md:items-end md:justify-between">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-[var(--az-accent-gold)]">Host workspace</p>
-          <h1 className="mt-2 font-serif text-4xl italic text-white">Your parties</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[var(--az-text-secondary)]">
-            Manage events, scan guests at the door, and request your ticket revenue after each party ends.
-          </p>
+      <header className="border-b border-[var(--az-border)] pb-7">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-[var(--az-accent-gold)]">
+              Host workspace
+            </p>
+            <h1 className="mt-2 font-serif text-4xl italic text-white">Your parties</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[var(--az-text-secondary)]">
+              Manage events, scan guests at the door, and withdraw your ticket earnings whenever your available balance reaches ₦10,000.
+            </p>
+          </div>
+
+          <div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto lg:items-stretch">
+            <div className="min-w-0 flex-1 rounded-2xl border border-[var(--az-border)] bg-[var(--az-bg-secondary)] px-4 py-3 sm:min-w-[210px]">
+              <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-[var(--az-text-muted)]">
+                Available to withdraw
+              </p>
+              <div className="mt-1 flex items-end justify-between gap-4">
+                <p className="font-mono text-xl font-bold text-white">{money(payoutSummary.availableNaira)}</p>
+                <span className="text-[9px] font-bold uppercase tracking-widest text-[var(--az-text-muted)]">
+                  Min. ₦10k
+                </span>
+              </div>
+              {payoutSummary.activePayout && (
+                <p className="mt-1 text-[10px] text-[var(--az-text-secondary)]">
+                  Current request: {payoutSummary.activePayout.status}
+                </p>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowPayoutForm(true)}
+              disabled={!payoutSummary.canRequest}
+              className="rounded-2xl border border-[var(--az-accent-gold)] bg-[var(--az-accent-gold)] px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-black transition hover:brightness-110 disabled:cursor-not-allowed disabled:border-[var(--az-border)] disabled:bg-[var(--az-bg-tertiary)] disabled:text-[var(--az-text-muted)]"
+            >
+              {payoutSummary.activePayout ? 'Payout processing' : 'Request payout'}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigate('/parties/create')}
+              className="rounded-2xl border border-[var(--az-border)] bg-[var(--az-bg-tertiary)] px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-white transition hover:border-white/20"
+            >
+              + Host a party
+            </button>
+          </div>
         </div>
-        <button
-          onClick={() => navigate('/parties/create')}
-          className="rounded-full bg-[var(--az-accent-primary)] px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-white"
-        >
-          + Host a party
-        </button>
       </header>
 
       {loading ? (
         <div className="grid gap-6 md:grid-cols-2">
-          {[1, 2].map((item) => <div key={item} className="h-96 animate-pulse rounded-3xl bg-[var(--az-bg-secondary)]" />)}
+          {[1, 2].map((item) => (
+            <div key={item} className="h-96 animate-pulse rounded-3xl bg-[var(--az-bg-secondary)]" />
+          ))}
         </div>
       ) : parties.length === 0 ? (
         <div className="rounded-3xl border border-[var(--az-border)] bg-[var(--az-bg-secondary)] px-6 py-16 text-center">
           <p className="font-serif text-2xl italic text-white">You have not hosted a party yet.</p>
-          <p className="mt-2 text-sm text-[var(--az-text-secondary)]">Create your first event and manage everything from this workspace.</p>
+          <p className="mt-2 text-sm text-[var(--az-text-secondary)]">
+            Create your first event and manage everything from this workspace.
+          </p>
           <button
             onClick={() => navigate('/parties/create')}
             className="mt-6 rounded-full bg-[var(--az-accent-primary)] px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-white"
@@ -228,7 +321,9 @@ export const HostedPartiesPage: React.FC = () => {
                 <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--az-text-muted)]">Hosting now</p>
                 <h2 className="mt-1 font-serif text-2xl italic text-white">Upcoming & active</h2>
               </div>
-              <div className="grid gap-6 md:grid-cols-2">{activeParties.map((party) => <PartyCard key={party._id} party={party} />)}</div>
+              <div className="grid gap-6 md:grid-cols-2">
+                {activeParties.map((party) => <PartyCard key={party._id} party={party} />)}
+              </div>
             </section>
           )}
 
@@ -238,50 +333,109 @@ export const HostedPartiesPage: React.FC = () => {
                 <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--az-text-muted)]">Your history</p>
                 <h2 className="mt-1 font-serif text-2xl italic text-white">Past parties</h2>
               </div>
-              <div className="grid gap-6 md:grid-cols-2">{pastParties.map((party) => <PartyCard key={party._id} party={party} />)}</div>
+              <div className="grid gap-6 md:grid-cols-2">
+                {pastParties.map((party) => <PartyCard key={party._id} party={party} />)}
+              </div>
             </section>
           )}
         </>
       )}
 
-      {selectedPayout && (
+      {showPayoutForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
-          <div className="w-full max-w-md rounded-3xl border border-[var(--az-border)] bg-[var(--az-bg-secondary)] p-6 shadow-2xl">
+          <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl border border-[var(--az-border)] bg-[var(--az-bg-secondary)] p-5 shadow-2xl sm:p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--az-accent-gold)]">Party payout</p>
-                <h2 className="mt-1 font-serif text-2xl italic text-white">{selectedPayout.title}</h2>
-                <p className="mt-1 text-xs text-[var(--az-text-secondary)]">
-                  {money(selectedPayout.stats.organizerPayoutNaira)} will be paid separately from your Zippo credit wallet.
+                <h2 className="mt-1 font-serif text-2xl italic text-white">Withdraw your earnings</h2>
+                <p className="mt-2 text-xs leading-relaxed text-[var(--az-text-secondary)]">
+                  You are requesting {money(payoutSummary.availableNaira)}. The full available balance will be included in this request.
                 </p>
               </div>
-              <button onClick={() => setSelectedPayout(null)} className="text-xl text-[var(--az-text-muted)] hover:text-white">×</button>
+              <button
+                type="button"
+                onClick={() => setShowPayoutForm(false)}
+                className="shrink-0 text-2xl leading-none text-[var(--az-text-muted)] hover:text-white"
+                aria-label="Close payout form"
+              >
+                ×
+              </button>
             </div>
 
-            <div className="mt-6 space-y-4">
-              {(['bankName', 'accountHolder', 'accountNumber'] as const).map((field) => (
-                <label key={field} className="block">
-                  <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-muted)]">
-                    {field === 'bankName' ? 'Bank name' : field === 'accountHolder' ? 'Account holder' : 'Account number'}
+            <form onSubmit={submitPayout} className="mt-6 space-y-4">
+              <label className="block">
+                <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-muted)]">
+                  Bank name
+                </span>
+                <input
+                  required
+                  value={payoutForm.bankName}
+                  onChange={(event) => setPayoutForm((current) => ({ ...current, bankName: event.target.value }))}
+                  autoComplete="organization"
+                  className="w-full rounded-2xl border border-[var(--az-border)] bg-[var(--az-bg-primary)] px-4 py-3 text-sm text-white outline-none focus:border-[var(--az-accent-gold)]"
+                  placeholder="e.g. GTBank"
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-muted)]">
+                  Account holder
+                </span>
+                <input
+                  required
+                  value={payoutForm.accountHolder}
+                  onChange={(event) => setPayoutForm((current) => ({ ...current, accountHolder: event.target.value }))}
+                  autoComplete="name"
+                  className="w-full rounded-2xl border border-[var(--az-border)] bg-[var(--az-bg-primary)] px-4 py-3 text-sm text-white outline-none focus:border-[var(--az-accent-gold)]"
+                  placeholder="Name on the bank account"
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-muted)]">
+                  Account number
+                </span>
+                <input
+                  required
+                  value={payoutForm.accountNumber}
+                  onChange={(event) =>
+                    setPayoutForm((current) => ({
+                      ...current,
+                      accountNumber: event.target.value.replace(/\D/g, '').slice(0, 10),
+                    }))
+                  }
+                  inputMode="numeric"
+                  autoComplete="off"
+                  maxLength={10}
+                  pattern="\d{10}"
+                  className="w-full rounded-2xl border border-[var(--az-border)] bg-[var(--az-bg-primary)] px-4 py-3 text-sm tracking-[0.14em] text-white outline-none focus:border-[var(--az-accent-gold)]"
+                  placeholder="0123456789"
+                />
+                <span className="mt-2 block text-[10px] text-[var(--az-text-muted)]">
+                  Enter the 10-digit Nigerian bank account number.
+                </span>
+              </label>
+
+              <div className="rounded-2xl border border-[var(--az-border)] bg-[var(--az-bg-primary)] p-4 text-xs">
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-[var(--az-text-muted)]">Requested amount</span>
+                  <span className="font-mono font-bold text-[var(--az-accent-gold)]">
+                    {money(payoutSummary.availableNaira)}
                   </span>
-                  <input
-                    value={payoutForm[field]}
-                    onChange={(event) => setPayoutForm((current) => ({ ...current, [field]: event.target.value }))}
-                    inputMode={field === 'accountNumber' ? 'numeric' : 'text'}
-                    maxLength={field === 'accountNumber' ? 10 : 100}
-                    className="w-full rounded-2xl border border-[var(--az-border)] bg-[var(--az-bg-primary)] px-4 py-3 text-sm text-white outline-none focus:border-[var(--az-accent-gold)]"
-                  />
-                </label>
-              ))}
-            </div>
+                </div>
+                <p className="mt-2 leading-relaxed text-[var(--az-text-muted)]">
+                  There is no lifetime or weekly payout limit. After this request is completed, you can request another payout whenever your available balance reaches ₦10,000.
+                </p>
+              </div>
 
-            <button
-              onClick={submitPayout}
-              disabled={submittingPayout}
-              className="mt-6 w-full rounded-2xl bg-[var(--az-accent-gold)] px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-black disabled:opacity-50"
-            >
-              {submittingPayout ? 'Submitting...' : 'Submit payout details'}
-            </button>
+              <button
+                type="submit"
+                disabled={submittingPayout}
+                className="w-full rounded-2xl bg-[var(--az-accent-gold)] px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-black disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {submittingPayout ? 'Submitting...' : 'Submit payout request'}
+              </button>
+            </form>
           </div>
         </div>
       )}
