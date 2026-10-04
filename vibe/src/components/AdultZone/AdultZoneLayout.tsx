@@ -231,11 +231,11 @@ const AdultZoneLayoutInner: React.FC = () => {
     { name: 'Profile Editor', path: '/adult/provider/profile' },
     { name: 'Settings', path: '/adult/provider/settings' }
   ] : [
-    { name: 'Meetups', path: '/meetup' },
-    { name: 'Events & Parties', path: '/parties' },
-    { name: 'Clubs', path: '/clubs' },
-    { name: 'Community Rooms', path: '/rooms' },
-    { name: 'Messages', path: '/inbox' },
+    { name: 'Live Cams', path: '/cams' },
+    { name: 'Casual Rooms', path: '/rooms' },
+    { name: 'Private Inbox', path: '/inbox' },
+    { name: 'Random Stranger', path: '/random' },
+    { name: 'Meet Up Today', path: '/meetup' },
   ];
 
   return (
