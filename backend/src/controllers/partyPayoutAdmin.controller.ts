@@ -175,14 +175,15 @@ export const adminCompletePartyPayout = async (req: Request, res: Response) => {
 export const adminFailPartyPayout = async (req: Request, res: Response) => {
   try {
     const actorId = getAdminActorId(req);
-    const { requestId } = req.params;
+    const rawRequestId = req.params.requestId;
+    const requestId = Array.isArray(rawRequestId) ? rawRequestId[0] : rawRequestId;
     const reason = String(req.body?.reason || '').trim();
 
     if (!reason) {
       return res.status(400).json({ success: false, error: 'A failure reason is required.' });
     }
 
-    if (!mongoose.Types.ObjectId.isValid(requestId)) {
+    if (typeof requestId !== 'string' || !mongoose.Types.ObjectId.isValid(requestId)) {
       return res.status(400).json({ success: false, error: 'Invalid party payout request ID.' });
     }
 
