@@ -292,7 +292,7 @@ const Settings: React.FC = () => {
               <div className="flex flex-col gap-1">
                 <div className={styles.premiumTitle}>
                   <Icon name="verified" className="text-primary" />
-                  Get Hookup+
+                  Get Vibe+
                 </div>
                 <p className={styles.premiumDesc}>
                   See who likes you & go incognito.
