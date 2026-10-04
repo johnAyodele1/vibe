@@ -629,8 +629,6 @@ export const AdminPartyPayoutsPage: React.FC = () => {
           </form>
         </div>
       )}
-
-      )}
     </div>
   );
 };
