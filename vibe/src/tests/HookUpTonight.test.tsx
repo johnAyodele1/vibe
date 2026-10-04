@@ -45,7 +45,7 @@ describe('Meet Up Today — Horizontal Filters and CustomSelect', () => {
             }),
         });
       }
-      if (url.includes('/hookup/nearby')) {
+      if (url.includes('/meetup/nearby')) {
         return Promise.resolve({
           ok: true,
           json: () =>

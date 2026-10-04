@@ -9,6 +9,6 @@ const router = express.Router();
 
 router.get('/providers/recommended', getRecommendedProviders);
 router.get('/providers/:providerId/response-stats', getProviderResponseStats);
-router.get('/hookup/recommended', getRecommendedHookupProviders);
+router.get('/meetup/recommended', getRecommendedHookupProviders);
 
 export default router;

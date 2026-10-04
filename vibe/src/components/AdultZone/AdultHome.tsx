@@ -259,7 +259,7 @@ const AdultHome: React.FC = () => {
       tagline: 'Find someone nearby to connect with',
       icon: '📍',
       stats: `🔴 ${stats.hookupNearby.toLocaleString()} nearby`,
-      path: '/hookup',
+      path: '/meetup',
       color: 'from-orange-900/40'
     },
     {

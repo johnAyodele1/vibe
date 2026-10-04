@@ -40,7 +40,7 @@ self.addEventListener('push', event => {
   const notificationOptions = {
     body: data.body || '', icon: data.icon || '/icons/icon-192x192.png', badge: '/icons/badge-72x72.png', tag: data.tag || `zippo-${data.type || 'general'}`,
     renotify: true, requireInteraction: isCall, silent: false, vibrate: isCall ? [500, 200, 500, 200, 500] : [200, 100, 200], timestamp: data.timestamp || Date.now(),
-    data: { url: data.url || '/adult', unreadCount: data.unreadCount || 0, type: data.type, testId: data.testId, callId: data.callId, callType: data.callType, token: data.token, isCustomPush: true },
+    data: { url: data.url || '/', unreadCount: data.unreadCount || 0, type: data.type, testId: data.testId, callId: data.callId, callType: data.callType, token: data.token, isCustomPush: true },
     actions: data.type === 'new_message' ? [{ action: 'open', title: 'Reply' }] : data.type === 'incoming_call' ? [{ action: 'open', title: 'Answer' }, { action: 'decline', title: 'Decline' }] : [],
   };
 
@@ -61,7 +61,7 @@ self.addEventListener('notificationclick', event => {
     event.waitUntil(fetch(`/api/v1/adult/sext/calls/${data.callId}/decline`, { method: 'PUT', headers: { Authorization: `Bearer ${data.token}` } }).catch(console.error));
     return;
   }
-  const url = data.url || '/adult';
+  const url = data.url || '/';
   event.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
     for (const client of clientList) {
       if (client.url.includes(self.location.origin) && 'focus' in client) { client.focus(); client.postMessage({ type: 'NAVIGATE', url }); if (data.type === 'incoming_call') client.postMessage({ type: 'INCOMING_CALL', callId: data.callId, callType: data.callType }); return; }
