@@ -19,7 +19,7 @@ type Party = {
   };
   availablePayoutNaira: number;
   payout: {
-    status: 'requested' | 'verifying' | 'processing' | 'paid' | 'rejected';
+    status: 'requested' | 'verifying' | 'processing' | 'paid' | 'rejected' | 'failed';
     amountNaira: number;
     requestedAt: string;
     processedAt?: string;
