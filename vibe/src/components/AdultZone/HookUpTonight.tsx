@@ -213,7 +213,7 @@ const HookUpTonight: React.FC = () => {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const res = await fetch(`${API_BASE_URL}/v1/adult/hookup/recommended?${queryParams.toString()}`, { headers });
+      const res = await fetch(`${API_BASE_URL}/v1/adult/meetup/recommended?${queryParams.toString()}`, { headers });
       const json = await res.json();
       if (json.success && json.data) {
         setProviders(json.data.providers || []);
@@ -239,7 +239,7 @@ const HookUpTonight: React.FC = () => {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const res = await fetch(`${API_BASE_URL}/v1/adult/hookup/nearby?${queryParams.toString()}`, { headers });
+      const res = await fetch(`${API_BASE_URL}/v1/adult/meetup/nearby?${queryParams.toString()}`, { headers });
       const json = await res.json();
       if (json.success && json.providers) setMapProviders(json.providers || []);
     } catch (err) {
