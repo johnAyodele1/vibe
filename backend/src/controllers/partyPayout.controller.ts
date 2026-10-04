@@ -104,10 +104,9 @@ const requestPayout = async ({
     };
   }
 
-  let session: mongoose.ClientSession | null = null;
+  const session = await mongoose.startSession();
 
   try {
-    session = await mongoose.startSession();
     session.startTransaction();
 
     const activeInsideTransaction = await PartyPayoutRequest.findOne({
