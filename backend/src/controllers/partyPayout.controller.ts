@@ -75,7 +75,7 @@ const validatePayoutDetails = (body: any) => {
 type PartyPayoutResult = {
   status: number;
   body: Record<string, any>;
-  payout?: any;
+  payout?: { _id: mongoose.Types.ObjectId; amountNaira: number; status: string; requestedAt: Date };
 };
 
 const requestPayout = async ({
@@ -113,7 +113,7 @@ const requestPayout = async ({
   const session = await mongoose.startSession();
 
   try {
-    const result = await session.withTransaction<PartyPayoutResult>(async (): Promise<PartyPayoutResult> => {
+    const result = await session.withTransaction(async () => {
       const activeInsideTransaction = await PartyPayoutRequest.findOne({
         organizerId,
         isActive: true,
@@ -208,7 +208,12 @@ const requestPayout = async ({
             requestedAt: payout.requestedAt,
           },
         },
-        payout,
+        payout: {
+          _id: payout._id,
+          amountNaira: payout.amountNaira,
+          status: payout.status,
+          requestedAt: payout.requestedAt,
+        },
       };
     });
 
