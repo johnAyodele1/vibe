@@ -113,7 +113,7 @@ const requestPayout = async ({
   const session = await mongoose.startSession();
 
   try {
-    const result = await session.withTransaction(async () => {
+    const result = await session.withTransaction<PartyPayoutResult>(async (): Promise<PartyPayoutResult> => {
       const activeInsideTransaction = await PartyPayoutRequest.findOne({
         organizerId,
         isActive: true,
