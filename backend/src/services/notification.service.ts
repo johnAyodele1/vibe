@@ -26,7 +26,7 @@ export const sendPushNotification = async (userId: string | IUser, payload: Noti
         tag: payload.data?.type || 'general',
         renotify: true,
         requireInteraction: true,
-        url: payload.data?.conversationId ? `/chat/${payload.data.conversationId}` : '/adult',
+        url: payload.data?.conversationId ? `/chat/${payload.data.conversationId}` : '/',
         type: payload.data?.type || 'general',
         unreadCount: 0,
         ...payload.data,
