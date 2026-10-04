@@ -26,7 +26,6 @@ import AdminClubsPage from "../Admin/AdminClubsPage";
 import AdminPartiesPage from "../Admin/AdminPartiesPage";
 import LoadingScreen from "../LoadingScreen/LoadingScreen";
 import AdultZoneLayout from "../AdultZone/AdultZoneLayout";
-import AdultHome from "../AdultZone/AdultHome";
 import LiveCams from "../AdultZone/LiveCams";
 import NaughtyRooms from "../AdultZone/NaughtyRooms";
 import PrivateSext from "../AdultZone/PrivateSext";
@@ -65,7 +64,7 @@ function ProviderHomeRedirect() {
   const { user, isAuthenticated, loading } = useAdultAuth();
 
   if (loading) return <LoadingScreen />;
-  if (!isAuthenticated || user?.role !== 'provider') return <AdultHome />;
+  if (!isAuthenticated || user?.role !== 'provider') return <Navigate to="/parties" replace />;
 
   return (
     <ProviderOnboardingGuard>
