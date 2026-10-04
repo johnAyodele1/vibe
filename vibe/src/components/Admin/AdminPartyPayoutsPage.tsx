@@ -223,7 +223,7 @@ export const AdminPartyPayoutsPage: React.FC = () => {
   };
 
   return (
-    <div className={styles.container}>
+    <div className={styles.dashboardContainer}>
       <div className="mb-6 flex flex-col gap-4 border-b border-neutral-800 pb-6 md:flex-row md:items-end md:justify-between">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-amber-500">Host earnings</p>
