@@ -2,15 +2,10 @@ import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import PartyPayoutRequest from '../models/PartyPayoutRequest';
 import TicketOrder from '../models/TicketOrder';
-import { verifyAdminAuth } from '../middleware/adminAuth';
-
 const ACTIVE_STATUSES = ['requested', 'verifying', 'processing'];
 
 export const adminGetPartyPayouts = async (req: Request, res: Response) => {
   try {
-    if (!verifyAdminAuth(req)) {
-      return res.status(403).json({ success: false, error: 'Admin authorization required' });
-    }
 
     const status = String(req.query.status || 'requested');
     const filter: any = {};
@@ -62,9 +57,6 @@ export const adminGetPartyPayouts = async (req: Request, res: Response) => {
 
 export const adminVerifyPartyPayout = async (req: Request, res: Response) => {
   try {
-    if (!verifyAdminAuth(req)) {
-      return res.status(403).json({ success: false, error: 'Admin authorization required' });
-    }
 
     const { requestId } = req.params;
     const payout = await PartyPayoutRequest.findOneAndUpdate(
@@ -93,9 +85,6 @@ export const adminVerifyPartyPayout = async (req: Request, res: Response) => {
 
 export const adminProcessPartyPayout = async (req: Request, res: Response) => {
   try {
-    if (!verifyAdminAuth(req)) {
-      return res.status(403).json({ success: false, error: 'Admin authorization required' });
-    }
 
     const { requestId } = req.params;
     const payout = await PartyPayoutRequest.findOneAndUpdate(
@@ -124,9 +113,6 @@ export const adminProcessPartyPayout = async (req: Request, res: Response) => {
 
 export const adminCompletePartyPayout = async (req: Request, res: Response) => {
   try {
-    if (!verifyAdminAuth(req)) {
-      return res.status(403).json({ success: false, error: 'Admin authorization required' });
-    }
 
     const { requestId } = req.params;
     const reference = String(req.body?.reference || '').trim();
@@ -161,9 +147,6 @@ export const adminCompletePartyPayout = async (req: Request, res: Response) => {
 
 export const adminRejectPartyPayout = async (req: Request, res: Response) => {
   try {
-    if (!verifyAdminAuth(req)) {
-      return res.status(403).json({ success: false, error: 'Admin authorization required' });
-    }
 
     const { requestId } = req.params;
     const reason = String(req.body?.reason || '').trim();
