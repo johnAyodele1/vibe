@@ -138,6 +138,9 @@ const AdminDashboard: React.FC = () => {
           <Link to="/admin/payouts" style={{ marginRight: '8px', display: 'inline-block', backgroundColor: '#7c3aed', color: 'white', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', textDecoration: 'none' }}>
             💸 Payouts & Disputes
           </Link>
+          <Link to="/admin/party-payouts" style={{ marginRight: '8px', display: 'inline-block', backgroundColor: '#b45309', color: 'white', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', textDecoration: 'none' }}>
+            🎟️ Party Payouts
+          </Link>
           <Link to="/admin/errors" style={{ marginRight: '16px', display: 'inline-block', backgroundColor: '#dc2626', color: 'white', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', textDecoration: 'none' }}>
             🔴 Error Monitor
           </Link>
