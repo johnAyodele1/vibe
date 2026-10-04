@@ -72,6 +72,12 @@ const validatePayoutDetails = (body: any) => {
   };
 };
 
+type PartyPayoutResult = {
+  status: number;
+  body: Record<string, any>;
+  payout?: any;
+};
+
 const requestPayout = async ({
   organizerId,
   body,
@@ -80,7 +86,7 @@ const requestPayout = async ({
   organizerId: mongoose.Types.ObjectId;
   body: any;
   requestedPartyIds?: mongoose.Types.ObjectId[];
-}) => {
+}): Promise<PartyPayoutResult> => {
   const payoutDetails = validatePayoutDetails(body);
   if ('error' in payoutDetails) {
     return { status: 400, body: { success: false, error: payoutDetails.error } };
