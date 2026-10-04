@@ -36,6 +36,54 @@ export const repairPartyPayoutIndexes = async () => {
     ]
   );
 
+  // Backfill legacy requests so already-paid ticket orders cannot be
+  // included in a new payout. The old model stored one party per request
+  // but did not snapshot the individual orders.
+  const ticketOrders = db.collection('ticket_orders');
+  const legacyRequests = await collection
+    .find({
+      partyId: { $exists: true },
+      $or: [
+        { partyIds: { $exists: false } },
+        { ticketOrderIds: { $exists: false } },
+      ],
+    })
+    .toArray();
+
+  for (const request of legacyRequests) {
+    const orders = await ticketOrders
+      .find({
+        partyId: request.partyId,
+        status: 'fulfilled',
+      })
+      .project({ _id: 1 })
+      .toArray();
+
+    const orderIds = orders.map((order) => order._id);
+
+    await collection.updateOne(
+      { _id: request._id },
+      {
+        $set: {
+          partyIds: [request.partyId],
+          ticketOrderIds: orderIds,
+        },
+      }
+    );
+
+    if (ACTIVE_STATUSES.includes(request.status)) {
+      if (orderIds.length) {
+        await ticketOrders.updateMany(
+          {
+            _id: { $in: orderIds },
+            partyPayoutId: { $exists: false },
+          },
+          { $set: { partyPayoutId: request._id } }
+        );
+      }
+    }
+  }
+
   // Legacy data may contain more than one active party payout for an organizer.
   // Keep the most recent active request and safely release the others before
   // creating the unique active-request constraint.
@@ -61,8 +109,10 @@ export const repairPartyPayoutIndexes = async () => {
     if (!keep) continue;
 
     if (superseded.length) {
+      const supersededIds = superseded.map((request) => request._id);
+
       await collection.updateMany(
-        { _id: { $in: superseded.map((request) => request._id) } },
+        { _id: { $in: supersededIds } },
         {
           $set: {
             status: 'rejected',
@@ -71,6 +121,11 @@ export const repairPartyPayoutIndexes = async () => {
             adminNotes: 'Superseded during party payout accounting migration.',
           },
         }
+      );
+
+      await ticketOrders.updateMany(
+        { partyPayoutId: { $in: supersededIds } },
+        { $unset: { partyPayoutId: '' } }
       );
     }
   }
