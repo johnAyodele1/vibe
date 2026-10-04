@@ -24,6 +24,16 @@ describe('Party host payout accounting', () => {
 
     await mongoose.connect(mongoServer.getUri());
 
+    // Transactions can race Mongoose's automatic index creation in the
+    // in-memory replica set. Build the indexes used by the payout writes
+    // before any test data or transactions are created.
+    await Promise.all([
+      AdultUser.init(),
+      Party.init(),
+      TicketOrder.init(),
+      PartyPayoutRequest.init(),
+    ]);
+
     organizerId = new mongoose.Types.ObjectId().toString();
     adminId = new mongoose.Types.ObjectId().toString();
 
