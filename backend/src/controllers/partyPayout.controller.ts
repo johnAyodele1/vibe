@@ -107,112 +107,107 @@ const requestPayout = async ({
   const session = await mongoose.startSession();
 
   try {
-    session.startTransaction();
+    const result = await session.withTransaction(async () => {
+      const activeInsideTransaction = await PartyPayoutRequest.findOne({
+        organizerId,
+        isActive: true,
+      })
+        .session(session)
+        .lean();
 
-    const activeInsideTransaction = await PartyPayoutRequest.findOne({
-      organizerId,
-      isActive: true,
-    })
-      .session(session)
-      .lean();
+      if (activeInsideTransaction) {
+        return {
+          status: 409,
+          body: {
+            success: false,
+            error: 'A party payout is already being processed.',
+            payout: activeInsideTransaction,
+          },
+        };
+      }
 
-    if (activeInsideTransaction) {
-      await session.abortTransaction();
-      return {
-        status: 409,
-        body: {
-          success: false,
-          error: 'A party payout is already being processed.',
-          payout: activeInsideTransaction,
-        },
-      };
-    }
+      const parties = await getEligiblePartyIds(organizerId, requestedPartyIds, session);
+      const partyIds = parties.map((party) => party._id);
 
-    const parties = await getEligiblePartyIds(organizerId, requestedPartyIds, session);
-    const partyIds = parties.map((party) => party._id);
+      const orders = await getEligibleOrders(partyIds, session);
+      const amountNaira = orders.reduce((sum, order) => sum + order.organizerNaira, 0);
 
-    const orders = await getEligibleOrders(partyIds, session);
-    const amountNaira = orders.reduce((sum, order) => sum + order.organizerNaira, 0);
+      if (amountNaira < MINIMUM_PARTY_PAYOUT_NAIRA) {
+        return {
+          status: 400,
+          body: {
+            success: false,
+            error: `Minimum party payout is ₦${MINIMUM_PARTY_PAYOUT_NAIRA.toLocaleString('en-NG')}.`,
+            availableNaira: amountNaira,
+            minimumNaira: MINIMUM_PARTY_PAYOUT_NAIRA,
+          },
+        };
+      }
 
-    if (amountNaira < MINIMUM_PARTY_PAYOUT_NAIRA) {
-      await session.abortTransaction();
-      return {
-        status: 400,
-        body: {
-          success: false,
-          error: `Minimum party payout is ₦${MINIMUM_PARTY_PAYOUT_NAIRA.toLocaleString('en-NG')}.`,
-          availableNaira: amountNaira,
-          minimumNaira: MINIMUM_PARTY_PAYOUT_NAIRA,
-        },
-      };
-    }
+      if (!orders.length || !partyIds.length) {
+        return {
+          status: 400,
+          body: {
+            success: false,
+            error: 'There are no ticket earnings currently available for payout.',
+            availableNaira: 0,
+            minimumNaira: MINIMUM_PARTY_PAYOUT_NAIRA,
+          },
+        };
+      }
 
-    if (!orders.length || !partyIds.length) {
-      await session.abortTransaction();
-      return {
-        status: 400,
-        body: {
-          success: false,
-          error: 'There are no ticket earnings currently available for payout.',
-          availableNaira: 0,
-          minimumNaira: MINIMUM_PARTY_PAYOUT_NAIRA,
-        },
-      };
-    }
+      const payoutDocs = await PartyPayoutRequest.create(
+        [
+          {
+            organizerId,
+            partyIds,
+            ticketOrderIds: orders.map((order) => order._id),
+            partyTitle: parties.length === 1 ? parties[0].title : undefined,
+            partyId: parties.length === 1 ? parties[0]._id : undefined,
+            amountNaira,
+            payoutDetails,
+            status: 'requested',
+            isActive: true,
+            requestedAt: new Date(),
+          },
+        ],
+        { session }
+      );
 
-    const payoutDocs = await PartyPayoutRequest.create(
-      [
+      const payout = payoutDocs[0];
+
+      const lockResult = await TicketOrder.updateMany(
         {
-          organizerId,
-          partyIds,
-          ticketOrderIds: orders.map((order) => order._id),
-          partyTitle: parties.length === 1 ? parties[0].title : undefined,
-          partyId: parties.length === 1 ? parties[0]._id : undefined,
-          amountNaira,
-          payoutDetails,
-          status: 'requested',
-          isActive: true,
-          requestedAt: new Date(),
+          _id: { $in: orders.map((order) => order._id) },
+          partyPayoutId: { $exists: false },
         },
-      ],
-      { session }
-    );
+        { $set: { partyPayoutId: payout._id } },
+        { session }
+      );
 
-    const payout = payoutDocs[0];
+      if (lockResult.modifiedCount !== orders.length) {
+        throw Object.assign(new Error('Some ticket earnings changed while the payout was being created.'), {
+          code: 'PAYOUT_BALANCE_CHANGED',
+        });
+      }
 
-    const lockResult = await TicketOrder.updateMany(
-      {
-        _id: { $in: orders.map((order) => order._id) },
-        partyPayoutId: { $exists: false },
-      },
-      { $set: { partyPayoutId: payout._id } },
-      { session }
-    );
-
-    if (lockResult.modifiedCount !== orders.length) {
-      throw Object.assign(new Error('Some ticket earnings changed while the payout was being created.'), {
-        code: 'PAYOUT_BALANCE_CHANGED',
-      });
-    }
-
-    await session.commitTransaction();
-
-    return {
-      status: 201,
-      body: {
-        success: true,
-        payout: {
-          _id: payout._id,
-          amountNaira: payout.amountNaira,
-          status: payout.status,
-          requestedAt: payout.requestedAt,
+      return {
+        status: 201,
+        body: {
+          success: true,
+          payout: {
+            _id: payout._id,
+            amountNaira: payout.amountNaira,
+            status: payout.status,
+            requestedAt: payout.requestedAt,
+          },
         },
-      },
-      payout,
-    };
+        payout,
+      };
+    });
+
+    return result;
   } catch (error: any) {
-    await session.abortTransaction().catch(() => {});
-
     if (
       error?.code === 11000 ||
       error?.message?.includes('one_active_party_payout_per_organizer')
@@ -241,7 +236,6 @@ const requestPayout = async ({
     await session.endSession();
   }
 };
-
 export const getMyHostedParties = async (req: Request, res: Response) => {
   try {
     const organizerId = getAdultUserId(req);
