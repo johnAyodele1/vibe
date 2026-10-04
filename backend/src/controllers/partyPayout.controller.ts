@@ -254,6 +254,15 @@ export const getMyHostedParties = async (req: Request, res: Response) => {
 
     const partyIds = parties.map((party) => party._id);
 
+    const endedEligibleParties = await Party.find({
+      organizerId,
+      _id: { $in: partyIds },
+      endDate: { $lt: new Date() },
+      status: { $in: ELIGIBLE_PARTY_STATUSES },
+    })
+      .select('_id')
+      .lean();
+
     const [sales, payouts, eligibleOrders, activePayout] = await Promise.all([
       TicketOrder.aggregate([
         { $match: { partyId: { $in: partyIds }, status: 'fulfilled' } },
@@ -268,22 +277,14 @@ export const getMyHostedParties = async (req: Request, res: Response) => {
       ]),
       PartyPayoutRequest.find({
         organizerId,
-        partyIds: { $in: partyIds },
+        $or: [
+          { partyIds: { $in: partyIds } },
+          { partyId: { $in: partyIds } },
+        ],
       })
         .sort({ requestedAt: -1 })
         .lean(),
-      getEligibleOrders(
-        (
-          await Party.find({
-            organizerId,
-            _id: { $in: partyIds },
-            endDate: { $lt: new Date() },
-            status: { $in: ELIGIBLE_PARTY_STATUSES },
-          })
-            .select('_id')
-            .lean()
-        ).map((party) => party._id)
-      ),
+      getEligibleOrders(endedEligibleParties.map((party) => party._id)),
       PartyPayoutRequest.findOne({
         organizerId,
         isActive: true,
@@ -375,7 +376,10 @@ export const getPartyPayout = async (req: Request, res: Response) => {
       getEligibleOrders([party._id]),
       PartyPayoutRequest.findOne({
         organizerId,
-        partyIds: party._id,
+        $or: [
+          { partyIds: party._id },
+          { partyId: party._id },
+        ],
       })
         .sort({ requestedAt: -1 })
         .lean(),
