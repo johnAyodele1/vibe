@@ -112,11 +112,10 @@ const requestPayout = async ({
 
   const session = await mongoose.startSession();
 
+  let transactionResult: PartyPayoutResult | undefined;
+
   try {
-    // mongodb@5.9 types withTransaction() as Promise<undefined | Document>,
-    // even though the callback return value is propagated at runtime.
-    const result = (await session.withTransaction(
-      async (): Promise<PartyPayoutResult> => {
+    await session.withTransaction(async (): Promise<void> => {
       const activeInsideTransaction = await PartyPayoutRequest.findOne({
         organizerId,
         isActive: true,
@@ -125,7 +124,7 @@ const requestPayout = async ({
         .lean();
 
       if (activeInsideTransaction) {
-        return {
+        transactionResult = {
           status: 409,
           body: {
             success: false,
@@ -133,6 +132,7 @@ const requestPayout = async ({
             payout: activeInsideTransaction,
           },
         };
+        return;
       }
 
       const parties = await getEligiblePartyIds(organizerId, requestedPartyIds, session);
@@ -142,7 +142,7 @@ const requestPayout = async ({
       const amountNaira = orders.reduce((sum, order) => sum + order.organizerNaira, 0);
 
       if (amountNaira < MINIMUM_PARTY_PAYOUT_NAIRA) {
-        return {
+        transactionResult = {
           status: 400,
           body: {
             success: false,
@@ -151,10 +151,11 @@ const requestPayout = async ({
             minimumNaira: MINIMUM_PARTY_PAYOUT_NAIRA,
           },
         };
+        return;
       }
 
       if (!orders.length || !partyIds.length) {
-        return {
+        transactionResult = {
           status: 400,
           body: {
             success: false,
@@ -163,6 +164,7 @@ const requestPayout = async ({
             minimumNaira: MINIMUM_PARTY_PAYOUT_NAIRA,
           },
         };
+        return;
       }
 
       const payoutDocs = await PartyPayoutRequest.create(
@@ -200,7 +202,7 @@ const requestPayout = async ({
         });
       }
 
-      return {
+      transactionResult = {
         status: 201,
         body: {
           success: true,
@@ -218,14 +220,13 @@ const requestPayout = async ({
           requestedAt: payout.requestedAt,
         },
       };
-      }
-    )) as unknown as PartyPayoutResult | undefined;
+    });
 
-    if (!result) {
+    if (!transactionResult) {
       throw new Error('Party payout transaction did not return a result.');
     }
 
-    return result;
+    return transactionResult;
   } catch (error: any) {
     if (
       error?.code === 11000 ||
