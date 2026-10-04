@@ -1,0 +1,221 @@
+import { Request, Response } from 'express';
+import mongoose from 'mongoose';
+import PartyPayoutRequest from '../models/PartyPayoutRequest';
+import TicketOrder from '../models/TicketOrder';
+import { verifyAdminAuth } from '../middleware/adminAuth';
+
+const ACTIVE_STATUSES = ['requested', 'verifying', 'processing'];
+
+export const adminGetPartyPayouts = async (req: Request, res: Response) => {
+  try {
+    if (!verifyAdminAuth(req)) {
+      return res.status(403).json({ success: false, error: 'Admin authorization required' });
+    }
+
+    const status = String(req.query.status || 'requested');
+    const filter: any = {};
+
+    if (status !== 'all') {
+      filter.status = status;
+    }
+
+    const [requests, counts] = await Promise.all([
+      PartyPayoutRequest.find(filter)
+        .sort({ requestedAt: 1 })
+        .limit(Math.min(parseInt(String(req.query.limit || 50), 10) || 50, 100))
+        .populate('organizerId', 'displayName username email')
+        .populate('partyIds', 'title')
+        .lean(),
+      PartyPayoutRequest.aggregate([
+        {
+          $group: {
+            _id: '$status',
+            count: { $sum: 1 },
+            amountNaira: { $sum: '$amountNaira' },
+          },
+        },
+      ]),
+    ]);
+
+    const countMap = Object.fromEntries(
+      counts.map((row: any) => [
+        row._id,
+        { count: row.count, amountNaira: row.amountNaira },
+      ])
+    );
+
+    return res.json({
+      success: true,
+      requests,
+      counts: {
+        requested: countMap.requested?.count || 0,
+        verifying: countMap.verifying?.count || 0,
+        processing: countMap.processing?.count || 0,
+        paid: countMap.paid?.count || 0,
+        rejected: countMap.rejected?.count || 0,
+      },
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message || 'Failed to load party payouts' });
+  }
+};
+
+export const adminVerifyPartyPayout = async (req: Request, res: Response) => {
+  try {
+    if (!verifyAdminAuth(req)) {
+      return res.status(403).json({ success: false, error: 'Admin authorization required' });
+    }
+
+    const { requestId } = req.params;
+    const payout = await PartyPayoutRequest.findOneAndUpdate(
+      { _id: requestId, status: 'requested', isActive: true },
+      {
+        $set: {
+          status: 'verifying',
+          verifiedAt: new Date(),
+        },
+      },
+      { new: true }
+    );
+
+    if (!payout) {
+      return res.status(404).json({
+        success: false,
+        error: 'Party payout request not found or no longer awaiting verification.',
+      });
+    }
+
+    return res.json({ success: true, payout });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message || 'Failed to verify party payout' });
+  }
+};
+
+export const adminProcessPartyPayout = async (req: Request, res: Response) => {
+  try {
+    if (!verifyAdminAuth(req)) {
+      return res.status(403).json({ success: false, error: 'Admin authorization required' });
+    }
+
+    const { requestId } = req.params;
+    const payout = await PartyPayoutRequest.findOneAndUpdate(
+      { _id: requestId, status: 'verifying', isActive: true },
+      {
+        $set: {
+          status: 'processing',
+          processingAt: new Date(),
+        },
+      },
+      { new: true }
+    );
+
+    if (!payout) {
+      return res.status(404).json({
+        success: false,
+        error: 'Party payout request must be verified before processing.',
+      });
+    }
+
+    return res.json({ success: true, payout });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message || 'Failed to process party payout' });
+  }
+};
+
+export const adminCompletePartyPayout = async (req: Request, res: Response) => {
+  try {
+    if (!verifyAdminAuth(req)) {
+      return res.status(403).json({ success: false, error: 'Admin authorization required' });
+    }
+
+    const { requestId } = req.params;
+    const reference = String(req.body?.reference || '').trim();
+    const notes = String(req.body?.notes || '').trim();
+
+    const payout = await PartyPayoutRequest.findOneAndUpdate(
+      { _id: requestId, status: 'processing', isActive: true },
+      {
+        $set: {
+          status: 'paid',
+          isActive: false,
+          processedAt: new Date(),
+          ...(reference ? { adminReference: reference } : {}),
+          ...(notes ? { adminNotes: notes } : {}),
+        },
+      },
+      { new: true }
+    );
+
+    if (!payout) {
+      return res.status(404).json({
+        success: false,
+        error: 'Party payout request must be in processing status before it can be marked paid.',
+      });
+    }
+
+    return res.json({ success: true, payout });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message || 'Failed to complete party payout' });
+  }
+};
+
+export const adminRejectPartyPayout = async (req: Request, res: Response) => {
+  try {
+    if (!verifyAdminAuth(req)) {
+      return res.status(403).json({ success: false, error: 'Admin authorization required' });
+    }
+
+    const { requestId } = req.params;
+    const reason = String(req.body?.reason || '').trim();
+
+    if (!reason) {
+      return res.status(400).json({ success: false, error: 'A rejection reason is required.' });
+    }
+
+    const session = await mongoose.startSession();
+
+    try {
+      session.startTransaction();
+
+      const payout = await PartyPayoutRequest.findOne({
+        _id: requestId,
+        status: { $in: ['requested', 'verifying'] },
+        isActive: true,
+      }).session(session);
+
+      if (!payout) {
+        await session.abortTransaction();
+        return res.status(404).json({
+          success: false,
+          error: 'Only requested or verifying party payouts can be rejected.',
+        });
+      }
+
+      await TicketOrder.updateMany(
+        {
+          _id: { $in: payout.ticketOrderIds },
+          partyPayoutId: payout._id,
+        },
+        { $unset: { partyPayoutId: '' } },
+        { session }
+      );
+
+      payout.status = 'rejected';
+      payout.isActive = false;
+      payout.adminNotes = reason;
+      payout.rejectedAt = new Date();
+
+      await payout.save({ session });
+      await session.commitTransaction();
+
+      return res.json({ success: true, payout });
+    } catch (error) {
+      await session.abortTransaction().catch(() => {});
+      throw error;
+    } finally {
+      await session.endSession();
+    }
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message || 'Failed to reject party payout' });
+  }
+};
