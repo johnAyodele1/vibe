@@ -1,8 +1,8 @@
 {
   "name": "Zippo",
   "short_name": "Zippo",
-  "description": "Premium connections",
-  "start_url": "/adult",
+  "description": "Meetups, events, clubs and social connections on Zippo",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#0a0608",
