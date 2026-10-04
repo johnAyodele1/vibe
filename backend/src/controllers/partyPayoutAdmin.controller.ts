@@ -3,8 +3,6 @@ import mongoose from 'mongoose';
 import PartyPayoutRequest from '../models/PartyPayoutRequest';
 import TicketOrder from '../models/TicketOrder';
 import { failPartyPayoutAndRelease, getAdminActorId, reconcilePartyPayout } from '../services/partyPayoutAccounting.service';
-const ACTIVE_STATUSES = ['requested', 'verifying', 'processing'];
-
 export const adminGetPartyPayouts = async (req: Request, res: Response) => {
   try {
 
@@ -49,6 +47,7 @@ export const adminGetPartyPayouts = async (req: Request, res: Response) => {
         processing: countMap.processing?.count || 0,
         paid: countMap.paid?.count || 0,
         rejected: countMap.rejected?.count || 0,
+        failed: countMap.failed?.count || 0,
       },
     });
   } catch (error: any) {
@@ -183,6 +182,10 @@ export const adminFailPartyPayout = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'A failure reason is required.' });
     }
 
+    if (!mongoose.Types.ObjectId.isValid(requestId)) {
+      return res.status(400).json({ success: false, error: 'Invalid party payout request ID.' });
+    }
+
     const session = await mongoose.startSession();
 
     try {
@@ -192,7 +195,7 @@ export const adminFailPartyPayout = async (req: Request, res: Response) => {
         new mongoose.Types.ObjectId(requestId),
         reason,
         session,
-        actorId && mongoose.Types.ObjectId.isValid(actorId) ? new mongoose.Types.ObjectId(actorId) : undefined
+        actorId
       );
 
       if (!payout) {
@@ -218,7 +221,7 @@ export const adminFailPartyPayout = async (req: Request, res: Response) => {
 
 export const adminRejectPartyPayout = async (req: Request, res: Response) => {
   try {
-
+    const actorId = getAdminActorId(req);
     const { requestId } = req.params;
     const reason = String(req.body?.reason || '').trim();
 
@@ -258,8 +261,7 @@ export const adminRejectPartyPayout = async (req: Request, res: Response) => {
       payout.isActive = false;
       payout.adminNotes = reason;
       payout.rejectedAt = new Date();
-      const actorId = getAdminActorId(req);
-      if (actorId && mongoose.Types.ObjectId.isValid(actorId)) payout.rejectedBy = new mongoose.Types.ObjectId(actorId);
+      if (actorId) payout.rejectedBy = actorId;
 
       await payout.save({ session });
       await session.commitTransaction();
