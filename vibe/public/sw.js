@@ -2,7 +2,7 @@ const API_BASE_URL = self.location.hostname === 'localhost' || self.location.hos
   ? 'http://localhost:5000/api'
   : 'https://zippo-r8hk.onrender.com/api';
 
-const SW_VERSION = 'zippo-v13-1.0.1';
+const SW_VERSION = 'vibe-v14-1.0.2';
 const CACHE_NAME = `${SW_VERSION}-static`;
 const PRECACHE_ASSETS = ['/', '/offline.html', '/manifest.json', '/favicon.svg'];
 
@@ -35,10 +35,10 @@ const acknowledgePushTest = async data => {
 self.addEventListener('push', event => {
   if (!event.data) return;
   let data;
-  try { data = event.data.json(); } catch { data = { title: 'Zippo', body: event.data.text(), type: 'general' }; }
+  try { data = event.data.json(); } catch { data = { title: 'Vibe', body: event.data.text(), type: 'general' }; }
   const isCall = data.type === 'incoming_call';
   const notificationOptions = {
-    body: data.body || '', icon: data.icon || '/icons/icon-192x192.png', badge: '/icons/badge-72x72.png', tag: data.tag || `zippo-${data.type || 'general'}`,
+    body: data.body || '', icon: data.icon || '/icons/icon-192x192.png', badge: '/icons/badge-72x72.png', tag: data.tag || `vibe-${data.type || 'general'}`,
     renotify: true, requireInteraction: isCall, silent: false, vibrate: isCall ? [500, 200, 500, 200, 500] : [200, 100, 200], timestamp: data.timestamp || Date.now(),
     data: { url: data.url || '/', unreadCount: data.unreadCount || 0, type: data.type, testId: data.testId, callId: data.callId, callType: data.callType, token: data.token, isCustomPush: true },
     actions: data.type === 'new_message' ? [{ action: 'open', title: 'Reply' }] : data.type === 'incoming_call' ? [{ action: 'open', title: 'Answer' }, { action: 'decline', title: 'Decline' }] : [],
@@ -46,7 +46,7 @@ self.addEventListener('push', event => {
 
   event.waitUntil((async () => {
     const existing = await self.registration.getNotifications({ tag: notificationOptions.tag });
-    const title = existing.length > 0 && data.unreadCount > 1 ? `${data.title || 'Zippo'} (${data.unreadCount} messages)` : (data.title || 'Zippo');
+    const title = existing.length > 0 && data.unreadCount > 1 ? `${data.title || 'Vibe'} (${data.unreadCount} messages)` : (data.title || 'Vibe');
     await self.registration.showNotification(title, notificationOptions);
     await acknowledgePushTest(data);
     if (data.unreadCount > 0 && navigator.setAppBadge) await navigator.setAppBadge(data.unreadCount).catch(() => {});
