@@ -20,9 +20,12 @@ const getEligiblePartyIds = async (
   requestedPartyIds?: mongoose.Types.ObjectId[],
   session?: mongoose.ClientSession
 ) => {
+  // Ticket sales are host earnings as soon as the order is fulfilled.
+  // Hosts should not have to wait until the event ends to use ticket revenue
+  // for planning and cash flow. Refund reconciliation can invalidate an
+  // active payout claim before it is completed.
   const filter: any = {
     organizerId,
-    endDate: { $lt: new Date() },
     status: { $in: ELIGIBLE_PARTY_STATUSES },
   };
 
@@ -267,10 +270,9 @@ export const getMyHostedParties = async (req: Request, res: Response) => {
 
     const partyIds = parties.map((party) => party._id);
 
-    const endedEligibleParties = await Party.find({
+    const eligibleParties = await Party.find({
       organizerId,
       _id: { $in: partyIds },
-      endDate: { $lt: new Date() },
       status: { $in: ELIGIBLE_PARTY_STATUSES },
     })
       .select('_id')
@@ -297,7 +299,7 @@ export const getMyHostedParties = async (req: Request, res: Response) => {
       })
         .sort({ requestedAt: -1 })
         .lean(),
-      getEligibleOrders(endedEligibleParties.map((party) => party._id)),
+      getEligibleOrders(eligibleParties.map((party) => party._id)),
       PartyPayoutRequest.findOne({
         organizerId,
         isActive: true,
@@ -354,7 +356,7 @@ export const getMyHostedParties = async (req: Request, res: Response) => {
                 processedAt: payout.processedAt,
               }
             : null,
-          canRequestPayout: isPast && availableForParty >= MINIMUM_PARTY_PAYOUT_NAIRA,
+          canRequestPayout: availableForParty >= MINIMUM_PARTY_PAYOUT_NAIRA,
         };
       }),
       payoutSummary: {
@@ -374,6 +376,72 @@ export const getMyHostedParties = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error fetching hosted parties:', error);
     return res.status(500).json({ success: false, error: error.message || 'Failed to fetch hosted parties' });
+  }
+};
+
+export const getPartyPayoutHistory = async (req: Request, res: Response) => {
+  try {
+    const organizerId = getAdultUserId(req);
+    if (!organizerId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+    const payouts = await PartyPayoutRequest.find({ organizerId })
+      .sort({ requestedAt: -1 })
+      .select('_id partyIds partyId partyTitle amountNaira status requestedAt processedAt adminReference')
+      .lean();
+
+    const partyIds = Array.from(
+      new Set(
+        payouts.flatMap((payout) => [
+          ...(payout.partyIds || []),
+          ...(payout.partyId ? [payout.partyId] : []),
+        ]).map((id) => id.toString())
+      )
+    ).map((id) => new mongoose.Types.ObjectId(id));
+
+    const parties = partyIds.length
+      ? await Party.find({ _id: { $in: partyIds } }).select('_id title').lean()
+      : [];
+
+    const partyTitleById = new Map(parties.map((party) => [party._id.toString(), party.title]));
+
+    const history = payouts.map((payout) => {
+      const titles = Array.from(
+        new Set(
+          [
+            ...(payout.partyIds || []),
+            ...(payout.partyId ? [payout.partyId] : []),
+          ]
+            .map((id) => partyTitleById.get(id.toString()))
+            .filter(Boolean)
+        )
+      );
+
+      return {
+        _id: payout._id,
+        amountNaira: payout.amountNaira,
+        status: payout.status,
+        requestedAt: payout.requestedAt,
+        processedAt: payout.processedAt,
+        reference: payout.adminReference || null,
+        partyTitle: titles.length ? titles.join(', ') : payout.partyTitle || 'Party ticket earnings',
+      };
+    });
+
+    const totalWithdrawnNaira = payouts
+      .filter((payout) => payout.status === 'paid')
+      .reduce((sum, payout) => sum + payout.amountNaira, 0);
+
+    return res.json({
+      success: true,
+      totalWithdrawnNaira,
+      history,
+    });
+  } catch (error: any) {
+    console.error('Error fetching party payout history:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch party payout history',
+    });
   }
 };
 
