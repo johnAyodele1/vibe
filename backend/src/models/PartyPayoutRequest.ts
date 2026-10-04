@@ -1,6 +1,6 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
-export type PartyPayoutStatus = 'requested' | 'verifying' | 'processing' | 'paid' | 'rejected';
+export type PartyPayoutStatus = 'requested' | 'verifying' | 'processing' | 'paid' | 'rejected' | 'failed';
 
 export interface IPartyPayoutRequest extends Document {
   organizerId: mongoose.Types.ObjectId;
@@ -25,6 +25,12 @@ export interface IPartyPayoutRequest extends Document {
   processingAt?: Date;
   processedAt?: Date;
   rejectedAt?: Date;
+  failedAt?: Date;
+  verifiedBy?: mongoose.Types.ObjectId;
+  processingBy?: mongoose.Types.ObjectId;
+  processedBy?: mongoose.Types.ObjectId;
+  rejectedBy?: mongoose.Types.ObjectId;
+  failedBy?: mongoose.Types.ObjectId;
 }
 
 const partyPayoutRequestSchema = new Schema<IPartyPayoutRequest>(
@@ -42,7 +48,7 @@ const partyPayoutRequestSchema = new Schema<IPartyPayoutRequest>(
     },
     status: {
       type: String,
-      enum: ['requested', 'verifying', 'processing', 'paid', 'rejected'],
+      enum: ['requested', 'verifying', 'processing', 'paid', 'rejected', 'failed'],
       default: 'requested',
       index: true,
     },
@@ -54,6 +60,12 @@ const partyPayoutRequestSchema = new Schema<IPartyPayoutRequest>(
     processingAt: { type: Date },
     processedAt: { type: Date },
     rejectedAt: { type: Date },
+    failedAt: { type: Date },
+    verifiedBy: { type: Schema.Types.ObjectId, ref: 'AdultUser' },
+    processingBy: { type: Schema.Types.ObjectId, ref: 'AdultUser' },
+    processedBy: { type: Schema.Types.ObjectId, ref: 'AdultUser' },
+    rejectedBy: { type: Schema.Types.ObjectId, ref: 'AdultUser' },
+    failedBy: { type: Schema.Types.ObjectId, ref: 'AdultUser' },
   },
   { collection: 'party_payout_requests', timestamps: true }
 );
