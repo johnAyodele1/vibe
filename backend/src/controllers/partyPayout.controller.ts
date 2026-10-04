@@ -493,13 +493,6 @@ export const requestPartyPayout = async (req: Request, res: Response) => {
 
     if (!party) return res.status(404).json({ success: false, error: 'Party not found' });
 
-    if (new Date(party.endDate) >= new Date()) {
-      return res.status(400).json({
-        success: false,
-        error: 'Party payout is available after the party ends.',
-      });
-    }
-
     if (!ELIGIBLE_PARTY_STATUSES.includes(party.status)) {
       return res.status(400).json({ success: false, error: 'This party is not eligible for payout.' });
     }
