@@ -109,7 +109,7 @@ router.put('/adult/sext/calls/:callId/accept', verifyAdultJWT, acceptCall);
 router.put('/adult/sext/calls/:callId/decline', verifyAdultJWT, declineCall);
 router.put('/adult/sext/calls/:callId/missed', verifyAdultJWT, missedCall);
 router.put('/adult/sext/calls/:callId/end', verifyAdultJWT, endCall);
-router.get('/adult/hookup/nearby', optionalAdultJWT, getHookupNearbyProviders);
+router.get('/adult/meetup/nearby', optionalAdultJWT, getHookupNearbyProviders);
 router.get('/adult/profiles/me', verifyAdultJWT, getAdultMemberProfile);
 router.put('/adult/profiles/me', verifyAdultJWT, updateAdultMemberProfile);
 router.put('/adult/auth/change-password', verifyAdultJWT, changePassword);
