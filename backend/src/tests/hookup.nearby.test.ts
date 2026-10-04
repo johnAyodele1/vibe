@@ -85,9 +85,9 @@ describe('Hook Up Tonight — Location Filters and Nearby API', () => {
     expect(res.body.data.location.city.name).toBe('Lagos');
   });
 
-  it('queries providers successfully on GET /api/v1/adult/hookup/nearby', async () => {
+  it('queries providers successfully on GET /api/v1/adult/meetup/nearby', async () => {
     const res = await request(app)
-      .get('/api/v1/adult/hookup/nearby?country=NG&state=LA&city=Lagos')
+      .get('/api/v1/adult/meetup/nearby?country=NG&state=LA&city=Lagos')
       .set('Authorization', `Bearer ${memberToken}`);
 
     expect(res.status).toBe(200);
@@ -98,9 +98,9 @@ describe('Hook Up Tonight — Location Filters and Nearby API', () => {
     expect(res.body.data.providers[0].tonightRate).toBe(150);
   });
 
-  it('queries map coordinate dots successfully on GET /api/v1/adult/hookup/nearby with view=map', async () => {
+  it('queries map coordinate dots successfully on GET /api/v1/adult/meetup/nearby with view=map', async () => {
     const res = await request(app)
-      .get('/api/v1/adult/hookup/nearby?country=NG&state=LA&city=Lagos&view=map')
+      .get('/api/v1/adult/meetup/nearby?country=NG&state=LA&city=Lagos&view=map')
       .set('Authorization', `Bearer ${memberToken}`);
 
     expect(res.status).toBe(200);
