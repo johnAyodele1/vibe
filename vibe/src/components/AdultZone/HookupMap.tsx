@@ -154,7 +154,7 @@ export const HookupMap: React.FC<HookupMapProps> = ({ providers, center, zoom, o
     <div
       ref={mapElementRef}
       className="relative isolate z-0 w-full h-full min-h-0 max-h-full rounded-xl overflow-hidden"
-      aria-label="Hookup providers map"
+      aria-label="Meetup providers map"
     />
   );
 };
