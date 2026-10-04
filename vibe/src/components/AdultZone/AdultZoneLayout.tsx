@@ -65,7 +65,7 @@ const AdultZoneLayoutInner: React.FC = () => {
   useEffect(() => {
     const ctx = getInstallContext();
 
-    if (!ctx.isStandalone && location.pathname === '/') {
+    if (!ctx.isStandalone && location.pathname === '/parties') {
       if (shouldShowInstallPrompt()) {
         setShowInstallPrompt(true);
         recordInstallPromptShown();
