@@ -54,7 +54,7 @@ const createPopupContent = (provider: MapProvider, onMessage: () => void): HTMLD
     const rate = document.createElement('span');
     rate.className = 'map-popup-rate text-xs font-mono';
     rate.style.color = 'var(--az-accent-gold)';
-    rate.textContent = `💎 ${formatAmount(provider.tonightRate)} tonight`;
+    rate.textContent = `💎 ${formatAmount(provider.tonightRate)} activity`;
     info.append(rate);
   }
 
