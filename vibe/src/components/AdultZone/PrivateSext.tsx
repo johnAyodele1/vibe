@@ -438,12 +438,12 @@ const PrivateSext: React.FC = () => {
 
   const handleDeclineServiceTonightRequest = async (msgId: string) => {
     try {
-      await fetch(`${API_BASE_URL}/v1/adult/sext/service-tonight-requests/${msgId}/decline`, {
+      await fetch(`${API_BASE_URL}/v1/adult/sext/activity-requests/${msgId}/decline`, {
         method: 'PUT',
         headers: getHeaders()
       });
       setMessages(prev => prev.map(m => m.id === msgId ? { ...m, serviceTonightRequest: { ...m.serviceTonightRequest!, status: 'declined' } } : m));
-      toast.info('Service request cancelled');
+      toast.info('Activity request cancelled');
     } catch (err) {
       console.error(err);
     }
@@ -1265,7 +1265,7 @@ const PrivateSext: React.FC = () => {
       conversationId: selectedConv.conversationId,
       senderId: user?.id || (user as any)?._id || '',
       receiverId: selectedConv.otherUser?.id,
-      content: 'Requested a tonight service',
+      content: 'Requested activity service',
       mediaType: 'request_service',
       creditCost: 0,
       isUnlocked: true,
@@ -1294,7 +1294,7 @@ const PrivateSext: React.FC = () => {
           const filtered = prev.filter(m => m.id !== data.id);
           return filtered.map(m => m.id === tempId ? { ...data, isOptimistic: false, conversationId: data.conversationId || selectedConv.conversationId } : m);
         });
-        toast.success('Tonight service request sent!');
+        toast.success('Activity request request sent!');
         fetchConversations();
       } else {
         setMessages(prev => prev.filter(m => m.id !== tempId));
@@ -1657,7 +1657,7 @@ const PrivateSext: React.FC = () => {
                       )}
                     </div>
                     <p className={`text-xs truncate ${c.unreadCount > 0 ? 'text-pink-400 font-bold' : 'text-gray-400'}`}>
-                      {c.lastMessage ? c.lastMessage.content.replace('Requested a tonight service', 'Requested activity service') : 'No messages yet...'}
+                      {c.lastMessage ? c.lastMessage.content.replace('Requested activity service', 'Requested activity service') : 'No messages yet...'}
                     </p>
                   </div>
 
@@ -2012,7 +2012,7 @@ const PrivateSext: React.FC = () => {
                         )}
                       </div>
                     ) : m.mediaType === 'request_service' ? (
-                      <div data-testid="message-service-tonight-request" className="w-64 bg-[#140b13] border-2 border-dashed border-purple-500/40 rounded-xl p-4 flex flex-col gap-3 message-service-tonight-request">
+                      <div data-testid="message-activity-request" className="w-64 bg-[#140b13] border-2 border-dashed border-purple-500/40 rounded-xl p-4 flex flex-col gap-3 message-activity-request">
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-xs tracking-wider text-purple-400 uppercase">Service Request</span>
                         </div>
