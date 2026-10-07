@@ -31,7 +31,7 @@ import LiveCams from "../AdultZone/LiveCams";
 import NaughtyRooms from "../AdultZone/NaughtyRooms";
 import PrivateSext from "../AdultZone/PrivateSext";
 import RandomStranger from "../AdultZone/RandomStranger";
-import HookUpTonight from "../AdultZone/HookUpTonight";
+import MeetUp from "../AdultZone/MeetUp";
 import VIPLounge from "../AdultZone/VIPLounge";
 import Wallet from "../AdultZone/Wallet";
 import PaymentCallback from "../AdultZone/PaymentCallback";
@@ -142,7 +142,7 @@ function App() {
           <Route path="sext" element={<Navigate to="/inbox" replace />} />
           <Route path="sext/:conversationId" element={<Navigate to="/inbox" replace />} />
           <Route path="random" element={<RandomStranger />} />
-          <Route path="meetup" element={<HookUpTonight />} />
+          <Route path="meetup" element={<MeetUp />} />
           <Route path="vip" element={<VIPLounge />} />
           <Route path="wallet" element={<Wallet />} />
           <Route path="wallet/payment/callback" element={<PaymentCallback />} />
