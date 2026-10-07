@@ -269,7 +269,7 @@ export const getRecommendedProviders = async (req: Request, res: Response) => {
   }
 };
 
-export const getRecommendedHookupProviders = async (req: Request, res: Response) => {
+export const getRecommendedMeetupProviders = async (req: Request, res: Response) => {
   try {
     const limit = toPositiveInt(req.query.limit, 12, 48);
     const page = toPositiveInt(req.query.page, 1, 10000);
@@ -310,8 +310,8 @@ export const getRecommendedHookupProviders = async (req: Request, res: Response)
       data: { providers, total, page, pages: Math.ceil(total / limit) },
     });
   } catch (error: any) {
-    console.error('Error fetching recommended hookup providers:', error);
-    return res.status(500).json({ success: false, error: 'Failed to load hookup recommendations' });
+    console.error('Error fetching recommended meetup providers:', error);
+    return res.status(500).json({ success: false, error: 'Failed to load meetup recommendations' });
   }
 };
 
