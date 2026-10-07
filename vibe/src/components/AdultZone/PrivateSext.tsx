@@ -1657,7 +1657,7 @@ const PrivateSext: React.FC = () => {
                       )}
                     </div>
                     <p className={`text-xs truncate ${c.unreadCount > 0 ? 'text-pink-400 font-bold' : 'text-gray-400'}`}>
-                      {c.lastMessage ? c.lastMessage.content.replace('Requested activity service', 'Requested activity service') : 'No messages yet...'}
+                      {c.lastMessage ? c.lastMessage.content.replace('Requested a tonight service', 'Requested activity service') : 'No messages yet...'}
                     </p>
                   </div>
 
