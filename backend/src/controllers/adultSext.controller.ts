@@ -343,7 +343,7 @@ export const requestService = async (req: Request, res: Response) => {
     // Send push notification for service tonight request (best-effort)
     try {
       await sendPushToUser(otherParticipantId, {
-        title:       `🌙 Activity Request request from ${user.displayName || user.username}`,
+        title:       `🌙 Activity request from ${user.displayName || user.username}`,
         body:        note || `Requested activity`,
         icon:        user.profilePhoto || '',
         tag:         `service_req_${conversationId}`,
@@ -764,7 +764,7 @@ export const reportServiceRequest = async (req: Request, res: Response) => {
       userDisplayName: user.displayName || user.username,
       providerId: message.senderId.toString(),
       providerStageName: provider?.providerProfile?.stageName || provider?.displayName || 'Provider',
-      serviceName: 'Activity Request Arrangement',
+      serviceName: 'Activity Request',
       serviceAmount: message.serviceRequest.totalAmount,
       currency: 'credits',
       paymentStatus: message.serviceRequest.status,
@@ -2503,7 +2503,7 @@ export const declinePhotoRequest = async (req: Request, res: Response) => {
 };
 
 // PUT /api/v1/adult/sext/activity-requests/:messageId/decline
-export const declineActivityRequestRequest = async (req: Request, res: Response) => {
+export const declineActivityRequest = async (req: Request, res: Response) => {
   try {
     const user = req.adultUser;
     if (!user) {
@@ -2543,7 +2543,7 @@ export const declineActivityRequestRequest = async (req: Request, res: Response)
 };
 
 // PUT /api/v1/adult/sext/activity-requests/:messageId/fulfill
-export const fulfillActivityRequestRequest = async (req: Request, res: Response) => {
+export const fulfillActivityRequest = async (req: Request, res: Response) => {
   try {
     const user = req.adultUser;
     if (!user) {
