@@ -5,7 +5,7 @@ import app from '../app';
 import AdultUser from '../models/AdultUser';
 import jwt from 'jsonwebtoken';
 
-describe('Hook Up Tonight — Location Filters and Nearby API', () => {
+describe('Meet Up — Location Filters and Nearby API', () => {
   let mongoServer: MongoMemoryServer;
   let memberToken: string;
   let providerToken: string;
