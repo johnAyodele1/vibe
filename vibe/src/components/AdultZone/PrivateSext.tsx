@@ -1310,14 +1310,14 @@ const PrivateSext: React.FC = () => {
             message: 'Services can only be requested from service providers.'
           },
           NO_TONIGHT_RATE: {
-            title: 'No Tonight Rate Set',
-            message: 'The provider has not set their tonight arrangement rate yet.',
+            title: 'No Activity Rate Set',
+            message: 'The provider has not set their activity rate yet.',
             action: 'Go to Settings',
             actionUrl: '/adult/provider/settings?tab=pricing'
           },
           ACTIVE_REQUEST_EXISTS: {
             title: 'Request Already Pending',
-            message: 'You already have an active tonight arrangement request pending with this provider. Wait for it to be resolved.'
+            message: 'You already have an active activity request pending with this provider. Wait for it to be resolved.'
           }
         };
 
@@ -1334,12 +1334,12 @@ const PrivateSext: React.FC = () => {
           setServiceRequestNote(noteToRestore);
           setServiceRequestError({
             title: 'Service Request Failed',
-            message: data.message || 'Could not request tonight service. Please try again later.'
+            message: data.message || 'Could not send the activity request. Please try again later.'
           });
         }
       }
     } catch (err) {
-      console.error('Error requesting tonight service:', err);
+      console.error('Error requesting activity:', err);
       setMessages(prev => prev.filter(m => m.id !== tempId));
       setShowServiceRequestModal(true);
       setServiceRequestNote(noteToRestore);
@@ -2512,7 +2512,7 @@ const PrivateSext: React.FC = () => {
             <textarea
               rows={4}
               maxLength={200}
-              placeholder="E.g., Are you available for a private show or date tonight? 😉"
+              placeholder="E.g., What activity would you like to arrange?"
               value={serviceRequestNote}
               onChange={(e) => setServiceRequestNote(e.target.value)}
               className="w-full bg-[#1e0d1b] border border-pink-500/20 text-xs rounded-lg p-3 outline-none text-white focus:border-pink-500 mb-4 no-scrollbar resize-none"
