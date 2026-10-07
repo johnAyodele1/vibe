@@ -483,7 +483,7 @@ export const sendServiceRequest = async (req: Request, res: Response) => {
   }
 };
 
-// GET /api/v1/adult/providers/me/tonight-rate
+// GET /api/v1/adult/providers/me/activity-rate
 export const getActivityRate = async (req: Request, res: Response) => {
   try {
     const user = req.adultUser;
