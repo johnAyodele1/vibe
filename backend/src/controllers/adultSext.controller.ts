@@ -340,7 +340,7 @@ export const requestService = async (req: Request, res: Response) => {
       emitSextMessage(ns, conversationId, { message: responsePayload });
     }
 
-    // Send push notification for service tonight request (best-effort)
+    // Send push notification for activity request (best-effort)
     try {
       await sendPushToUser(otherParticipantId, {
         title:       `🌙 Activity request from ${user.displayName || user.username}`,
