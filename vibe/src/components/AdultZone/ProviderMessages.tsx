@@ -171,8 +171,8 @@ const ProviderMessages: React.FC = () => {
   const [showServiceRequestDialog, setShowServiceRequestDialog] = useState(false);
   const [serviceExtras, setServiceExtras] = useState<Array<{ label: string; amount: number | '' }>>([]);
   const [serviceRequestNote, setServiceRequestNote] = useState('');
-  const tonightRate = (user as any)?.providerProfile?.tonightRate || 100;
-  const [dynTonightRate, setDynTonightRate] = useState<number>(0);
+  const activityRate = (user as any)?.providerProfile?.activityRate || 100;
+  const [dynActivityRate, setDynActivityRate] = useState<number>(0);
 
   // Double-click / duplicate submission prevention states
   const [isSendingPaidMedia, setIsSendingPaidMedia] = useState(false);
@@ -215,20 +215,20 @@ const ProviderMessages: React.FC = () => {
 
   useEffect(() => {
     if (showServiceRequestDialog) {
-      const fetchTonightRate = async () => {
+      const fetchActivityRate = async () => {
         try {
-          const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/tonight-rate`, {
+          const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/activity-rate`, {
             headers: getHeaders()
           });
           const data = await res.json();
-          if (data && data.tonightRate !== undefined) {
-            setDynTonightRate(data.tonightRate);
+          if (data && data.activityRate !== undefined) {
+            setDynActivityRate(data.activityRate);
           }
         } catch (err) {
           console.error(err);
         }
       };
-      fetchTonightRate();
+      fetchActivityRate();
     }
   }, [showServiceRequestDialog]);
 
@@ -385,7 +385,7 @@ const ProviderMessages: React.FC = () => {
     if (processingIds[msgId]) return;
     setProcessingIds(prev => ({ ...prev, [msgId]: true }));
     try {
-      await fetch(`${API_BASE_URL}/v1/adult/sext/service-tonight-requests/${msgId}/decline`, {
+      await fetch(`${API_BASE_URL}/v1/adult/sext/activity-requests/${msgId}/decline`, {
         method: 'PUT',
         headers: getHeaders()
       });
@@ -989,7 +989,7 @@ const ProviderMessages: React.FC = () => {
     const cleanedExtras = serviceExtras
       .map(e => ({ label: e.label.trim(), amount: Number(e.amount) || 0 }))
       .filter(e => e.label && e.amount > 0);
-    const baseRate = dynTonightRate || tonightRate;
+    const baseRate = dynActivityRate || activityRate;
     const totalAmount = baseRate + cleanedExtras.reduce((sum, item) => sum + item.amount, 0);
 
     setIsSendingServiceRequest(true);
@@ -1050,7 +1050,7 @@ const ProviderMessages: React.FC = () => {
       };
 
       if (fulfillIdToRestore) {
-        url = `${API_BASE_URL}/v1/adult/sext/service-tonight-requests/${fulfillIdToRestore}/fulfill`;
+        url = `${API_BASE_URL}/v1/adult/sext/activity-requests/${fulfillIdToRestore}/fulfill`;
         method = 'PUT';
         body = {
           baseRate,
@@ -1442,7 +1442,7 @@ const ProviderMessages: React.FC = () => {
     toast.info('Recording cancelled');
   };
 
-  const totalServiceChargeAmount = (dynTonightRate || tonightRate) + serviceExtras.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+  const totalServiceChargeAmount = (dynActivityRate || activityRate) + serviceExtras.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
 
   const filteredConversations = conversations.filter(c => {
     if (!c.otherUser) return false;
@@ -2368,11 +2368,11 @@ const ProviderMessages: React.FC = () => {
             <div className="space-y-4">
               <div>
                 <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">
-                  Base Rate (Tonight Rate)
+                  Base Rate (Activity Rate)
                 </label>
                 <div className="flex justify-between items-center p-3 bg-black/40 border border-white/5 rounded-xl">
                   <span className="text-xs text-gray-400">Your activity rate (from profile):</span>
-                  <span className="text-xs font-mono font-bold text-amber-400">💎 {formatAmount(dynTonightRate || tonightRate)} credits (≈ {formatNaira((dynTonightRate || tonightRate) * usePricingStore.getState().diamondNairaRate)})</span>
+                  <span className="text-xs font-mono font-bold text-amber-400">💎 {formatAmount(dynActivityRate || activityRate)} credits (≈ {formatNaira((dynActivityRate || activityRate) * usePricingStore.getState().diamondNairaRate)})</span>
                 </div>
               </div>
 
