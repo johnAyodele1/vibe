@@ -372,7 +372,7 @@ const ProviderOnboarding: React.FC = () => {
           return;
         }
         if (services.includes('hookup') && !isValidRate(pricing.tonightRate)) {
-          toast.error('Rate for tonight must be greater than 0 diamonds');
+          toast.error('Activity rate must be greater than 0 diamonds');
           setSaving(false);
           return;
         }

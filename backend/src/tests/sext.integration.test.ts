@@ -551,14 +551,14 @@ describe('Private Messaging (Sext) Integration Tests', () => {
     let serviceMsgId: string;
     let giftReqMsgId: string;
 
-    it('provider can get their tonight rate', async () => {
-      // Setup tonight rate on provider
+    it('provider can get their activity rate', async () => {
+      // Setup activity rate on provider
       await AdultUser.findByIdAndUpdate(providerId, {
         'providerProfile.tonightRate': 150
       });
 
       const res = await request(app)
-        .get('/api/v1/adult/providers/me/tonight-rate')
+        .get('/api/v1/adult/providers/me/activity-rate')
         .set('Authorization', `Bearer ${providerToken}`)
         .expect(200);
 
@@ -649,7 +649,7 @@ describe('Private Messaging (Sext) Integration Tests', () => {
       expect(res.body.serviceRequest.status).toBe('completed');
     });
 
-    it('member can request service even if provider has 0 tonight rate, and provider fulfills with extras', async () => {
+    it('member can request service even if provider has 0 activity rate, and provider fulfills with extras', async () => {
       // Set provider tonightRate to 0
       await AdultUser.findByIdAndUpdate(providerId, {
         'providerProfile.tonightRate': 0
@@ -697,7 +697,7 @@ describe('Private Messaging (Sext) Integration Tests', () => {
 
       // Provider fulfills with extra charges: Hotel (50), Transport (20)
       const fulfillRes = await request(app)
-        .put(`/api/v1/adult/sext/service-tonight-requests/${serviceTonightReqId}/fulfill`)
+        .put(`/api/v1/adult/sext/activity-requests/${serviceTonightReqId}/fulfill`)
         .set('Authorization', `Bearer ${providerToken}`)
         .send({
           extras: [
@@ -722,7 +722,7 @@ describe('Private Messaging (Sext) Integration Tests', () => {
 
       // Second attempt to fulfill must return 409 conflict
       await request(app)
-        .put(`/api/v1/adult/sext/service-tonight-requests/${serviceTonightReqId}/fulfill`)
+        .put(`/api/v1/adult/sext/activity-requests/${serviceTonightReqId}/fulfill`)
         .set('Authorization', `Bearer ${providerToken}`)
         .send({
           extras: [{ label: 'Extra', amount: 10 }]

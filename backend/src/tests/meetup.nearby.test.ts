@@ -19,9 +19,9 @@ describe('Hook Up Tonight — Location Filters and Nearby API', () => {
 
     // Create a regular member user with saved location
     const member = new AdultUser({
-      email: 'member@hookup.com',
+      email: 'member@meetup.com',
       passwordHash: 'password123',
-      username: 'hookupmember',
+      username: 'meetupmember',
       displayName: 'Simple Member',
       dateOfBirth: new Date('2000-01-01'),
       role: 'user',
@@ -35,11 +35,11 @@ describe('Hook Up Tonight — Location Filters and Nearby API', () => {
     await member.save();
     memberToken = jwt.sign({ sub: member._id.toString() }, process.env.ADULT_JWT_SECRET || 'adult_secret');
 
-    // Create an active, verified, onboarding-complete provider offering hookup service
+    // Create an active, verified, onboarding-complete provider offering meetup service
     const provider = new AdultUser({
-      email: 'provider@hookup.com',
+      email: 'provider@meetup.com',
       passwordHash: 'password123',
-      username: 'hookupprovider',
+      username: 'meetupprovider',
       displayName: 'Lucia Rose',
       dateOfBirth: new Date('1995-01-01'),
       role: 'provider',

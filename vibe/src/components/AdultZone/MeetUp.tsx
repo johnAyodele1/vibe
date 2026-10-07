@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CustomSelect } from './CustomSelect';
-import HookupMap from './HookupMap';
+import MeetupMap from './MeetupMap';
 import { useCountries, useStates, useCities } from '../../hooks/useLocation';
 import { API_BASE_URL, SOCKET_URL } from '../../config';
 import { io } from 'socket.io-client';
@@ -12,7 +12,7 @@ interface LocationValue {
   city?: { name: string; lat: number; lng: number };
 }
 
-interface HookupProviderItem {
+interface MeetupProviderItem {
   id: string;
   stageName: string;
   photoUrl: string;
@@ -29,8 +29,8 @@ interface HookupProviderItem {
 }
 
 // Optimization (⚡ Bolt): Extract and memoize card component to skip DOM diffing and re-renders when parent state changes.
-const HookupProviderCard: React.FC<{
-  provider: HookupProviderItem;
+const MeetupProviderCard: React.FC<{
+  provider: MeetupProviderItem;
   onNavigate: (id: string) => void;
   onMessageClick: (id: string) => void;
 }> = React.memo(({ provider, onNavigate, onMessageClick }) => {
@@ -92,9 +92,9 @@ const HookupProviderCard: React.FC<{
   );
 });
 
-HookupProviderCard.displayName = 'HookupProviderCard';
+MeetupProviderCard.displayName = 'MeetupProviderCard';
 
-const HookUpTonight: React.FC = () => {
+const MeetUp: React.FC = () => {
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<'grid' | 'map'>('grid');
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
@@ -102,8 +102,8 @@ const HookUpTonight: React.FC = () => {
   const [location, setLocation] = useState<LocationValue>({});
   const [isOnlineOnly, setIsOnlineOnly] = useState<boolean>(false);
 
-  const [providers, setProviders] = useState<HookupProviderItem[]>([]);
-  const [mapProviders, setMapProviders] = useState<HookupProviderItem[]>([]);
+  const [providers, setProviders] = useState<MeetupProviderItem[]>([]);
+  const [mapProviders, setMapProviders] = useState<MeetupProviderItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -466,7 +466,7 @@ const HookUpTonight: React.FC = () => {
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-6">
                 {providers.map((p) => (
-                  <HookupProviderCard
+                  <MeetupProviderCard
                     key={p.id}
                     provider={p}
                     onNavigate={handleProviderNavigate}
@@ -486,7 +486,7 @@ const HookUpTonight: React.FC = () => {
           </>
         ) : (
           <div className="relative w-full h-[600px] rounded-2xl border border-[var(--az-border)] overflow-hidden">
-            <HookupMap providers={mapProviders} center={mapCenter} zoom={mapZoom} openConversation={handleMessageClick} />
+            <MeetupMap providers={mapProviders} center={mapCenter} zoom={mapZoom} openConversation={handleMessageClick} />
 
             <div className="absolute top-3 right-3 z-[1000] bg-black/85 backdrop-blur-md border border-[var(--az-border)] rounded-full px-4 py-1.5 text-xs font-medium text-[var(--az-text-secondary)] pointer-events-none">
               {mapProviders.length} providers in this area
@@ -519,4 +519,4 @@ const HookUpTonight: React.FC = () => {
   );
 };
 
-export default HookUpTonight;
+export default MeetUp;

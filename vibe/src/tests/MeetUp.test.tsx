@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import HookUpTonight from '../components/AdultZone/HookUpTonight';
+import MeetUp from '../components/AdultZone/MeetUp';
 
 // Mock location hooks
 vi.mock('../hooks/useLocation', () => ({
@@ -85,7 +85,7 @@ describe('Meet Up Today — Horizontal Filters and CustomSelect', () => {
   it('renders Meet Up Today page without requesting GPS permission', async () => {
     render(
       <MemoryRouter>
-        <HookUpTonight />
+        <MeetUp />
       </MemoryRouter>
     );
 
@@ -97,7 +97,7 @@ describe('Meet Up Today — Horizontal Filters and CustomSelect', () => {
   it('pre-populates the filters from member profile location on page load', async () => {
     render(
       <MemoryRouter>
-        <HookUpTonight />
+        <MeetUp />
       </MemoryRouter>
     );
 
@@ -112,7 +112,7 @@ describe('Meet Up Today — Horizontal Filters and CustomSelect', () => {
   it('keeps the selected city visible in the city select instead of showing the placeholder', async () => {
     render(
       <MemoryRouter>
-        <HookUpTonight />
+        <MeetUp />
       </MemoryRouter>
     );
 
@@ -125,7 +125,7 @@ describe('Meet Up Today — Horizontal Filters and CustomSelect', () => {
   it('renders grid providers list when grid mode is active', async () => {
     render(
       <MemoryRouter>
-        <HookUpTonight />
+        <MeetUp />
       </MemoryRouter>
     );
 
@@ -137,7 +137,7 @@ describe('Meet Up Today — Horizontal Filters and CustomSelect', () => {
   it('switches to map view mode correctly', async () => {
     render(
       <MemoryRouter>
-        <HookUpTonight />
+        <MeetUp />
       </MemoryRouter>
     );
 
@@ -152,7 +152,7 @@ describe('Meet Up Today — Horizontal Filters and CustomSelect', () => {
   it('resets the filters back to empty when Reset is clicked', async () => {
     render(
       <MemoryRouter>
-        <HookUpTonight />
+        <MeetUp />
       </MemoryRouter>
     );
 

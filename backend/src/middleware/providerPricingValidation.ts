@@ -13,7 +13,7 @@ export const validateProviderPricing = (req: Request, res: Response, next: NextF
   const isOnboardingStep4 = req.params.stepNumber === '4';
   const fields = [
     ['perMinuteRate', 'Per-minute rate'],
-    ['tonightRate', 'Rate for tonight'],
+    ['tonightRate', 'Activity rate'],
   ] as const;
 
   for (const [field, label] of fields) {

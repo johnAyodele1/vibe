@@ -13,7 +13,7 @@ interface MapProvider {
   tonightRate?: number;
 }
 
-interface HookupMapProps {
+interface MeetupMapProps {
   providers: MapProvider[];
   center: [number, number];
   zoom: number;
@@ -54,7 +54,7 @@ const createPopupContent = (provider: MapProvider, onMessage: () => void): HTMLD
     const rate = document.createElement('span');
     rate.className = 'map-popup-rate text-xs font-mono';
     rate.style.color = 'var(--az-accent-gold)';
-    rate.textContent = `💎 ${formatAmount(provider.tonightRate)} tonight`;
+    rate.textContent = `💎 ${formatAmount(provider.tonightRate)} activity`;
     info.append(rate);
   }
 
@@ -68,7 +68,7 @@ const createPopupContent = (provider: MapProvider, onMessage: () => void): HTMLD
   return container;
 };
 
-export const HookupMap: React.FC<HookupMapProps> = ({ providers, center, zoom, openConversation }) => {
+export const MeetupMap: React.FC<MeetupMapProps> = ({ providers, center, zoom, openConversation }) => {
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
@@ -159,4 +159,4 @@ export const HookupMap: React.FC<HookupMapProps> = ({ providers, center, zoom, o
   );
 };
 
-export default HookupMap;
+export default MeetupMap;

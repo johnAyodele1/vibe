@@ -217,7 +217,7 @@ const ProviderMessages: React.FC = () => {
     if (showServiceRequestDialog) {
       const fetchTonightRate = async () => {
         try {
-          const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/tonight-rate`, {
+          const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/activity-rate`, {
             headers: getHeaders()
           });
           const data = await res.json();
@@ -385,7 +385,7 @@ const ProviderMessages: React.FC = () => {
     if (processingIds[msgId]) return;
     setProcessingIds(prev => ({ ...prev, [msgId]: true }));
     try {
-      await fetch(`${API_BASE_URL}/v1/adult/sext/service-tonight-requests/${msgId}/decline`, {
+      await fetch(`${API_BASE_URL}/v1/adult/sext/activity-requests/${msgId}/decline`, {
         method: 'PUT',
         headers: getHeaders()
       });
@@ -1050,7 +1050,7 @@ const ProviderMessages: React.FC = () => {
       };
 
       if (fulfillIdToRestore) {
-        url = `${API_BASE_URL}/v1/adult/sext/service-tonight-requests/${fulfillIdToRestore}/fulfill`;
+        url = `${API_BASE_URL}/v1/adult/sext/activity-requests/${fulfillIdToRestore}/fulfill`;
         method = 'PUT';
         body = {
           baseRate,
@@ -1119,13 +1119,13 @@ const ProviderMessages: React.FC = () => {
             return m;
           });
         });
-        toast.success('Tonight service request fulfilled!');
+        toast.success('Activity request fulfilled!');
       } else if (data && data.id) {
         setMessages(prev => {
           const filtered = prev.filter(m => m.id !== data.id);
           return filtered.map(m => m.id === tempId ? { ...data, isOptimistic: false, conversationId: data.conversationId || selectedConv.conversationId } : m);
         });
-        toast.success('Tonight service charge request sent!');
+        toast.success('Activity charge request sent!');
       }
       fetchConversations();
     } catch (err) {
@@ -1817,7 +1817,7 @@ const ProviderMessages: React.FC = () => {
                         )}
                       </div>
                     ) : m.mediaType === 'request_service' ? (
-                      <div data-testid="message-service-tonight-request" className="w-64 bg-[#140b13] border-2 border-dashed border-purple-500/40 rounded-xl p-4 flex flex-col gap-3 message-service-tonight-request">
+                      <div data-testid="message-activity-request" className="w-64 bg-[#140b13] border-2 border-dashed border-purple-500/40 rounded-xl p-4 flex flex-col gap-3 message-activity-request">
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-xs tracking-wider text-purple-400 uppercase">Service Request</span>
                         </div>
@@ -2368,7 +2368,7 @@ const ProviderMessages: React.FC = () => {
             <div className="space-y-4">
               <div>
                 <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">
-                  Base Rate (Tonight Rate)
+                  Base Rate (Activity Rate)
                 </label>
                 <div className="flex justify-between items-center p-3 bg-black/40 border border-white/5 rounded-xl">
                   <span className="text-xs text-gray-400">Your activity rate (from profile):</span>

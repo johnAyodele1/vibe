@@ -149,7 +149,7 @@ export const uploadMedia = async (req: Request, res: Response) => {
   }
 };
 
-export const getHookupNearbyProviders = async (req: Request, res: Response) => {
+export const getMeetupNearbyProviders = async (req: Request, res: Response) => {
   try {
     const { country, state, city, isOnline, page = 1, limit = 20, view } = req.query;
 
@@ -537,9 +537,9 @@ export const saveOnboardingStep = async (req: Request, res: Response) => {
 
       if (selectedServices.includes('hookup')) {
         if (tonightRate === undefined || isNaN(Number(tonightRate))) {
-          errors.tonightRate = 'Rate for tonight is required';
+          errors.tonightRate = 'Activity rate is required';
         } else if (!Number.isFinite(Number(tonightRate)) || Number(tonightRate) <= 0) {
-          errors.tonightRate = 'Rate for tonight must be greater than 0 diamonds';
+          errors.tonightRate = 'Activity rate must be greater than 0 diamonds';
         }
       }
 

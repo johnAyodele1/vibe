@@ -343,8 +343,8 @@ export const requestService = async (req: Request, res: Response) => {
     // Send push notification for service tonight request (best-effort)
     try {
       await sendPushToUser(otherParticipantId, {
-        title:       `🌙 Service Tonight request from ${user.displayName || user.username}`,
-        body:        note || `Requested a tonight arrangement`,
+        title:       `🌙 Activity request from ${user.displayName || user.username}`,
+        body:        note || `Requested activity`,
         icon:        user.profilePhoto || '',
         tag:         `service_req_${conversationId}`,
         renotify:    true,
@@ -353,7 +353,7 @@ export const requestService = async (req: Request, res: Response) => {
         type:        'service_tonight_request_received',
       });
     } catch (pushErr: any) {
-      console.error('[ServiceTonight][Push] Push notification failed safely:', pushErr.message);
+      console.error('[ActivityRequest][Push] Push notification failed safely:', pushErr.message);
     }
 
     return res.status(201).json(responsePayload);
@@ -381,7 +381,7 @@ export const sendServiceRequest = async (req: Request, res: Response) => {
     if (!baseRate || baseRate <= 0) {
       return res.status(400).json({
         success: false,
-        error: 'You have not set a rate for tonight arrangements. Please update your pricing in Settings.',
+        error: 'You have not set a rate for activity requests. Please update your pricing in Settings.',
       });
     }
 
@@ -483,8 +483,8 @@ export const sendServiceRequest = async (req: Request, res: Response) => {
   }
 };
 
-// GET /api/v1/adult/providers/me/tonight-rate
-export const getTonightRate = async (req: Request, res: Response) => {
+// GET /api/v1/adult/providers/me/activity-rate
+export const getActivityRate = async (req: Request, res: Response) => {
   try {
     const user = req.adultUser;
     if (!user) {
@@ -764,7 +764,7 @@ export const reportServiceRequest = async (req: Request, res: Response) => {
       userDisplayName: user.displayName || user.username,
       providerId: message.senderId.toString(),
       providerStageName: provider?.providerProfile?.stageName || provider?.displayName || 'Provider',
-      serviceName: 'Service Tonight Arrangement',
+      serviceName: 'Activity Request',
       serviceAmount: message.serviceRequest.totalAmount,
       currency: 'credits',
       paymentStatus: message.serviceRequest.status,
@@ -2502,8 +2502,8 @@ export const declinePhotoRequest = async (req: Request, res: Response) => {
   }
 };
 
-// PUT /api/v1/adult/sext/service-tonight-requests/:messageId/decline
-export const declineServiceTonightRequest = async (req: Request, res: Response) => {
+// PUT /api/v1/adult/sext/activity-requests/:messageId/decline
+export const declineActivityRequest = async (req: Request, res: Response) => {
   try {
     const user = req.adultUser;
     if (!user) {
@@ -2542,8 +2542,8 @@ export const declineServiceTonightRequest = async (req: Request, res: Response) 
   }
 };
 
-// PUT /api/v1/adult/sext/service-tonight-requests/:messageId/fulfill
-export const fulfillServiceTonightRequest = async (req: Request, res: Response) => {
+// PUT /api/v1/adult/sext/activity-requests/:messageId/fulfill
+export const fulfillActivityRequest = async (req: Request, res: Response) => {
   try {
     const user = req.adultUser;
     if (!user) {

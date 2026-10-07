@@ -438,12 +438,12 @@ const PrivateSext: React.FC = () => {
 
   const handleDeclineServiceTonightRequest = async (msgId: string) => {
     try {
-      await fetch(`${API_BASE_URL}/v1/adult/sext/service-tonight-requests/${msgId}/decline`, {
+      await fetch(`${API_BASE_URL}/v1/adult/sext/activity-requests/${msgId}/decline`, {
         method: 'PUT',
         headers: getHeaders()
       });
       setMessages(prev => prev.map(m => m.id === msgId ? { ...m, serviceTonightRequest: { ...m.serviceTonightRequest!, status: 'declined' } } : m));
-      toast.info('Service request cancelled');
+      toast.info('Activity request cancelled');
     } catch (err) {
       console.error(err);
     }
@@ -1265,7 +1265,7 @@ const PrivateSext: React.FC = () => {
       conversationId: selectedConv.conversationId,
       senderId: user?.id || (user as any)?._id || '',
       receiverId: selectedConv.otherUser?.id,
-      content: 'Requested a tonight service',
+      content: 'Requested activity service',
       mediaType: 'request_service',
       creditCost: 0,
       isUnlocked: true,
@@ -1294,7 +1294,7 @@ const PrivateSext: React.FC = () => {
           const filtered = prev.filter(m => m.id !== data.id);
           return filtered.map(m => m.id === tempId ? { ...data, isOptimistic: false, conversationId: data.conversationId || selectedConv.conversationId } : m);
         });
-        toast.success('Tonight service request sent!');
+        toast.success('Activity request request sent!');
         fetchConversations();
       } else {
         setMessages(prev => prev.filter(m => m.id !== tempId));
@@ -1310,14 +1310,14 @@ const PrivateSext: React.FC = () => {
             message: 'Services can only be requested from service providers.'
           },
           NO_TONIGHT_RATE: {
-            title: 'No Tonight Rate Set',
-            message: 'The provider has not set their tonight arrangement rate yet.',
+            title: 'No Activity Rate Set',
+            message: 'The provider has not set their activity rate yet.',
             action: 'Go to Settings',
             actionUrl: '/adult/provider/settings?tab=pricing'
           },
           ACTIVE_REQUEST_EXISTS: {
             title: 'Request Already Pending',
-            message: 'You already have an active tonight arrangement request pending with this provider. Wait for it to be resolved.'
+            message: 'You already have an active activity request pending with this provider. Wait for it to be resolved.'
           }
         };
 
@@ -1334,12 +1334,12 @@ const PrivateSext: React.FC = () => {
           setServiceRequestNote(noteToRestore);
           setServiceRequestError({
             title: 'Service Request Failed',
-            message: data.message || 'Could not request tonight service. Please try again later.'
+            message: data.message || 'Could not send the activity request. Please try again later.'
           });
         }
       }
     } catch (err) {
-      console.error('Error requesting tonight service:', err);
+      console.error('Error requesting activity:', err);
       setMessages(prev => prev.filter(m => m.id !== tempId));
       setShowServiceRequestModal(true);
       setServiceRequestNote(noteToRestore);
@@ -2012,7 +2012,7 @@ const PrivateSext: React.FC = () => {
                         )}
                       </div>
                     ) : m.mediaType === 'request_service' ? (
-                      <div data-testid="message-service-tonight-request" className="w-64 bg-[#140b13] border-2 border-dashed border-purple-500/40 rounded-xl p-4 flex flex-col gap-3 message-service-tonight-request">
+                      <div data-testid="message-activity-request" className="w-64 bg-[#140b13] border-2 border-dashed border-purple-500/40 rounded-xl p-4 flex flex-col gap-3 message-activity-request">
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-xs tracking-wider text-purple-400 uppercase">Service Request</span>
                         </div>
@@ -2512,7 +2512,7 @@ const PrivateSext: React.FC = () => {
             <textarea
               rows={4}
               maxLength={200}
-              placeholder="E.g., Are you available for a private show or date tonight? 😉"
+              placeholder="E.g., What activity would you like to arrange?"
               value={serviceRequestNote}
               onChange={(e) => setServiceRequestNote(e.target.value)}
               className="w-full bg-[#1e0d1b] border border-pink-500/20 text-xs rounded-lg p-3 outline-none text-white focus:border-pink-500 mb-4 no-scrollbar resize-none"
