@@ -36,7 +36,7 @@ describe('provider pricing validation', () => {
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json).toHaveBeenCalledWith({
       success: false,
-      error: { code: 'VALIDATION_ERROR', message: 'Minimum rate: rate for tonight must be greater than 0 diamonds' },
+      error: { code: 'VALIDATION_ERROR', message: 'Minimum rate: activity rate must be greater than 0 diamonds' },
     });
     expect(next).not.toHaveBeenCalled();
   });
