@@ -12,7 +12,7 @@ interface LocationValue {
   city?: { name: string; lat: number; lng: number };
 }
 
-interface HookupProviderItem {
+interface MeetupProviderItem {
   id: string;
   stageName: string;
   photoUrl: string;
@@ -30,7 +30,7 @@ interface HookupProviderItem {
 
 // Optimization (⚡ Bolt): Extract and memoize card component to skip DOM diffing and re-renders when parent state changes.
 const MeetupProviderCard: React.FC<{
-  provider: HookupProviderItem;
+  provider: MeetupProviderItem;
   onNavigate: (id: string) => void;
   onMessageClick: (id: string) => void;
 }> = React.memo(({ provider, onNavigate, onMessageClick }) => {
@@ -102,8 +102,8 @@ const MeetUp: React.FC = () => {
   const [location, setLocation] = useState<LocationValue>({});
   const [isOnlineOnly, setIsOnlineOnly] = useState<boolean>(false);
 
-  const [providers, setProviders] = useState<HookupProviderItem[]>([]);
-  const [mapProviders, setMapProviders] = useState<HookupProviderItem[]>([]);
+  const [providers, setProviders] = useState<MeetupProviderItem[]>([]);
+  const [mapProviders, setMapProviders] = useState<MeetupProviderItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
