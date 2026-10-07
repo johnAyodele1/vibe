@@ -149,7 +149,7 @@ export const uploadMedia = async (req: Request, res: Response) => {
   }
 };
 
-export const getHookupNearbyProviders = async (req: Request, res: Response) => {
+export const getMeetupNearbyProviders = async (req: Request, res: Response) => {
   try {
     const { country, state, city, isOnline, page = 1, limit = 20, view } = req.query;
 
