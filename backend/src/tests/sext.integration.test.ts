@@ -697,7 +697,7 @@ describe('Private Messaging (Sext) Integration Tests', () => {
 
       // Provider fulfills with extra charges: Hotel (50), Transport (20)
       const fulfillRes = await request(app)
-        .put(`/api/v1/adult/sext/service-tonight-requests/${serviceTonightReqId}/fulfill`)
+        .put(`/api/v1/adult/sext/activity-requests/${serviceTonightReqId}/fulfill`)
         .set('Authorization', `Bearer ${providerToken}`)
         .send({
           extras: [
@@ -722,7 +722,7 @@ describe('Private Messaging (Sext) Integration Tests', () => {
 
       // Second attempt to fulfill must return 409 conflict
       await request(app)
-        .put(`/api/v1/adult/sext/service-tonight-requests/${serviceTonightReqId}/fulfill`)
+        .put(`/api/v1/adult/sext/activity-requests/${serviceTonightReqId}/fulfill`)
         .set('Authorization', `Bearer ${providerToken}`)
         .send({
           extras: [{ label: 'Extra', amount: 10 }]
