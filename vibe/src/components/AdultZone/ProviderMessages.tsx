@@ -171,8 +171,8 @@ const ProviderMessages: React.FC = () => {
   const [showServiceRequestDialog, setShowServiceRequestDialog] = useState(false);
   const [serviceExtras, setServiceExtras] = useState<Array<{ label: string; amount: number | '' }>>([]);
   const [serviceRequestNote, setServiceRequestNote] = useState('');
-  const activityRate = (user as any)?.providerProfile?.activityRate || 100;
-  const [dynActivityRate, setDynActivityRate] = useState<number>(0);
+  const tonightRate = (user as any)?.providerProfile?.tonightRate || 100;
+  const [dynTonightRate, setDynTonightRate] = useState<number>(0);
 
   // Double-click / duplicate submission prevention states
   const [isSendingPaidMedia, setIsSendingPaidMedia] = useState(false);
@@ -215,20 +215,20 @@ const ProviderMessages: React.FC = () => {
 
   useEffect(() => {
     if (showServiceRequestDialog) {
-      const fetchActivityRate = async () => {
+      const fetchTonightRate = async () => {
         try {
           const res = await fetch(`${API_BASE_URL}/v1/adult/providers/me/activity-rate`, {
             headers: getHeaders()
           });
           const data = await res.json();
-          if (data && data.activityRate !== undefined) {
-            setDynActivityRate(data.activityRate);
+          if (data && data.tonightRate !== undefined) {
+            setDynTonightRate(data.tonightRate);
           }
         } catch (err) {
           console.error(err);
         }
       };
-      fetchActivityRate();
+      fetchTonightRate();
     }
   }, [showServiceRequestDialog]);
 
@@ -989,7 +989,7 @@ const ProviderMessages: React.FC = () => {
     const cleanedExtras = serviceExtras
       .map(e => ({ label: e.label.trim(), amount: Number(e.amount) || 0 }))
       .filter(e => e.label && e.amount > 0);
-    const baseRate = dynActivityRate || activityRate;
+    const baseRate = dynTonightRate || tonightRate;
     const totalAmount = baseRate + cleanedExtras.reduce((sum, item) => sum + item.amount, 0);
 
     setIsSendingServiceRequest(true);
@@ -1119,13 +1119,13 @@ const ProviderMessages: React.FC = () => {
             return m;
           });
         });
-        toast.success('Tonight service request fulfilled!');
+        toast.success('Activity request fulfilled!');
       } else if (data && data.id) {
         setMessages(prev => {
           const filtered = prev.filter(m => m.id !== data.id);
           return filtered.map(m => m.id === tempId ? { ...data, isOptimistic: false, conversationId: data.conversationId || selectedConv.conversationId } : m);
         });
-        toast.success('Tonight service charge request sent!');
+        toast.success('Activity charge request sent!');
       }
       fetchConversations();
     } catch (err) {
@@ -1442,7 +1442,7 @@ const ProviderMessages: React.FC = () => {
     toast.info('Recording cancelled');
   };
 
-  const totalServiceChargeAmount = (dynActivityRate || activityRate) + serviceExtras.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+  const totalServiceChargeAmount = (dynTonightRate || tonightRate) + serviceExtras.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
 
   const filteredConversations = conversations.filter(c => {
     if (!c.otherUser) return false;
@@ -1817,7 +1817,7 @@ const ProviderMessages: React.FC = () => {
                         )}
                       </div>
                     ) : m.mediaType === 'request_service' ? (
-                      <div data-testid="message-service-tonight-request" className="w-64 bg-[#140b13] border-2 border-dashed border-purple-500/40 rounded-xl p-4 flex flex-col gap-3 message-service-tonight-request">
+                      <div data-testid="message-activity-request" className="w-64 bg-[#140b13] border-2 border-dashed border-purple-500/40 rounded-xl p-4 flex flex-col gap-3 message-activity-request">
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-xs tracking-wider text-purple-400 uppercase">Service Request</span>
                         </div>
@@ -2372,7 +2372,7 @@ const ProviderMessages: React.FC = () => {
                 </label>
                 <div className="flex justify-between items-center p-3 bg-black/40 border border-white/5 rounded-xl">
                   <span className="text-xs text-gray-400">Your activity rate (from profile):</span>
-                  <span className="text-xs font-mono font-bold text-amber-400">💎 {formatAmount(dynActivityRate || activityRate)} credits (≈ {formatNaira((dynActivityRate || activityRate) * usePricingStore.getState().diamondNairaRate)})</span>
+                  <span className="text-xs font-mono font-bold text-amber-400">💎 {formatAmount(dynTonightRate || tonightRate)} credits (≈ {formatNaira((dynTonightRate || tonightRate) * usePricingStore.getState().diamondNairaRate)})</span>
                 </div>
               </div>
 
