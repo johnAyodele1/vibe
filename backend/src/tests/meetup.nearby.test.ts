@@ -49,7 +49,7 @@ describe('Hook Up Tonight — Location Filters and Nearby API', () => {
       providerProfile: {
         stageName: 'Lucia Rose',
         onboarding: { isComplete: true, currentStep: 7, completedSteps: [1,2,3,4,5,6,7] },
-        servicesOffered: ['meetup'],
+        servicesOffered: ['hookup'],
         tonightRate: 150,
         isLive: true,
         isOnline: true,
