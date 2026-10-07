@@ -1294,7 +1294,7 @@ const PrivateSext: React.FC = () => {
           const filtered = prev.filter(m => m.id !== data.id);
           return filtered.map(m => m.id === tempId ? { ...data, isOptimistic: false, conversationId: data.conversationId || selectedConv.conversationId } : m);
         });
-        toast.success('Activity request request sent!');
+        toast.success('Activity request sent!');
         fetchConversations();
       } else {
         setMessages(prev => prev.filter(m => m.id !== tempId));
