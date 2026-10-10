@@ -166,8 +166,19 @@ const AdultAuthModal: React.FC<AdultAuthModalProps> = ({ isOpen, onClose, defaul
                   <input
                     type="date"
                     required
-                    className="w-full h-[46px] bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-3.5 text-white outline-none box-border text-sm"
+                    max={new Date().toISOString().split('T')[0]}
+                    className="w-full h-[46px] bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-3.5 text-white outline-none box-border text-sm cursor-pointer"
                     value={formData.dateOfBirth}
+                    onClick={e => {
+                      const input = e.currentTarget;
+                      if (typeof input.showPicker === 'function') {
+                        try {
+                          input.showPicker();
+                        } catch {
+                          // The native picker may already be open or unavailable.
+                        }
+                      }
+                    }}
                     onChange={e => setFormData({ ...formData, dateOfBirth: e.target.value })}
                   />
                 </div>

@@ -17,7 +17,6 @@ const Connect: React.FC = () => {
   const { login, signup } = useAuth();
   const [authType, setAuthType] = useState<"signup" | "login">("signup");
   const [showPassword, setShowPassword] = useState(false);
-  const [dateType, setDateType] = useState("text");
   const [loading, setLoading] = useState(false);
 
   // Form state
@@ -68,12 +67,43 @@ const Connect: React.FC = () => {
           return;
         }
 
+        // Accept a manually typed DD/MM/YYYY date and reject impossible/future dates.
+        const dobMatch = dateOfBirth.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        if (!dobMatch) {
+          toast.error("Enter your date of birth as DD/MM/YYYY");
+          return;
+        }
+
+        const [, dayText, monthText, yearText] = dobMatch;
+        const day = Number(dayText);
+        const month = Number(monthText);
+        const year = Number(yearText);
+        const parsedDob = new Date(year, month - 1, day);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        if (
+          parsedDob.getFullYear() !== year ||
+          parsedDob.getMonth() !== month - 1 ||
+          parsedDob.getDate() !== day ||
+          parsedDob > today
+        ) {
+          toast.error("Enter a valid date of birth that is not in the future");
+          return;
+        }
+
+        const normalizedDateOfBirth = [
+          String(year),
+          String(month).padStart(2, "0"),
+          String(day).padStart(2, "0"),
+        ].join("-");
+
         const user = await signup({
           email,
           password,
           firstName,
           lastName,
-          dateOfBirth,
+          dateOfBirth: normalizedDateOfBirth,
           gender,
         });
 
@@ -256,12 +286,14 @@ const Connect: React.FC = () => {
           {authType === "signup" && (
             <div className={styles.inputWrapper}>
               <input
-                type={dateType}
-                placeholder="Date of Birth"
+                type="text"
+                inputMode="numeric"
+                autoComplete="bday"
+                placeholder="Date of Birth (DD/MM/YYYY)"
+                aria-label="Date of birth (DD/MM/YYYY)"
                 className={styles.input}
                 value={dateOfBirth}
                 onChange={(e) => setDateOfBirth(e.target.value)}
-                onFocus={() => setDateType("date")}
               />
               <div className={styles.iconSuffix}>
                 <span className="material-symbols-outlined">
