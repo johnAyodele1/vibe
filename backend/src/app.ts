@@ -65,7 +65,9 @@ app.use('/api/ads', adsRoutes);
 app.use('/api/v1/ads', adsRoutes);
 app.use('/api/v1', v1Routes);
 
-app.get('/api/health', (req: Request, res: Response) => res.json({ status: 'OK', timestamp: new Date().toISOString(), uptime: process.uptime() }));
+const healthCheck = (req: Request, res: Response) => res.json({ status: 'OK', timestamp: new Date().toISOString(), uptime: process.uptime() });
+app.get('/health', healthCheck);
+app.get('/api/health', healthCheck);
 app.use(express.static(path.join(__dirname, '../../vibe/dist')));
 app.get('*', (req: Request, res: Response) => { if (req.path.includes('.') || req.path.startsWith('/assets/') || req.path.startsWith('/src/')) return res.status(404).json({ error: 'Asset not found' }); res.sendFile(path.join(__dirname, '../../vibe/dist/index.html')); });
 import { errorCaptureMiddleware } from './middleware/errorCapture';
