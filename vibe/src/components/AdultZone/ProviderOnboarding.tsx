@@ -85,7 +85,6 @@ const ProviderOnboarding: React.FC = () => {
     bankName: '',
     accountHolderName: '',
     accountNumber: '',
-    routingCode: '',
     accountType: 'Checking',
     paypalEmail: '',
     cryptoCurrency: 'USDT',
@@ -183,7 +182,6 @@ const ProviderOnboarding: React.FC = () => {
               bankName: details.bankName || '',
               accountHolderName: details.accountHolder || details.accountHolderName || '',
               accountNumber: details.accountNumber || '',
-              routingCode: details.routingNumber || details.routingCode || '',
               accountType: details.accountType ? (details.accountType.charAt(0).toUpperCase() + details.accountType.slice(1)) : 'Checking',
               paypalEmail: details.paypalEmail || '',
               cryptoCurrency: details.currency || 'USDT',
@@ -409,7 +407,6 @@ const ProviderOnboarding: React.FC = () => {
               bankName: payoutDetails.bankName,
               accountHolder: payoutDetails.accountHolderName,
               accountNumber: payoutDetails.accountNumber,
-              routingNumber: payoutDetails.routingCode,
               accountType: payoutDetails.accountType.toLowerCase(),
             };
           } else if (payoutMethod === 'paypal') {
@@ -1112,15 +1109,6 @@ const ProviderOnboarding: React.FC = () => {
                         className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white outline-none focus:border-[var(--az-accent-rose)] transition-colors"
                         value={payoutDetails.accountNumber}
                         onChange={e => setPayoutDetails({ ...payoutDetails, accountNumber: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold uppercase tracking-widest text-[var(--az-text-secondary)] mb-2">Routing/Sort Code</label>
-                      <input
-                        type="text"
-                        className="w-full bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-4 py-3 text-white outline-none focus:border-[var(--az-accent-rose)] transition-colors"
-                        value={payoutDetails.routingCode}
-                        onChange={e => setPayoutDetails({ ...payoutDetails, routingCode: e.target.value })}
                       />
                     </div>
                   </div>
