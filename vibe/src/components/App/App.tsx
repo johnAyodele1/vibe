@@ -54,6 +54,7 @@ import CreatePartyPage from "../AdultZone/CreatePartyPage";
 import MyTicketsPage from "../AdultZone/MyTicketsPage";
 import GuardScanPage from "../AdultZone/GuardScanPage";
 import HostedPartiesPage from "../AdultZone/HostedPartiesPage";
+import TermsAndConditions from "../Legal/TermsAndConditions";
 import NotificationPrompt from "../pwa/NotificationPrompt";
 import { useAuth } from "../../contexts/AuthContext";
 import { useAdultAuth } from "../../contexts/AdultAuthContext";
@@ -165,6 +166,7 @@ function App() {
           <Route path="parties/:partyId" element={<PartyDetailPage />} />
           <Route path="me/tickets" element={<MyTicketsPage />} />
           <Route path="guard" element={<GuardScanPage />} />
+          <Route path="terms" element={<TermsAndConditions />} />
         </Route>
         <Route path="/dating" element={isAuthenticated ? (isProfileComplete() ? <Navigate to="/discovery" replace /> : <Navigate to="/profile" replace />) : <Onboarding />} />
         <Route path="/admin/clubs" element={isAdminAuthenticated ? <AdminClubsPage /> : <Navigate to="/admin/login" replace />} />
