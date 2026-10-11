@@ -334,7 +334,7 @@ const AdultZoneLayoutInner: React.FC = () => {
               A space to connect, discover activities, and meet people with shared interests. Please use responsibly.
             </p>
             <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-[10px] text-[var(--az-text-muted)] uppercase tracking-widest font-bold">
-              <Link to="#" className="hover:text-[var(--az-text-secondary)]">Terms</Link>
+              <Link to="/terms" className="hover:text-[var(--az-text-secondary)]">Terms and Conditions</Link>
               <Link to="#" className="hover:text-[var(--az-text-secondary)]">Privacy</Link>
               <Link to="#" className="hover:text-[var(--az-text-secondary)]">DMCA</Link>
               <button
