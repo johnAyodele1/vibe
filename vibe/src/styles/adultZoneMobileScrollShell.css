@@ -83,5 +83,10 @@
 
 [data-testid="site-footer"] button::after {
   content: "Earn as creator";
+  color: var(--az-text-muted);
   font-size: 10px;
+}
+
+[data-testid="site-footer"] button:hover::after {
+  color: var(--az-text-secondary);
 }
