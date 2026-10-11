@@ -69,16 +69,47 @@ const AdultAuthModal: React.FC<AdultAuthModalProps> = ({ isOpen, onClose, defaul
         { value: 'Nigeria', label: '🇳🇬 Nigeria' }
       ];
 
+  const parseAdultDateOfBirth = (value: string): string | null => {
+    const match = value.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!match) return null;
+
+    const day = Number(match[1]);
+    const month = Number(match[2]);
+    const year = Number(match[3]);
+    const date = new Date(year, month - 1, day);
+    const today = new Date();
+    const adultCutoff = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate());
+
+    if (
+      date.getFullYear() !== year ||
+      date.getMonth() !== month - 1 ||
+      date.getDate() !== day ||
+      date > today ||
+      date > adultCutoff
+    ) {
+      return null;
+    }
+
+    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    const dateOfBirth = mode === 'signup' ? parseAdultDateOfBirth(formData.dateOfBirth) : null;
+    if (mode === 'signup' && !dateOfBirth) {
+      setError('Enter a valid date of birth in DD/MM/YYYY format. You must be at least 18 years old.');
+      return;
+    }
+
     setLoading(true);
     try {
       let loggedUser = null;
       if (mode === 'login') {
         loggedUser = await login({ email: formData.email, password: formData.password });
       } else {
-        loggedUser = await signup({ ...formData, role });
+        loggedUser = await signup({ ...formData, dateOfBirth: dateOfBirth!, role });
       }
       onClose();
       // Role-based post login redirection logic
@@ -164,21 +195,15 @@ const AdultAuthModal: React.FC<AdultAuthModalProps> = ({ isOpen, onClose, defaul
                 <div className="flex flex-col gap-1">
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-[var(--az-text-secondary)]">Date of Birth</label>
                   <input
-                    type="date"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="bday"
+                    placeholder="DD/MM/YYYY"
+                    maxLength={10}
                     required
-                    max={new Date().toISOString().split('T')[0]}
-                    className="w-full h-[46px] bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-3.5 text-white outline-none box-border text-sm cursor-pointer"
+                    aria-label="Date of birth (DD/MM/YYYY)"
+                    className="w-full h-[46px] bg-[var(--az-bg-tertiary)] border border-[var(--az-border)] rounded-xl px-3.5 text-white outline-none box-border text-sm"
                     value={formData.dateOfBirth}
-                    onClick={e => {
-                      const input = e.currentTarget;
-                      if (typeof input.showPicker === 'function') {
-                        try {
-                          input.showPicker();
-                        } catch {
-                          // The native picker may already be open or unavailable.
-                        }
-                      }
-                    }}
                     onChange={e => setFormData({ ...formData, dateOfBirth: e.target.value })}
                   />
                 </div>
