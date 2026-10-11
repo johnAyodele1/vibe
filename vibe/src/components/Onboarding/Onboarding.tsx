@@ -130,7 +130,7 @@ const Welcome: React.FC = () => {
           {/* Footer / Legal */}
           <p className={styles.footer}>
             By signing up, you agree to our{" "}
-            <a className={styles.link} href="#">
+            <a className={styles.link} href="/terms">
               Terms of Service
             </a>{" "}
             and{" "}
