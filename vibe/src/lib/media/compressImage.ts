@@ -25,7 +25,7 @@ export const compressToWebP = async (file: File): Promise<File> => {
   let compressed: File;
   try {
     compressed = await compress(file, true, 1.7, 0.72);
-  } catch (workerError) {
+  } catch {
     try {
       compressed = await compress(file, false, 1.7, 0.65);
     } catch {
